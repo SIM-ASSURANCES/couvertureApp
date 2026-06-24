@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum TypeCommerce {
+  Electronique
+  Alimentation
+  Textile
+  Autre
+}
+
+enum StatutPartenaire {
+  actif
+  inactif
+}
+
+enum StatutIncendie {
+  en_cours
+  complet
+  expire
+}
+
+enum WaveStatut {
+  en_attente
+  confirme
+  echoue
+}
+
+enum StatutDossier {
+  paye_formulaire_attente
+  complet
+}
+
+enum TypeAction {
+  creation
+  modification
+  suppression
+  export
+  connexion
+  relance
+}
+
+model Admin {
+  id           String            @id @default(uuid())
+  nom          String
+  email        String            @unique
+  passwordHash String
+  role         Role              @default(ADMIN)
+  createdAt    DateTime          @default(now())
+  journal      JournalActivite[]
+}
+
+model Partenaire {
+  id              String                 @id @default(uuid())
+  nomCommerce     String
+  nomResponsable  String
+  telephone       String
+  localisation    String
+  typeCommerce    TypeCommerce
+  produitIncendie Boolean                @default(false)
+  produitAccident Boolean                @default(false)
+  qrIncendieToken String?                @unique
+  qrAccidentToken String?                @unique
+  tarifIncendieId Int?
+  tarifIncendie   TarifIncendie?         @relation(fields: [tarifIncendieId], references: [id])
+  statut          StatutPartenaire       @default(actif)
+  email           String?                @unique
+  passwordHash    String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  incendie        SouscriptionIncendie[]
+  accident        SouscriptionAccident[]
+}
+
+model SouscriptionIncendie {
+  id                  String         @id @default(uuid())
+  partenaireId        String
+  partenaire          Partenaire     @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  telephone           String
+  nom                 String?
+  prenom              String?
+  email               String?
+  numeroFacture       String?
+  pieceIdentiteUrl    String?
+  montantPrime        Int            @default(1000)
+  capitalGaranti      Int            @default(500000)
+  commissionCalculee  Float?
+  statut              StatutIncendie @default(en_cours)
+  lienFormulaireToken String?        @unique
+  whatsappEnvoyeAt    DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+}
+
+model SouscriptionAccident {
+  id                   String        @id @default(uuid())
+  partenaireId         String
+  partenaire           Partenaire    @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  telephone            String
+  nom                  String
+  prenom               String
+  montantPrime         Int
+  capitalGaranti       Int           @default(100000)
+  commissionCalculee   Float?
+  waveTransactionId    String?
+  waveStatut           WaveStatut    @default(en_attente)
+  numeroPolice         String?       @unique
+  statutDossier        StatutDossier @default(paye_formulaire_attente)
+  formulaireComplement Json?
+  whatsappEnvoyeAt     DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+}
+
+model JournalActivite {
+  id          String     @id @default(uuid())
+  adminId     String?
+  admin       Admin?     @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  typeAction  TypeAction
+  objetType   String
+  objetId     String?
+  valeurAvant Json?
+  valeurApres Json?
+  createdAt   DateTime   @default(now())
+}
+
+model Parametre {
+  id                     Int   @id @default(1)
+  tauxCommissionIncendie Float @default(0.15)
+  tauxCommissionAccident Float @default(0.15)
+  primeAccident          Int   @default(2000)
+  primeIncendie          Int   @default(1000)
+}
+
+model TarifAccident {
+  id             Int      @id @default(autoincrement())
+  prime          Int      @unique
+  primeHT        Float?
+  fg             Float?
+  taxes          Float?
+  capitalGaranti Int
+  commission     Float
+  createdAt      DateTime @default(now())
+}
+
+model TarifIncendie {
+  id             Int          @id @default(autoincrement())
+  prime          Int          @unique
+  primeHT        Float?
+  fg             Float?
+  taxes          Float?
+  capitalGaranti Int
+  commission     Float
+  createdAt      DateTime     @default(now())
+  partenaires    Partenaire[]
+}

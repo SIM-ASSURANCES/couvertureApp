@@ -1,0 +1,72 @@
+import {
+  createContext,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
+import { Navigate } from "react-router-dom";
+import { api, getUser } from "./api";
+
+type Role = "ADMIN" | "SUPER_ADMIN";
+export interface SessionUser {
+  id: string;
+  type: "admin" | "partenaire";
+  nom: string;
+  email?: string;
+  commerce?: string;
+  role?: Role;
+  produit?: "incendie" | "accident";
+}
+
+interface AuthCtx {
+  user: SessionUser | null;
+  login: (
+    type: "admin" | "partenaire",
+    email: string,
+    password: string
+  ) => Promise<void>;
+  logout: () => void;
+}
+
+const Ctx = createContext<AuthCtx>(null!);
+export const useAuth = () => useContext(Ctx);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<SessionUser | null>(
+    () => getUser() as SessionUser | null
+  );
+
+  async function login(
+    type: "admin" | "partenaire",
+    email: string,
+    password: string
+  ) {
+    const res = await api.post<{ token: string; user: SessionUser }>(
+      `/auth/${type}/login`,
+      { email, password }
+    );
+    localStorage.setItem("sim_token", res.token);
+    localStorage.setItem("sim_user", JSON.stringify(res.user));
+    setUser(res.user);
+  }
+
+  function logout() {
+    localStorage.removeItem("sim_token");
+    localStorage.removeItem("sim_user");
+    setUser(null);
+  }
+
+  return <Ctx.Provider value={{ user, login, logout }}>{children}</Ctx.Provider>;
+}
+
+export function RequireAuth({
+  type,
+  children,
+}: {
+  type: "admin" | "partenaire";
+  children: ReactNode;
+}) {
+  const { user } = useAuth();
+  if (!user || user.type !== type) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
