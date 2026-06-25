@@ -33,7 +33,9 @@ const createSchema = baseSchema.refine(
   { message: "Un tarif incendie est requis pour ce produit", path: ["tarifIncendieId"] }
 );
 
-const patchSchema = baseSchema.partial();
+const patchSchema = baseSchema.partial().extend({
+  motDePasse: z.string().min(1).optional(),
+});
 
 async function withCounts(id: string) {
   const [incendie, accident] = await Promise.all([
