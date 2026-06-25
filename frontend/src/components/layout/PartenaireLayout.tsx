@@ -8,8 +8,6 @@ export default function PartenaireLayout() {
   return (
     <DashboardLayout
       nav={partenaireNav}
-      brandName={user?.commerce ?? "Mon commerce"}
-      brandSub="Espace Partenaire"
       userName={user?.nom ?? "Partenaire"}
       userMail={user?.email ?? ""}
       homeTo="/partenaire"

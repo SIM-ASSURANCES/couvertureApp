@@ -8,8 +8,6 @@ export default function AdminLayout() {
   return (
     <DashboardLayout
       nav={adminNav}
-      brandName="SIM Assurances"
-      brandSub={user?.role === "SUPER_ADMIN" ? "Super Administrateur" : "Administration"}
       userName={user?.nom ?? "Admin"}
       userMail={user?.email ?? ""}
       homeTo="/admin"

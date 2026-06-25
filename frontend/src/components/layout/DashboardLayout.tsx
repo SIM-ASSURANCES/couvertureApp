@@ -6,8 +6,6 @@ import { useAuth } from "../../auth";
 
 interface Props {
   nav: NavGroup[];
-  brandName: string;
-  brandSub: string;
   userName: string;
   userMail: string;
   homeTo: string;
@@ -16,8 +14,6 @@ interface Props {
 
 export default function DashboardLayout({
   nav,
-  brandName,
-  brandSub,
   userName,
   userMail,
   homeTo,

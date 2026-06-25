@@ -17,21 +17,23 @@ function genMotDePasseProvisoire(): string {
   return `${part(3)}-${part(4)}`;
 }
 
-const createSchema = z
-  .object({
-    nomCommerce: z.string().min(1),
-    nomResponsable: z.string().min(1),
-    telephone: z.string().min(1),
-    localisation: z.string().min(1),
-    typeCommerce: z.enum(["Electronique", "Alimentation", "Textile", "Autre"]),
-    produit: z.enum(["incendie", "accident"]),
-    tarifIncendieId: z.number().int().positive().optional(),
-    email: z.string().email().optional().or(z.literal("")),
-  })
-  .refine(
-    (d) => d.produit !== "incendie" || d.tarifIncendieId != null,
-    { message: "Un tarif incendie est requis pour ce produit", path: ["tarifIncendieId"] }
-  );
+const baseSchema = z.object({
+  nomCommerce: z.string().min(1),
+  nomResponsable: z.string().min(1),
+  telephone: z.string().min(1),
+  localisation: z.string().min(1),
+  typeCommerce: z.enum(["Electronique", "Alimentation", "Textile", "Autre"]),
+  produit: z.enum(["incendie", "accident"]),
+  tarifIncendieId: z.number().int().positive().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+});
+
+const createSchema = baseSchema.refine(
+  (d) => d.produit !== "incendie" || d.tarifIncendieId != null,
+  { message: "Un tarif incendie est requis pour ce produit", path: ["tarifIncendieId"] }
+);
+
+const patchSchema = baseSchema.partial();
 
 async function withCounts(id: string) {
   const [incendie, accident] = await Promise.all([
@@ -135,7 +137,7 @@ partenairesRouter.patch(
       where: { id: req.params.id },
     });
     if (!before) return res.status(404).json({ error: "Introuvable" });
-    const data = createSchema.partial().parse(req.body);
+    const data = patchSchema.parse(req.body);
 
     const isIncendie = data.produit != null
       ? data.produit === "incendie"
