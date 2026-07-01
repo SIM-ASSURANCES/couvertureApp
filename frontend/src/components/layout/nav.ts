@@ -36,6 +36,7 @@ export const adminNav: NavGroup[] = [
     items: [
       { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
       { to: "/admin/accident", label: "Clients Accident", icon: ShieldCheck },
+      { to: "/admin/contrats", label: "Contrats", icon: FileText },
     ],
   },
   {

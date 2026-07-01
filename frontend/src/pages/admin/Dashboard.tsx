@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight } from "lucide-react";
+import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText } from "lucide-react";
 import {
   PageHeader,
   StatCard,
@@ -18,6 +19,11 @@ interface Overview {
   incendieTotal: number;
   accidentTotal: number;
   primesAccident: number;
+  primesIncendie: number;
+  chiffreAffaires: number;
+  taxes: number;
+  caIncendie: number;
+  caAccident: number;
   derniersAccident: {
     id: string;
     prenom: string;
@@ -36,7 +42,21 @@ interface Overview {
 }
 
 export default function AdminDashboard() {
-  const { data, loading, error } = useFetch<Overview>("/stats/overview");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  const { data, loading, error } = useFetch<Overview>(
+    `/stats/overview${qs ? `?${qs}` : ""}`
+  );
+
+  const periodeLabel =
+    from || to
+      ? `Période : ${from || "début"} → ${to || "aujourd'hui"}`
+      : "Toutes périodes";
 
   return (
     <>
@@ -45,36 +65,92 @@ export default function AdminDashboard() {
         subtitle="Vue d'ensemble de l'activité du réseau SIM Assurances."
       />
 
+      {/* Filtres de période */}
+      <Card title="Filtrer par période" style={{ marginTop: 24 }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Du</label>
+            <input
+              className="input"
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Au</label>
+            <input
+              className="input"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+          {(from || to) && (
+            <button
+              className="btn btn-ghost"
+              onClick={() => { setFrom(""); setTo(""); }}
+            >
+              Réinitialiser
+            </button>
+          )}
+          <span className="muted" style={{ fontSize: 13, marginLeft: "auto" }}>
+            {periodeLabel}
+          </span>
+        </div>
+      </Card>
+
       {loading && <Loader />}
       {error && <ErrorBox message={error} />}
       {data && (
         <>
-          <div className="stat-grid" style={{ marginTop: 24 }}>
+          <div className="stat-grid stat-grid-7" style={{ marginTop: 24 }}>
+            <StatCard
+              icon={<TrendingUp size={20} />}
+              label="Chiffre d'affaires"
+              value={fcfa(data.chiffreAffaires)}
+            />
+            <StatCard
+              icon={<Receipt size={20} />}
+              label="Taxes"
+              value={fcfa(data.taxes)}
+              color="#7c3aed"
+              bg="#f3eefe"
+            />
+            <StatCard
+              icon={<FileText size={20} />}
+              label="Primes Incendie TTC"
+              value={fcfa(data.primesIncendie)}
+              color="#b45309"
+              bg="#fdf3e3"
+            />
+            <StatCard
+              icon={<Wallet size={20} />}
+              label="Primes Accident TTC"
+              value={fcfa(data.primesAccident)}
+              color="#15803d"
+              bg="#e8f6ec"
+            />
             <StatCard
               icon={<Store size={20} />}
               label="Partenaires actifs"
-              value={`${data.partenairesActifs} / ${data.partenairesTotal}`}
-              trend="Réseau de distribution"
+              value={`${data.partenairesActifs}/${data.partenairesTotal}`}
             />
             <StatCard
               icon={<Flame size={20} />}
-              label="Souscriptions Incendie"
+              label="Souscr. Incendie"
               value={String(data.incendieTotal)}
               color="#b45309"
               bg="#fdf3e3"
             />
             <StatCard
               icon={<ShieldCheck size={20} />}
-              label="Souscriptions Accident"
+              label="Souscr. Accident"
               value={String(data.accidentTotal)}
               color="#15803d"
               bg="#e8f6ec"
-            />
-            <StatCard
-              icon={<Wallet size={20} />}
-              label="Primes Accident (Wave)"
-              value={fcfa(data.primesAccident)}
-              trend="Encaissées via Wave"
             />
           </div>
 

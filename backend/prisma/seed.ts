@@ -20,10 +20,12 @@ async function main() {
   await prisma.parametre.create({
     data: {
       id: 1,
-      tauxCommissionIncendie: 0.15,
+      tauxCommissionIncendie: 0.20,
+      tauxCommissionMensuelleIncendie: 0.10,
       tauxCommissionAccident: 0.15,
       primeAccident: 1000,
-      primeIncendie: 1000,
+      primeHtIncendie1000: 800,
+      primeHtIncendie2000: 1600,
     },
   });
 
@@ -43,18 +45,18 @@ async function main() {
     ],
   });
 
-  // Tarifications Incendie
+  // Tarifications Incendie (référence historique)
   await prisma.tarifIncendie.createMany({
     data: [
       {
         prime: 1000,
-        capitalGaranti: 500000,
-        commission: 177.78,
+        capitalGaranti: 250000,
+        commission: 160,
       },
       {
         prime: 2000,
-        capitalGaranti: 1000000,
-        commission: 355.56,
+        capitalGaranti: 500000,
+        commission: 320,
       },
     ],
   });
@@ -76,7 +78,7 @@ async function main() {
     },
   });
 
-  const p1 = await prisma.partenaire.create({
+  await prisma.partenaire.create({
     data: {
       nomCommerce: "Électro Plus Adjamé",
       nomResponsable: "Konan Yao",
@@ -86,34 +88,36 @@ async function main() {
       produitIncendie: true,
       produitAccident: true,
       statut: "actif",
-      qrIncendieToken: qr("inc"),
+      qrIncendie1000Token: qr("i1k"),
+      qrIncendie2000Token: qr("i2k"),
       qrAccidentToken: qr("acc"),
       email: "partenaire@simassurances.ci",
       passwordHash: await bcrypt.hash("Partenaire@2026", 10),
     },
   });
 
-  const p2 = await prisma.partenaire.create({
+  await prisma.partenaire.create({
     data: {
-      nomCommerce: "Super Marché Cocody",
+      nomCommerce: "Vulcano Service Cocody",
       nomResponsable: "Aïcha Traoré",
       telephone: "+225 05 11 22 33 44",
       localisation: "Cocody, Abidjan",
-      typeCommerce: "Alimentation",
+      typeCommerce: "Vulcanisateur",
       produitIncendie: true,
       produitAccident: false,
       statut: "actif",
-      qrIncendieToken: qr("inc"),
+      qrIncendie1000Token: qr("i1k"),
+      qrIncendie2000Token: qr("i2k"),
     },
   });
 
-  const p3 = await prisma.partenaire.create({
+  await prisma.partenaire.create({
     data: {
-      nomCommerce: "Textile Yopougon",
+      nomCommerce: "Garage Mécanique Yopougon",
       nomResponsable: "Bamba Issouf",
       telephone: "+225 01 88 77 66 55",
       localisation: "Yopougon, Abidjan",
-      typeCommerce: "Textile",
+      typeCommerce: "MecaniqueGarage",
       produitIncendie: false,
       produitAccident: true,
       statut: "actif",
@@ -123,15 +127,16 @@ async function main() {
 
   await prisma.partenaire.create({
     data: {
-      nomCommerce: "Boutique Marcory",
+      nomCommerce: "Accessoire Auto Marcory",
       nomResponsable: "Diallo Fatou",
       telephone: "+225 07 44 55 66 77",
       localisation: "Marcory, Abidjan",
-      typeCommerce: "Autre",
+      typeCommerce: "AccessoireAuto",
       produitIncendie: true,
       produitAccident: true,
       statut: "inactif",
-      qrIncendieToken: qr("inc"),
+      qrIncendie1000Token: qr("i1k"),
+      qrIncendie2000Token: qr("i2k"),
       qrAccidentToken: qr("acc"),
     },
   });

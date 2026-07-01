@@ -31,6 +31,7 @@ journalRouter.get(
         typeAction: r.typeAction,
         objet: r.objetType,
         identifiant: r.objetId ?? "",
+        ip: r.ip ?? "",
         valeurAvant: r.valeurAvant,
         valeurApres: r.valeurApres,
       }))

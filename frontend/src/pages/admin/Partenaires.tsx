@@ -1,15 +1,115 @@
-import { useState, useEffect } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa } from "../../components/ui";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye } from "lucide-react";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
-import { api, API_BASE } from "../../api";
+import { api } from "../../api";
 import { useAuth } from "../../auth";
 import type { Partenaire } from "../../types";
 
-interface TarifIncendie {
-  id: number;
-  prime: number;
-  capitalGaranti: number;
+interface PartenaireDetails {
+  partenaire: {
+    id: string; nomCommerce: string; nomResponsable: string; telephone: string;
+    localisation: string; email: string | null; statut: string;
+    produitIncendie: boolean; produitAccident: boolean;
+  };
+  souscripteursIncendie: { id: string; telephone: string; nom?: string | null; prenom?: string | null; montantPrime: number; statut: string; createdAt: string }[];
+  souscripteursAccident: { id: string; telephone: string; nom: string; prenom: string; montantPrime: number; waveStatut: string; createdAt: string }[];
+  commissionTotale: number;
+  commissionGenereePeriode: number;
+  commissionEncaissee: number;
+  commissionDue: number;
+}
+
+function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose: () => void }) {
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [data, setData] = useState<PartenaireDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const qs = params.toString();
+    setLoading(true);
+    api.get<PartenaireDetails>(`/partenaires/${partenaireId}/details${qs ? `?${qs}` : ""}`)
+      .then(setData)
+      .finally(() => setLoading(false));
+  }, [partenaireId, from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", padding: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <strong style={{ fontSize: 17 }}>{data?.partenaire.nomCommerce ?? "Détails partenaire"}</strong>
+          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+        </div>
+
+        {data && (
+          <div className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+            {data.partenaire.nomResponsable} · {data.partenaire.telephone} · {data.partenaire.localisation}
+            {data.partenaire.email ? ` · ${data.partenaire.email}` : ""}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 18 }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Du</label>
+            <input className="input" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Au</label>
+            <input className="input" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          {(from || to) && <button className="btn btn-ghost" onClick={() => { setFrom(""); setTo(""); }}>Réinitialiser</button>}
+        </div>
+
+        {loading && <Loader />}
+        {data && (
+          <>
+            <div className="stat-grid" style={{ marginBottom: 20 }}>
+              <div className="stat"><div className="stat-label">Commission totale</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionTotale)}</div></div>
+              <div className="stat"><div className="stat-label">Encaissée</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionEncaissee)}</div></div>
+              <div className="stat"><div className="stat-label">Due</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionDue)}</div></div>
+              <div className="stat"><div className="stat-label">Générée (période)</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionGenereePeriode)}</div></div>
+            </div>
+
+            <div style={{ fontWeight: 700, margin: "8px 0 8px" }}>Souscripteurs via son canal ({data.souscripteursIncendie.length + data.souscripteursAccident.length})</div>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Produit</th><th>Client</th><th>Téléphone</th><th>Prime</th><th>Date</th></tr></thead>
+                <tbody>
+                  {data.souscripteursIncendie.map((s) => (
+                    <tr key={s.id}>
+                      <td><Badge kind="warning">Incendie</Badge></td>
+                      <td>{[s.prenom, s.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</td>
+                      <td>{s.telephone}</td>
+                      <td>{fcfa(s.montantPrime)}</td>
+                      <td className="muted">{fmtDate(s.createdAt)}</td>
+                    </tr>
+                  ))}
+                  {data.souscripteursAccident.map((s) => (
+                    <tr key={s.id}>
+                      <td><Badge kind="success">Accident</Badge></td>
+                      <td>{s.prenom} {s.nom}</td>
+                      <td>{s.telephone}</td>
+                      <td>{fcfa(s.montantPrime)}</td>
+                      <td className="muted">{fmtDate(s.createdAt)}</td>
+                    </tr>
+                  ))}
+                  {data.souscripteursIncendie.length + data.souscripteursAccident.length === 0 && (
+                    <tr><td colSpan={5}><div className="empty">Aucun souscripteur sur la période.</div></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const empty = {
@@ -19,7 +119,6 @@ const empty = {
   localisation: "",
   typeCommerce: "Electronique",
   produit: "incendie" as "incendie" | "accident",
-  tarifIncendieId: "",
   email: "",
 };
 
@@ -34,24 +133,17 @@ export default function Partenaires() {
     `/partenaires?${params.toString()}`
   );
 
-  const [tarifsIncendie, setTarifsIncendie] = useState<TarifIncendie[]>([]);
-  useEffect(() => {
-    fetch(`${API_BASE}/public/tarifs/incendie`)
-      .then((r) => r.json())
-      .then(setTarifsIncendie)
-      .catch(() => {});
-  }, []);
-
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
-  const [qr, setQr] = useState<{ url: string; produit: string } | null>(null);
+  const [qr, setQr] = useState<{ url: string; label: string } | null>(null);
   const [credentials, setCredentials] = useState<{
     nomCommerce: string;
     email: string;
     motDePasse: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
 
   function notify(m: string) {
     setToast(m);
@@ -60,10 +152,6 @@ export default function Partenaires() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (form.produit === "incendie" && !form.tarifIncendieId) {
-      notify("Veuillez sélectionner un tarif incendie.");
-      return;
-    }
     setSaving(true);
     try {
       const result = await api.post<{
@@ -77,7 +165,6 @@ export default function Partenaires() {
         localisation: form.localisation,
         typeCommerce: form.typeCommerce,
         produit: form.produit,
-        tarifIncendieId: form.produit === "incendie" ? Number(form.tarifIncendieId) : undefined,
         email: form.email || undefined,
       });
       setForm(empty);
@@ -125,12 +212,16 @@ export default function Partenaires() {
     }
   }
 
-  async function showQr(p: Partenaire, produit: "incendie" | "accident") {
+  async function showQr(p: Partenaire, produit: "incendie1000" | "incendie2000" | "accident") {
     try {
       const r = await api.get<{ dataUrl: string }>(
         `/partenaires/${p.id}/qr/${produit}`
       );
-      setQr({ url: r.dataUrl, produit });
+      const label =
+        produit === "incendie1000" ? "Incendie 1 000 FCFA"
+        : produit === "incendie2000" ? "Incendie 2 000 FCFA"
+        : "Accident";
+      setQr({ url: r.dataUrl, label });
     } catch (err) {
       notify((err as Error).message);
     }
@@ -184,7 +275,7 @@ export default function Partenaires() {
                   <tr>
                     <th>Commerce</th>
                     <th>Localisation</th>
-                    <th>Produits</th>
+                    <th>Produit</th>
                     <th>Clients</th>
                     <th>Statut</th>
                     <th>Actions</th>
@@ -208,11 +299,6 @@ export default function Partenaires() {
                           {p.produitAccident && (
                             <Badge kind="success">Accident</Badge>
                           )}
-                          {p.produitIncendie && p.tarifIncendie && (
-                            <span style={{ fontSize: 11, color: "var(--text-3)" }}>
-                              Tarif : {fcfa(p.tarifIncendie.prime)}
-                            </span>
-                          )}
                         </div>
                       </td>
                       <td className="muted">
@@ -227,15 +313,33 @@ export default function Partenaires() {
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            title="Voir les détails"
+                            onClick={() => setDetailsId(p.id)}
+                          >
+                            <Eye size={15} color="var(--sim-primary)" />
+                          </button>
                           {p.produitIncendie && (
-                            <button
-                              className="btn btn-ghost"
-                              style={{ padding: 8 }}
-                              title="QR Incendie"
-                              onClick={() => showQr(p, "incendie")}
-                            >
-                              <QrCode size={15} color="#b45309" />
-                            </button>
+                            <>
+                              <button
+                                className="btn btn-ghost"
+                                style={{ padding: 8 }}
+                                title="QR Incendie 1 000 FCFA"
+                                onClick={() => showQr(p, "incendie1000")}
+                              >
+                                <QrCode size={15} color="#b45309" />
+                              </button>
+                              <button
+                                className="btn btn-ghost"
+                                style={{ padding: 8 }}
+                                title="QR Incendie 2 000 FCFA"
+                                onClick={() => showQr(p, "incendie2000")}
+                              >
+                                <QrCode size={15} color="#dc2626" />
+                              </button>
+                            </>
                           )}
                           {p.produitAccident && (
                             <button
@@ -327,10 +431,10 @@ export default function Partenaires() {
                 value={form.typeCommerce}
                 onChange={(e) => setForm({ ...form, typeCommerce: e.target.value })}
               >
-                <option>Electronique</option>
-                <option>Alimentation</option>
-                <option>Textile</option>
-                <option>Autre</option>
+                <option value="Electronique">Electronique</option>
+                <option value="Vulcanisateur">Vulcanisateur</option>
+                <option value="MecaniqueGarage">Mécanique / garage</option>
+                <option value="AccessoireAuto">Accessoire auto</option>
               </select>
             </div>
             <div className="field">
@@ -342,7 +446,7 @@ export default function Partenaires() {
                     name="produit"
                     value="incendie"
                     checked={form.produit === "incendie"}
-                    onChange={() => setForm({ ...form, produit: "incendie", tarifIncendieId: "" })}
+                    onChange={() => setForm({ ...form, produit: "incendie" })}
                   />
                   <span>Incendie</span>
                 </label>
@@ -352,34 +456,17 @@ export default function Partenaires() {
                     name="produit"
                     value="accident"
                     checked={form.produit === "accident"}
-                    onChange={() => setForm({ ...form, produit: "accident", tarifIncendieId: "" })}
+                    onChange={() => setForm({ ...form, produit: "accident" })}
                   />
                   <span>Accident</span>
                 </label>
               </div>
-            </div>
-
-            {form.produit === "incendie" && (
-              <div className="field">
-                <label className="label">Tarif attribué <span className="req">*</span></label>
-                <select
-                  className="select"
-                  required
-                  value={form.tarifIncendieId}
-                  onChange={(e) => setForm({ ...form, tarifIncendieId: e.target.value })}
-                >
-                  <option value="">— Choisir un tarif —</option>
-                  {tarifsIncendie.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {fcfa(t.prime)} — Capital garanti : {fcfa(t.capitalGaranti)}
-                    </option>
-                  ))}
-                </select>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                  Ce tarif sera appliqué à tous les clients de ce partenaire.
+              {form.produit === "incendie" && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  Deux QR codes seront générés automatiquement : 1 000 FCFA et 2 000 FCFA.
                 </div>
-              </div>
-            )}
+              )}
+            </div>
             <div className="field">
               <label className="label">Gmail (accès partenaire)</label>
               <input
@@ -398,7 +485,7 @@ export default function Partenaires() {
             </button>
           </form>
           <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-            Les QR codes sont générés automatiquement selon les produits autorisés.
+            Les QR codes sont générés automatiquement selon le produit attribué.
           </p>
         </Card>
       </div>
@@ -421,20 +508,19 @@ export default function Partenaires() {
             style={{ padding: 24, width: 320, textAlign: "center" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-              <strong style={{ textTransform: "capitalize" }}>QR {qr.produit}</strong>
+              <strong>QR {qr.label}</strong>
               <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setQr(null)}>
                 <X size={16} />
               </button>
             </div>
             <img src={qr.url} alt="QR" style={{ width: 240, height: 240 }} />
-            <a className="btn btn-primary btn-block" style={{ marginTop: 14 }} href={qr.url} download={`qr-${qr.produit}.png`}>
+            <a className="btn btn-primary btn-block" style={{ marginTop: 14 }} href={qr.url} download={`qr-${qr.label}.png`}>
               <Download size={16} /> Télécharger
             </a>
           </div>
         </div>
       )}
 
-      {/* ── Modal credentials provisoires ── */}
       {credentials && (
         <div
           onClick={() => setCredentials(null)}
@@ -458,69 +544,37 @@ export default function Partenaires() {
                 <X size={16} />
               </button>
             </div>
-
             <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
               Transmettez ces identifiants au partenaire. Le mot de passe ne sera plus affiché après fermeture.
             </p>
-
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Email
-                </div>
-                <div style={{
-                  background: "var(--bg-2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontFamily: "monospace",
-                  fontSize: 14,
-                }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</div>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontFamily: "monospace", fontSize: 14 }}>
                   {credentials.email}
                 </div>
               </div>
-
               <div>
-                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Mot de passe provisoire
-                </div>
-                <div style={{
-                  background: "var(--sim-primary-50, #e6f1fb)",
-                  border: "1px solid var(--sim-primary)",
-                  borderRadius: 8,
-                  padding: "10px 14px",
-                  fontFamily: "monospace",
-                  fontSize: 22,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  color: "var(--sim-primary)",
-                  textAlign: "center",
-                }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Mot de passe provisoire</div>
+                <div style={{ background: "var(--sim-primary-50, #e6f1fb)", border: "1px solid var(--sim-primary)", borderRadius: 8, padding: "10px 14px", fontFamily: "monospace", fontSize: 22, fontWeight: 800, letterSpacing: "0.12em", color: "var(--sim-primary)", textAlign: "center" }}>
                   {credentials.motDePasse}
                 </div>
               </div>
             </div>
-
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-              <button
-                className="btn btn-primary"
-                style={{ flex: 1 }}
-                onClick={copyCredentials}
-              >
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyCredentials}>
                 {copied ? <Check size={16} /> : <Copy size={16} />}
                 {copied ? "Copié !" : "Copier les identifiants"}
               </button>
-              <button
-                className="btn btn-ghost"
-                style={{ flex: 1 }}
-                onClick={() => setCredentials(null)}
-              >
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setCredentials(null)}>
                 Fermer
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {detailsId && <DetailsModal partenaireId={detailsId} onClose={() => setDetailsId(null)} />}
 
       {toast && <div className="toast">{toast}</div>}
     </>

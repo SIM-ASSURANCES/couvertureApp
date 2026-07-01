@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 
 import { API_BASE } from "../../api";
 const BASE = API_BASE;
@@ -7,7 +7,8 @@ const BASE = API_BASE;
 interface QrInfo {
   produit: "incendie" | "accident";
   partenaire: { id: string; nomCommerce: string };
-  tarifIncendie?: { id: number; prime: number; capitalGaranti: number } | null;
+  montantPrime?: number | null;
+  capitalGaranti?: number | null;
 }
 
 interface TarifAccident {
@@ -17,10 +18,60 @@ interface TarifAccident {
   commission: number;
 }
 
-type Step = "loading" | "infos" | "confirm" | "success" | "error";
+type Step = "loading" | "infos" | "confirm" | "retry" | "success" | "error";
+
+const PHONE_PREFIX = "+225";
+function phoneLocalPart(v: string) {
+  return v.startsWith(PHONE_PREFIX) ? v.slice(PHONE_PREFIX.length) : v;
+}
 
 function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
+}
+
+function PhoneInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        border: "1px solid #dde3ec",
+        borderRadius: 10,
+        overflow: "hidden",
+      }}
+    >
+      <span
+        style={{
+          padding: "0 12px",
+          height: 44,
+          display: "flex",
+          alignItems: "center",
+          background: "#f5f8fc",
+          color: "#5b6b80",
+          fontWeight: 700,
+          fontSize: 14,
+          borderRight: "1px solid #dde3ec",
+        }}
+      >
+        {PHONE_PREFIX}
+      </span>
+      <input
+        value={phoneLocalPart(value)}
+        onChange={(e) =>
+          onChange(PHONE_PREFIX + e.target.value.replace(/\D/g, "").slice(0, 10))
+        }
+        placeholder="07 00 00 00 00"
+        type="tel"
+        style={{ ...inputStyle, border: "none", borderRadius: 0, flex: 1 }}
+      />
+    </div>
+  );
 }
 
 function TarifCard({
@@ -88,6 +139,11 @@ function TarifCard({
 
 export default function Souscription() {
   const { token } = useParams<{ token: string }>();
+  const [searchParams] = useSearchParams();
+  const paidId = searchParams.get("paid");
+  const retryId = searchParams.get("retry");
+  const paiementEchec = searchParams.get("paiement") === "echec";
+
   const [step, setStep] = useState<Step>("loading");
   const [qrInfo, setQrInfo] = useState<QrInfo | null>(null);
   const [tarifsAcc, setTarifsAcc] = useState<TarifAccident[]>([]);
@@ -98,23 +154,120 @@ export default function Souscription() {
   // Champs accident
   const [nom, setNom] = useState("");
   const [prenom, setPrenom] = useState("");
-  const [telephone, setTelephone] = useState("");
+  const [telephone, setTelephone] = useState(PHONE_PREFIX);
+  const [dateNaissance, setDateNaissance] = useState("");
 
   // Champs incendie
-  const [telephoneInc, setTelephoneInc] = useState("");
+  const [telephoneInc, setTelephoneInc] = useState(PHONE_PREFIX);
   const [prenomInc, setPrenomInc] = useState("");
   const [nomInc, setNomInc] = useState("");
 
   // Résultat souscription
   const [result, setResult] = useState<{
     checkoutUrl?: string;
+    souscriptionId?: string;
     numeroPolice?: string;
     lienToken?: string;
     montant?: number;
     capitalGaranti?: number;
+    dateDebut?: string;
+    dateFin?: string;
+    nom?: string;
+    prenom?: string;
+    telephone?: string;
+    partenaire?: string;
   } | null>(null);
 
   useEffect(() => {
+    // Retour depuis Wave après paiement réussi
+    if (paidId) {
+      const finaliser = async () => {
+        // 1) Confirme le paiement via Wave (filet de sécurité si le webhook n'arrive pas).
+        //    Plusieurs tentatives : Wave peut mettre quelques secondes à valider.
+        let statut = "en_attente";
+        for (let i = 0; i < 5; i++) {
+          try {
+            const r = await fetch(
+              `${BASE}/public/souscriptions/accident/${paidId}/verify`
+            );
+            const v = await r.json();
+            statut = v.statut ?? statut;
+            if (statut === "confirme" || statut === "echoue") break;
+          } catch {
+            /* on réessaie */
+          }
+          await new Promise((res) => setTimeout(res, 2000));
+        }
+
+        if (statut === "echoue") {
+          setErrorMsg("Le paiement n'a pas abouti. Veuillez réessayer.");
+          setStep("error");
+          return;
+        }
+
+        // 2) Récupère le contrat
+        try {
+          const r = await fetch(
+            `${BASE}/public/souscriptions/accident/${paidId}/contrat`
+          );
+          const data = await r.json();
+          if (data.error) {
+            setErrorMsg(
+              "Paiement en cours de validation. Actualisez la page dans quelques instants."
+            );
+            setStep("error");
+            return;
+          }
+          setQrInfo({
+            produit: "accident",
+            partenaire: { id: "", nomCommerce: data.partenaire ?? "" },
+          });
+          setResult({
+            numeroPolice: data.numeroPolice,
+            montant: data.montant,
+            capitalGaranti: data.capitalGaranti,
+            dateDebut: data.dateDebut,
+            dateFin: data.dateFin,
+            nom: data.nom,
+            prenom: data.prenom,
+            telephone: data.telephone,
+            partenaire: data.partenaire,
+          });
+          setStep("success");
+        } catch {
+          setErrorMsg("Erreur lors de la récupération du contrat.");
+          setStep("error");
+        }
+      };
+      finaliser();
+      return;
+    }
+
+    // Relance depuis SMS (paiement échoué)
+    if (retryId) {
+      fetch(`${BASE}/public/souscriptions/accident/${retryId}/info`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.error) { setErrorMsg("Souscription introuvable."); setStep("error"); return; }
+          setQrInfo({ produit: "accident", partenaire: { id: "", nomCommerce: data.partenaire } });
+          setNom(data.nom);
+          setPrenom(data.prenom);
+          setTelephone(data.telephone);
+          setDateNaissance(data.dateNaissance ? String(data.dateNaissance).slice(0, 10) : "");
+          setResult({ montant: data.montant, capitalGaranti: data.capitalGaranti, partenaire: data.partenaire });
+          setStep("retry");
+        })
+        .catch(() => { setErrorMsg("Erreur lors du chargement."); setStep("error"); });
+      return;
+    }
+
+    // Retour depuis Wave après échec (paramètre URL)
+    if (paiementEchec) {
+      setErrorMsg("Le paiement Wave a échoué ou a été annulé. Veuillez réessayer.");
+      setStep("error");
+      return;
+    }
+
     if (!token) {
       setErrorMsg("Token QR manquant.");
       setStep("error");
@@ -136,8 +289,6 @@ export default function Souscription() {
 
         if (qr.produit === "accident") {
           if (acc.length > 0) setSelectedTarifId(acc[0].id);
-        } else {
-          if (qr.tarifIncendie) setSelectedTarifId(qr.tarifIncendie.id);
         }
         setStep("infos");
       })
@@ -145,10 +296,11 @@ export default function Souscription() {
         setErrorMsg("Impossible de charger les informations. Veuillez réessayer.");
         setStep("error");
       });
-  }, [token]);
+  }, [token, paidId, retryId, paiementEchec]);
 
   async function handleSubmit() {
-    if (!qrInfo || !token || !selectedTarifId) return;
+    if (!qrInfo || !token) return;
+    if (qrInfo.produit === "accident" && !selectedTarifId) return;
     setSubmitting(true);
     try {
       if (qrInfo.produit === "accident") {
@@ -160,6 +312,7 @@ export default function Souscription() {
             nom,
             prenom,
             telephone,
+            dateNaissance,
             tarifAccidentId: selectedTarifId,
           }),
         });
@@ -167,10 +320,13 @@ export default function Souscription() {
         if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
         setResult({
           checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
         });
-        setStep("confirm");
+        // Redirection immédiate vers Wave (ou stub = success URL directe)
+        window.location.href = data.checkoutUrl;
+        return;
       } else {
         const res = await fetch(`${BASE}/public/souscriptions/incendie`, {
           method: "POST",
@@ -195,38 +351,75 @@ export default function Souscription() {
     }
   }
 
-  async function simulateWavePayment() {
-    if (!result) return;
-    setSubmitting(true);
-    try {
-      const souscriptionId = new URL(result.checkoutUrl!).searchParams.get("ref");
-      const res = await fetch(`${BASE}/public/wave/callback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ souscriptionId, status: "confirme" }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setResult((prev) => ({ ...prev, numeroPolice: data.numeroPolice }));
-      setStep("success");
-    } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Paiement échoué");
-      setStep("error");
-    } finally {
-      setSubmitting(false);
+  function telechargerContrat() {
+    if (!result || !qrInfo) return;
+    // Données de l'assuré : priorité aux champs du result (retour depuis Wave), fallback état local
+    const _prenom = result.prenom ?? prenom;
+    const _nom = result.nom ?? nom;
+    const _telephone = result.telephone ?? telephone;
+    const _partenaire = result.partenaire ?? qrInfo.partenaire.nomCommerce;
+    const debut = result.dateDebut ? new Date(result.dateDebut) : new Date();
+    const fin = result.dateFin
+      ? new Date(result.dateFin)
+      : new Date(new Date().setMonth(new Date().getMonth() + 3));
+    const d = (x: Date) => x.toLocaleDateString("fr-FR");
+    const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<title>Contrat ${result.numeroPolice ?? ""}</title>
+<style>
+  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  body{margin:0;color:#0f1b2d;padding:40px;}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:24px;}
+  .brand img{height:56px;display:block;}
+  .pol{text-align:right;font-size:13px;color:#5b6b80;}
+  .pol b{display:block;font-size:18px;color:#0f1b2d;letter-spacing:1px;}
+  h1{font-size:20px;margin:0 0 6px;}
+  .sub{color:#5b6b80;font-size:13px;margin-bottom:24px;}
+  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
+  td{padding:10px 12px;border:1px solid #e3e9f1;font-size:14px;}
+  td.k{background:#f5f8fc;font-weight:600;width:42%;color:#5b6b80;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
+  .box{border:1px solid #e3e9f1;border-radius:10px;padding:14px 16px;}
+  .box .l{font-size:11px;color:#5b6b80;text-transform:uppercase;letter-spacing:.05em;}
+  .box .v{font-size:17px;font-weight:800;margin-top:4px;}
+  .note{font-size:12px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:16px;margin-top:24px;}
+  .sign{display:flex;justify-content:space-between;margin-top:48px;font-size:13px;color:#5b6b80;}
+  @media print{body{padding:24px;}}
+</style></head><body>
+  <div class="head">
+    <div class="brand"><img src="${window.location.origin}/logo.webp" alt="SIM Assurances" /></div>
+    <div class="pol">N° de police<b>${result.numeroPolice ?? "—"}</b></div>
+  </div>
+  <h1>Contrat d'Assurance Accident</h1>
+  <div class="sub">Distribué via ${_partenaire}</div>
+  <div class="grid">
+    <div class="box"><div class="l">Prime payée</div><div class="v">${fcfa(result.montant ?? 0)}</div></div>
+    <div class="box"><div class="l">Frais de soins médicaux</div><div class="v">${fcfa(result.capitalGaranti ?? 0)}</div></div>
+  </div>
+  <table>
+    <tr><td class="k">Assuré(e)</td><td>${_prenom} ${_nom}</td></tr>
+    <tr><td class="k">Téléphone</td><td>${_telephone}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${d(debut)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${d(fin)}</td></tr>
+    <tr><td class="k">Durée</td><td>3 mois</td></tr>
+  </table>
+  <div class="note">Ce contrat atteste de la souscription d'une assurance accident d'une durée de trois (03) mois,
+  prenant effet le ${d(debut)} et arrivant à échéance le ${d(fin)}. La garantie est acquise sous réserve du
+  paiement effectif de la prime. Document généré électroniquement par SIM Assurances CI.</div>
+  <div class="sign"><div>Fait à Abidjan, le ${d(new Date())}</div><div>Pour SIM Assurances CI</div></div>
+  <script>window.onload=function(){window.print();}</script>
+</body></html>`;
+    const w = window.open("", "_blank");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
     }
   }
-
-  const selectedTarif =
-    qrInfo?.produit === "accident"
-      ? tarifsAcc.find((t) => t.id === selectedTarifId)
-      : qrInfo?.tarifIncendie ?? undefined;
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #004b9c 0%, #16215e 100%)",
+        background: "#f5f8fc",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -329,8 +522,8 @@ export default function Souscription() {
                 </div>
               )}
 
-              {/* Récapitulatif tarif incendie */}
-              {qrInfo?.produit === "incendie" && selectedTarif && (
+              {/* Récapitulatif incendie : capital garanti uniquement (prime masquée) */}
+              {qrInfo?.produit === "incendie" && qrInfo.capitalGaranti && (
                 <div
                   style={{
                     background: "var(--sim-primary-50, #e6f1fb)",
@@ -342,9 +535,9 @@ export default function Souscription() {
                     alignItems: "center",
                   }}
                 >
-                  <div style={{ fontSize: 13, color: "#5b6b80" }}>Tarif appliqué</div>
+                  <div style={{ fontSize: 13, color: "#5b6b80" }}>Capital garanti</div>
                   <div style={{ fontWeight: 800, color: "#004b9c", fontSize: 15 }}>
-                    {fcfa(selectedTarif.prime)} / an
+                    {fcfa(qrInfo.capitalGaranti)}
                   </div>
                 </div>
               )}
@@ -372,27 +565,23 @@ export default function Souscription() {
                     />
                   </FieldRow>
                   <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+                    <PhoneInput value={telephone} onChange={setTelephone} />
+                  </FieldRow>
+                  <FieldRow label="Date de naissance *">
                     <input
-                      value={telephone}
-                      onChange={(e) => setTelephone(e.target.value)}
-                      placeholder="+225 07 00 00 00 00"
-                      type="tel"
+                      value={dateNaissance}
+                      onChange={(e) => setDateNaissance(e.target.value)}
+                      type="date"
                       style={inputStyle}
                     />
                   </FieldRow>
                 </>
               ) : (
                 <>
-                  <FieldRow label="Téléphone * (pour recevoir le lien WhatsApp)">
-                    <input
-                      value={telephoneInc}
-                      onChange={(e) => setTelephoneInc(e.target.value)}
-                      placeholder="+225 07 00 00 00 00"
-                      type="tel"
-                      style={inputStyle}
-                    />
+                  <FieldRow label="Téléphone * (pour recevoir le lien par SMS)">
+                    <PhoneInput value={telephoneInc} onChange={setTelephoneInc} />
                   </FieldRow>
-                  <FieldRow label="Prénom (optionnel)">
+                  <FieldRow label="Prénom">
                     <input
                       value={prenomInc}
                       onChange={(e) => setPrenomInc(e.target.value)}
@@ -400,7 +589,7 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
-                  <FieldRow label="Nom (optionnel)">
+                  <FieldRow label="Nom">
                     <input
                       value={nomInc}
                       onChange={(e) => setNomInc(e.target.value)}
@@ -416,8 +605,12 @@ export default function Souscription() {
                 disabled={
                   submitting ||
                   (qrInfo?.produit === "accident"
-                    ? !nom || !prenom || !telephone || !selectedTarifId
-                    : !telephoneInc)
+                    ? !nom ||
+                      !prenom ||
+                      !phoneLocalPart(telephone) ||
+                      !dateNaissance ||
+                      !selectedTarifId
+                    : !phoneLocalPart(telephoneInc))
                 }
                 style={{
                   marginTop: 8,
@@ -433,8 +626,12 @@ export default function Souscription() {
                   opacity:
                     submitting ||
                     (qrInfo?.produit === "accident"
-                      ? !nom || !prenom || !telephone || !selectedTarifId
-                      : !telephoneInc)
+                      ? !nom ||
+                        !prenom ||
+                        !phoneLocalPart(telephone) ||
+                        !dateNaissance ||
+                        !selectedTarifId
+                      : !phoneLocalPart(telephoneInc))
                       ? 0.5
                       : 1,
                 }}
@@ -448,56 +645,56 @@ export default function Souscription() {
             </div>
           )}
 
-          {/* ── ÉTAPE 3 : PAIEMENT WAVE (accident) ── */}
-          {step === "confirm" && qrInfo?.produit === "accident" && result && (
+          {/* ── RELANCE PAIEMENT (après échec Wave) ── */}
+          {step === "retry" && result && (
             <div style={{ textAlign: "center" }}>
-              <div
-                style={{
-                  width: 64,
-                  height: 64,
-                  background: "#e6f1fb",
-                  borderRadius: "50%",
-                  display: "grid",
-                  placeItems: "center",
-                  margin: "0 auto 18px",
-                }}
-              >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" fill="#004b9c"/>
-                </svg>
-              </div>
-              <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-                Paiement Wave
+              <div style={{ fontSize: 44, marginBottom: 12 }}>⚠️</div>
+              <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8, color: "#dc2626" }}>
+                Votre paiement a échoué
               </div>
               <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 24 }}>
-                Montant à payer :{" "}
-                <strong style={{ color: "#004b9c", fontSize: 18 }}>
-                  {fcfa(result.montant!)}
-                </strong>
-                <br />
-                Capital garanti :{" "}
-                <strong>{fcfa(result.capitalGaranti!)}</strong>
+                Bonjour <strong>{prenom}</strong>, votre paiement Wave de{" "}
+                <strong style={{ color: "#004b9c" }}>{fcfa(result.montant!)}</strong> n'a pas abouti.
+                <br />Cliquez ci-dessous pour finaliser votre assurance.
               </div>
-
-              <div
-                style={{
-                  background: "#f5f8fc",
-                  borderRadius: 10,
-                  padding: "12px 16px",
-                  marginBottom: 20,
-                  fontSize: 12,
-                  color: "#5b6b80",
-                  wordBreak: "break-all",
-                }}
-              >
-                <div style={{ marginBottom: 4, fontWeight: 600 }}>
-                  Lien de paiement (simulé) :
-                </div>
-                {result.checkoutUrl}
+              <div style={{
+                background: "#f5f8fc",
+                borderRadius: 12,
+                padding: "14px 18px",
+                marginBottom: 20,
+                textAlign: "left",
+                fontSize: 13,
+              }}>
+                <div><strong>Assuré :</strong> {prenom} {nom}</div>
+                <div><strong>Capital garanti :</strong> {fcfa(result.capitalGaranti!)}</div>
               </div>
-
               <button
-                onClick={simulateWavePayment}
+                onClick={async () => {
+                  if (!token || !result.montant) return;
+                  setSubmitting(true);
+                  try {
+                    const res = await fetch(`${BASE}/public/souscriptions/accident/initiate`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        qrToken: token,
+                        nom,
+                        prenom,
+                        telephone,
+                        dateNaissance,
+                        tarifAccidentId: selectedTarifId ?? undefined,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error);
+                    window.location.href = data.checkoutUrl;
+                  } catch (e: unknown) {
+                    setErrorMsg(e instanceof Error ? e.message : "Erreur");
+                    setStep("error");
+                  } finally {
+                    setSubmitting(false);
+                  }
+                }}
                 disabled={submitting}
                 style={{
                   width: "100%",
@@ -512,7 +709,7 @@ export default function Souscription() {
                   opacity: submitting ? 0.5 : 1,
                 }}
               >
-                {submitting ? "Confirmation…" : "Simuler le paiement Wave ✓"}
+                {submitting ? "Traitement…" : `Payer ${fcfa(result.montant!)} avec Wave`}
               </button>
             </div>
           )}
@@ -544,11 +741,11 @@ export default function Souscription() {
 
               {qrInfo?.produit === "accident" ? (
                 <>
-                  <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 8 }}>
-                    Paiement confirmé !
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Félicitations !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
-                    Votre assurance accident est activée.
+                    Votre assurance accident est activée pour <strong>3 mois</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div
@@ -568,11 +765,30 @@ export default function Souscription() {
                       >
                         {result.numeroPolice}
                       </div>
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Valable jusqu'au{" "}
+                          {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
                     </div>
                   )}
-                  <div style={{ fontSize: 13, color: "#5b6b80" }}>
-                    Un lien WhatsApp vous a été envoyé pour compléter votre dossier.
-                  </div>
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
                 </>
               ) : (
                 <>
@@ -580,7 +796,7 @@ export default function Souscription() {
                     Souscription enregistrée !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 16 }}>
-                    Un lien de complétion vous a été envoyé par WhatsApp.
+                    Un lien de complétion vous a été envoyé par SMS.
                   </div>
                   <div
                     style={{
@@ -591,7 +807,7 @@ export default function Souscription() {
                       color: "#004b9c",
                     }}
                   >
-                    Vous recevrez sous peu un message WhatsApp avec votre lien de
+                    Vous recevrez sous peu un SMS avec votre lien de
                     complétion de formulaire.
                   </div>
                 </>

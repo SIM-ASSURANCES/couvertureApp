@@ -6,9 +6,24 @@ import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
+import {
+  commissionTotalePartenaire,
+  commissionEncaisseePartenaire,
+} from "../services/commission.js";
+import { notifyAdmins } from "../services/notifications.js";
 
 export const partenairesRouter = Router();
 partenairesRouter.use(requireAuth("admin"));
+
+function parseDateRange(req: {
+  query: { from?: string; to?: string };
+}): { gte?: Date; lte?: Date } | undefined {
+  const { from, to } = req.query;
+  const range: { gte?: Date; lte?: Date } = {};
+  if (from) range.gte = new Date(`${from}T00:00:00`);
+  if (to) range.lte = new Date(`${to}T23:59:59.999`);
+  return range.gte || range.lte ? range : undefined;
+}
 
 function genMotDePasseProvisoire(): string {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -22,16 +37,12 @@ const baseSchema = z.object({
   nomResponsable: z.string().min(1),
   telephone: z.string().min(1),
   localisation: z.string().min(1),
-  typeCommerce: z.enum(["Electronique", "Alimentation", "Textile", "Autre"]),
+  typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]),
   produit: z.enum(["incendie", "accident"]),
-  tarifIncendieId: z.number().int().positive().optional(),
   email: z.string().email().optional().or(z.literal("")),
 });
 
-const createSchema = baseSchema.refine(
-  (d) => d.produit !== "incendie" || d.tarifIncendieId != null,
-  { message: "Un tarif incendie est requis pour ce produit", path: ["tarifIncendieId"] }
-);
+const createSchema = baseSchema;
 
 const patchSchema = baseSchema.partial().extend({
   motDePasse: z.string().min(1).optional(),
@@ -63,7 +74,6 @@ partenairesRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         _count: { select: { incendie: true, accident: true } },
-        tarifIncendie: true,
       },
     });
     res.json(
@@ -80,13 +90,58 @@ partenairesRouter.get(
 partenairesRouter.get(
   "/:id",
   asyncHandler(async (req, res) => {
-    const p = await prisma.partenaire.findUnique({
-      where: { id: req.params.id },
-      include: { tarifIncendie: true },
-    });
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
     const counts = await withCounts(p.id);
     res.json({ ...p, passwordHash: undefined, ...counts });
+  })
+);
+
+/** Détails d'un partenaire : souscripteurs + commission (totale / encaissée / due), avec filtre période */
+partenairesRouter.get(
+  "/:id/details",
+  asyncHandler(async (req, res) => {
+    const id = req.params.id;
+    const p = await prisma.partenaire.findUnique({ where: { id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+
+    const range = parseDateRange(req as { query: { from?: string; to?: string } });
+    const dateWhere = range ? { createdAt: range } : {};
+
+    const [incendie, accident, totaleAllTime, genereePeriode, encaissee] =
+      await Promise.all([
+        prisma.souscriptionIncendie.findMany({
+          where: { partenaireId: id, ...dateWhere },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.souscriptionAccident.findMany({
+          where: { partenaireId: id, ...dateWhere },
+          orderBy: { createdAt: "desc" },
+        }),
+        commissionTotalePartenaire(id),
+        commissionTotalePartenaire(id, dateWhere),
+        commissionEncaisseePartenaire(id),
+      ]);
+
+    res.json({
+      partenaire: {
+        id: p.id,
+        nomCommerce: p.nomCommerce,
+        nomResponsable: p.nomResponsable,
+        telephone: p.telephone,
+        localisation: p.localisation,
+        email: p.email,
+        statut: p.statut,
+        produitIncendie: p.produitIncendie,
+        produitAccident: p.produitAccident,
+      },
+      souscripteursIncendie: incendie,
+      souscripteursAccident: accident,
+      commissionTotale: Math.round(totaleAllTime),
+      commissionGenereePeriode: Math.round(genereePeriode),
+      commissionEncaissee: Math.round(encaissee),
+      commissionDue: Math.round(totaleAllTime - encaissee),
+    });
   })
 );
 
@@ -107,15 +162,14 @@ partenairesRouter.post(
         typeCommerce: data.typeCommerce,
         produitIncendie: isIncendie,
         produitAccident: !isIncendie,
-        qrIncendieToken: isIncendie ? newQrToken("inc") : null,
-        qrAccidentToken: !isIncendie ? newQrToken("acc") : null,
-        tarifIncendieId: isIncendie ? data.tarifIncendieId : null,
         email: data.email || null,
         passwordHash: motDePasseProvisoire
           ? await bcrypt.hash(motDePasseProvisoire, 10)
           : null,
+        qrIncendie1000Token: isIncendie ? newQrToken("i1k") : null,
+        qrIncendie2000Token: isIncendie ? newQrToken("i2k") : null,
+        qrAccidentToken: !isIncendie ? newQrToken("acc") : null,
       },
-      include: { tarifIncendie: true },
     });
     await logAction({
       adminId: req.user!.sub,
@@ -124,6 +178,12 @@ partenairesRouter.post(
       objetId: created.id,
       valeurApres: { ...created, passwordHash: undefined },
     });
+    await notifyAdmins(
+      "partenaire_cree",
+      "Nouveau partenaire",
+      `${created.nomCommerce} (${created.localisation}) a été ajouté au réseau.`,
+      "/admin/partenaires"
+    );
     res.status(201).json({
       ...created,
       passwordHash: undefined,
@@ -155,21 +215,23 @@ partenairesRouter.patch(
         typeCommerce: data.typeCommerce,
         produitIncendie: data.produit != null ? isIncendie : undefined,
         produitAccident: data.produit != null ? !isIncendie : undefined,
-        tarifIncendieId: data.produit != null
-          ? (isIncendie ? (data.tarifIncendieId ?? null) : null)
-          : data.tarifIncendieId,
         email: data.email === "" ? null : data.email,
-        qrIncendieToken: data.produit != null && isIncendie && !before.qrIncendieToken
-          ? newQrToken("inc")
-          : undefined,
-        qrAccidentToken: data.produit != null && !isIncendie && !before.qrAccidentToken
-          ? newQrToken("acc")
-          : undefined,
+        qrIncendie1000Token:
+          data.produit != null && isIncendie && !before.qrIncendie1000Token
+            ? newQrToken("i1k")
+            : undefined,
+        qrIncendie2000Token:
+          data.produit != null && isIncendie && !before.qrIncendie2000Token
+            ? newQrToken("i2k")
+            : undefined,
+        qrAccidentToken:
+          data.produit != null && !isIncendie && !before.qrAccidentToken
+            ? newQrToken("acc")
+            : undefined,
         passwordHash: data.motDePasse
           ? await bcrypt.hash(data.motDePasse, 10)
           : undefined,
       },
-      include: { tarifIncendie: true },
     });
     await logAction({
       adminId: req.user!.sub,
@@ -198,6 +260,12 @@ partenairesRouter.post(
       objetId: updated.id,
       valeurApres: { statut },
     });
+    await notifyAdmins(
+      "partenaire_statut",
+      "Statut partenaire modifié",
+      `${updated.nomCommerce} est désormais ${statut}.`,
+      "/admin/partenaires"
+    );
     res.json({ ...updated, passwordHash: undefined });
   })
 );
@@ -226,16 +294,17 @@ partenairesRouter.delete(
 partenairesRouter.get(
   "/:id/qr/:produit",
   asyncHandler(async (req, res) => {
-    const produit = req.params.produit as "incendie" | "accident";
-    const p = await prisma.partenaire.findUnique({
-      where: { id: req.params.id },
-    });
+    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
     const token =
-      produit === "incendie" ? p.qrIncendieToken : p.qrAccidentToken;
+      produit === "incendie1000" ? p.qrIncendie1000Token
+      : produit === "incendie2000" ? p.qrIncendie2000Token
+      : p.qrAccidentToken;
     if (!token)
       return res.status(404).json({ error: "QR non disponible pour ce produit" });
-    const dataUrl = await qrDataUrl(produit, token);
+    const qrProduit: "incendie" | "accident" = produit === "accident" ? "accident" : "incendie";
+    const dataUrl = await qrDataUrl(qrProduit, token);
     res.json({ produit, token, dataUrl });
   })
 );

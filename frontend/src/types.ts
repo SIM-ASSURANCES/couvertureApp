@@ -10,11 +10,9 @@ export interface Partenaire {
   nomResponsable: string;
   telephone: string;
   localisation: string;
-  typeCommerce: "Electronique" | "Alimentation" | "Textile" | "Autre";
+  typeCommerce: "Electronique" | "Vulcanisateur" | "MecaniqueGarage" | "AccessoireAuto";
   produitIncendie: boolean;
   produitAccident: boolean;
-  tarifIncendieId?: number | null;
-  tarifIncendie?: { id: number; prime: number; capitalGaranti: number; commission: number } | null;
   statut: "actif" | "inactif";
   createdAt: string;
   clientsIncendie: number;
@@ -29,10 +27,14 @@ export interface ClientIncendie {
   nom?: string;
   prenom?: string;
   email?: string;
-  numeroFacture?: string;
+  refFacture?: string;
+  commune?: string;
+  quartier?: string;
+  numeroMaison?: string;
   montantPrime: number;
   capitalGaranti: number;
   statut: StatutIncendie;
+  relanceCount?: number;
   createdAt: string;
 }
 
@@ -43,6 +45,7 @@ export interface ClientAccident {
   telephone: string;
   nom: string;
   prenom: string;
+  dateNaissance?: string;
   montantPrime: number;
   capitalGaranti: number;
   waveStatut: WaveStatut;

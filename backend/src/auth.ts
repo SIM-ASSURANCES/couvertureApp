@@ -1,7 +1,18 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-const SECRET = process.env.JWT_SECRET || "dev-secret";
+function loadSecret(): string {
+  const s = process.env.JWT_SECRET;
+  if (!s || s.length < 32) {
+    throw new Error(
+      "JWT_SECRET manquant ou trop court (32 caractères minimum requis). " +
+        "Définissez une valeur forte dans les variables d'environnement."
+    );
+  }
+  return s;
+}
+
+const SECRET = loadSecret();
 
 export type ActorType = "admin" | "partenaire";
 

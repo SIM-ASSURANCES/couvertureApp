@@ -20,6 +20,44 @@ adminsRouter.get(
   })
 );
 
+/* ── Profil de l'admin connecté ── */
+adminsRouter.get(
+  "/me",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const a = await prisma.admin.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, nom: true, email: true, role: true, createdAt: true },
+    });
+    if (!a) return res.status(404).json({ error: "Introuvable" });
+    res.json(a);
+  })
+);
+
+const profilSchema = z.object({
+  nom: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  motDePasse: z.string().min(6).optional(),
+});
+
+adminsRouter.patch(
+  "/me",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = profilSchema.parse(req.body);
+    const updated = await prisma.admin.update({
+      where: { id: req.user!.sub },
+      data: {
+        nom: data.nom,
+        email: data.email,
+        passwordHash: data.motDePasse
+          ? await bcrypt.hash(data.motDePasse, 10)
+          : undefined,
+      },
+      select: { id: true, nom: true, email: true, role: true, createdAt: true },
+    });
+    res.json(updated);
+  })
+);
+
 const createSchema = z.object({
   nom: z.string().min(1),
   email: z.string().email(),

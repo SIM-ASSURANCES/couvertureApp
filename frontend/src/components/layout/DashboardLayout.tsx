@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Bell, ChevronsLeft, ChevronsRight, LogOut, Menu } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, LogOut, Menu } from "lucide-react";
 import type { NavGroup } from "./nav";
 import { useAuth } from "../../auth";
+import NotificationsBell from "../NotificationsBell";
 
 interface Props {
   nav: NavGroup[];
@@ -111,17 +112,19 @@ export default function DashboardLayout({
             <Menu size={19} />
           </button>
           <div className="topbar-right">
-            <button className="icon-btn" aria-label="Notifications">
-              <Bell size={19} />
-              <span className="dot" />
-            </button>
-            <div className="user-chip">
+            <NotificationsBell />
+            <button
+              className="user-chip"
+              onClick={() => navigate("profil")}
+              title="Mon profil"
+              style={{ background: "none", border: "none", cursor: "pointer" }}
+            >
+              <div className="avatar">{initials}</div>
               <div className="user-meta">
                 <div className="user-name">{userName}</div>
                 <div className="user-mail">{userMail}</div>
               </div>
-              <div className="avatar">{initials}</div>
-            </div>
+            </button>
           </div>
         </header>
         <div className="content">{children}</div>

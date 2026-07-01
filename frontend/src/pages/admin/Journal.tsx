@@ -8,6 +8,7 @@ interface Entry {
   typeAction: string;
   objet: string;
   identifiant: string;
+  ip: string;
 }
 
 function actionBadge(t: string) {
@@ -45,6 +46,7 @@ export default function Journal() {
                   <th>Action</th>
                   <th>Objet</th>
                   <th>Identifiant</th>
+                  <th>Adresse IP</th>
                 </tr>
               </thead>
               <tbody>
@@ -55,10 +57,11 @@ export default function Journal() {
                     <td>{actionBadge(j.typeAction)}</td>
                     <td>{j.objet}</td>
                     <td className="muted">{j.identifiant}</td>
+                    <td className="muted" style={{ fontFamily: "monospace", fontSize: 12 }}>{j.ip || "—"}</td>
                   </tr>
                 ))}
                 {data.length === 0 && (
-                  <tr><td colSpan={5}><div className="empty">Aucune entrée.</div></td></tr>
+                  <tr><td colSpan={6}><div className="empty">Aucune entrée.</div></td></tr>
                 )}
               </tbody>
             </table>

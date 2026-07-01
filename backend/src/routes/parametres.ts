@@ -85,8 +85,10 @@ parametresRouter.get(
 const schema = z.object({
   tauxCommissionIncendie: z.number().min(0).max(1).optional(),
   tauxCommissionAccident: z.number().min(0).max(1).optional(),
+  tauxCommissionMensuelleIncendie: z.number().min(0).max(1).optional(),
   primeAccident: z.number().int().min(0).optional(),
-  primeIncendie: z.number().int().min(0).optional(),
+  primeHtIncendie1000: z.number().positive().optional(),
+  primeHtIncendie2000: z.number().positive().optional(),
 });
 
 parametresRouter.patch(

@@ -14,9 +14,9 @@ enum Role {
 
 enum TypeCommerce {
   Electronique
-  Alimentation
-  Textile
-  Autre
+  Vulcanisateur
+  MecaniqueGarage
+  AccessoireAuto
 }
 
 enum StatutPartenaire {
@@ -50,6 +50,12 @@ enum TypeAction {
   relance
 }
 
+enum StatutDemande {
+  en_attente
+  validee
+  rejetee
+}
+
 model Admin {
   id           String            @id @default(uuid())
   nom          String
@@ -61,25 +67,26 @@ model Admin {
 }
 
 model Partenaire {
-  id              String                 @id @default(uuid())
-  nomCommerce     String
-  nomResponsable  String
-  telephone       String
-  localisation    String
-  typeCommerce    TypeCommerce
-  produitIncendie Boolean                @default(false)
-  produitAccident Boolean                @default(false)
-  qrIncendieToken String?                @unique
-  qrAccidentToken String?                @unique
-  tarifIncendieId Int?
-  tarifIncendie   TarifIncendie?         @relation(fields: [tarifIncendieId], references: [id])
-  statut          StatutPartenaire       @default(actif)
-  email           String?                @unique
-  passwordHash    String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  incendie        SouscriptionIncendie[]
-  accident        SouscriptionAccident[]
+  id                  String                 @id @default(uuid())
+  nomCommerce         String
+  nomResponsable      String
+  telephone           String
+  localisation        String
+  typeCommerce        TypeCommerce
+  produitIncendie     Boolean                @default(false)
+  produitAccident     Boolean                @default(false)
+  qrIncendie1000Token String?                @unique
+  qrIncendie2000Token String?                @unique
+  qrAccidentToken     String?                @unique
+  statut              StatutPartenaire       @default(actif)
+  email               String?                @unique
+  passwordHash        String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  incendie            SouscriptionIncendie[]
+  accident            SouscriptionAccident[]
+  demandes            DemandeCommission[]
+  notifications       Notification[]
 }
 
 model SouscriptionIncendie {
@@ -90,14 +97,18 @@ model SouscriptionIncendie {
   nom                 String?
   prenom              String?
   email               String?
-  numeroFacture       String?
+  refFacture          String?        @map("numeroFacture")
+  commune             String?
+  quartier            String?
+  numeroMaison        String?
   pieceIdentiteUrl    String?
   montantPrime        Int            @default(1000)
-  capitalGaranti      Int            @default(500000)
+  capitalGaranti      Int            @default(250000)
   commissionCalculee  Float?
   statut              StatutIncendie @default(en_cours)
   lienFormulaireToken String?        @unique
   whatsappEnvoyeAt    DateTime?
+  relanceCount        Int            @default(0)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 }
@@ -109,12 +120,16 @@ model SouscriptionAccident {
   telephone            String
   nom                  String
   prenom               String
+  dateNaissance        DateTime?
   montantPrime         Int
   capitalGaranti       Int           @default(100000)
   commissionCalculee   Float?
+  waveNumero           String?
   waveTransactionId    String?
   waveStatut           WaveStatut    @default(en_attente)
   numeroPolice         String?       @unique
+  dateDebut            DateTime?
+  dateFin              DateTime?
   statutDossier        StatutDossier @default(paye_formulaire_attente)
   formulaireComplement Json?
   whatsappEnvoyeAt     DateTime?
@@ -129,17 +144,49 @@ model JournalActivite {
   typeAction  TypeAction
   objetType   String
   objetId     String?
+  ip          String?
   valeurAvant Json?
   valeurApres Json?
   createdAt   DateTime   @default(now())
 }
 
+model DemandeCommission {
+  id           String        @id @default(uuid())
+  partenaireId String
+  partenaire   Partenaire    @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  montant      Float
+  statut       StatutDemande @default(en_attente)
+  periodeDebut DateTime?
+  periodeFin   DateTime?
+  traiteePar   String?
+  traiteeAt    DateTime?
+  motifRejet   String?
+  createdAt    DateTime      @default(now())
+}
+
+model Notification {
+  id           String      @id @default(uuid())
+  cible        String
+  partenaireId String?
+  partenaire   Partenaire? @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  type         String
+  titre        String
+  message      String
+  lien         String?
+  lu           Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+
+  @@index([cible, partenaireId, lu])
+}
+
 model Parametre {
-  id                     Int   @id @default(1)
-  tauxCommissionIncendie Float @default(0.15)
-  tauxCommissionAccident Float @default(0.15)
-  primeAccident          Int   @default(2000)
-  primeIncendie          Int   @default(1000)
+  id                              Int   @id @default(1)
+  tauxCommissionIncendie          Float @default(0.20)
+  tauxCommissionAccident          Float @default(0.15)
+  tauxCommissionMensuelleIncendie Float @default(0.10)
+  primeAccident                   Int   @default(2000)
+  primeHtIncendie1000             Float @default(800)
+  primeHtIncendie2000             Float @default(1600)
 }
 
 model TarifAccident {
@@ -154,13 +201,12 @@ model TarifAccident {
 }
 
 model TarifIncendie {
-  id             Int          @id @default(autoincrement())
-  prime          Int          @unique
+  id             Int      @id @default(autoincrement())
+  prime          Int      @unique
   primeHT        Float?
   fg             Float?
   taxes          Float?
   capitalGaranti Int
   commission     Float
-  createdAt      DateTime     @default(now())
-  partenaires    Partenaire[]
+  createdAt      DateTime @default(now())
 }

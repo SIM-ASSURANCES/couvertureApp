@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Trash2, RefreshCw } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -39,6 +39,26 @@ export default function ClientsAccident() {
       reload();
     } catch (e) {
       setToast((e as Error).message);
+    }
+  }
+
+  const [verifId, setVerifId] = useState("");
+  async function verifier(id: string) {
+    setVerifId(id);
+    try {
+      const r = await api.post<{ statut: string }>(
+        `/souscriptions/accident/${id}/verifier`,
+        {}
+      );
+      if (r.statut === "confirme") setToast("Paiement confirmé ✓");
+      else if (r.statut === "echoue") setToast("Paiement échoué côté Wave.");
+      else setToast("Toujours en attente — paiement non abouti chez Wave.");
+      setTimeout(() => setToast(""), 3500);
+      reload();
+    } catch (e) {
+      setToast((e as Error).message);
+    } finally {
+      setVerifId("");
     }
   }
 
@@ -87,6 +107,7 @@ export default function ClientsAccident() {
               <thead>
                 <tr>
                   <th>Client</th>
+                  <th>Date de naissance</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
                   <th>Capital garanti</th>
@@ -94,7 +115,7 @@ export default function ClientsAccident() {
                   <th>N° police</th>
                   <th>Dossier</th>
                   <th>Date</th>
-                  {isSuper && <th style={{ width: 56 }}></th>}
+                  <th style={{ width: 96 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +125,7 @@ export default function ClientsAccident() {
                       <strong>{c.prenom} {c.nom}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
+                    <td className="muted">{c.dateNaissance ? fmtDate(c.dateNaissance) : "—"}</td>
                     <td>{c.partenaireNom}</td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td className="muted">{fcfa(c.capitalGaranti)}</td>
@@ -117,22 +139,35 @@ export default function ClientsAccident() {
                       )}
                     </td>
                     <td className="muted">{fmtDate(c.createdAt)}</td>
-                    {isSuper && (
-                      <td>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: "7px 10px" }}
-                          title="Supprimer"
-                          onClick={() => supprimer(c.id)}
-                        >
-                          <Trash2 size={15} color="var(--danger)" />
-                        </button>
-                      </td>
-                    )}
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {c.waveStatut === "en_attente" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Vérifier le paiement Wave"
+                            disabled={verifId === c.id}
+                            onClick={() => verifier(c.id)}
+                          >
+                            <RefreshCw size={15} className={verifId === c.id ? "spin" : ""} />
+                          </button>
+                        )}
+                        {isSuper && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Supprimer"
+                            onClick={() => supprimer(c.id)}
+                          >
+                            <Trash2 size={15} color="var(--danger)" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {data.length === 0 && (
-                  <tr><td colSpan={isSuper ? 9 : 8}><div className="empty">Aucune souscription.</div></td></tr>
+                  <tr><td colSpan={10}><div className="empty">Aucune souscription.</div></td></tr>
                 )}
               </tbody>
             </table>

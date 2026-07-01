@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, CSSProperties } from "react";
 
 export function PageHeader({
   title,
@@ -33,14 +33,16 @@ export function Card({
   extra,
   children,
   noBody,
+  style,
 }: {
   title?: string;
   extra?: ReactNode;
   children: ReactNode;
   noBody?: boolean;
+  style?: CSSProperties;
 }) {
   return (
-    <div className="card">
+    <div className="card" style={style}>
       {title && (
         <div className="card-head">
           <h3 className="card-title">{title}</h3>

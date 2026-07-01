@@ -18,7 +18,7 @@ interface Sous {
     telephone: string;
     nom?: string;
     prenom?: string;
-    numeroFacture?: string;
+    refFacture?: string;
     statut: string;
     createdAt: string;
   }[];
@@ -54,14 +54,14 @@ export default function PartenaireSouscriptions() {
             <div className="table-wrap">
               <table className="tbl">
                 <thead>
-                  <tr><th>Téléphone</th><th>Nom</th><th>N° facture</th><th>Statut</th><th>Date</th></tr>
+                  <tr><th>Téléphone</th><th>Nom</th><th>Réf. facture</th><th>Statut</th><th>Date</th></tr>
                 </thead>
                 <tbody>
                   {data.incendie.map((c) => (
                     <tr key={c.id}>
                       <td><strong>{c.telephone}</strong></td>
                       <td>{c.prenom || c.nom ? `${c.prenom ?? ""} ${c.nom ?? ""}`.trim() : <span className="muted">Non renseigné</span>}</td>
-                      <td>{c.numeroFacture ?? <span className="muted">—</span>}</td>
+                      <td>{c.refFacture ?? <span className="muted">—</span>}</td>
                       <td>{statutIncendieBadge(c.statut)}</td>
                       <td className="muted">{fmtDate(c.createdAt)}</td>
                     </tr>

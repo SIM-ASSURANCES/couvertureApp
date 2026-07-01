@@ -15,12 +15,14 @@ function QrCard({
   color,
   bg,
   label,
+  sublabel,
 }: {
-  produit: "incendie" | "accident";
+  produit: "incendie1000" | "incendie2000" | "accident";
   icon: React.ReactNode;
   color: string;
   bg: string;
   label: string;
+  sublabel: string;
 }) {
   const { data, loading, error } = useFetch<Qr>(`/me/qr/${produit}`);
   return (
@@ -28,18 +30,18 @@ function QrCard({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div className="stat-ico" style={{ background: bg, color }}>{icon}</div>
         <div>
-          <div style={{ fontWeight: 700, textTransform: "capitalize" }}>QR {produit}</div>
-          <div className="muted" style={{ fontSize: 13 }}>{label}</div>
+          <div style={{ fontWeight: 700 }}>{label}</div>
+          <div className="muted" style={{ fontSize: 13 }}>{sublabel}</div>
         </div>
       </div>
       {loading && <Loader label="Génération du QR…" />}
-      {error && <div className="empty">QR non disponible pour ce produit.</div>}
+      {error && <div className="empty">QR non disponible.</div>}
       {data && (
         <>
           <div style={{ display: "flex", justifyContent: "center" }}>
             <img
               src={data.dataUrl}
-              alt={`QR ${produit}`}
+              alt={label}
               style={{ width: 220, height: 220, border: "1px solid var(--border)", borderRadius: 12, padding: 8, background: "#fff" }}
             />
           </div>
@@ -59,14 +61,42 @@ export default function PartenaireQr() {
   return (
     <>
       <PageHeader
-        title="Mon QR code"
-        subtitle="Présentez ce QR code à vos clients pour la souscription."
+        title="Mes QR codes"
+        subtitle={
+          produit === "incendie"
+            ? "Deux QR codes selon le montant des achats du client."
+            : "Présentez ce QR code à vos clients pour la souscription."
+        }
       />
-      <div style={{ marginTop: 24, maxWidth: 400 }}>
+      <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 24, maxWidth: 440 }}>
         {produit === "incendie" ? (
-          <QrCard produit="incendie" icon={<Flame size={20} />} color="#b45309" bg="#fdf3e3" label="Souscription via paiement intégré" />
+          <>
+            <QrCard
+              produit="incendie1000"
+              icon={<Flame size={20} />}
+              color="#b45309"
+              bg="#fdf3e3"
+              label="QR Incendie — Achats jusqu'à 250 000 FCFA"
+              sublabel="Capital garanti 250 000 FCFA"
+            />
+            <QrCard
+              produit="incendie2000"
+              icon={<Flame size={20} />}
+              color="#dc2626"
+              bg="#fef2f2"
+              label="QR Incendie — Achats au-dessus de 250 000 FCFA"
+              sublabel="Capital garanti 500 000 FCFA"
+            />
+          </>
         ) : (
-          <QrCard produit="accident" icon={<ShieldCheck size={20} />} color="#15803d" bg="#e8f6ec" label="Souscription + paiement Wave" />
+          <QrCard
+            produit="accident"
+            icon={<ShieldCheck size={20} />}
+            color="#15803d"
+            bg="#e8f6ec"
+            label="QR Accident"
+            sublabel="Souscription + paiement Wave"
+          />
         )}
       </div>
     </>

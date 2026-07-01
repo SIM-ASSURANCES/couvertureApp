@@ -20,11 +20,7 @@ export interface SessionUser {
 
 interface AuthCtx {
   user: SessionUser | null;
-  login: (
-    type: "admin" | "partenaire",
-    email: string,
-    password: string
-  ) => Promise<void>;
+  login: (email: string, password: string) => Promise<SessionUser>;
   logout: () => void;
 }
 
@@ -36,18 +32,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => getUser() as SessionUser | null
   );
 
-  async function login(
-    type: "admin" | "partenaire",
-    email: string,
-    password: string
-  ) {
+  async function login(email: string, password: string): Promise<SessionUser> {
     const res = await api.post<{ token: string; user: SessionUser }>(
-      `/auth/${type}/login`,
+      "/auth/login",
       { email, password }
     );
     localStorage.setItem("sim_token", res.token);
     localStorage.setItem("sim_user", JSON.stringify(res.user));
     setUser(res.user);
+    return res.user;
   }
 
   function logout() {

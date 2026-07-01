@@ -1,31 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ShieldCheck, Store } from "lucide-react";
 import { useAuth } from "../auth";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [type, setType] = useState<"admin" | "partenaire">("admin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  function switchType(t: "admin" | "partenaire") {
-    setType(t);
-    setError("");
-    setEmail("");
-    setPassword("");
-  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      await login(type, email, password);
-      navigate(type === "admin" ? "/admin" : "/partenaire");
+      const u = await login(email, password);
+      navigate(u.type === "partenaire" ? "/partenaire" : "/admin");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -38,8 +29,6 @@ export default function Login() {
 
       {/* ── Panneau gauche ── */}
       <div className="login-left">
-
-        {/* Motif diamants géométriques */}
         <svg
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
           xmlns="http://www.w3.org/2000/svg"
@@ -56,38 +45,22 @@ export default function Login() {
           <polygon points="60,60 180,180 60,300 -60,180" fill="rgba(255,255,255,0.04)" />
         </svg>
 
-        {/* Logo */}
         <div style={{ position: "relative", zIndex: 1 }}>
           <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 64, objectFit: "contain" }} />
         </div>
 
-        {/* Accroche centrale */}
         <div style={{ position: "relative", zIndex: 1 }}>
-          <h1 style={{
-            color: "#fff",
-            fontSize: 42,
-            fontWeight: 800,
-            lineHeight: 1.2,
-            margin: 0,
-            marginBottom: 20,
-          }}>
+          <h1 style={{ color: "#fff", fontSize: 42, fontWeight: 800, lineHeight: 1.2, margin: 0, marginBottom: 20 }}>
             Gestion des<br />
             <span style={{ color: "#51aee2" }}>Souscriptions</span><br />
             par QR Code
           </h1>
-          <p style={{
-            color: "rgba(255,255,255,0.7)",
-            fontSize: 15,
-            lineHeight: 1.6,
-            maxWidth: 360,
-            margin: 0,
-          }}>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 15, lineHeight: 1.6, maxWidth: 360, margin: 0 }}>
             Plateforme de micro-assurance Incendie &amp; Accident
             pour les partenaires de SIM Assurances CI.
           </p>
         </div>
 
-        {/* Pied de page gauche */}
         <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, position: "relative", zIndex: 1 }}>
           © 2026 SIM Assurances CI — Tous droits réservés
         </div>
@@ -95,88 +68,30 @@ export default function Login() {
 
       {/* ── Panneau droit ── */}
       <div className="login-right">
-
-        <div style={{
-          width: "100%",
-          maxWidth: 420,
-        }}>
-          {/* Carte */}
+        <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{
             background: "#fff",
             borderRadius: 16,
             padding: "40px 40px 36px",
             boxShadow: "0 4px 32px rgba(0,0,0,.07)",
           }}>
-            <h2 style={{
-              color: "#004b9c",
-              fontWeight: 800,
-              fontSize: 24,
-              margin: 0,
-              marginBottom: 4,
-            }}>
+            <h2 style={{ color: "#004b9c", fontWeight: 800, fontSize: 24, margin: 0, marginBottom: 4 }}>
               Connexion
             </h2>
-            <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 24px" }}>
-              {type === "admin"
-                ? "Accès réservé aux administrateurs"
-                : "Espace dédié aux partenaires"}
+            <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 28px" }}>
+              Entrez vos identifiants pour accéder à votre espace.
             </p>
-
-            {/* Onglets Admin / Partenaire */}
-            <div style={{
-              display: "flex",
-              background: "#f3f6fb",
-              borderRadius: 10,
-              padding: 4,
-              marginBottom: 24,
-              gap: 4,
-            }}>
-              {(["admin", "partenaire"] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => switchType(t)}
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 7,
-                    padding: "9px 0",
-                    borderRadius: 7,
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    fontFamily: "Montserrat, sans-serif",
-                    transition: "all .18s",
-                    background: type === t ? "#004b9c" : "transparent",
-                    color: type === t ? "#fff" : "#6b7280",
-                    boxShadow: type === t ? "0 2px 8px rgba(0,75,156,.25)" : "none",
-                  }}
-                >
-                  {t === "admin" ? <ShieldCheck size={15} /> : <Store size={15} />}
-                  {t === "admin" ? "Administrateur" : "Partenaire"}
-                </button>
-              ))}
-            </div>
 
             <form onSubmit={submit}>
               <div style={{ marginBottom: 16 }}>
-                <label style={{
-                  display: "block",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 6,
-                }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
                   Email
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Votre email"
+                  placeholder="Votre adresse email"
                   required
                   style={{
                     width: "100%",
@@ -196,13 +111,7 @@ export default function Login() {
               </div>
 
               <div style={{ marginBottom: error ? 14 : 24 }}>
-                <label style={{
-                  display: "block",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 6,
-                }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
                   Mot de passe
                 </label>
                 <input
@@ -267,13 +176,7 @@ export default function Login() {
             </form>
           </div>
 
-          {/* Note bas de page */}
-          <p style={{
-            textAlign: "center",
-            color: "#9ca3af",
-            fontSize: 12,
-            marginTop: 20,
-          }}>
+          <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 12, marginTop: 20 }}>
             QRApp v1.0 — SIM Assurances CI
           </p>
         </div>
