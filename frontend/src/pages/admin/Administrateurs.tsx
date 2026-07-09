@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
+import { exportExcel } from "../../xlsx";
 
 interface Admin {
   id: string;
@@ -54,11 +55,28 @@ export default function Administrateurs() {
     }
   }
 
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((a) => ({
+        "Nom": a.nom,
+        "Email": a.email,
+        "Rôle": a.role,
+        "Créé le": fmtDate(a.createdAt),
+      })),
+      "administrateurs.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Administrateurs"
         subtitle="Gestion des comptes d'accès au dashboard."
+        actions={
+          <button className="btn btn-danger-soft" onClick={exportXlsx}>
+            <FileSpreadsheet size={16} /> Export Excel
+          </button>
+        }
       />
 
       <div className="grid-2" style={{ marginTop: 24 }}>

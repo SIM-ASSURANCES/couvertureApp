@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Download, Check, X } from "lucide-react";
+import { Download, Check, X, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { downloadCsv, api } from "../../api";
+import { exportExcel } from "../../xlsx";
 import type { Partenaire } from "../../types";
 
 interface PerfRow {
@@ -18,6 +19,8 @@ interface PerfRow {
   primesIncendieHT: number;
   ca: number;
   commission: number;
+  commissionIncendie: number;
+  commissionAccident: number;
   commissionEncaissee: number;
 }
 interface Perf {
@@ -92,6 +95,8 @@ export default function Performance() {
   const rows = data?.rows ?? [];
   const max = Math.max(...rows.map((r) => r.total), 1);
   const totalCom = rows.reduce((s, r) => s + r.commission, 0);
+  const totalComIncendie = rows.reduce((s, r) => s + r.commissionIncendie, 0);
+  const totalComAccident = rows.reduce((s, r) => s + r.commissionAccident, 0);
   const totalEncaisse = rows.reduce((s, r) => s + r.commissionEncaissee, 0);
   const totalIncHT = rows.reduce((s, r) => s + r.primesIncendieHT, 0);
   const totalAccHT = rows.reduce((s, r) => s + r.primesAccidentHT, 0);
@@ -99,15 +104,42 @@ export default function Performance() {
 
   const exportUrl = `/stats/performance/export.csv?${params.toString()}`;
 
+  function exportXlsx() {
+    exportExcel(
+      rows.map((r, i) => ({
+        "#": i + 1,
+        "Partenaire": r.nomCommerce,
+        "Localisation": r.localisation,
+        "Volume total": r.total,
+        "Clients Incendie": r.clientsIncendie,
+        "Clients Accident": r.clientsAccident,
+        "Primes Inc. HT": r.primesIncendieHT,
+        "Primes Acc. HT": r.primesAccidentHT,
+        "CA": r.ca,
+        "Commission": r.commission,
+        "Commission Incendie": r.commissionIncendie,
+        "Commission Accident": r.commissionAccident,
+        "Commission encaissée": r.commissionEncaissee,
+        "Commission due": r.commission - r.commissionEncaissee,
+      })),
+      "performance_partenaires.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Performance & Commissions"
         subtitle="Suivi de la production par partenaire et calcul des commissions."
         actions={
-          <button className="btn btn-danger-soft" onClick={() => downloadCsv(exportUrl, "performance_partenaires.csv")}>
-            <Download size={16} /> Export
-          </button>
+          <>
+            <button className="btn btn-ghost" onClick={() => downloadCsv(exportUrl, "performance_partenaires.csv")}>
+              <Download size={16} /> Export CSV
+            </button>
+            <button className="btn btn-danger-soft" onClick={exportXlsx}>
+              <FileSpreadsheet size={16} /> Export Excel
+            </button>
+          </>
         }
       />
 
@@ -293,6 +325,14 @@ export default function Performance() {
             <div className="stat">
               <div className="stat-label">Commission encaissée</div>
               <div className="stat-value">{fcfa(totalEncaisse)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Commission totale Incendie</div>
+              <div className="stat-value">{fcfa(totalComIncendie)}</div>
+            </div>
+            <div className="stat">
+              <div className="stat-label">Commission totale Accident</div>
+              <div className="stat-value">{fcfa(totalComAccident)}</div>
             </div>
           </div>
 

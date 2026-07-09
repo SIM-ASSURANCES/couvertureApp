@@ -102,6 +102,11 @@ export function messageAccident(
   return `SIM Assurances : ${prenom}, assurance accident activée. N° police : ${numeroPolice}`;
 }
 
+/** Relance admin d'un paiement Wave en attente, avec le montant exact de la prime. */
+export function messageRelancePaiement(montant: number, lienPaiement: string) {
+  return `SIM Assurances : payez ${montant} FCFA : ${lienPaiement}`;
+}
+
 /**
  * Initiation d'un paiement Wave CI.
  * Nécessite WAVE_API_KEY ; l'appelant gère le mode stub si la clé est absente.

@@ -39,7 +39,7 @@ const baseSchema = z.object({
   localisation: z.string().min(1),
   typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]),
   produit: z.enum(["incendie", "accident"]),
-  email: z.string().email().optional().or(z.literal("")),
+  email: z.string().min(1, "Email requis").email("Email invalide"),
 });
 
 const createSchema = baseSchema;
@@ -51,7 +51,8 @@ const patchSchema = baseSchema.partial().extend({
 async function withCounts(id: string) {
   const [incendie, accident] = await Promise.all([
     prisma.souscriptionIncendie.count({ where: { partenaireId: id } }),
-    prisma.souscriptionAccident.count({ where: { partenaireId: id } }),
+    // Un accident n'est compté comme client qu'une fois le paiement Wave confirmé.
+    prisma.souscriptionAccident.count({ where: { partenaireId: id, waveStatut: "confirme" } }),
   ]);
   return { clientsIncendie: incendie, clientsAccident: accident };
 }
@@ -115,7 +116,7 @@ partenairesRouter.get(
           orderBy: { createdAt: "desc" },
         }),
         prisma.souscriptionAccident.findMany({
-          where: { partenaireId: id, ...dateWhere },
+          where: { partenaireId: id, ...dateWhere, waveStatut: "confirme" },
           orderBy: { createdAt: "desc" },
         }),
         commissionTotalePartenaire(id),
@@ -215,7 +216,7 @@ partenairesRouter.patch(
         typeCommerce: data.typeCommerce,
         produitIncendie: data.produit != null ? isIncendie : undefined,
         produitAccident: data.produit != null ? !isIncendie : undefined,
-        email: data.email === "" ? null : data.email,
+        email: data.email,
         qrIncendie1000Token:
           data.produit != null && isIncendie && !before.qrIncendie1000Token
             ? newQrToken("i1k")

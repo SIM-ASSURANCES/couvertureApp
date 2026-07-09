@@ -11,6 +11,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import Partenaires from "./pages/admin/Partenaires";
 import ClientsIncendie from "./pages/admin/ClientsIncendie";
 import ClientsAccident from "./pages/admin/ClientsAccident";
+import PaiementsEnAttente from "./pages/admin/PaiementsEnAttente";
 import Contrats from "./pages/admin/Contrats";
 import Performance from "./pages/admin/Performance";
 import Journal from "./pages/admin/Journal";
@@ -44,6 +45,7 @@ export default function App() {
             <Route path="partenaires" element={<Partenaires />} />
             <Route path="incendie" element={<ClientsIncendie />} />
             <Route path="accident" element={<ClientsAccident />} />
+            <Route path="paiements-en-attente" element={<PaiementsEnAttente />} />
             <Route path="contrats" element={<Contrats />} />
             <Route path="performance" element={<Performance />} />
             <Route path="journal" element={<Journal />} />

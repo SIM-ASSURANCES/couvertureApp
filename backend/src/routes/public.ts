@@ -78,6 +78,8 @@ const incSchema = z.object({
   nom: z.string().optional(),
   prenom: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  commune: z.string().optional(),
+  quartier: z.string().optional(),
 });
 
 publicRouter.post(
@@ -107,6 +109,8 @@ publicRouter.post(
         nom: data.nom || null,
         prenom: data.prenom || null,
         email: data.email || null,
+        commune: data.commune || null,
+        quartier: data.quartier || null,
         montantPrime,
         capitalGaranti,
         statut: "en_cours",
@@ -175,10 +179,9 @@ publicRouter.patch(
 
     const tenteCompletion = !!(refFacture || commune || quartier || numeroMaison);
     if (tenteCompletion) {
-      if (!refFacture || !commune || !quartier || !numeroMaison) {
+      if (!refFacture || !commune || !quartier) {
         return res.status(400).json({
-          error:
-            "Réf.facture, commune, quartier et numéro de maison sont obligatoires.",
+          error: "Réf.facture, commune et quartier sont obligatoires.",
         });
       }
       if (!(await refFactureDisponible(refFacture, s.id))) {
@@ -461,6 +464,7 @@ publicRouter.get(
       capitalGaranti: s.capitalGaranti,
       dateDebut: s.dateDebut,
       dateFin: s.dateFin,
+      dateNaissance: s.dateNaissance,
       nom: s.nom,
       prenom: s.prenom,
       telephone: s.telephone,

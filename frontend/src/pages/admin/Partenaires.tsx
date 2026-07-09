@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
+import { exportExcel } from "../../xlsx";
 import type { Partenaire } from "../../types";
 
 interface PartenaireDetails {
@@ -112,6 +113,112 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
   );
 }
 
+function EditModal({
+  partenaire,
+  onClose,
+  onSaved,
+}: {
+  partenaire: Partenaire;
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [form, setForm] = useState({
+    nomCommerce: partenaire.nomCommerce,
+    nomResponsable: partenaire.nomResponsable,
+    telephone: partenaire.telephone,
+    localisation: partenaire.localisation,
+    typeCommerce: partenaire.typeCommerce as string,
+    produit: (partenaire.produitIncendie ? "incendie" : "accident") as "incendie" | "accident",
+    email: partenaire.email ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.patch(`/partenaires/${partenaire.id}`, form);
+      onSaved("Partenaire modifié ✓");
+      onClose();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 440, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <strong style={{ fontSize: 17 }}>Modifier {partenaire.nomCommerce}</strong>
+          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+        </div>
+        <form onSubmit={save}>
+          <div className="field">
+            <label className="label">Nom du commerce <span className="req">*</span></label>
+            <input className="input" required value={form.nomCommerce} onChange={(e) => setForm({ ...form, nomCommerce: e.target.value })} />
+          </div>
+          <div className="field">
+            <label className="label">Responsable <span className="req">*</span></label>
+            <input className="input" required value={form.nomResponsable} onChange={(e) => setForm({ ...form, nomResponsable: e.target.value })} />
+          </div>
+          <div className="field">
+            <label className="label">Téléphone <span className="req">*</span></label>
+            <input className="input" required value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
+          </div>
+          <div className="field">
+            <label className="label">Localisation <span className="req">*</span></label>
+            <input className="input" required value={form.localisation} onChange={(e) => setForm({ ...form, localisation: e.target.value })} />
+          </div>
+          <div className="field">
+            <label className="label">Type de commerce <span className="req">*</span></label>
+            <select className="select" value={form.typeCommerce} onChange={(e) => setForm({ ...form, typeCommerce: e.target.value })}>
+              <option value="Electronique">Electronique</option>
+              <option value="Vulcanisateur">Vulcanisateur</option>
+              <option value="MecaniqueGarage">Mécanique / garage</option>
+              <option value="AccessoireAuto">Accessoire auto</option>
+            </select>
+          </div>
+          <div className="field">
+            <label className="label">Produit <span className="req">*</span></label>
+            <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                <input type="radio" name="editProduit" value="incendie" checked={form.produit === "incendie"} onChange={() => setForm({ ...form, produit: "incendie" })} />
+                <span>Incendie</span>
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                <input type="radio" name="editProduit" value="accident" checked={form.produit === "accident"} onChange={() => setForm({ ...form, produit: "accident" })} />
+                <span>Accident</span>
+              </label>
+            </div>
+          </div>
+          <div className="field">
+            <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>
+            <input
+              className="input"
+              type="email"
+              required
+              placeholder="exemple@gmail.com"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+            />
+          </div>
+          {error && <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 10 }}>{error}</div>}
+          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <button className="btn btn-primary" style={{ flex: 1 }} disabled={saving}>
+              {saving ? "Enregistrement…" : "Enregistrer"}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onClose}>Annuler</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 const empty = {
   nomCommerce: "",
   nomResponsable: "",
@@ -144,6 +251,7 @@ export default function Partenaires() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Partenaire | null>(null);
 
   function notify(m: string) {
     setToast(m);
@@ -227,11 +335,35 @@ export default function Partenaires() {
     }
   }
 
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((p) => ({
+        "Commerce": p.nomCommerce,
+        "Responsable": p.nomResponsable,
+        "Téléphone": p.telephone,
+        "Localisation": p.localisation,
+        "Type de commerce": p.typeCommerce,
+        "Produit": p.produitIncendie ? "Incendie" : "Accident",
+        "Statut": p.statut,
+        "Clients Incendie": p.clientsIncendie,
+        "Clients Accident": p.clientsAccident,
+        "Email": p.email ?? "",
+        "Créé le": fmtDate(p.createdAt),
+      })),
+      "partenaires.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Partenaires"
         subtitle="Gérez le réseau de commerçants distributeurs et leurs QR codes."
+        actions={
+          <button className="btn btn-ghost" onClick={exportXlsx}>
+            <FileSpreadsheet size={16} /> Export Excel
+          </button>
+        }
       />
 
       <div className="grid-2" style={{ marginTop: 24 }}>
@@ -320,6 +452,14 @@ export default function Partenaires() {
                             onClick={() => setDetailsId(p.id)}
                           >
                             <Eye size={15} color="var(--sim-primary)" />
+                          </button>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            title="Modifier le partenaire"
+                            onClick={() => setEditing(p)}
+                          >
+                            <Pencil size={15} />
                           </button>
                           {p.produitIncendie && (
                             <>
@@ -468,16 +608,17 @@ export default function Partenaires() {
               )}
             </div>
             <div className="field">
-              <label className="label">Gmail (accès partenaire)</label>
+              <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>
               <input
                 className="input"
                 type="email"
+                required
                 placeholder="exemple@gmail.com"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
               <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Facultatif. Un mot de passe provisoire sera généré automatiquement.
+                Obligatoire. Un mot de passe provisoire sera généré automatiquement.
               </div>
             </div>
             <button className="btn btn-primary btn-block" disabled={saving}>
@@ -575,6 +716,13 @@ export default function Partenaires() {
       )}
 
       {detailsId && <DetailsModal partenaireId={detailsId} onClose={() => setDetailsId(null)} />}
+      {editing && (
+        <EditModal
+          partenaire={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(msg) => { notify(msg); reload(); }}
+        />
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </>

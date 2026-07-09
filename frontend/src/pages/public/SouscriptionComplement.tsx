@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE } from "../../api";
+import { genererContratIncendie } from "../../contract";
 
 const BASE = API_BASE;
 
@@ -55,63 +56,6 @@ function FieldRow({
   );
 }
 
-function genererContrat(s: Souscription) {
-  const debut = new Date(s.dateDebut);
-  const fin = new Date(s.dateFin);
-  const d = (x: Date) => x.toLocaleDateString("fr-FR");
-  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Contrat ${s.numeroPolice}</title>
-<style>
-  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
-  body{margin:0;color:#0f1b2d;padding:40px;}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:24px;}
-  .brand img{height:56px;display:block;}
-  .pol{text-align:right;font-size:13px;color:#5b6b80;}
-  .pol b{display:block;font-size:18px;color:#0f1b2d;letter-spacing:1px;}
-  h1{font-size:20px;margin:0 0 6px;}
-  .sub{color:#5b6b80;font-size:13px;margin-bottom:24px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-  td{padding:10px 12px;border:1px solid #e3e9f1;font-size:14px;}
-  td.k{background:#f5f8fc;font-weight:600;width:42%;color:#5b6b80;}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
-  .box{border:1px solid #e3e9f1;border-radius:10px;padding:14px 16px;}
-  .box .l{font-size:11px;color:#5b6b80;text-transform:uppercase;letter-spacing:.05em;}
-  .box .v{font-size:17px;font-weight:800;margin-top:4px;}
-  .note{font-size:12px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:16px;margin-top:24px;}
-  .sign{display:flex;justify-content:space-between;margin-top:48px;font-size:13px;color:#5b6b80;}
-  @media print{body{padding:24px;}}
-</style></head><body>
-  <div class="head">
-    <div class="brand"><img src="${window.location.origin}/logo.webp" alt="SIM Assurances" /></div>
-    <div class="pol">N° de police<b>${s.numeroPolice}</b></div>
-  </div>
-  <h1>Contrat d'Assurance Incendie</h1>
-  <div class="sub">Distribué via ${s.partenaire}</div>
-  <div class="box" style="margin-bottom:24px"><div class="l">Capital garanti</div><div class="v">${fcfa(s.capitalGaranti)}</div></div>
-  <table>
-    <tr><td class="k">Assuré(e)</td><td>${s.prenom ?? ""} ${s.nom ?? ""}</td></tr>
-    <tr><td class="k">Téléphone</td><td>${s.telephone}</td></tr>
-    ${s.refFacture ? `<tr><td class="k">Réf. facture</td><td>${s.refFacture}</td></tr>` : ""}
-    ${s.commune ? `<tr><td class="k">Commune</td><td>${s.commune}</td></tr>` : ""}
-    ${s.quartier ? `<tr><td class="k">Quartier</td><td>${s.quartier}</td></tr>` : ""}
-    ${s.numeroMaison ? `<tr><td class="k">N° de maison</td><td>${s.numeroMaison}</td></tr>` : ""}
-    <tr><td class="k">Date d'effet</td><td>${d(debut)}</td></tr>
-    <tr><td class="k">Date d'échéance</td><td>${d(fin)}</td></tr>
-    <tr><td class="k">Durée</td><td>12 mois</td></tr>
-  </table>
-  <div class="note">Ce contrat atteste de la souscription d'une assurance incendie d'une durée de douze (12) mois,
-  prenant effet le ${d(debut)} et arrivant à échéance le ${d(fin)}. La garantie est acquise sous réserve du
-  paiement effectif de la prime. Document généré électroniquement par SIM Assurances CI.</div>
-  <div class="sign"><div>Fait à Abidjan, le ${d(new Date())}</div><div>Pour SIM Assurances CI</div></div>
-  <script>window.onload=function(){window.print();}</script>
-</body></html>`;
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.write(html);
-    w.document.close();
-  }
-}
-
 export default function SouscriptionComplement() {
   const { token } = useParams<{ token: string }>();
   const [step, setStep] = useState<Step>("loading");
@@ -157,8 +101,8 @@ export default function SouscriptionComplement() {
   }, [token]);
 
   async function handleSubmit() {
-    if (!refFacture.trim() || !commune.trim() || !quartier.trim() || !numeroMaison.trim()) {
-      setErrorMsg("Réf.facture, commune, quartier et numéro de maison sont obligatoires.");
+    if (!refFacture.trim() || !commune.trim() || !quartier.trim()) {
+      setErrorMsg("Réf.facture, commune et quartier sont obligatoires.");
       return;
     }
     setSubmitting(true);
@@ -323,7 +267,7 @@ export default function SouscriptionComplement() {
                   style={inputStyle}
                 />
               </FieldRow>
-              <FieldRow label="N° de maison *">
+              <FieldRow label="N° de maison (optionnel)">
                 <input
                   value={numeroMaison}
                   onChange={(e) => setNumeroMaison(e.target.value)}
@@ -390,7 +334,7 @@ export default function SouscriptionComplement() {
               </div>
 
               <button
-                onClick={() => genererContrat(data)}
+                onClick={() => genererContratIncendie(data)}
                 style={{
                   width: "100%",
                   padding: "14px",

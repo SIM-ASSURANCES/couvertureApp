@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileText, Flame, ShieldCheck, Eye, X } from "lucide-react";
+import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -10,6 +10,8 @@ import {
   fmtDate,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
+import { exportExcel } from "../../xlsx";
+import { genererContratIncendie, genererContratAccident } from "../../contract";
 
 interface Contrat {
   id: string;
@@ -25,78 +27,54 @@ interface Contrat {
   dateFin: string | null;
   date: string;
   refFacture?: string | null;
+  commune?: string | null;
+  quartier?: string | null;
+  numeroMaison?: string | null;
+  primeHT?: number | null;
+  primeTTC?: number | null;
+  taxes?: number | null;
+  fg?: number | null;
+  dateNaissance?: string | null;
 }
 
 function genererContrat(c: Contrat) {
-  const debut = c.dateDebut ? new Date(c.dateDebut) : new Date(c.date);
-  const fin = c.dateFin
-    ? new Date(c.dateFin)
-    : new Date(
-        new Date(debut).setMonth(
-          debut.getMonth() + (c.type === "accident" ? 3 : 12)
-        )
-      );
-  const d = (x: Date) => x.toLocaleDateString("fr-FR");
-  const duree = c.type === "accident" ? "3 mois" : "12 mois";
-  const titre =
-    c.type === "accident"
-      ? "Contrat d'Assurance Accident"
-      : "Contrat d'Assurance Incendie";
-
-  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Contrat ${c.numeroPolice}</title>
-<style>
-  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
-  body{margin:0;color:#0f1b2d;padding:40px;}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:24px;}
-  .brand img{height:56px;display:block;}
-  .pol{text-align:right;font-size:13px;color:#5b6b80;}
-  .pol b{display:block;font-size:18px;color:#0f1b2d;letter-spacing:1px;}
-  h1{font-size:20px;margin:0 0 6px;}
-  .sub{color:#5b6b80;font-size:13px;margin-bottom:24px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-  td{padding:10px 12px;border:1px solid #e3e9f1;font-size:14px;}
-  td.k{background:#f5f8fc;font-weight:600;width:42%;color:#5b6b80;}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
-  .box{border:1px solid #e3e9f1;border-radius:10px;padding:14px 16px;}
-  .box .l{font-size:11px;color:#5b6b80;text-transform:uppercase;letter-spacing:.05em;}
-  .box .v{font-size:17px;font-weight:800;margin-top:4px;}
-  .note{font-size:12px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:16px;margin-top:24px;}
-  .sign{display:flex;justify-content:space-between;margin-top:48px;font-size:13px;color:#5b6b80;}
-  @media print{body{padding:24px;}}
-</style></head><body>
-  <div class="head">
-    <div class="brand"><img src="${window.location.origin}/logo.webp" alt="SIM Assurances" /></div>
-    <div class="pol">N° de police<b>${c.numeroPolice}</b></div>
-  </div>
-  <h1>${titre}</h1>
-  <div class="sub">Distribué via ${c.partenaire}</div>
-  ${
-    c.type === "accident"
-      ? `<div class="grid">
-    <div class="box"><div class="l">Prime</div><div class="v">${fcfa(c.montant)}</div></div>
-    <div class="box"><div class="l">Frais de soins médicaux</div><div class="v">${fcfa(c.capitalGaranti)}</div></div>
-  </div>`
-      : `<div class="box" style="margin-bottom:24px"><div class="l">Capital garanti</div><div class="v">${fcfa(c.capitalGaranti)}</div></div>`
-  }
-  <table>
-    <tr><td class="k">Assuré(e)</td><td>${c.prenom} ${c.nom}</td></tr>
-    <tr><td class="k">Téléphone</td><td>${c.telephone}</td></tr>
-    ${c.refFacture ? `<tr><td class="k">Réf. facture</td><td>${c.refFacture}</td></tr>` : ""}
-    <tr><td class="k">Date d'effet</td><td>${d(debut)}</td></tr>
-    <tr><td class="k">Date d'échéance</td><td>${d(fin)}</td></tr>
-    <tr><td class="k">Durée</td><td>${duree}</td></tr>
-  </table>
-  <div class="note">Ce contrat atteste de la souscription d'une assurance ${c.type === "accident" ? "accident" : "incendie"} d'une durée de ${duree},
-  prenant effet le ${d(debut)} et arrivant à échéance le ${d(fin)}. La garantie est acquise sous réserve du
-  paiement effectif de la prime. Document généré électroniquement par SIM Assurances CI.</div>
-  <div class="sign"><div>Fait à Abidjan, le ${d(new Date())}</div><div>Pour SIM Assurances CI</div></div>
-  <script>window.onload=function(){window.print();}</script>
-</body></html>`;
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.write(html);
-    w.document.close();
+  const debut = c.dateDebut ?? c.date;
+  const fin =
+    c.dateFin ??
+    new Date(
+      new Date(c.date).setMonth(
+        new Date(c.date).getMonth() + (c.type === "accident" ? 3 : 12)
+      )
+    ).toISOString();
+  if (c.type === "accident") {
+    genererContratAccident({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+    });
+  } else {
+    genererContratIncendie({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      refFacture: c.refFacture ?? null,
+      commune: c.commune ?? null,
+      quartier: c.quartier ?? null,
+      numeroMaison: c.numeroMaison ?? null,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+    });
   }
 }
 
@@ -112,11 +90,37 @@ export default function Contrats() {
     `/souscriptions/contrats?${params.toString()}`
   );
 
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((c) => ({
+        "Produit": c.type === "accident" ? "Accident" : "Incendie",
+        "N° police": c.numeroPolice,
+        "Prénom": c.prenom,
+        "Nom": c.nom,
+        "Téléphone": c.telephone,
+        "Partenaire": c.partenaire,
+        "Prime HT": c.primeHT ?? "",
+        "Prime TTC": c.primeTTC ?? c.montant,
+        "Taxes": c.taxes ?? "",
+        "FG": c.fg ?? "",
+        "Capital garanti": c.capitalGaranti,
+        "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
+        "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
+      })),
+      "contrats.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Contrats"
         subtitle="Polices émises : assurances incendie complètes et accident confirmées."
+        actions={
+          <button className="btn btn-danger-soft" onClick={exportXlsx}>
+            <FileSpreadsheet size={16} /> Export Excel
+          </button>
+        }
       />
 
       <Card
@@ -291,32 +295,47 @@ export default function Contrats() {
             </div>
 
             <div style={{ padding: "20px 22px" }}>
-              <div className="grid-2" style={{ gap: 12, marginBottom: 18 }}>
-                <div
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
-                    Prime
-                  </div>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>{fcfa(detail.montant)}</div>
-                </div>
-                <div
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                  }}
-                >
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
-                    Capital garanti
-                  </div>
+              <div className="muted" style={{ fontSize: 11, textTransform: "uppercase", marginBottom: 8, fontWeight: 700 }}>
+                Détails de la prime
+              </div>
+              <div className="grid-2" style={{ gap: 12, marginBottom: 12 }}>
+                <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime HT</div>
                   <div style={{ fontWeight: 800, fontSize: 18 }}>
-                    {fcfa(detail.capitalGaranti)}
+                    {detail.primeHT != null ? fcfa(detail.primeHT) : "—"}
                   </div>
+                </div>
+                <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime TTC</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>{fcfa(detail.primeTTC ?? detail.montant)}</div>
+                </div>
+                <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Taxes</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>
+                    {detail.taxes != null ? fcfa(detail.taxes) : "—"}
+                  </div>
+                </div>
+                <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>FG</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>
+                    {detail.fg != null ? fcfa(detail.fg) : "—"}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  padding: "12px 14px",
+                  marginBottom: 18,
+                }}
+              >
+                <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
+                  Capital garanti
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 18 }}>
+                  {fcfa(detail.capitalGaranti)}
                 </div>
               </div>
 

@@ -39,11 +39,12 @@ statsRouter.get(
       prisma.partenaire.count(),
       prisma.partenaire.count({ where: { statut: "actif" } }),
       prisma.souscriptionIncendie.count({ where: dateWhere }),
-      prisma.souscriptionAccident.count({ where: dateWhere }),
+      // Un accident n'est compté comme souscription qu'une fois le paiement confirmé.
+      prisma.souscriptionAccident.count({ where: { ...dateWhere, waveStatut: "confirme" } }),
       prisma.parametre.findUnique({ where: { id: 1 } }),
       prisma.souscriptionAccident.findMany({
         take: 5,
-        where: dateWhere,
+        where: { ...dateWhere, waveStatut: "confirme" },
         orderBy: { createdAt: "desc" },
         include: { partenaire: { select: { nomCommerce: true } } },
       }),
@@ -191,30 +192,31 @@ async function buildPerformance(opts: PerfOpts = {}) {
           ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, waveStatut: "confirme" }, _count: { _all: true } })
           : [],
         showAcc
-          ? prisma.souscriptionAccident.count({ where: accWhere })
+          ? prisma.souscriptionAccident.count({ where: { ...accWhere, waveStatut: "confirme" } })
           : 0,
       ]);
 
       let primesIncendie = 0, primesIncendieHT = 0, caIncendie = 0;
-      let incendieCount = 0, commission = 0;
+      let incendieCount = 0, commissionIncendie = 0;
       for (const g of incGroups) {
         const t = incMap.get(g.montantPrime);
         const n = g._count._all;
         primesIncendie += g.montantPrime * n;
         primesIncendieHT += (t?.primeHT ?? g.montantPrime) * n;
         caIncendie += (g.montantPrime - (t?.taxes ?? 0)) * n;
-        commission += (t?.commission ?? 0) * n;
+        commissionIncendie += (t?.commission ?? 0) * n;
         incendieCount += n;
       }
 
       let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
+      let commissionAccident = 0;
       for (const g of accGroups) {
         const t = accMap.get(g.montantPrime);
         const n = g._count._all;
         primesAccident += g.montantPrime * n;
         primesAccidentHT += (t?.primeHT ?? g.montantPrime) * n;
         caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
-        commission += (t?.commission ?? 0) * n;
+        commissionAccident += (t?.commission ?? 0) * n;
       }
 
       const ca = Math.round(caIncendie + caAccident);
@@ -231,7 +233,9 @@ async function buildPerformance(opts: PerfOpts = {}) {
         primesIncendie: Math.round(primesIncendie),
         primesIncendieHT: Math.round(primesIncendieHT),
         ca,
-        commission: Math.round(commission),
+        commission: Math.round(commissionIncendie + commissionAccident),
+        commissionIncendie: Math.round(commissionIncendie),
+        commissionAccident: Math.round(commissionAccident),
         commissionEncaissee: Math.round(encMap.get(p.id) ?? 0),
       };
     })

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2, RefreshCw } from "lucide-react";
+import { Download, Trash2, Eye, X, FileSpreadsheet } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -13,16 +13,15 @@ import {
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
+import { exportExcel } from "../../xlsx";
 import type { ClientAccident, Partenaire } from "../../types";
 
 export default function ClientsAccident() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN";
-  const [wave, setWave] = useState("");
   const [part, setPart] = useState("");
   const [toast, setToast] = useState("");
   const params = new URLSearchParams();
-  if (wave) params.set("waveStatut", wave);
   if (part) params.set("partenaireId", part);
 
   const { data, loading, error, reload } = useFetch<ClientAccident[]>(
@@ -42,24 +41,25 @@ export default function ClientsAccident() {
     }
   }
 
-  const [verifId, setVerifId] = useState("");
-  async function verifier(id: string) {
-    setVerifId(id);
-    try {
-      const r = await api.post<{ statut: string }>(
-        `/souscriptions/accident/${id}/verifier`,
-        {}
-      );
-      if (r.statut === "confirme") setToast("Paiement confirmé ✓");
-      else if (r.statut === "echoue") setToast("Paiement échoué côté Wave.");
-      else setToast("Toujours en attente — paiement non abouti chez Wave.");
-      setTimeout(() => setToast(""), 3500);
-      reload();
-    } catch (e) {
-      setToast((e as Error).message);
-    } finally {
-      setVerifId("");
-    }
+  const [detailFor, setDetailFor] = useState<ClientAccident | null>(null);
+
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((c) => ({
+        "Prénom": c.prenom,
+        "Nom": c.nom,
+        "Téléphone": c.telephone,
+        "Date de naissance": c.dateNaissance ? fmtDate(c.dateNaissance) : "",
+        "Partenaire": c.partenaireNom,
+        "Prime": c.montantPrime,
+        "Capital garanti": c.capitalGaranti,
+        "Paiement Wave": c.waveStatut,
+        "N° police": c.numeroPolice ?? "",
+        "Dossier": c.statutDossier,
+        "Date": fmtDate(c.createdAt),
+      })),
+      "clients_accident.xlsx"
+    );
   }
 
   return (
@@ -72,8 +72,8 @@ export default function ClientsAccident() {
             <button className="btn btn-ghost" onClick={() => downloadCsv("/souscriptions/accident/export.csv", "clients_accident.csv")}>
               <Download size={16} /> CSV
             </button>
-            <button className="btn btn-danger-soft" onClick={() => downloadCsv("/souscriptions/accident/export.csv", "clients_accident.csv")}>
-              <Download size={16} /> Excel
+            <button className="btn btn-danger-soft" onClick={exportXlsx}>
+              <FileSpreadsheet size={16} /> Export Excel
             </button>
           </>
         }
@@ -88,12 +88,6 @@ export default function ClientsAccident() {
               {partenaires?.map((p) => (
                 <option key={p.id} value={p.id}>{p.nomCommerce}</option>
               ))}
-            </select>
-            <select className="select" style={{ width: 170, height: 40 }} value={wave} onChange={(e) => setWave(e.target.value)}>
-              <option value="">Tous paiements</option>
-              <option value="confirme">Confirmé</option>
-              <option value="en_attente">En attente</option>
-              <option value="echoue">Échoué</option>
             </select>
           </div>
         }
@@ -141,18 +135,15 @@ export default function ClientsAccident() {
                     <td className="muted">{fmtDate(c.createdAt)}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
-                        {c.waveStatut === "en_attente" && (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ padding: "7px 10px" }}
-                            title="Vérifier le paiement Wave"
-                            disabled={verifId === c.id}
-                            onClick={() => verifier(c.id)}
-                          >
-                            <RefreshCw size={15} className={verifId === c.id ? "spin" : ""} />
-                          </button>
-                        )}
-                        {isSuper && (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Voir les détails"
+                          onClick={() => setDetailFor(c)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {isSuper && c.waveStatut !== "confirme" && (
                           <button
                             className="btn btn-ghost"
                             style={{ padding: "7px 10px" }}
@@ -174,6 +165,36 @@ export default function ClientsAccident() {
           </div>
         )}
       </Card>
+      {detailFor && (
+        <div
+          onClick={() => setDetailFor(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <strong style={{ fontSize: 17 }}>Détails du client</strong>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setDetailFor(null)}><X size={18} /></button>
+            </div>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{detailFor.prenom} {detailFor.nom}</strong></td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted">Date de naissance</td><td>{detailFor.dateNaissance ? fmtDate(detailFor.dateNaissance) : "—"}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
+                <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
+                <tr><td className="muted">Paiement Wave</td><td>{waveBadge(detailFor.waveStatut)}</td></tr>
+                <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice || "—"}</td></tr>
+                <tr>
+                  <td className="muted">Dossier</td>
+                  <td>{detailFor.statutDossier === "complet" ? <Badge kind="success">Complet</Badge> : <Badge kind="warning">Formulaire en attente</Badge>}</td>
+                </tr>
+                <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {toast && <div className="toast">{toast}</div>}
     </>
   );

@@ -14,6 +14,7 @@ export interface Partenaire {
   produitIncendie: boolean;
   produitAccident: boolean;
   statut: "actif" | "inactif";
+  email: string | null;
   createdAt: string;
   clientsIncendie: number;
   clientsAccident: number;
@@ -26,7 +27,7 @@ export interface ClientIncendie {
   telephone: string;
   nom?: string;
   prenom?: string;
-  email?: string;
+  email?: string | null;
   refFacture?: string;
   commune?: string;
   quartier?: string;

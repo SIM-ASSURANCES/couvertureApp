@@ -8,6 +8,8 @@ import {
   messageIncendie,
   lienFormulaire,
   newFormulaireToken,
+  initiateWavePayment,
+  messageRelancePaiement,
 } from "../services/notify.js";
 import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
@@ -35,9 +37,24 @@ souscriptionsRouter.get(
       dateFin: Date | null;
       date: Date;
       refFacture?: string | null;
+      commune?: string | null;
+      quartier?: string | null;
+      numeroMaison?: string | null;
+      dateNaissance?: Date | null;
+      primeHT?: number | null;
+      primeTTC: number;
+      taxes?: number | null;
+      fg?: number | null;
     };
 
     const out: Contrat[] = [];
+
+    const [tarifsInc, tarifsAcc] = await Promise.all([
+      prisma.tarifIncendie.findMany(),
+      prisma.tarifAccident.findMany(),
+    ]);
+    const incTarifMap = new Map(tarifsInc.map((t) => [t.prime, t]));
+    const accTarifMap = new Map(tarifsAcc.map((t) => [t.prime, t]));
 
     if (type !== "accident") {
       const inc = await prisma.souscriptionIncendie.findMany({
@@ -49,6 +66,7 @@ souscriptionsRouter.get(
         const debut = s.createdAt;
         const fin = new Date(debut);
         fin.setFullYear(fin.getFullYear() + 1);
+        const t = incTarifMap.get(s.montantPrime);
         out.push({
           id: s.id,
           type: "incendie",
@@ -63,6 +81,13 @@ souscriptionsRouter.get(
           dateFin: fin,
           date: s.createdAt,
           refFacture: s.refFacture ?? null,
+          commune: s.commune ?? null,
+          quartier: s.quartier ?? null,
+          numeroMaison: s.numeroMaison ?? null,
+          primeHT: t?.primeHT ?? null,
+          primeTTC: s.montantPrime,
+          taxes: t?.taxes ?? null,
+          fg: t?.fg ?? null,
         });
       }
     }
@@ -74,6 +99,7 @@ souscriptionsRouter.get(
         orderBy: { createdAt: "desc" },
       });
       for (const s of acc) {
+        const t = accTarifMap.get(s.montantPrime);
         out.push({
           id: s.id,
           type: "accident",
@@ -87,6 +113,11 @@ souscriptionsRouter.get(
           dateDebut: s.dateDebut,
           dateFin: s.dateFin,
           date: s.createdAt,
+          dateNaissance: s.dateNaissance,
+          primeHT: t?.primeHT ?? null,
+          primeTTC: s.montantPrime,
+          taxes: t?.taxes ?? null,
+          fg: t?.fg ?? null,
         });
       }
     }
@@ -155,21 +186,23 @@ souscriptionsRouter.get(
   })
 );
 
+/**
+ * Liste des clients Accident. Un accident n'est considéré comme une souscription
+ * réelle qu'une fois le paiement Wave confirmé : cette route ne renvoie donc que
+ * les souscriptions confirmées, sauf si `attente=1` est passé (utilisé par la
+ * page dédiée « Paiement en attente », qui liste les paiements en attente ET échoués).
+ */
 souscriptionsRouter.get(
   "/accident",
   asyncHandler(async (req, res) => {
-    const { waveStatut, partenaireId } = req.query as {
-      waveStatut?: string;
+    const { attente, partenaireId } = req.query as {
+      attente?: string;
       partenaireId?: string;
     };
     const rows = await prisma.souscriptionAccident.findMany({
       where: {
         waveStatut:
-          waveStatut === "en_attente" ||
-          waveStatut === "confirme" ||
-          waveStatut === "echoue"
-            ? waveStatut
-            : undefined,
+          attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
         partenaireId: partenaireId || undefined,
       },
       include: { partenaire: { select: { nomCommerce: true } } },
@@ -178,6 +211,48 @@ souscriptionsRouter.get(
     res.json(
       rows.map((r) => ({ ...r, partenaireNom: r.partenaire.nomCommerce }))
     );
+  })
+);
+
+/**
+ * Relance un paiement Wave en attente : régénère un lien de paiement avec le
+ * montant exact de la prime et l'envoie par SMS au souscripteur.
+ */
+souscriptionsRouter.post(
+  "/accident/:id/relance-paiement",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const s = await prisma.souscriptionAccident.findUnique({
+      where: { id: req.params.id },
+      include: { partenaire: { select: { qrAccidentToken: true } } },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.waveStatut === "confirme") {
+      return res.status(400).json({ error: "Cette souscription est déjà payée." });
+    }
+    if (!process.env.WAVE_API_KEY) {
+      return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
+    }
+    if (!s.partenaire.qrAccidentToken) {
+      return res.status(400).json({ error: "QR Accident introuvable pour ce partenaire." });
+    }
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/accident/${s.partenaire.qrAccidentToken}?paid=${s.id}`;
+    const errorUrl = `${appUrl}/s/accident/${s.partenaire.qrAccidentToken}?paiement=echec`;
+
+    const wave = await initiateWavePayment(s.montantPrime, s.id, successUrl, errorUrl);
+    await prisma.souscriptionAccident.update({
+      where: { id: s.id },
+      data: { waveTransactionId: wave.transactionId, waveStatut: "en_attente" },
+    });
+    await sendSMS(s.telephone, messageRelancePaiement(s.montantPrime, wave.checkoutUrl));
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "relance",
+      objetType: "souscription_accident",
+      objetId: s.id,
+    });
+    res.json({ ok: true });
   })
 );
 
@@ -191,14 +266,9 @@ souscriptionsRouter.patch(
       quartier?: string;
       numeroMaison?: string;
     };
-    if (
-      !refFacture?.trim() ||
-      !commune?.trim() ||
-      !quartier?.trim() ||
-      !numeroMaison?.trim()
-    )
+    if (!refFacture?.trim() || !commune?.trim() || !quartier?.trim())
       return res.status(400).json({
-        error: "Réf.facture, commune, quartier et numéro de maison sont obligatoires.",
+        error: "Réf.facture, commune et quartier sont obligatoires.",
       });
 
     const s = await prisma.souscriptionIncendie.findUnique({
@@ -223,7 +293,7 @@ souscriptionsRouter.patch(
         refFacture: refFacture.trim(),
         commune: commune.trim(),
         quartier: quartier.trim(),
-        numeroMaison: numeroMaison.trim(),
+        numeroMaison: numeroMaison?.trim() || s.numeroMaison,
         statut: "complet",
         commissionCalculee: tarif?.commission ?? s.commissionCalculee,
       },
@@ -310,6 +380,9 @@ souscriptionsRouter.delete(
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionIncendie.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.statut === "complet") {
+      return res.status(409).json({ error: "Impossible de supprimer un contrat émis." });
+    }
     await prisma.souscriptionIncendie.delete({ where: { id: req.params.id } });
     await logAction({
       adminId: req.user!.sub,
@@ -327,6 +400,9 @@ souscriptionsRouter.delete(
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.waveStatut === "confirme") {
+      return res.status(409).json({ error: "Impossible de supprimer un contrat émis." });
+    }
     await prisma.souscriptionAccident.delete({ where: { id: req.params.id } });
     await logAction({
       adminId: req.user!.sub,

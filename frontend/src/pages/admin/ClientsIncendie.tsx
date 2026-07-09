@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -12,6 +12,7 @@ import {
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
+import { exportExcel } from "../../xlsx";
 import type { ClientIncendie, Partenaire } from "../../types";
 
 export default function ClientsIncendie() {
@@ -29,6 +30,7 @@ export default function ClientsIncendie() {
   );
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires");
 
+  const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
   const [factureFor, setFactureFor] = useState<ClientIncendie | null>(null);
   const [factureVal, setFactureVal] = useState("");
   const [communeVal, setCommuneVal] = useState("");
@@ -41,8 +43,7 @@ export default function ClientsIncendie() {
       !factureFor ||
       !factureVal.trim() ||
       !communeVal.trim() ||
-      !quartierVal.trim() ||
-      !numeroMaisonVal.trim()
+      !quartierVal.trim()
     )
       return;
     setSavingFacture(true);
@@ -84,6 +85,27 @@ export default function ClientsIncendie() {
     }
   }
 
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((c) => ({
+        "Téléphone": c.telephone,
+        "Prénom": c.prenom ?? "",
+        "Nom": c.nom ?? "",
+        "Partenaire": c.partenaireNom,
+        "Prime": c.montantPrime,
+        "Capital garanti": c.capitalGaranti,
+        "Réf. facture": c.refFacture ?? "",
+        "Commune": c.commune ?? "",
+        "Quartier": c.quartier ?? "",
+        "N° de maison": c.numeroMaison ?? "",
+        "Statut": c.statut,
+        "Relances SMS": c.relanceCount ?? 0,
+        "Date": fmtDate(c.createdAt),
+      })),
+      "clients_incendie.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
@@ -97,11 +119,8 @@ export default function ClientsIncendie() {
             >
               <Download size={16} /> CSV
             </button>
-            <button
-              className="btn btn-danger-soft"
-              onClick={() => downloadCsv("/souscriptions/incendie/export.csv", "clients_incendie.csv")}
-            >
-              <Download size={16} /> Excel
+            <button className="btn btn-danger-soft" onClick={exportXlsx}>
+              <FileSpreadsheet size={16} /> Export Excel
             </button>
           </>
         }
@@ -167,6 +186,14 @@ export default function ClientsIncendie() {
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}
+                          title="Voir les détails"
+                          onClick={() => setDetailFor(c)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
                           title="Saisir / modifier la réf.facture"
                           onClick={() => {
                             setFactureFor(c);
@@ -214,7 +241,7 @@ export default function ClientsIncendie() {
                             )}
                           </button>
                         )}
-                        {isSuper && (
+                        {isSuper && c.statut !== "complet" && (
                           <button
                             className="btn btn-ghost"
                             style={{ padding: "7px 10px" }}
@@ -236,6 +263,36 @@ export default function ClientsIncendie() {
           </div>
         )}
       </Card>
+      {detailFor && (
+        <div
+          onClick={() => setDetailFor(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <strong style={{ fontSize: 17 }}>Détails du client</strong>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setDetailFor(null)}><X size={18} /></button>
+            </div>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted">Email</td><td>{detailFor.email || "—"}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
+                <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
+                <tr><td className="muted">Réf. facture</td><td>{detailFor.refFacture || "—"}</td></tr>
+                <tr><td className="muted">Commune</td><td>{detailFor.commune || "—"}</td></tr>
+                <tr><td className="muted">Quartier</td><td>{detailFor.quartier || "—"}</td></tr>
+                <tr><td className="muted">N° de maison</td><td>{detailFor.numeroMaison || "—"}</td></tr>
+                <tr><td className="muted">Statut</td><td>{statutIncendieBadge(detailFor.statut)}</td></tr>
+                <tr><td className="muted">Relances SMS</td><td>{detailFor.relanceCount ?? 0}</td></tr>
+                <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {factureFor && (
         <div
           onClick={() => setFactureFor(null)}
@@ -280,7 +337,7 @@ export default function ClientsIncendie() {
               />
             </div>
             <div className="field">
-              <label className="label">N° de maison</label>
+              <label className="label">N° de maison (optionnel)</label>
               <input
                 className="input"
                 value={numeroMaisonVal}
@@ -300,8 +357,7 @@ export default function ClientsIncendie() {
                   savingFacture ||
                   !factureVal.trim() ||
                   !communeVal.trim() ||
-                  !quartierVal.trim() ||
-                  !numeroMaisonVal.trim()
+                  !quartierVal.trim()
                 }
                 onClick={saveFacture}
               >

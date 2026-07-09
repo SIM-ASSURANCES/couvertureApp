@@ -1,5 +1,7 @@
+import { FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
+import { exportExcel } from "../../xlsx";
 
 interface Entry {
   id: string;
@@ -26,11 +28,30 @@ function actionBadge(t: string) {
 export default function Journal() {
   const { data, loading, error } = useFetch<Entry[]>("/journal");
 
+  function exportXlsx() {
+    exportExcel(
+      (data ?? []).map((j) => ({
+        "Date & heure": fmtDate(j.date),
+        "Administrateur": j.admin,
+        "Action": j.typeAction,
+        "Objet": j.objet,
+        "Identifiant": j.identifiant,
+        "Adresse IP": j.ip || "",
+      })),
+      "journal_activite.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader
         title="Journal d'activité"
         subtitle="Traçabilité de toutes les actions des administrateurs."
+        actions={
+          <button className="btn btn-danger-soft" onClick={exportXlsx}>
+            <FileSpreadsheet size={16} /> Export Excel
+          </button>
+        }
       />
 
       <Card title={data ? `${data.length} entrées récentes` : "Journal"} noBody>

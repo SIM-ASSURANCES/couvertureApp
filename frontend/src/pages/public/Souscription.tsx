@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { API_BASE } from "../../api";
+import { genererContratAccident } from "../../contract";
 const BASE = API_BASE;
 
 interface QrInfo {
@@ -161,6 +162,8 @@ export default function Souscription() {
   const [telephoneInc, setTelephoneInc] = useState(PHONE_PREFIX);
   const [prenomInc, setPrenomInc] = useState("");
   const [nomInc, setNomInc] = useState("");
+  const [communeInc, setCommuneInc] = useState("");
+  const [quartierInc, setQuartierInc] = useState("");
 
   // Résultat souscription
   const [result, setResult] = useState<{
@@ -172,6 +175,7 @@ export default function Souscription() {
     capitalGaranti?: number;
     dateDebut?: string;
     dateFin?: string;
+    dateNaissance?: string;
     nom?: string;
     prenom?: string;
     telephone?: string;
@@ -228,6 +232,7 @@ export default function Souscription() {
             capitalGaranti: data.capitalGaranti,
             dateDebut: data.dateDebut,
             dateFin: data.dateFin,
+            dateNaissance: data.dateNaissance,
             nom: data.nom,
             prenom: data.prenom,
             telephone: data.telephone,
@@ -336,6 +341,8 @@ export default function Souscription() {
             telephone: telephoneInc,
             nom: nomInc,
             prenom: prenomInc,
+            commune: communeInc,
+            quartier: quartierInc,
           }),
         });
         const data = await res.json();
@@ -353,66 +360,20 @@ export default function Souscription() {
 
   function telechargerContrat() {
     if (!result || !qrInfo) return;
-    // Données de l'assuré : priorité aux champs du result (retour depuis Wave), fallback état local
-    const _prenom = result.prenom ?? prenom;
-    const _nom = result.nom ?? nom;
-    const _telephone = result.telephone ?? telephone;
-    const _partenaire = result.partenaire ?? qrInfo.partenaire.nomCommerce;
-    const debut = result.dateDebut ? new Date(result.dateDebut) : new Date();
-    const fin = result.dateFin
-      ? new Date(result.dateFin)
-      : new Date(new Date().setMonth(new Date().getMonth() + 3));
-    const d = (x: Date) => x.toLocaleDateString("fr-FR");
-    const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<title>Contrat ${result.numeroPolice ?? ""}</title>
-<style>
-  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
-  body{margin:0;color:#0f1b2d;padding:40px;}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:24px;}
-  .brand img{height:56px;display:block;}
-  .pol{text-align:right;font-size:13px;color:#5b6b80;}
-  .pol b{display:block;font-size:18px;color:#0f1b2d;letter-spacing:1px;}
-  h1{font-size:20px;margin:0 0 6px;}
-  .sub{color:#5b6b80;font-size:13px;margin-bottom:24px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:20px;}
-  td{padding:10px 12px;border:1px solid #e3e9f1;font-size:14px;}
-  td.k{background:#f5f8fc;font-weight:600;width:42%;color:#5b6b80;}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:24px;}
-  .box{border:1px solid #e3e9f1;border-radius:10px;padding:14px 16px;}
-  .box .l{font-size:11px;color:#5b6b80;text-transform:uppercase;letter-spacing:.05em;}
-  .box .v{font-size:17px;font-weight:800;margin-top:4px;}
-  .note{font-size:12px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:16px;margin-top:24px;}
-  .sign{display:flex;justify-content:space-between;margin-top:48px;font-size:13px;color:#5b6b80;}
-  @media print{body{padding:24px;}}
-</style></head><body>
-  <div class="head">
-    <div class="brand"><img src="${window.location.origin}/logo.webp" alt="SIM Assurances" /></div>
-    <div class="pol">N° de police<b>${result.numeroPolice ?? "—"}</b></div>
-  </div>
-  <h1>Contrat d'Assurance Accident</h1>
-  <div class="sub">Distribué via ${_partenaire}</div>
-  <div class="grid">
-    <div class="box"><div class="l">Prime payée</div><div class="v">${fcfa(result.montant ?? 0)}</div></div>
-    <div class="box"><div class="l">Frais de soins médicaux</div><div class="v">${fcfa(result.capitalGaranti ?? 0)}</div></div>
-  </div>
-  <table>
-    <tr><td class="k">Assuré(e)</td><td>${_prenom} ${_nom}</td></tr>
-    <tr><td class="k">Téléphone</td><td>${_telephone}</td></tr>
-    <tr><td class="k">Date d'effet</td><td>${d(debut)}</td></tr>
-    <tr><td class="k">Date d'échéance</td><td>${d(fin)}</td></tr>
-    <tr><td class="k">Durée</td><td>3 mois</td></tr>
-  </table>
-  <div class="note">Ce contrat atteste de la souscription d'une assurance accident d'une durée de trois (03) mois,
-  prenant effet le ${d(debut)} et arrivant à échéance le ${d(fin)}. La garantie est acquise sous réserve du
-  paiement effectif de la prime. Document généré électroniquement par SIM Assurances CI.</div>
-  <div class="sign"><div>Fait à Abidjan, le ${d(new Date())}</div><div>Pour SIM Assurances CI</div></div>
-  <script>window.onload=function(){window.print();}</script>
-</body></html>`;
-    const w = window.open("", "_blank");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-    }
+    genererContratAccident({
+      numeroPolice: result.numeroPolice ?? "",
+      partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+      dateDebut: result.dateDebut ?? new Date().toISOString(),
+      dateFin:
+        result.dateFin ??
+        new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+      dateNaissance: result.dateNaissance ?? null,
+      nom: result.nom ?? nom,
+      prenom: result.prenom ?? prenom,
+      telephone: result.telephone ?? telephone,
+      montant: result.montant ?? 0,
+      capitalGaranti: result.capitalGaranti ?? 0,
+    });
   }
 
   return (
@@ -594,6 +555,22 @@ export default function Souscription() {
                       value={nomInc}
                       onChange={(e) => setNomInc(e.target.value)}
                       placeholder="Votre nom"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Commune">
+                    <input
+                      value={communeInc}
+                      onChange={(e) => setCommuneInc(e.target.value)}
+                      placeholder="Ex. Cocody"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Quartier">
+                    <input
+                      value={quartierInc}
+                      onChange={(e) => setQuartierInc(e.target.value)}
+                      placeholder="Ex. Angré"
                       style={inputStyle}
                     />
                   </FieldRow>

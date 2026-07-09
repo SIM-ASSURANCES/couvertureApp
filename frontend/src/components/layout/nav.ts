@@ -10,6 +10,7 @@ import {
   QrCode,
   Wallet,
   FileText,
+  Clock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,6 +37,7 @@ export const adminNav: NavGroup[] = [
     items: [
       { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
       { to: "/admin/accident", label: "Clients Accident", icon: ShieldCheck },
+      { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
       { to: "/admin/contrats", label: "Contrats", icon: FileText },
     ],
   },
