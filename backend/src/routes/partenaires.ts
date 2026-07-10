@@ -38,9 +38,15 @@ const baseSchema = z.object({
   telephone: z.string().min(1),
   localisation: z.string().min(1),
   typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]),
-  produit: z.enum(["incendie", "accident"]),
+  produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto"]),
   email: z.string().min(1, "Email requis").email("Email invalide"),
 });
+
+const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
+type ProduitRelax = (typeof PRODUITS_RELAX)[number];
+function isProduitRelax(p: string): p is ProduitRelax {
+  return (PRODUITS_RELAX as readonly string[]).includes(p);
+}
 
 const createSchema = baseSchema;
 
@@ -49,21 +55,24 @@ const patchSchema = baseSchema.partial().extend({
 });
 
 async function withCounts(id: string) {
-  const [incendie, accident] = await Promise.all([
+  const [incendie, accident, relax] = await Promise.all([
     prisma.souscriptionIncendie.count({ where: { partenaireId: id } }),
     // Un accident n'est compté comme client qu'une fois le paiement Wave confirmé.
     prisma.souscriptionAccident.count({ where: { partenaireId: id, waveStatut: "confirme" } }),
+    // Produits génériques (RelaxMoto/RelaxAuto, tous à paiement Wave)
+    prisma.souscription.count({ where: { partenaireId: id, waveStatut: "confirme" } }),
   ]);
-  return { clientsIncendie: incendie, clientsAccident: accident };
+  return { clientsIncendie: incendie, clientsAccident: accident, clientsRelax: relax };
 }
 
 partenairesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { q, statut } = req.query as { q?: string; statut?: string };
+    const { q, statut, branche } = req.query as { q?: string; statut?: string; branche?: string };
     const list = await prisma.partenaire.findMany({
       where: {
         statut: statut === "actif" || statut === "inactif" ? statut : undefined,
+        branche: branche === "INCENDIE_ACCIDENT" || branche === "RELAX" ? branche : undefined,
         OR: q
           ? [
               { nomCommerce: { contains: q, mode: "insensitive" } },
@@ -74,7 +83,7 @@ partenairesRouter.get(
       },
       orderBy: { createdAt: "desc" },
       include: {
-        _count: { select: { incendie: true, accident: true } },
+        _count: { select: { incendie: true, accident: true, souscriptionsGen: true } },
       },
     });
     res.json(
@@ -83,6 +92,7 @@ partenairesRouter.get(
         passwordHash: undefined,
         clientsIncendie: p._count.incendie,
         clientsAccident: p._count.accident,
+        clientsRelax: p._count.souscriptionsGen,
       }))
     );
   })
@@ -150,6 +160,7 @@ partenairesRouter.post(
   "/",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createSchema.parse(req.body);
+    const relax = isProduitRelax(data.produit);
     const isIncendie = data.produit === "incendie";
 
     const motDePasseProvisoire = data.email ? genMotDePasseProvisoire() : null;
@@ -161,17 +172,32 @@ partenairesRouter.post(
         telephone: data.telephone,
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
-        produitIncendie: isIncendie,
-        produitAccident: !isIncendie,
+        branche: relax ? "RELAX" : "INCENDIE_ACCIDENT",
+        produitIncendie: !relax && isIncendie,
+        produitAccident: !relax && !isIncendie,
         email: data.email || null,
         passwordHash: motDePasseProvisoire
           ? await bcrypt.hash(motDePasseProvisoire, 10)
           : null,
-        qrIncendie1000Token: isIncendie ? newQrToken("i1k") : null,
-        qrIncendie2000Token: isIncendie ? newQrToken("i2k") : null,
-        qrAccidentToken: !isIncendie ? newQrToken("acc") : null,
+        qrIncendie1000Token: !relax && isIncendie ? newQrToken("i1k") : null,
+        qrIncendie2000Token: !relax && isIncendie ? newQrToken("i2k") : null,
+        qrAccidentToken: !relax && !isIncendie ? newQrToken("acc") : null,
       },
     });
+
+    if (relax) {
+      const produit = await prisma.produit.findUnique({ where: { code: data.produit } });
+      if (produit) {
+        await prisma.qrCode.create({
+          data: {
+            partenaireId: created.id,
+            produitId: produit.id,
+            token: newQrToken(data.produit === "relaxmoto" ? "rmo" : "rau"),
+          },
+        });
+      }
+    }
+
     await logAction({
       adminId: req.user!.sub,
       typeAction: "creation",
@@ -201,6 +227,7 @@ partenairesRouter.patch(
     });
     if (!before) return res.status(404).json({ error: "Introuvable" });
     const data = patchSchema.parse(req.body);
+    const relax = data.produit != null ? isProduitRelax(data.produit) : before.branche === "RELAX";
 
     const isIncendie = data.produit != null
       ? data.produit === "incendie"
@@ -214,19 +241,20 @@ partenairesRouter.patch(
         telephone: data.telephone,
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
-        produitIncendie: data.produit != null ? isIncendie : undefined,
-        produitAccident: data.produit != null ? !isIncendie : undefined,
+        branche: data.produit != null ? (relax ? "RELAX" : "INCENDIE_ACCIDENT") : undefined,
+        produitIncendie: data.produit != null ? !relax && isIncendie : undefined,
+        produitAccident: data.produit != null ? !relax && !isIncendie : undefined,
         email: data.email,
         qrIncendie1000Token:
-          data.produit != null && isIncendie && !before.qrIncendie1000Token
+          data.produit != null && !relax && isIncendie && !before.qrIncendie1000Token
             ? newQrToken("i1k")
             : undefined,
         qrIncendie2000Token:
-          data.produit != null && isIncendie && !before.qrIncendie2000Token
+          data.produit != null && !relax && isIncendie && !before.qrIncendie2000Token
             ? newQrToken("i2k")
             : undefined,
         qrAccidentToken:
-          data.produit != null && !isIncendie && !before.qrAccidentToken
+          data.produit != null && !relax && !isIncendie && !before.qrAccidentToken
             ? newQrToken("acc")
             : undefined,
         passwordHash: data.motDePasse
@@ -234,6 +262,25 @@ partenairesRouter.patch(
           : undefined,
       },
     });
+
+    if (data.produit != null && relax) {
+      const produit = await prisma.produit.findUnique({ where: { code: data.produit } });
+      if (produit) {
+        const existing = await prisma.qrCode.findFirst({
+          where: { partenaireId: updated.id, produitId: produit.id, libelleVariante: null },
+        });
+        if (!existing) {
+          await prisma.qrCode.create({
+            data: {
+              partenaireId: updated.id,
+              produitId: produit.id,
+              token: newQrToken(data.produit === "relaxmoto" ? "rmo" : "rau"),
+            },
+          });
+        }
+      }
+    }
+
     await logAction({
       adminId: req.user!.sub,
       typeAction: "modification",
@@ -276,7 +323,7 @@ partenairesRouter.delete(
   requireSuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const counts = await withCounts(req.params.id);
-    if (counts.clientsIncendie + counts.clientsAccident > 0) {
+    if (counts.clientsIncendie + counts.clientsAccident + counts.clientsRelax > 0) {
       return res
         .status(409)
         .json({ error: "Impossible : des clients sont liés à ce partenaire" });
@@ -295,7 +342,19 @@ partenairesRouter.delete(
 partenairesRouter.get(
   "/:id/qr/:produit",
   asyncHandler(async (req, res) => {
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident" | ProduitRelax;
+
+    if (isProduitRelax(produit)) {
+      const prod = await prisma.produit.findUnique({ where: { code: produit } });
+      if (!prod) return res.status(404).json({ error: "Produit inconnu" });
+      const qr = await prisma.qrCode.findFirst({
+        where: { partenaireId: req.params.id, produitId: prod.id, libelleVariante: null },
+      });
+      if (!qr) return res.status(404).json({ error: "QR non disponible pour ce produit" });
+      const dataUrl = await qrDataUrl(produit, qr.token, prod.couleurQr);
+      return res.json({ produit, token: qr.token, dataUrl });
+    }
+
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
     const token =
@@ -305,7 +364,8 @@ partenairesRouter.get(
     if (!token)
       return res.status(404).json({ error: "QR non disponible pour ce produit" });
     const qrProduit: "incendie" | "accident" = produit === "accident" ? "accident" : "incendie";
-    const dataUrl = await qrDataUrl(qrProduit, token);
+    const couleur = qrProduit === "incendie" ? "#b45309" : "#004b9c";
+    const dataUrl = await qrDataUrl(qrProduit, token, couleur);
     res.json({ produit, token, dataUrl });
   })
 );

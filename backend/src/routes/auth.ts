@@ -1,11 +1,21 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { signToken } from "../auth.js";
+import { signToken, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 
 export const authRouter = Router();
+
+/**
+ * Branches effectives d'un admin : un SUPER_ADMIN a toujours accès aux deux,
+ * quel que soit le contenu stocké en base.
+ */
+function branchesEffectives(admin: { role: string; branches: string[] }): BrancheAcces[] {
+  return admin.role === "SUPER_ADMIN"
+    ? ["INCENDIE_ACCIDENT", "RELAX"]
+    : (admin.branches as BrancheAcces[]);
+}
 
 authRouter.post(
   "/admin/login",
@@ -21,11 +31,13 @@ authRouter.post(
       objetType: "admin",
       objetId: admin.id,
     });
+    const branches = branchesEffectives(admin);
     const token = signToken({
       sub: admin.id,
       type: "admin",
       role: admin.role,
       nom: admin.nom,
+      branches,
     });
     res.json({
       token,
@@ -34,6 +46,7 @@ authRouter.post(
         nom: admin.nom,
         email: admin.email,
         role: admin.role,
+        branches,
         type: "admin",
       },
     });
@@ -56,10 +69,11 @@ authRouter.post(
         objetType: "admin",
         objetId: admin.id,
       });
-      const token = signToken({ sub: admin.id, type: "admin", role: admin.role, nom: admin.nom });
+      const branches = branchesEffectives(admin);
+      const token = signToken({ sub: admin.id, type: "admin", role: admin.role, nom: admin.nom, branches });
       return res.json({
         token,
-        user: { id: admin.id, nom: admin.nom, email: admin.email, role: admin.role, type: "admin" },
+        user: { id: admin.id, nom: admin.nom, email: admin.email, role: admin.role, branches, type: "admin" },
       });
     }
 

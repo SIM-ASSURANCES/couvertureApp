@@ -9,14 +9,19 @@ import { logAction } from "../journal.js";
 export const adminsRouter = Router();
 adminsRouter.use(requireAuth("admin"));
 
+/** Branches effectives : un SUPER_ADMIN a toujours accès aux deux, quel que soit le stockage en base. */
+function branchesEffectives(a: { role: string; branches: string[] }) {
+  return a.role === "SUPER_ADMIN" ? ["INCENDIE_ACCIDENT", "RELAX"] : a.branches;
+}
+
 adminsRouter.get(
   "/",
   asyncHandler(async (_req, res) => {
     const admins = await prisma.admin.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, nom: true, email: true, role: true, createdAt: true },
+      select: { id: true, nom: true, email: true, role: true, branches: true, createdAt: true },
     });
-    res.json(admins);
+    res.json(admins.map((a) => ({ ...a, branches: branchesEffectives(a) })));
   })
 );
 
@@ -26,10 +31,10 @@ adminsRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.admin.findUnique({
       where: { id: req.user!.sub },
-      select: { id: true, nom: true, email: true, role: true, createdAt: true },
+      select: { id: true, nom: true, email: true, role: true, branches: true, createdAt: true },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
-    res.json(a);
+    res.json({ ...a, branches: branchesEffectives(a) });
   })
 );
 
@@ -63,21 +68,29 @@ const createSchema = z.object({
   email: z.string().email(),
   motDePasse: z.string().min(6),
   role: z.enum(["ADMIN", "SUPER_ADMIN"]).default("ADMIN"),
-});
+  branches: z.array(z.enum(["INCENDIE_ACCIDENT", "RELAX"])).default([]),
+}).refine(
+  (data) => data.role === "SUPER_ADMIN" || data.branches.length > 0,
+  { message: "Au moins une branche doit être assignée à un administrateur.", path: ["branches"] }
+);
 
 adminsRouter.post(
   "/",
   requireSuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createSchema.parse(req.body);
+    // Un SUPER_ADMIN reçoit toujours les deux branches automatiquement.
+    const branches: ("INCENDIE_ACCIDENT" | "RELAX")[] =
+      data.role === "SUPER_ADMIN" ? ["INCENDIE_ACCIDENT", "RELAX"] : data.branches;
     const created = await prisma.admin.create({
       data: {
         nom: data.nom,
         email: data.email,
         role: data.role,
+        branches,
         passwordHash: await bcrypt.hash(data.motDePasse, 10),
       },
-      select: { id: true, nom: true, email: true, role: true, createdAt: true },
+      select: { id: true, nom: true, email: true, role: true, branches: true, createdAt: true },
     });
     await logAction({
       adminId: req.user!.sub,

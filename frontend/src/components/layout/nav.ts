@@ -11,6 +11,9 @@ import {
   Wallet,
   FileText,
   Clock,
+  Bike,
+  Car,
+  IdCard,
   type LucideIcon,
 } from "lucide-react";
 
@@ -23,38 +26,85 @@ export interface NavGroup {
   section: string;
   items: NavItem[];
 }
+/** Une branche regroupe plusieurs NavGroup sous un même en-tête cliquable/repliable. */
+export interface NavBranch {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  homeTo: string;
+  groups: NavGroup[];
+}
+export type AdminNavEntry = NavGroup | NavBranch;
 
-export const adminNav: NavGroup[] = [
+export function isNavBranch(entry: AdminNavEntry): entry is NavBranch {
+  return "groups" in entry;
+}
+
+export const adminNav: AdminNavEntry[] = [
   {
-    section: "Gestion",
-    items: [
-      { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
-      { to: "/admin/partenaires", label: "Partenaires", icon: Store },
-    ],
-  },
-  {
-    section: "Souscriptions",
-    items: [
-      { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
-      { to: "/admin/accident", label: "Clients Accident", icon: ShieldCheck },
-      { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
-      { to: "/admin/contrats", label: "Contrats", icon: FileText },
-    ],
-  },
-  {
-    section: "Pilotage",
-    items: [
+    id: "incendie-accident",
+    label: "Assurances Accident et Incendie",
+    icon: Flame,
+    homeTo: "/admin",
+    groups: [
       {
-        to: "/admin/performance",
-        label: "Performance & Commissions",
-        icon: TrendingUp,
+        section: "Gestion",
+        items: [
+          { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/admin/partenaires", label: "Partenaires", icon: Store },
+        ],
       },
-      { to: "/admin/journal", label: "Journal d'activité", icon: ScrollText },
+      {
+        section: "Souscriptions",
+        items: [
+          { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
+          { to: "/admin/accident", label: "Clients Accident", icon: ShieldCheck },
+          { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
+          { to: "/admin/contrats", label: "Contrats", icon: FileText },
+        ],
+      },
+      {
+        section: "Pilotage",
+        items: [
+          { to: "/admin/performance", label: "Performance & Commissions", icon: TrendingUp },
+        ],
+      },
     ],
   },
   {
-    section: "Administration",
+    id: "relax",
+    label: "Assurances RelaxMoto et RelaxAuto",
+    icon: Bike,
+    homeTo: "/admin/relax",
+    groups: [
+      {
+        section: "Gestion",
+        items: [
+          { to: "/admin/relax", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/admin/relax/partenaires", label: "Partenaires", icon: Store },
+        ],
+      },
+      {
+        section: "Souscriptions",
+        items: [
+          { to: "/admin/relax/moto", label: "Clients RelaxMoto", icon: Bike },
+          { to: "/admin/relax/auto", label: "Clients RelaxAuto", icon: Car },
+          { to: "/admin/relax/paiements-en-attente", label: "Paiement en attente", icon: Clock },
+          { to: "/admin/relax/contrats", label: "Contrats & Cartes", icon: IdCard },
+        ],
+      },
+      {
+        section: "Pilotage",
+        items: [
+          { to: "/admin/relax/performance", label: "Performance & Commissions", icon: TrendingUp },
+        ],
+      },
+    ],
+  },
+  {
+    section: "Administration générale",
     items: [
+      { to: "/admin/journal", label: "Journal d'activité", icon: ScrollText },
       { to: "/admin/administrateurs", label: "Administrateurs", icon: Users },
       { to: "/admin/parametres", label: "Paramètres", icon: Settings },
     ],

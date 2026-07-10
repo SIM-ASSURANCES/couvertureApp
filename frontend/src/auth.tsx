@@ -8,6 +8,7 @@ import { Navigate } from "react-router-dom";
 import { api, getUser } from "./api";
 
 type Role = "ADMIN" | "SUPER_ADMIN";
+export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX";
 export interface SessionUser {
   id: string;
   type: "admin" | "partenaire";
@@ -15,6 +16,7 @@ export interface SessionUser {
   email?: string;
   commerce?: string;
   role?: Role;
+  branches?: BrancheAcces[];
   produit?: "incendie" | "accident";
 }
 

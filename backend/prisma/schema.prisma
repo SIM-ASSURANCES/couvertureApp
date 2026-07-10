@@ -56,12 +56,69 @@ enum StatutDemande {
   rejetee
 }
 
+enum Branche {
+  INCENDIE_ACCIDENT
+  RELAX
+}
+
+enum TypePaiement {
+  FACTURE
+  WAVE
+}
+
+enum StatutSouscription {
+  en_cours
+  complet
+  expire
+}
+
+enum CycleFacturation {
+  hebdo5semaines
+  mensuel
+  annuel
+}
+
+enum StatutAbonnement {
+  actif
+  suspendu
+  expire
+  resilie
+}
+
+enum StatutEcheance {
+  en_attente
+  paye
+  echoue
+}
+
+enum TypeDocument {
+  CNI
+  Permis
+}
+
+enum StatutValidationDocument {
+  en_attente
+  valide
+  rejete
+}
+
+enum StatutCarte {
+  generee
+  envoyee
+  activee
+}
+
 model Admin {
   id           String            @id @default(uuid())
   nom          String
   email        String            @unique
   passwordHash String
   role         Role              @default(ADMIN)
+  // Branches auxquelles l'admin a accès (Assurances Incendie/Accident et/ou Relax).
+  // Défaut = les deux, pour ne pas retirer l'accès aux comptes déjà existants
+  // au moment de l'introduction de ce champ. Un SUPER_ADMIN a toujours accès
+  // aux deux branches, quel que soit le contenu de cette colonne (voir auth.ts).
+  branches     Branche[]         @default([INCENDIE_ACCIDENT, RELAX])
   createdAt    DateTime          @default(now())
   journal      JournalActivite[]
 }
@@ -87,6 +144,11 @@ model Partenaire {
   accident            SouscriptionAccident[]
   demandes            DemandeCommission[]
   notifications       Notification[]
+
+  // --- Modèle générique (en cours de migration, cf. Produit/QrCode/Souscription) ---
+  branche          Branche?
+  qrCodes          QrCode[]
+  souscriptionsGen Souscription[]
 }
 
 model SouscriptionIncendie {
@@ -209,4 +271,151 @@ model TarifIncendie {
   capitalGaranti Int
   commission     Float
   createdAt      DateTime @default(now())
+}
+
+// =====================================================================
+// Modèle générique Produit / Branche — cible de la migration en cours.
+// Coexiste avec les modèles historiques ci-dessus le temps de la bascule
+// (voir backend/scripts/migrate-produits.ts). Incendie et Accident restent
+// la source de vérité tant que les routes ne sont pas migrées ; RelaxMoto
+// et RelaxAuto sont créés directement sur ce modèle générique.
+// =====================================================================
+
+model Produit {
+  id            String         @id @default(uuid())
+  code          String         @unique // "incendie" | "accident" | "relaxmoto" | "relaxauto"
+  libelle       String
+  branche       Branche
+  typePaiement  TypePaiement
+  couleurQr     String         @default("#004b9c")
+  actif         Boolean        @default(true)
+  ordre         Int            @default(0)
+  createdAt     DateTime       @default(now())
+  tarifs        TarifProduit[]
+  qrCodes       QrCode[]
+  souscriptions Souscription[]
+}
+
+model TarifProduit {
+  id                      Int      @id @default(autoincrement())
+  produitId               String
+  produit                 Produit  @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  libelleVariante         String? // ex: "1000"/"2000" pour incendie, null sinon
+  prime                   Int
+  primeHT                 Float?
+  fg                      Float?
+  taxes                   Float?
+  capitalGaranti          Int
+  commission              Float
+  tauxCommissionMensuelle Float?
+  createdAt               DateTime @default(now())
+
+  @@unique([produitId, prime])
+}
+
+model QrCode {
+  id              String     @id @default(uuid())
+  partenaireId    String
+  partenaire      Partenaire @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  produitId       String
+  produit         Produit    @relation(fields: [produitId], references: [id])
+  libelleVariante String? // distingue plusieurs QR pour un même produit (ex incendie 1000/2000)
+  token           String     @unique
+  actif           Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+
+  @@unique([partenaireId, produitId, libelleVariante])
+}
+
+model Souscription {
+  id                   String             @id @default(uuid())
+  produitId            String
+  produit              Produit            @relation(fields: [produitId], references: [id])
+  partenaireId         String
+  partenaire           Partenaire         @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  telephone            String
+  nom                  String?
+  prenom               String?
+  email                String?
+  dateNaissance        DateTime?
+  commune              String?
+  quartier             String?
+  numeroMaison         String?
+  pieceIdentiteUrl     String?
+  montantPrime         Int
+  capitalGaranti       Int
+  commissionCalculee   Float?
+  refFacture           String? // paiement FACTURE (ex incendie)
+  waveNumero           String? // paiement WAVE
+  waveTransactionId    String?
+  waveStatut           WaveStatut?
+  numeroPolice         String?            @unique
+  dateDebut            DateTime?
+  dateFin              DateTime?
+  statut               StatutSouscription @default(en_cours)
+  lienFormulaireToken  String?            @unique
+  formulaireComplement Json?
+  whatsappEnvoyeAt     DateTime?
+  relanceCount         Int                @default(0)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  // --- Abonnement récurrent (RelaxMoto/RelaxAuto : paiement en plusieurs échéances) ---
+  cycleFacturation CycleFacturation?
+  statutAbonnement StatutAbonnement?
+  nombreEcheances  Int?
+  paiements        Paiement[]
+  documents        Document[]
+  carte            Carte?
+}
+
+/**
+ * Échéance d'un abonnement récurrent (RelaxMoto/RelaxAuto). `TarifProduit.prime`
+ * reste la prime annuelle de référence ; le cycle choisi (hebdo5semaines/mensuel/
+ * annuel) détermine seulement le nombre d'échéances et la répartition du montant.
+ */
+model Paiement {
+  id                String         @id @default(uuid())
+  souscriptionId    String
+  souscription      Souscription   @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numeroEcheance    Int
+  montant           Int
+  statut            StatutEcheance @default(en_attente)
+  dateEcheance      DateTime
+  datePaiement      DateTime?
+  waveTransactionId String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([souscriptionId, numeroEcheance])
+}
+
+model Document {
+  id               String                   @id @default(uuid())
+  souscriptionId   String
+  souscription     Souscription             @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  type             TypeDocument
+  url              String
+  statutValidation StatutValidationDocument @default(en_attente)
+  motifRejet       String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+}
+
+/**
+ * Carte de prise en charge — génération via NOVELIA (mode stub tant que l'API n'est pas branchée)
+ */
+model Carte {
+  id                 String       @id @default(uuid())
+  souscriptionId     String       @unique
+  souscription       Souscription @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numero             String       @unique
+  statut             StatutCarte  @default(generee)
+  noveliaRef         String?
+  dateGeneration     DateTime     @default(now())
+  dateEnvoi          DateTime?
+  dateActivation     DateTime?
+  dateRenouvellement DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }

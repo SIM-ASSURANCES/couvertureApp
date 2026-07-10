@@ -169,6 +169,43 @@ button {
   color: #fff;
 }
 
+.nav-branch {
+  margin-bottom: 6px;
+}
+.nav-branch-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--sim-primary-50);
+  border: 1px solid var(--sim-primary-50);
+  padding: 12px;
+  border-radius: 10px;
+  color: var(--sim-primary);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.nav-branch-head:hover {
+  border-color: var(--sim-primary);
+}
+.nav-branch-head.open {
+  background: var(--sim-primary);
+  color: #fff;
+}
+.nav-branch-label {
+  flex: 1;
+  line-height: 1.25;
+}
+.nav-branch-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+.nav-branch-body {
+  padding-top: 4px;
+}
+
 .sidebar-foot {
   border-top: 1px solid var(--border);
   padding: 12px;

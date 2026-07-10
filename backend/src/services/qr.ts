@@ -7,18 +7,20 @@ export function newQrToken(prefix: string) {
   return `${prefix}_${randomUUID().slice(0, 8)}`;
 }
 
-export function qrTargetUrl(produit: "incendie" | "accident", token: string) {
-  return `${BASE}/s/${produit}/${token}`;
+/** produitCode : code générique du produit ("incendie", "accident", "relaxmoto", "relaxauto"...) */
+export function qrTargetUrl(produitCode: string, token: string) {
+  return `${BASE}/s/${produitCode}/${token}`;
 }
 
+/** couleur : Produit.couleurQr — passée par l'appelant (résolue via Prisma), #004b9c par défaut */
 export async function qrDataUrl(
-  produit: "incendie" | "accident",
-  token: string
+  produitCode: string,
+  token: string,
+  couleur: string = "#004b9c"
 ): Promise<string> {
-  const color = produit === "incendie" ? "#b45309" : "#004b9c";
-  return QRCode.toDataURL(qrTargetUrl(produit, token), {
+  return QRCode.toDataURL(qrTargetUrl(produitCode, token), {
     width: 600,
     margin: 2,
-    color: { dark: color, light: "#ffffff" },
+    color: { dark: couleur, light: "#ffffff" },
   });
 }

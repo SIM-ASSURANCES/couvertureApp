@@ -16,8 +16,10 @@ import { meRouter } from "./routes/me.js";
 import { publicRouter } from "./routes/public.js";
 import { commissionsRouter } from "./routes/commissions.js";
 import { notificationsRouter } from "./routes/notifications.js";
+import { relaxRouter } from "./routes/relax.js";
 import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
+import { requireAuth, requireBranche } from "./auth.js";
 
 const app = express();
 // 1 seul proxy en amont (Traefik). Évite le contournement du rate limiter
@@ -64,14 +66,33 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, publicUrl: process.en
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 app.use("/api/partenaires", partenairesRouter);
-app.use("/api/souscriptions", souscriptionsRouter);
-app.use("/api/stats", statsRouter);
+// Incendie/Accident et Relax sont deux branches métier distinctes : ces routeurs
+// exposent des données exclusives à chacune, donc restreints à l'admin ayant la
+// branche correspondante (un SUPER_ADMIN a toujours accès aux deux).
+app.use(
+  "/api/souscriptions",
+  requireAuth("admin"),
+  requireBranche("INCENDIE_ACCIDENT"),
+  souscriptionsRouter
+);
+app.use(
+  "/api/stats",
+  requireAuth("admin"),
+  requireBranche("INCENDIE_ACCIDENT"),
+  statsRouter
+);
 app.use("/api/journal", journalRouter);
 app.use("/api/admins", adminsRouter);
 app.use("/api/parametres", parametresRouter);
 app.use("/api/me", meRouter);
 app.use("/api/commissions", commissionsRouter);
 app.use("/api/notifications", notificationsRouter);
+app.use(
+  "/api/relax",
+  requireAuth("admin"),
+  requireBranche("RELAX"),
+  relaxRouter
+);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ZodError) {

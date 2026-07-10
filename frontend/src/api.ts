@@ -11,6 +11,7 @@ export function getUser(): {
   email?: string;
   commerce?: string;
   role?: "ADMIN" | "SUPER_ADMIN";
+  branches?: ("INCENDIE_ACCIDENT" | "RELAX")[];
 } | null {
   const raw = localStorage.getItem("sim_user");
   return raw ? JSON.parse(raw) : null;

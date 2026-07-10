@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - couverture
+
+  backend:
+    image: ghcr.io/sim-assurances/couvertureapp-backend:v33
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL}
+      CORS_ORIGIN: ${APP_PUBLIC_URL}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      SUPER_ADMIN_NOM: ${SUPER_ADMIN_NOM}
+      WAVE_API_KEY: ${WAVE_API_KEY}
+      WAVE_WEBHOOK_SECRET: ${WAVE_WEBHOOK_SECRET}
+      SMS_API_KEY: ${SMS_API_KEY}
+      SMS_API_URL: ${SMS_API_URL}
+      SMS_SENDER: ${SMS_SENDER}
+      NOVELIA_API_KEY: ${NOVELIA_API_KEY}
+      PORT: 4000
+    networks:
+      - couverture
+
+  frontend:
+    image: ghcr.io/sim-assurances/couvertureapp-frontend:v37
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - couverture
+
+volumes:
+  postgres_data:
+
+networks:
+  couverture:
+    driver: bridge

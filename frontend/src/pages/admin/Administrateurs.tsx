@@ -6,15 +6,28 @@ import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 
+type Branche = "INCENDIE_ACCIDENT" | "RELAX";
+
 interface Admin {
   id: string;
   nom: string;
   email: string;
   role: "ADMIN" | "SUPER_ADMIN";
+  branches: Branche[];
   createdAt: string;
 }
 
-const empty = { nom: "", email: "", motDePasse: "", role: "ADMIN" };
+const empty = {
+  nom: "",
+  email: "",
+  motDePasse: "",
+  role: "ADMIN",
+  branches: [] as Branche[],
+};
+
+function brancheLabel(b: Branche) {
+  return b === "INCENDIE_ACCIDENT" ? "Incendie et Accident" : "RelaxMoto et RelaxAuto";
+}
 
 export default function Administrateurs() {
   const { user } = useAuth();
@@ -61,11 +74,24 @@ export default function Administrateurs() {
         "Nom": a.nom,
         "Email": a.email,
         "Rôle": a.role,
+        "Branches": a.branches.map(brancheLabel).join(", "),
         "Créé le": fmtDate(a.createdAt),
       })),
       "administrateurs.xlsx"
     );
   }
+
+  function toggleBranche(b: Branche) {
+    setForm((f) => ({
+      ...f,
+      branches: f.branches.includes(b)
+        ? f.branches.filter((x) => x !== b)
+        : [...f.branches, b],
+    }));
+  }
+
+  const isSuperForm = form.role === "SUPER_ADMIN";
+  const canSubmit = isSuperForm || form.branches.length > 0;
 
   return (
     <>
@@ -91,6 +117,7 @@ export default function Administrateurs() {
                     <th>Nom</th>
                     <th>Email</th>
                     <th>Rôle</th>
+                    <th>Branches</th>
                     <th>Créé le</th>
                     {isSuper && <th></th>}
                   </tr>
@@ -106,6 +133,15 @@ export default function Administrateurs() {
                         ) : (
                           <Badge kind="neutral">Admin</Badge>
                         )}
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {a.branches.map((b) => (
+                            <Badge key={b} kind={b === "INCENDIE_ACCIDENT" ? "warning" : "info"}>
+                              {brancheLabel(b)}
+                            </Badge>
+                          ))}
+                        </div>
                       </td>
                       <td className="muted">{fmtDate(a.createdAt)}</td>
                       {isSuper && (
@@ -147,7 +183,45 @@ export default function Administrateurs() {
                   <option value="SUPER_ADMIN">Super Administrateur</option>
                 </select>
               </div>
-              <button className="btn btn-primary btn-block" disabled={saving}>
+
+              <div className="field">
+                <label className="label">
+                  Branche{isSuperForm ? "" : <span className="req"> *</span>}
+                </label>
+                {isSuperForm ? (
+                  <div className="muted" style={{ fontSize: 12 }}>
+                    Un Super Administrateur a automatiquement accès aux deux branches.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={form.branches.includes("INCENDIE_ACCIDENT")}
+                          onChange={() => toggleBranche("INCENDIE_ACCIDENT")}
+                        />
+                        <span>Assurances Incendie et Accident</span>
+                      </label>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={form.branches.includes("RELAX")}
+                          onChange={() => toggleBranche("RELAX")}
+                        />
+                        <span>Assurances RelaxMoto et RelaxAuto</span>
+                      </label>
+                    </div>
+                    {form.branches.length === 0 && (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                        Sélectionnez au moins une branche.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <button className="btn btn-primary btn-block" disabled={saving || !canSubmit}>
                 <Plus size={17} /> {saving ? "Création…" : "Créer le compte"}
               </button>
             </form>

@@ -19,6 +19,14 @@ import Administrateurs from "./pages/admin/Administrateurs";
 import Parametres from "./pages/admin/Parametres";
 import AdminProfil from "./pages/admin/Profil";
 
+import RelaxDashboard from "./pages/admin/relax/Dashboard";
+import RelaxPartenaires from "./pages/admin/relax/Partenaires";
+import ClientsRelaxMoto from "./pages/admin/relax/ClientsRelaxMoto";
+import ClientsRelaxAuto from "./pages/admin/relax/ClientsRelaxAuto";
+import RelaxPaiementsEnAttente from "./pages/admin/relax/PaiementsEnAttente";
+import RelaxContrats from "./pages/admin/relax/Contrats";
+import RelaxPerformance from "./pages/admin/relax/Performance";
+
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
 import PartenaireSouscriptions from "./pages/partenaire/Souscriptions";
@@ -52,6 +60,14 @@ export default function App() {
             <Route path="administrateurs" element={<Administrateurs />} />
             <Route path="parametres" element={<Parametres />} />
             <Route path="profil" element={<AdminProfil />} />
+
+            <Route path="relax" element={<RelaxDashboard />} />
+            <Route path="relax/partenaires" element={<RelaxPartenaires />} />
+            <Route path="relax/moto" element={<ClientsRelaxMoto />} />
+            <Route path="relax/auto" element={<ClientsRelaxAuto />} />
+            <Route path="relax/paiements-en-attente" element={<RelaxPaiementsEnAttente />} />
+            <Route path="relax/contrats" element={<RelaxContrats />} />
+            <Route path="relax/performance" element={<RelaxPerformance />} />
           </Route>
 
           <Route
