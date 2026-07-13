@@ -27,12 +27,20 @@ import RelaxPaiementsEnAttente from "./pages/admin/relax/PaiementsEnAttente";
 import RelaxContrats from "./pages/admin/relax/Contrats";
 import RelaxPerformance from "./pages/admin/relax/Performance";
 
+import ImfDashboard from "./pages/admin/imf/Dashboard";
+import ImfZones from "./pages/admin/imf/Zones";
+import ImfAgences from "./pages/admin/imf/Agences";
+import ImfAgents from "./pages/admin/imf/Agents";
+
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
 import PartenaireSouscriptions from "./pages/partenaire/Souscriptions";
 import PartenaireCommissions from "./pages/partenaire/Commissions";
 import PartenaireQr from "./pages/partenaire/QrCode";
 import PartenaireProfil from "./pages/partenaire/Profil";
+
+import AgentImfLayout from "./components/layout/AgentImfLayout";
+import AgentImfDashboard from "./pages/agent-imf/Dashboard";
 
 export default function App() {
   return (
@@ -68,6 +76,11 @@ export default function App() {
             <Route path="relax/paiements-en-attente" element={<RelaxPaiementsEnAttente />} />
             <Route path="relax/contrats" element={<RelaxContrats />} />
             <Route path="relax/performance" element={<RelaxPerformance />} />
+
+            <Route path="imf" element={<ImfDashboard />} />
+            <Route path="imf/zones" element={<ImfZones />} />
+            <Route path="imf/agences" element={<ImfAgences />} />
+            <Route path="imf/agents" element={<ImfAgents />} />
           </Route>
 
           <Route
@@ -83,6 +96,17 @@ export default function App() {
             <Route path="commissions" element={<PartenaireCommissions />} />
             <Route path="qr" element={<PartenaireQr />} />
             <Route path="profil" element={<PartenaireProfil />} />
+          </Route>
+
+          <Route
+            path="/agent-imf"
+            element={
+              <RequireAuth type="agent_imf">
+                <AgentImfLayout />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<AgentImfDashboard />} />
           </Route>
 
           <Route path="/souscription/:token" element={<Souscription />} />

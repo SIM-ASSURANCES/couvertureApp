@@ -14,6 +14,9 @@ import {
   Bike,
   Car,
   IdCard,
+  Landmark,
+  MapPin,
+  Building2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -102,12 +105,36 @@ export const adminNav: AdminNavEntry[] = [
     ],
   },
   {
+    id: "imf",
+    label: "Assurances IMF",
+    icon: Landmark,
+    homeTo: "/admin/imf",
+    groups: [
+      {
+        section: "Réseau",
+        items: [
+          { to: "/admin/imf", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/admin/imf/zones", label: "Zones", icon: MapPin },
+          { to: "/admin/imf/agences", label: "Agences", icon: Building2 },
+          { to: "/admin/imf/agents", label: "Agents", icon: Users },
+        ],
+      },
+    ],
+  },
+  {
     section: "Administration générale",
     items: [
       { to: "/admin/journal", label: "Journal d'activité", icon: ScrollText },
       { to: "/admin/administrateurs", label: "Administrateurs", icon: Users },
       { to: "/admin/parametres", label: "Paramètres", icon: Settings },
     ],
+  },
+];
+
+export const agentImfNav: NavGroup[] = [
+  {
+    section: "Mon activité",
+    items: [{ to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard }],
   },
 ];
 

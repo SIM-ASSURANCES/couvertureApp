@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 
-type Branche = "INCENDIE_ACCIDENT" | "RELAX";
+type Branche = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
 
 interface Admin {
   id: string;
@@ -26,7 +26,9 @@ const empty = {
 };
 
 function brancheLabel(b: Branche) {
-  return b === "INCENDIE_ACCIDENT" ? "Incendie et Accident" : "RelaxMoto et RelaxAuto";
+  if (b === "INCENDIE_ACCIDENT") return "Incendie et Accident";
+  if (b === "RELAX") return "RelaxMoto et RelaxAuto";
+  return "IMF";
 }
 
 export default function Administrateurs() {
@@ -137,7 +139,10 @@ export default function Administrateurs() {
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           {a.branches.map((b) => (
-                            <Badge key={b} kind={b === "INCENDIE_ACCIDENT" ? "warning" : "info"}>
+                            <Badge
+                              key={b}
+                              kind={b === "INCENDIE_ACCIDENT" ? "warning" : b === "RELAX" ? "info" : "success"}
+                            >
                               {brancheLabel(b)}
                             </Badge>
                           ))}
@@ -210,6 +215,14 @@ export default function Administrateurs() {
                           onChange={() => toggleBranche("RELAX")}
                         />
                         <span>Assurances RelaxMoto et RelaxAuto</span>
+                      </label>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={form.branches.includes("IMF")}
+                          onChange={() => toggleBranche("IMF")}
+                        />
+                        <span>Assurances IMF</span>
                       </label>
                     </div>
                     {form.branches.length === 0 && (

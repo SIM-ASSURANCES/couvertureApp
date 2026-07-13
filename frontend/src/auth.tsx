@@ -8,16 +8,20 @@ import { Navigate } from "react-router-dom";
 import { api, getUser } from "./api";
 
 type Role = "ADMIN" | "SUPER_ADMIN";
-export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX";
+export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
 export interface SessionUser {
   id: string;
-  type: "admin" | "partenaire";
+  type: "admin" | "partenaire" | "agent_imf";
   nom: string;
   email?: string;
   commerce?: string;
   role?: Role;
   branches?: BrancheAcces[];
   produit?: "incendie" | "accident";
+  // Agent IMF (type === "agent_imf")
+  roleImf?: "AGENT" | "RESPONSABLE_ZONE";
+  agenceNom?: string | null;
+  zoneNom?: string | null;
 }
 
 interface AuthCtx {
@@ -58,7 +62,7 @@ export function RequireAuth({
   type,
   children,
 }: {
-  type: "admin" | "partenaire";
+  type: "admin" | "partenaire" | "agent_imf";
   children: ReactNode;
 }) {
   const { user } = useAuth();

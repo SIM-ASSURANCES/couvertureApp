@@ -59,6 +59,12 @@ enum StatutDemande {
 enum Branche {
   INCENDIE_ACCIDENT
   RELAX
+  IMF
+}
+
+enum RoleImf {
+  AGENT
+  RESPONSABLE_ZONE
 }
 
 enum TypePaiement {
@@ -422,4 +428,41 @@ model Carte {
   dateRenouvellement DateTime?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
+}
+
+// --- Branche IMF : hiérarchie Zone -> Agence -> Agent (distribution par agent, pas par QR) ---
+
+model ZoneImf {
+  id        String      @id @default(uuid())
+  nom       String      @unique
+  createdAt DateTime    @default(now())
+  agences   AgenceImf[]
+  agents    AgentImf[] // rattachement direct d'un RESPONSABLE_ZONE (pas d'agence intermédiaire)
+}
+
+model AgenceImf {
+  id           String     @id @default(uuid())
+  nom          String
+  zoneId       String
+  zone         ZoneImf    @relation(fields: [zoneId], references: [id])
+  telephone    String?
+  localisation String?
+  createdAt    DateTime   @default(now())
+  agents       AgentImf[]
+}
+
+model AgentImf {
+  id           String           @id @default(uuid())
+  nom          String
+  prenom       String
+  telephone    String
+  email        String           @unique
+  passwordHash String
+  roleImf      RoleImf          @default(AGENT)
+  agenceId     String? // requis si roleImf = AGENT
+  agence       AgenceImf?       @relation(fields: [agenceId], references: [id])
+  zoneId       String? // requis si roleImf = RESPONSABLE_ZONE
+  zone         ZoneImf?         @relation(fields: [zoneId], references: [id])
+  statut       StatutPartenaire @default(actif)
+  createdAt    DateTime         @default(now())
 }

@@ -14,8 +14,9 @@ function loadSecret(): string {
 
 const SECRET = loadSecret();
 
-export type ActorType = "admin" | "partenaire";
-export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX";
+export type ActorType = "admin" | "partenaire" | "agent_imf";
+export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
+export type RoleImfAcces = "AGENT" | "RESPONSABLE_ZONE";
 
 export interface AuthUser {
   sub: string;
@@ -23,6 +24,10 @@ export interface AuthUser {
   role?: "ADMIN" | "SUPER_ADMIN";
   nom?: string;
   branches?: BrancheAcces[];
+  // Rattachement d'un agent IMF (uniquement pour type === "agent_imf").
+  agenceId?: string;
+  zoneId?: string;
+  roleImf?: RoleImfAcces;
 }
 
 export function signToken(user: AuthUser): string {

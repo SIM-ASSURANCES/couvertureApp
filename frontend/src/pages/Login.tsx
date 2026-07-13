@@ -16,7 +16,9 @@ export default function Login() {
     setError("");
     try {
       const u = await login(email, password);
-      navigate(u.type === "partenaire" ? "/partenaire" : "/admin");
+      navigate(
+        u.type === "partenaire" ? "/partenaire" : u.type === "agent_imf" ? "/agent-imf" : "/admin"
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {

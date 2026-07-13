@@ -13,7 +13,7 @@ export const authRouter = Router();
  */
 function branchesEffectives(admin: { role: string; branches: string[] }): BrancheAcces[] {
   return admin.role === "SUPER_ADMIN"
-    ? ["INCENDIE_ACCIDENT", "RELAX"]
+    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"]
     : (admin.branches as BrancheAcces[]);
 }
 
@@ -93,7 +93,68 @@ authRouter.post(
       });
     }
 
+    const a = await prisma.agentImf.findUnique({
+      where: { email },
+      include: { agence: { include: { zone: true } }, zone: true },
+    });
+    if (a && (await bcrypt.compare(password, a.passwordHash))) {
+      const token = signToken({
+        sub: a.id,
+        type: "agent_imf",
+        nom: `${a.prenom} ${a.nom}`,
+        agenceId: a.agenceId ?? undefined,
+        zoneId: a.zoneId ?? undefined,
+        roleImf: a.roleImf,
+      });
+      return res.json({
+        token,
+        user: {
+          id: a.id,
+          nom: `${a.prenom} ${a.nom}`,
+          email: a.email,
+          type: "agent_imf",
+          roleImf: a.roleImf,
+          agenceNom: a.agence?.nom ?? null,
+          zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+        },
+      });
+    }
+
     return res.status(401).json({ error: "Identifiants invalides" });
+  })
+);
+
+authRouter.post(
+  "/agent-imf/login",
+  asyncHandler(async (req, res) => {
+    const { email, password } = req.body ?? {};
+    const a = await prisma.agentImf.findUnique({
+      where: { email },
+      include: { agence: { include: { zone: true } }, zone: true },
+    });
+    if (!a || !(await bcrypt.compare(password ?? "", a.passwordHash))) {
+      return res.status(401).json({ error: "Identifiants invalides" });
+    }
+    const token = signToken({
+      sub: a.id,
+      type: "agent_imf",
+      nom: `${a.prenom} ${a.nom}`,
+      agenceId: a.agenceId ?? undefined,
+      zoneId: a.zoneId ?? undefined,
+      roleImf: a.roleImf,
+    });
+    res.json({
+      token,
+      user: {
+        id: a.id,
+        nom: `${a.prenom} ${a.nom}`,
+        email: a.email,
+        type: "agent_imf",
+        roleImf: a.roleImf,
+        agenceNom: a.agence?.nom ?? null,
+        zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+      },
+    });
   })
 );
 

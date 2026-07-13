@@ -114,6 +114,44 @@ export interface ClientAccident {
   createdAt: string;
 }
 
+// --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---
+
+export type RoleImf = "AGENT" | "RESPONSABLE_ZONE";
+
+export interface ZoneImf {
+  id: string;
+  nom: string;
+  createdAt: string;
+  nbAgences?: number;
+  nbAgents?: number;
+}
+
+export interface AgenceImf {
+  id: string;
+  nom: string;
+  zoneId: string;
+  zoneNom?: string;
+  telephone?: string | null;
+  localisation?: string | null;
+  createdAt: string;
+  nbAgents?: number;
+}
+
+export interface AgentImf {
+  id: string;
+  nom: string;
+  prenom: string;
+  telephone: string;
+  email: string;
+  roleImf: RoleImf;
+  agenceId: string | null;
+  zoneId: string | null;
+  agenceNom?: string | null;
+  zoneNom?: string | null;
+  statut: "actif" | "inactif";
+  createdAt: string;
+}
+
 export interface JournalEntry {
   id: string;
   date: string;
