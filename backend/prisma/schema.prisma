@@ -465,4 +465,55 @@ model AgentImf {
   zone         ZoneImf?         @relation(fields: [zoneId], references: [id])
   statut       StatutPartenaire @default(actif)
   createdAt    DateTime         @default(now())
+  simulations  SimulationImf[]
+}
+
+// --- Phase 2 : moteur de tarification IMF (SECURPRO/SECURSTOCK à formules, COUPS DURS/SECURECOLTE en catalogue fixe) ---
+
+model BaremeSecurpro {
+  id            String   @id @default(uuid())
+  classe        Int      @unique // 1 à 4
+  limiteCapital Int
+  tauxIncendie  Float // taux décimal, ex 0.00072 pour classe 1
+  updatedAt     DateTime @updatedAt
+}
+
+model BaremeSecurstock {
+  id                    String   @id @default(uuid())
+  classe                Int      @unique
+  limiteCapital         Int
+  tauxDommageElectrique Float // T1
+  tauxAutreCause        Float // T2
+  updatedAt             DateTime @updatedAt
+}
+
+model PalierSecurecolte {
+  id                String   @id @default(uuid())
+  seuil             String // "forte" | "moyenne" | "faible"
+  pourcentageIndice Float // borne haute du palier (0.75 / 0.85 / 0.95)
+  montantIndemnite  Int
+  createdAt         DateTime @default(now())
+}
+
+model IndiceArcImf {
+  id        String   @id @default(uuid())
+  region    String
+  annee     Int
+  valeur    Float // indice WRSI observé
+  reference Float // valeur de référence (médiane 5 ans)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([region, annee])
+}
+
+model SimulationImf {
+  id          String   @id @default(uuid())
+  agentId     String
+  agent       AgentImf @relation(fields: [agentId], references: [id])
+  produitCode String // "securpro" | "securstock" | "coupsdurs" | "securecolte"
+  entrees     Json
+  resultat    Json
+  primeTTC    Int
+  createdAt   DateTime @default(now())
 }

@@ -5,6 +5,13 @@ import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
+import {
+  calculerSecurpro,
+  calculerSecurstock,
+  palierSecheresse,
+  type SecurproInput,
+  type SecurstockInput,
+} from "../services/tarificationImf.js";
 
 /** Référentiels IMF (Zone/Agence/Agent) — réservé aux admins ayant la branche IMF. */
 export const imfRouter = Router();
@@ -303,6 +310,140 @@ imfRouter.delete(
   })
 );
 
+/* ── Tarification : barèmes SECURPRO / SECURSTOCK ── */
+
+imfRouter.get(
+  "/baremes/securpro",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
+const baremeSecurproSchema = z.object({
+  limiteCapital: z.number().positive().optional(),
+  tauxIncendie: z.number().positive().optional(),
+});
+
+imfRouter.patch(
+  "/baremes/securpro/:classe",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = baremeSecurproSchema.parse(req.body);
+    const updated = await prisma.baremeSecurpro.update({
+      where: { classe: Number(req.params.classe) },
+      data,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "bareme_securpro",
+      objetId: String(updated.classe),
+      valeurApres: updated,
+    });
+    res.json(updated);
+  })
+);
+
+imfRouter.get(
+  "/baremes/securstock",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
+const baremeSecurstockSchema = z.object({
+  limiteCapital: z.number().positive().optional(),
+  tauxDommageElectrique: z.number().positive().optional(),
+  tauxAutreCause: z.number().positive().optional(),
+});
+
+imfRouter.patch(
+  "/baremes/securstock/:classe",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = baremeSecurstockSchema.parse(req.body);
+    const updated = await prisma.baremeSecurstock.update({
+      where: { classe: Number(req.params.classe) },
+      data,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "bareme_securstock",
+      objetId: String(updated.classe),
+      valeurApres: updated,
+    });
+    res.json(updated);
+  })
+);
+
+/* ── Catalogue à prix fixe : COUPS DURS / SECURECOLTE ── */
+
+imfRouter.get(
+  "/produits/:code/tarifs",
+  asyncHandler(async (req, res) => {
+    const produit = await prisma.produit.findUnique({ where: { code: req.params.code } });
+    if (!produit) return res.status(404).json({ error: "Produit introuvable" });
+    const tarifs = await prisma.tarifProduit.findMany({
+      where: { produitId: produit.id },
+      orderBy: { prime: "asc" },
+    });
+    res.json(tarifs);
+  })
+);
+
+/* ── Indice ARC (saisie manuelle, SECURECOLTE) ── */
+
+imfRouter.get(
+  "/indice-arc",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.indiceArcImf.findMany({ orderBy: [{ annee: "desc" }, { region: "asc" }] });
+    res.json(rows.map((r) => ({ ...r, palier: palierSecheresse(r.valeur, r.reference) })));
+  })
+);
+
+const indiceArcSchema = z.object({
+  region: z.string().min(1),
+  annee: z.number().int().min(2020).max(2100),
+  valeur: z.number().positive(),
+  reference: z.number().positive(),
+});
+
+imfRouter.post(
+  "/indice-arc",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = indiceArcSchema.parse(req.body);
+    const upserted = await prisma.indiceArcImf.upsert({
+      where: { region_annee: { region: data.region, annee: data.annee } },
+      update: { valeur: data.valeur, reference: data.reference },
+      create: data,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "indice_arc_imf",
+      objetId: upserted.id,
+      valeurApres: upserted,
+    });
+    res.status(201).json({ ...upserted, palier: palierSecheresse(upserted.valeur, upserted.reference) });
+  })
+);
+
+/* ── Historique des simulations (lecture admin) ── */
+
+imfRouter.get(
+  "/simulations",
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.query as { agentId?: string };
+    const rows = await prisma.simulationImf.findMany({
+      where: { agentId: agentId || undefined },
+      orderBy: { createdAt: "desc" },
+      include: { agent: { select: { nom: true, prenom: true } } },
+    });
+    res.json(rows);
+  })
+);
+
 /** Routeur séparé, monté avec requireAuth("agent_imf") : profil de l'agent connecté. */
 export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
@@ -326,5 +467,102 @@ agentImfRouter.get(
       agenceNom: a.agence?.nom ?? null,
       zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
     });
+  })
+);
+
+/* ── Simulation de devis ── */
+
+const securproInputSchema = z.object({
+  classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  statutOccupation: z.enum(["proprietaire", "locataire"]),
+  valeurBatiment: z.number().nonnegative().optional(),
+  loyerMensuel: z.number().nonnegative().optional(),
+  contenu: z.number().nonnegative(),
+  dansMarche: z.boolean(),
+  gardien: z.boolean(),
+  extincteur: z.boolean(),
+  volContenu: z.boolean(),
+  majorationVolContenu: z.boolean().optional(),
+  volCaisseCapital: z.number().positive().optional(),
+  majorationVolCaisse: z.boolean().optional(),
+  ddeCapital: z.number().positive().optional(),
+  deCapital: z.number().positive().optional(),
+  bdgCapital: z.number().positive().optional(),
+});
+
+const securstockInputSchema = z.object({
+  classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  capitalDeclare: z.number().positive(),
+  densite: z.enum(["aere", "normal", "compact", "tres_compact", "entasse"]),
+  localisation: z.enum(["hors_marche", "abords_marche", "marche_zone_industrielle"]),
+  installationElectrique: z.enum(["securisee", "acceptable", "degradee", "dangereuse"]),
+  prevention: z.enum(["extincteurs_alarme_formation_eau", "extincteurs_eau", "extincteurs_seuls", "aucun"]),
+  gardien: z.boolean(),
+});
+
+const catalogueInputSchema = z.object({ libelleVariante: z.string().min(1) });
+
+const simulationSchema = z.object({
+  produitCode: z.enum(["securpro", "securstock", "coupsdurs_classique", "coupsdurs_incapacite", "securecolte"]),
+  entrees: z.record(z.unknown()),
+});
+
+agentImfRouter.post(
+  "/simulations",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { produitCode, entrees } = simulationSchema.parse(req.body);
+
+    let resultat: unknown;
+    let primeTTC: number;
+
+    if (produitCode === "securpro") {
+      const input = securproInputSchema.parse(entrees) as SecurproInput;
+      const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
+      if (!bareme) return res.status(400).json({ error: "Barème SECURPRO introuvable pour cette classe" });
+      const r = calculerSecurpro(input, { ...bareme, classe: input.classe });
+      resultat = r;
+      primeTTC = r.primeTTC;
+    } else if (produitCode === "securstock") {
+      const input = securstockInputSchema.parse(entrees) as SecurstockInput;
+      const bareme = await prisma.baremeSecurstock.findUnique({ where: { classe: input.classe } });
+      if (!bareme) return res.status(400).json({ error: "Barème SECURSTOCK introuvable pour cette classe" });
+      const r = calculerSecurstock(input, { ...bareme, classe: input.classe });
+      if ("nonAssurable" in r && r.nonAssurable) {
+        return res.status(400).json({ error: r.motif });
+      }
+      resultat = r;
+      primeTTC = (r as { primeTTC: number }).primeTTC;
+    } else {
+      // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
+      const { libelleVariante } = catalogueInputSchema.parse(entrees);
+      const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
+      if (!produit) return res.status(400).json({ error: "Produit introuvable" });
+      const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
+      if (!tarif) return res.status(400).json({ error: "Variante introuvable pour ce produit" });
+      resultat = tarif;
+      primeTTC = tarif.prime;
+    }
+
+    const simulation = await prisma.simulationImf.create({
+      data: {
+        agentId: req.user!.sub,
+        produitCode,
+        entrees: JSON.parse(JSON.stringify(entrees)),
+        resultat: JSON.parse(JSON.stringify(resultat)),
+        primeTTC: Math.round(primeTTC),
+      },
+    });
+    res.status(201).json(simulation);
+  })
+);
+
+agentImfRouter.get(
+  "/simulations",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const rows = await prisma.simulationImf.findMany({
+      where: { agentId: req.user!.sub },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(rows);
   })
 );

@@ -17,6 +17,9 @@ import {
   Landmark,
   MapPin,
   Building2,
+  Percent,
+  CloudRain,
+  Calculator,
   type LucideIcon,
 } from "lucide-react";
 
@@ -119,6 +122,13 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/imf/agents", label: "Agents", icon: Users },
         ],
       },
+      {
+        section: "Tarification",
+        items: [
+          { to: "/admin/imf/baremes", label: "Barèmes", icon: Percent },
+          { to: "/admin/imf/indice-arc", label: "Indice ARC", icon: CloudRain },
+        ],
+      },
     ],
   },
   {
@@ -134,7 +144,10 @@ export const adminNav: AdminNavEntry[] = [
 export const agentImfNav: NavGroup[] = [
   {
     section: "Mon activité",
-    items: [{ to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard }],
+    items: [
+      { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
+      { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
+    ],
   },
 ];
 

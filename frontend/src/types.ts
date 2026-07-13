@@ -152,6 +152,57 @@ export interface AgentImf {
   createdAt: string;
 }
 
+export interface BaremeSecurpro {
+  id: string;
+  classe: number;
+  limiteCapital: number;
+  tauxIncendie: number;
+  updatedAt: string;
+}
+
+export interface BaremeSecurstock {
+  id: string;
+  classe: number;
+  limiteCapital: number;
+  tauxDommageElectrique: number;
+  tauxAutreCause: number;
+  updatedAt: string;
+}
+
+export interface IndiceArcImf {
+  id: string;
+  region: string;
+  annee: number;
+  valeur: number;
+  reference: number;
+  palier: "forte" | "moyenne" | "faible" | "aucune";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TarifProduitImf {
+  id: number;
+  produitId: string;
+  libelleVariante: string | null;
+  prime: number;
+  primeHT: number | null;
+  fg: number | null;
+  taxes: number | null;
+  capitalGaranti: number;
+  commission: number;
+}
+
+export interface SimulationImf {
+  id: string;
+  agentId: string;
+  produitCode: string;
+  entrees: Record<string, unknown>;
+  resultat: Record<string, unknown>;
+  primeTTC: number;
+  createdAt: string;
+  agent?: { nom: string; prenom: string };
+}
+
 export interface JournalEntry {
   id: string;
   date: string;
