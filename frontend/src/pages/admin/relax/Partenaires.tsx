@@ -9,8 +9,6 @@ const empty = {
   nomCommerce: "",
   nomResponsable: "",
   telephone: "",
-  localisation: "",
-  typeCommerce: "MecaniqueGarage",
   produit: "relaxmoto" as ProduitRelax,
   email: "",
 };
@@ -39,11 +37,9 @@ export default function RelaxPartenaires() {
       const result = await api.post<{ nomCommerce: string; email?: string | null; motDePasseProvisoire?: string | null }>(
         "/partenaires",
         {
-          nomCommerce: form.nomCommerce,
+          nomCommerce: form.nomCommerce || undefined,
           nomResponsable: form.nomResponsable,
           telephone: form.telephone,
-          localisation: form.localisation,
-          typeCommerce: form.typeCommerce,
           produit: form.produit,
           email: form.email || undefined,
         }
@@ -170,29 +166,16 @@ export default function RelaxPartenaires() {
         <Card title="Ajouter un partenaire Relax">
           <form onSubmit={create}>
             <div className="field">
-              <label className="label">Nom du commerce <span className="req">*</span></label>
-              <input className="input" required value={form.nomCommerce} onChange={(e) => setForm({ ...form, nomCommerce: e.target.value })} />
+              <label className="label">Nom de l'entreprise</label>
+              <input className="input" value={form.nomCommerce} onChange={(e) => setForm({ ...form, nomCommerce: e.target.value })} />
             </div>
             <div className="field">
-              <label className="label">Responsable <span className="req">*</span></label>
+              <label className="label">Nom et prénoms <span className="req">*</span></label>
               <input className="input" required value={form.nomResponsable} onChange={(e) => setForm({ ...form, nomResponsable: e.target.value })} />
             </div>
             <div className="field">
               <label className="label">Téléphone <span className="req">*</span></label>
               <input className="input" required value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
-            </div>
-            <div className="field">
-              <label className="label">Localisation <span className="req">*</span></label>
-              <input className="input" required value={form.localisation} onChange={(e) => setForm({ ...form, localisation: e.target.value })} />
-            </div>
-            <div className="field">
-              <label className="label">Type de commerce <span className="req">*</span></label>
-              <select className="select" value={form.typeCommerce} onChange={(e) => setForm({ ...form, typeCommerce: e.target.value })}>
-                <option value="Electronique">Electronique</option>
-                <option value="Vulcanisateur">Vulcanisateur</option>
-                <option value="MecaniqueGarage">Mécanique / garage</option>
-                <option value="AccessoireAuto">Accessoire auto</option>
-              </select>
             </div>
             <div className="field">
               <label className="label">Produit <span className="req">*</span></label>

@@ -205,11 +205,18 @@ souscriptionsRouter.get(
           attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
         partenaireId: partenaireId || undefined,
       },
-      include: { partenaire: { select: { nomCommerce: true } } },
+      include: {
+        partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
     res.json(
-      rows.map((r) => ({ ...r, partenaireNom: r.partenaire.nomCommerce }))
+      rows.map((r) => ({
+        ...r,
+        partenaireNom: r.partenaire.nomCommerce,
+        partenaireResponsable: r.partenaire.nomResponsable,
+        partenaireLocalisation: r.partenaire.localisation,
+      }))
     );
   })
 );
@@ -241,9 +248,13 @@ souscriptionsRouter.post(
     const errorUrl = `${appUrl}/s/accident/${s.partenaire.qrAccidentToken}?paiement=echec`;
 
     const wave = await initiateWavePayment(s.montantPrime, s.id, successUrl, errorUrl);
-    await prisma.souscriptionAccident.update({
+    const updated = await prisma.souscriptionAccident.update({
       where: { id: s.id },
-      data: { waveTransactionId: wave.transactionId, waveStatut: "en_attente" },
+      data: {
+        waveTransactionId: wave.transactionId,
+        waveStatut: "en_attente",
+        relanceCount: { increment: 1 },
+      },
     });
     await sendSMS(s.telephone, messageRelancePaiement(s.montantPrime, wave.checkoutUrl));
     await logAction({
@@ -252,7 +263,7 @@ souscriptionsRouter.post(
       objetType: "souscription_accident",
       objetId: s.id,
     });
-    res.json({ ok: true });
+    res.json({ ok: true, relanceCount: updated.relanceCount });
   })
 );
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText } from "lucide-react";
+import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank } from "lucide-react";
 import {
   PageHeader,
   StatCard,
@@ -24,6 +24,8 @@ interface Overview {
   taxes: number;
   caIncendie: number;
   caAccident: number;
+  budgetIncendie: number;
+  budgetAccident: number;
   derniersAccident: {
     id: string;
     prenom: string;
@@ -149,6 +151,25 @@ export default function AdminDashboard() {
               icon={<ShieldCheck size={20} />}
               label="Souscr. Accident"
               value={String(data.accidentTotal)}
+              color="#15803d"
+              bg="#e8f6ec"
+            />
+          </div>
+
+          <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
+            <StatCard
+              icon={<PiggyBank size={20} />}
+              label="Budget Incendie (mensuel)"
+              value={fcfa(data.budgetIncendie)}
+              trend="5% du CA prime HT sur 31 jours glissants"
+              color="#b45309"
+              bg="#fdf3e3"
+            />
+            <StatCard
+              icon={<PiggyBank size={20} />}
+              label="Budget Accident (mensuel)"
+              value={fcfa(data.budgetAccident)}
+              trend="5% du CA prime HT sur 31 jours glissants"
               color="#15803d"
               bg="#e8f6ec"
             />

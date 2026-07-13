@@ -9,8 +9,8 @@ export interface Partenaire {
   nomCommerce: string;
   nomResponsable: string;
   telephone: string;
-  localisation: string;
-  typeCommerce: "Electronique" | "Vulcanisateur" | "MecaniqueGarage" | "AccessoireAuto";
+  localisation: string | null;
+  typeCommerce: "Electronique" | "Vulcanisateur" | "MecaniqueGarage" | "AccessoireAuto" | null;
   produitIncendie: boolean;
   produitAccident: boolean;
   branche?: "INCENDIE_ACCIDENT" | "RELAX" | null;
@@ -99,6 +99,8 @@ export interface ClientAccident {
   id: string;
   partenaireId: string;
   partenaireNom: string;
+  partenaireResponsable?: string | null;
+  partenaireLocalisation?: string | null;
   telephone: string;
   nom: string;
   prenom: string;
@@ -108,6 +110,7 @@ export interface ClientAccident {
   waveStatut: WaveStatut;
   numeroPolice?: string;
   statutDossier: StatutAccident;
+  relanceCount?: number;
   createdAt: string;
 }
 

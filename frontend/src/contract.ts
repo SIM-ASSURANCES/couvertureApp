@@ -39,7 +39,7 @@ const val = (s?: string | number | null) =>
 
 const CSS = `
   *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
-  body{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;}
+  body{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;text-align:justify;}
   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:20px;}
   .brand img{height:54px;display:block;}
   .pol{text-align:right;font-size:12px;color:#5b6b80;}
@@ -68,7 +68,7 @@ function header(numeroPolice: string) {
   </div>`;
 }
 
-const RECLAMATION = `<div class="note">
+const RECLAMATION = `<div class="note" style="font-weight:bold;font-style:italic;">
   Toute réclamation relative à l'exécution du contrat doit être adressée à « SIM ASSURANCES CÔTE D'IVOIRE »
   (courrier contre décharge, e-mail : info@simassurances.com, ou tout autre moyen faisant foi). La réclamation est gratuite ;
   une réponse est apportée sous cinq (05) jours ouvrés. En cas d'insatisfaction, le client peut saisir gratuitement
@@ -141,7 +141,7 @@ export async function genererContratIncendie(c: ContratIncendie) {
     les Conditions Générales SECURDOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et le présent bulletin de souscription.
     <br/><br/>
     <b>Risques garantis :</b> Incendie / Explosion de l'habitation désignée. <b>Ne sont pas couvertes</b> les constructions
-    en bois et le changement de domicile en cours de contrat. <b>Indemnisation :</b> montant forfaitaire de ${fcfa(c.capitalGaranti)}
+    en bois et le changement de domicile en cours de contrat. <b>Indemnisation :</b> <b>montant forfaitaire de ${fcfa(c.capitalGaranti)}</b>
     (SIM ASSURANCES pourra recourir à un expert pour la validation du montant à payer).
     Le souscripteur reconnaît avoir pris connaissance des Conditions Générales SECURDOMMAGE.
   </div>

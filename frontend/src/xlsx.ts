@@ -10,8 +10,18 @@ export function exportExcel(
   filename: string,
   sheetName = "Feuille1"
 ) {
-  const ws = XLSX.utils.json_to_sheet(rows);
+  exportExcelMultiSheet([{ name: sheetName, rows }], filename);
+}
+
+/** Variante multi-feuilles : une feuille par entrée du tableau `sheets`. */
+export function exportExcelMultiSheet(
+  sheets: { name: string; rows: Record<string, unknown>[] }[],
+  filename: string
+) {
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  for (const { name, rows } of sheets) {
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31)); // Excel limite les noms de feuille à 31 caractères
+  }
   XLSX.writeFile(wb, filename.endsWith(".xlsx") ? filename : `${filename}.xlsx`);
 }

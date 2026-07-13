@@ -60,11 +60,11 @@ publicRouter.get(
       if (p.qrIncendie1000Token === token) {
         produit = "incendie";
         montantPrime = 1000;
-        capitalGaranti = 250000;
+        capitalGaranti = 500000;
       } else if (p.qrIncendie2000Token === token) {
         produit = "incendie";
         montantPrime = 2000;
-        capitalGaranti = 500000;
+        capitalGaranti = 1000000;
       } else {
         produit = "accident";
       }
@@ -114,202 +114,6 @@ publicRouter.get(
   })
 );
 
-/**
- * RelaxMoto/RelaxAuto : initiation d'un abonnement à paiement échelonné.
- * `tarif.prime` est la prime annuelle de référence ; `cycle` détermine le
- * nombre d'échéances (5 hebdomadaires, 12 mensuelles, ou 1 annuelle) et leur
- * montant. Seule la 1ère échéance est payée immédiatement via Wave ; elle
- * active l'abonnement (police + carte de prise en charge).
- */
-const relaxSchema = z.object({
-  qrToken: z.string(),
-  nom: z.string().min(1),
-  prenom: z.string().min(1),
-  telephone: z.string().min(6),
-  dateNaissance: z.coerce.date().optional(),
-  tarifId: z.number().int().positive().optional(),
-  cycle: z.enum(["hebdo5semaines", "mensuel", "annuel"]),
-});
-
-publicRouter.post(
-  "/souscriptions/:produit/initiate",
-  asyncHandler(async (req, res) => {
-    const code = req.params.produit;
-    if (!isProduitRelax(code)) return res.status(404).json({ error: "Produit inconnu" });
-    const data = relaxSchema.parse(req.body);
-
-    const prod = await prisma.produit.findUnique({ where: { code } });
-    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
-
-    const qr = await prisma.qrCode.findFirst({
-      where: { token: data.qrToken, produitId: prod.id, actif: true, partenaire: { statut: "actif" } },
-      include: { partenaire: true },
-    });
-    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
-
-    let tarif = data.tarifId
-      ? await prisma.tarifProduit.findFirst({ where: { id: data.tarifId, produitId: prod.id } })
-      : await prisma.tarifProduit.findFirst({ where: { produitId: prod.id }, orderBy: { prime: "asc" } });
-    if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
-
-    const echeancier = genererEcheancier(tarif.prime, data.cycle);
-
-    const s = await prisma.souscription.create({
-      data: {
-        produitId: prod.id,
-        partenaireId: qr.partenaireId,
-        nom: data.nom,
-        prenom: data.prenom,
-        telephone: data.telephone,
-        dateNaissance: data.dateNaissance ?? null,
-        montantPrime: tarif.prime,
-        capitalGaranti: tarif.capitalGaranti,
-        waveStatut: "en_attente",
-        cycleFacturation: data.cycle,
-        nombreEcheances: echeancier.length,
-        paiements: {
-          createMany: {
-            data: echeancier.map((e) => ({
-              numeroEcheance: e.numeroEcheance,
-              montant: e.montant,
-              dateEcheance: e.dateEcheance,
-            })),
-          },
-        },
-      },
-    });
-
-    const premiereEcheance = await prisma.paiement.findUniqueOrThrow({
-      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
-    });
-
-    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
-    const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${premiereEcheance.id}`;
-    const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
-
-    let checkoutUrl: string;
-    let transactionId: string;
-
-    if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${premiereEcheance.id.slice(0, 8)}`;
-      await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
-      await confirmerEcheance({ ...premiereEcheance, waveTransactionId: transactionId });
-      checkoutUrl = successUrl;
-    } else {
-      const wave = await initiateWavePayment(premiereEcheance.montant, premiereEcheance.id, successUrl, errorUrl);
-      transactionId = wave.transactionId;
-      checkoutUrl = wave.checkoutUrl;
-      await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
-    }
-
-    await notifyPartenaire(
-      qr.partenaireId,
-      "souscription",
-      `Nouvelle souscription ${prod.libelle}`,
-      `Nouveau client ${prod.libelle} (${tarif.prime} FCFA/an, ${data.cycle}) via votre QR code.`,
-      "/partenaire/souscriptions"
-    );
-
-    res.status(201).json({
-      souscriptionId: s.id,
-      echeanceId: premiereEcheance.id,
-      montantEcheance: premiereEcheance.montant,
-      nombreEcheances: echeancier.length,
-      capitalGaranti: tarif.capitalGaranti,
-      checkoutUrl,
-      transactionId,
-    });
-  })
-);
-
-/** RelaxMoto/RelaxAuto : vérification manuelle du paiement d'une échéance (filet de sécurité) */
-publicRouter.get(
-  "/souscriptions/:produit/echeances/:echeanceId/verify",
-  asyncHandler(async (req, res) => {
-    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
-    const p = await prisma.paiement.findUnique({ where: { id: req.params.echeanceId } });
-    if (!p) return res.status(404).json({ error: "Échéance introuvable" });
-    const statut = await verifierPaiementEcheance(p);
-    res.json({ statut });
-  })
-);
-
-/**
- * RelaxMoto/RelaxAuto : dépôt d'un document d'identité (CNI/Permis) lié à la
- * souscription. `url` est l'emplacement du fichier déjà hébergé côté client
- * (aucun service de stockage de fichiers n'est encore intégré côté backend).
- */
-const documentSchema = z.object({
-  type: z.enum(["CNI", "Permis"]),
-  url: z.string().min(1),
-});
-
-publicRouter.post(
-  "/souscriptions/:produit/:id/documents",
-  asyncHandler(async (req, res) => {
-    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
-    const data = documentSchema.parse(req.body);
-    const s = await prisma.souscription.findUnique({ where: { id: req.params.id } });
-    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
-
-    const doc = await prisma.document.create({
-      data: { souscriptionId: s.id, type: data.type, url: data.url },
-    });
-    res.status(201).json(doc);
-  })
-);
-
-/** RelaxMoto/RelaxAuto : infos publiques (flux de relance) */
-publicRouter.get(
-  "/souscriptions/:produit/:id/info",
-  asyncHandler(async (req, res) => {
-    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
-    const s = await prisma.souscription.findUnique({
-      where: { id: req.params.id },
-      include: { partenaire: { select: { nomCommerce: true } } },
-    });
-    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
-    res.json({
-      id: s.id,
-      nom: s.nom,
-      prenom: s.prenom,
-      telephone: s.telephone,
-      dateNaissance: s.dateNaissance,
-      montant: s.montantPrime,
-      capitalGaranti: s.capitalGaranti,
-      waveStatut: s.waveStatut,
-      partenaire: s.partenaire.nomCommerce,
-    });
-  })
-);
-
-/** RelaxMoto/RelaxAuto : contrat après paiement confirmé */
-publicRouter.get(
-  "/souscriptions/:produit/:id/contrat",
-  asyncHandler(async (req, res) => {
-    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
-    const s = await prisma.souscription.findUnique({
-      where: { id: req.params.id },
-      include: { partenaire: { select: { nomCommerce: true } } },
-    });
-    if (!s || s.waveStatut !== "confirme") {
-      return res.status(404).json({ error: "Contrat non disponible" });
-    }
-    res.json({
-      numeroPolice: s.numeroPolice,
-      montant: s.montantPrime,
-      capitalGaranti: s.capitalGaranti,
-      dateDebut: s.dateDebut,
-      dateFin: s.dateFin,
-      dateNaissance: s.dateNaissance,
-      nom: s.nom,
-      prenom: s.prenom,
-      telephone: s.telephone,
-      partenaire: s.partenaire.nomCommerce,
-    });
-  })
-);
-
 /** Incendie : enregistrement dès la saisie du téléphone */
 const incSchema = z.object({
   qrToken: z.string(),
@@ -337,7 +141,7 @@ publicRouter.post(
     if (!p) return res.status(404).json({ error: "QR Incendie invalide" });
 
     const montantPrime = p.qrIncendie1000Token === data.qrToken ? 1000 : 2000;
-    const capitalGaranti = montantPrime === 1000 ? 250000 : 500000;
+    const capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
 
     const token = newFormulaireToken();
 
@@ -713,6 +517,202 @@ publicRouter.get(
   "/souscriptions/accident/:id/contrat",
   asyncHandler(async (req, res) => {
     const s = await prisma.souscriptionAccident.findUnique({
+      where: { id: req.params.id },
+      include: { partenaire: { select: { nomCommerce: true } } },
+    });
+    if (!s || s.waveStatut !== "confirme") {
+      return res.status(404).json({ error: "Contrat non disponible" });
+    }
+    res.json({
+      numeroPolice: s.numeroPolice,
+      montant: s.montantPrime,
+      capitalGaranti: s.capitalGaranti,
+      dateDebut: s.dateDebut,
+      dateFin: s.dateFin,
+      dateNaissance: s.dateNaissance,
+      nom: s.nom,
+      prenom: s.prenom,
+      telephone: s.telephone,
+      partenaire: s.partenaire.nomCommerce,
+    });
+  })
+);
+
+/**
+ * RelaxMoto/RelaxAuto : initiation d'un abonnement à paiement échelonné.
+ * `tarif.prime` est la prime annuelle de référence ; `cycle` détermine le
+ * nombre d'échéances (5 hebdomadaires, 12 mensuelles, ou 1 annuelle) et leur
+ * montant. Seule la 1ère échéance est payée immédiatement via Wave ; elle
+ * active l'abonnement (police + carte de prise en charge).
+ */
+const relaxSchema = z.object({
+  qrToken: z.string(),
+  nom: z.string().min(1),
+  prenom: z.string().min(1),
+  telephone: z.string().min(6),
+  dateNaissance: z.coerce.date().optional(),
+  tarifId: z.number().int().positive().optional(),
+  cycle: z.enum(["hebdo5semaines", "mensuel", "annuel"]),
+});
+
+publicRouter.post(
+  "/souscriptions/:produit/initiate",
+  asyncHandler(async (req, res) => {
+    const code = req.params.produit;
+    if (!isProduitRelax(code)) return res.status(404).json({ error: "Produit inconnu" });
+    const data = relaxSchema.parse(req.body);
+
+    const prod = await prisma.produit.findUnique({ where: { code } });
+    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
+
+    const qr = await prisma.qrCode.findFirst({
+      where: { token: data.qrToken, produitId: prod.id, actif: true, partenaire: { statut: "actif" } },
+      include: { partenaire: true },
+    });
+    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
+
+    let tarif = data.tarifId
+      ? await prisma.tarifProduit.findFirst({ where: { id: data.tarifId, produitId: prod.id } })
+      : await prisma.tarifProduit.findFirst({ where: { produitId: prod.id }, orderBy: { prime: "asc" } });
+    if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
+
+    const echeancier = genererEcheancier(tarif.prime, data.cycle);
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: qr.partenaireId,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        dateNaissance: data.dateNaissance ?? null,
+        montantPrime: tarif.prime,
+        capitalGaranti: tarif.capitalGaranti,
+        waveStatut: "en_attente",
+        cycleFacturation: data.cycle,
+        nombreEcheances: echeancier.length,
+        paiements: {
+          createMany: {
+            data: echeancier.map((e) => ({
+              numeroEcheance: e.numeroEcheance,
+              montant: e.montant,
+              dateEcheance: e.dateEcheance,
+            })),
+          },
+        },
+      },
+    });
+
+    const premiereEcheance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${premiereEcheance.id}`;
+    const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
+
+    let checkoutUrl: string;
+    let transactionId: string;
+
+    if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${premiereEcheance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...premiereEcheance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(premiereEcheance.montant, premiereEcheance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      qr.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${tarif.prime} FCFA/an, ${data.cycle}) via votre QR code.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: premiereEcheance.id,
+      montantEcheance: premiereEcheance.montant,
+      nombreEcheances: echeancier.length,
+      capitalGaranti: tarif.capitalGaranti,
+      checkoutUrl,
+      transactionId,
+    });
+  })
+);
+
+/** RelaxMoto/RelaxAuto : vérification manuelle du paiement d'une échéance (filet de sécurité) */
+publicRouter.get(
+  "/souscriptions/:produit/echeances/:echeanceId/verify",
+  asyncHandler(async (req, res) => {
+    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
+    const p = await prisma.paiement.findUnique({ where: { id: req.params.echeanceId } });
+    if (!p) return res.status(404).json({ error: "Échéance introuvable" });
+    const statut = await verifierPaiementEcheance(p);
+    res.json({ statut });
+  })
+);
+
+/**
+ * RelaxMoto/RelaxAuto : dépôt d'un document d'identité (CNI/Permis) lié à la
+ * souscription. `url` est l'emplacement du fichier déjà hébergé côté client
+ * (aucun service de stockage de fichiers n'est encore intégré côté backend).
+ */
+const documentSchema = z.object({
+  type: z.enum(["CNI", "Permis"]),
+  url: z.string().min(1),
+});
+
+publicRouter.post(
+  "/souscriptions/:produit/:id/documents",
+  asyncHandler(async (req, res) => {
+    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
+    const data = documentSchema.parse(req.body);
+    const s = await prisma.souscription.findUnique({ where: { id: req.params.id } });
+    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
+
+    const doc = await prisma.document.create({
+      data: { souscriptionId: s.id, type: data.type, url: data.url },
+    });
+    res.status(201).json(doc);
+  })
+);
+
+/** RelaxMoto/RelaxAuto : infos publiques (flux de relance) */
+publicRouter.get(
+  "/souscriptions/:produit/:id/info",
+  asyncHandler(async (req, res) => {
+    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
+    const s = await prisma.souscription.findUnique({
+      where: { id: req.params.id },
+      include: { partenaire: { select: { nomCommerce: true } } },
+    });
+    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
+    res.json({
+      id: s.id,
+      nom: s.nom,
+      prenom: s.prenom,
+      telephone: s.telephone,
+      dateNaissance: s.dateNaissance,
+      montant: s.montantPrime,
+      capitalGaranti: s.capitalGaranti,
+      waveStatut: s.waveStatut,
+      partenaire: s.partenaire.nomCommerce,
+    });
+  })
+);
+
+/** RelaxMoto/RelaxAuto : contrat après paiement confirmé */
+publicRouter.get(
+  "/souscriptions/:produit/:id/contrat",
+  asyncHandler(async (req, res) => {
+    if (!isProduitRelax(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
+    const s = await prisma.souscription.findUnique({
       where: { id: req.params.id },
       include: { partenaire: { select: { nomCommerce: true } } },
     });

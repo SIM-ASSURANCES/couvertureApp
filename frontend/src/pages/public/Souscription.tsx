@@ -107,9 +107,6 @@ function TarifCard({
       <div>
         <div style={{ fontSize: 22, fontWeight: 800, color: "var(--sim-primary)" }}>
           {fcfa(prime)}
-          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text-2)", marginLeft: 6 }}>
-            / an
-          </span>
         </div>
         <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 13 }}>
           Capital garanti :{" "}
@@ -290,10 +287,15 @@ export default function Souscription() {
           return;
         }
         setQrInfo(qr);
-        setTarifsAcc(acc);
+        // La formule 1000 FCFA doit apparaître en premier et être sélectionnée par défaut.
+        const accTriee = [...acc].sort(
+          (a: TarifAccident, b: TarifAccident) =>
+            (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime)
+        );
+        setTarifsAcc(accTriee);
 
         if (qr.produit === "accident") {
-          if (acc.length > 0) setSelectedTarifId(acc[0].id);
+          if (accTriee.length > 0) setSelectedTarifId(accTriee[0].id);
         }
         setStep("infos");
       })
@@ -415,7 +417,7 @@ export default function Souscription() {
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>
                 Assurance{" "}
-                {qrInfo.produit === "incendie" ? "Incendie" : "Accident"}
+                {qrInfo.produit === "incendie" ? "Incendie" : "Accidents"}
               </div>
               <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
                 via {qrInfo.partenaire.nomCommerce}
@@ -722,7 +724,7 @@ export default function Souscription() {
                     🎉 Félicitations !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
-                    Votre assurance accident est activée pour <strong>3 mois</strong>.
+                    Votre assurance accidents est activée pour <strong>3 mois</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div

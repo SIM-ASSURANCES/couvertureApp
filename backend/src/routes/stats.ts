@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
+import { budgetMensuelGlobal } from "../services/commission.js";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth("admin"));
@@ -73,6 +74,10 @@ statsRouter.get(
       where: { ...dateWhere, waveStatut: "confirme" },
     });
 
+    // Budget mensuel (5% du CA prime HT sur 31 jours glissants) — indépendant
+    // du filtre de période du tableau de bord, toujours calculé sur le mois en cours.
+    const budget = await budgetMensuelGlobal();
+
     // ── Chiffre d'affaires (Prime TTC − Taxes) & Taxes, depuis les barèmes ──
     function caEtTaxes(
       groups: { montantPrime: number; _count: { _all: number } }[],
@@ -114,6 +119,8 @@ statsRouter.get(
       taxes: Math.round(taxesIncendie + taxesAccident),
       caIncendie: Math.round(caIncendie),
       caAccident: Math.round(caAccident),
+      budgetIncendie: budget.budgetIncendie,
+      budgetAccident: budget.budgetAccident,
       params,
       derniersAccident: derniersAccident.map((r) => ({
         ...r,
@@ -224,6 +231,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
       return {
         id: p.id,
         nomCommerce: p.nomCommerce,
+        nomResponsable: p.nomResponsable,
         localisation: p.localisation,
         clientsIncendie: incendieCount,
         clientsAccident: accCount as number,

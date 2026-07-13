@@ -9,6 +9,7 @@ import { newQrToken, qrDataUrl } from "../services/qr.js";
 import {
   commissionTotalePartenaire,
   commissionEncaisseePartenaire,
+  commissionMensuellePartenaire,
 } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
 
@@ -33,11 +34,15 @@ function genMotDePasseProvisoire(): string {
 }
 
 const baseSchema = z.object({
-  nomCommerce: z.string().min(1),
+  // Nom de l'entreprise : requis pour Incendie/Accident (imposé par ce
+  // formulaire dédié), facultatif pour Relax (formulaire dédié, replié sur
+  // nomResponsable si absent — voir POST /).
+  nomCommerce: z.string().optional(),
   nomResponsable: z.string().min(1),
   telephone: z.string().min(1),
-  localisation: z.string().min(1),
-  typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]),
+  // Facultatifs : ne concernent pas la branche Relax.
+  localisation: z.string().min(1).optional(),
+  typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]).optional(),
   produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto"]),
   email: z.string().min(1, "Email requis").email("Email invalide"),
 });
@@ -83,7 +88,14 @@ partenairesRouter.get(
       },
       orderBy: { createdAt: "desc" },
       include: {
-        _count: { select: { incendie: true, accident: true, souscriptionsGen: true } },
+        // Un accident/relax n'est compté comme client qu'une fois le paiement Wave confirmé.
+        _count: {
+          select: {
+            incendie: true,
+            accident: { where: { waveStatut: "confirme" } },
+            souscriptionsGen: { where: { waveStatut: "confirme" } },
+          },
+        },
       },
     });
     res.json(
@@ -119,7 +131,7 @@ partenairesRouter.get(
     const range = parseDateRange(req as { query: { from?: string; to?: string } });
     const dateWhere = range ? { createdAt: range } : {};
 
-    const [incendie, accident, totaleAllTime, genereePeriode, encaissee] =
+    const [incendie, accident, totaleAllTime, genereePeriode, encaissee, mensuelle] =
       await Promise.all([
         prisma.souscriptionIncendie.findMany({
           where: { partenaireId: id, ...dateWhere },
@@ -132,6 +144,7 @@ partenairesRouter.get(
         commissionTotalePartenaire(id),
         commissionTotalePartenaire(id, dateWhere),
         commissionEncaisseePartenaire(id),
+        commissionMensuellePartenaire(id),
       ]);
 
     res.json({
@@ -152,6 +165,7 @@ partenairesRouter.get(
       commissionGenereePeriode: Math.round(genereePeriode),
       commissionEncaissee: Math.round(encaissee),
       commissionDue: Math.round(totaleAllTime - encaissee),
+      commissionMensuelle: mensuelle,
     });
   })
 );
@@ -167,7 +181,8 @@ partenairesRouter.post(
 
     const created = await prisma.partenaire.create({
       data: {
-        nomCommerce: data.nomCommerce,
+        // Replié sur le nom du responsable si aucun nom d'entreprise n'est fourni (branche Relax).
+        nomCommerce: data.nomCommerce?.trim() || data.nomResponsable,
         nomResponsable: data.nomResponsable,
         telephone: data.telephone,
         localisation: data.localisation,

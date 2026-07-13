@@ -141,7 +141,15 @@ export default function PaiementsEnAttente() {
                       <strong>{c.prenom} {c.nom}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
-                    <td>{c.partenaireNom}</td>
+                    <td>
+                      <strong>{c.partenaireNom}</strong>
+                      {c.partenaireResponsable && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                      )}
+                      {c.partenaireLocalisation && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
+                      )}
+                    </td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{waveBadge(c.waveStatut)}</td>
                     <td className="muted">{fmtDate(c.createdAt)}</td>
@@ -166,12 +174,36 @@ export default function PaiementsEnAttente() {
                         </button>
                         <button
                           className="btn btn-ghost"
-                          style={{ padding: "7px 10px" }}
-                          title="Relancer par SMS (nouveau lien Wave, montant exact)"
+                          style={{ padding: "7px 10px", position: "relative" }}
+                          title={
+                            c.relanceCount
+                              ? `Relancer par SMS (déjà relancé ${c.relanceCount} fois)`
+                              : "Relancer par SMS (nouveau lien Wave, montant exact)"
+                          }
                           disabled={relanceId === c.id}
                           onClick={() => relancer(c.id)}
                         >
                           <Send size={15} />
+                          {!!c.relanceCount && (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: -5,
+                                right: -5,
+                                background: "var(--danger)",
+                                color: "#fff",
+                                borderRadius: "999px",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                lineHeight: 1,
+                                padding: "3px 5px",
+                                minWidth: 16,
+                                textAlign: "center",
+                              }}
+                            >
+                              {c.relanceCount}
+                            </span>
+                          )}
                         </button>
                         {isSuper && (
                           <button

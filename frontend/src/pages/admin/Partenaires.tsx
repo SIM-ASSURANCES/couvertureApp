@@ -4,7 +4,7 @@ import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
-import { exportExcel } from "../../xlsx";
+import { exportExcel, exportExcelMultiSheet } from "../../xlsx";
 import type { Partenaire } from "../../types";
 
 interface PartenaireDetails {
@@ -19,6 +19,10 @@ interface PartenaireDetails {
   commissionGenereePeriode: number;
   commissionEncaissee: number;
   commissionDue: number;
+  commissionMensuelle: {
+    incendie: { caHT: number; seuil: number; tauxPct: number; seuilAtteint: boolean; commission: number };
+    accident: { caHT: number; seuil: number; tauxPct: number; seuilAtteint: boolean; commission: number };
+  };
 }
 
 function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose: () => void }) {
@@ -40,12 +44,69 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
 
   useEffect(() => { load(); }, [load]);
 
+  function exportXlsx() {
+    if (!data) return;
+    exportExcelMultiSheet(
+      [
+        {
+          name: "Résumé",
+          rows: [
+            {
+              "Partenaire": data.partenaire.nomCommerce,
+              "Responsable": data.partenaire.nomResponsable,
+              "Téléphone": data.partenaire.telephone,
+              "Localisation": data.partenaire.localisation,
+              "Email": data.partenaire.email ?? "",
+              "Commission totale": data.commissionTotale,
+              "Commission encaissée": data.commissionEncaissee,
+              "Commission due": data.commissionDue,
+              "Commission générée (période)": data.commissionGenereePeriode,
+              "CA HT Incendie (31j)": data.commissionMensuelle.incendie.caHT,
+              "Commission mensuelle Incendie": data.commissionMensuelle.incendie.commission,
+              "CA HT Accident (31j)": data.commissionMensuelle.accident.caHT,
+              "Commission mensuelle Accident": data.commissionMensuelle.accident.commission,
+            },
+          ],
+        },
+        {
+          name: "Souscripteurs",
+          rows: [
+            ...data.souscripteursIncendie.map((s) => ({
+              "Produit": "Incendie",
+              "Client": [s.prenom, s.nom].filter(Boolean).join(" "),
+              "Téléphone": s.telephone,
+              "Prime": s.montantPrime,
+              "Statut": s.statut,
+              "Date": fmtDate(s.createdAt),
+            })),
+            ...data.souscripteursAccident.map((s) => ({
+              "Produit": "Accident",
+              "Client": `${s.prenom} ${s.nom}`,
+              "Téléphone": s.telephone,
+              "Prime": s.montantPrime,
+              "Statut": s.waveStatut,
+              "Date": fmtDate(s.createdAt),
+            })),
+          ],
+        },
+      ],
+      `partenaire_${data.partenaire.nomCommerce.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.xlsx`
+    );
+  }
+
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
       <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 820, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto", padding: 24 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <strong style={{ fontSize: 17 }}>{data?.partenaire.nomCommerce ?? "Détails partenaire"}</strong>
-          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {data && (
+              <button className="btn btn-danger-soft" onClick={exportXlsx}>
+                <FileSpreadsheet size={16} /> Export Excel
+              </button>
+            )}
+            <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+          </div>
         </div>
 
         {data && (
@@ -72,9 +133,43 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
           <>
             <div className="stat-grid" style={{ marginBottom: 20 }}>
               <div className="stat"><div className="stat-label">Commission totale</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionTotale)}</div></div>
-              <div className="stat"><div className="stat-label">Encaissée</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionEncaissee)}</div></div>
+              <div className="stat"><div className="stat-label">Payée</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionEncaissee)}</div></div>
               <div className="stat"><div className="stat-label">Due</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionDue)}</div></div>
               <div className="stat"><div className="stat-label">Générée (période)</div><div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionGenereePeriode)}</div></div>
+            </div>
+
+            <div style={{ fontWeight: 700, margin: "8px 0 8px" }}>
+              Commission mensuelle (31 derniers jours)
+            </div>
+            <div className="stat-grid" style={{ marginBottom: 20 }}>
+              {data.partenaire.produitIncendie && (
+                <div className="stat">
+                  <div className="stat-label">Incendie — CA prime HT</div>
+                  <div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionMensuelle.incendie.caHT)}</div>
+                  <div
+                    className="stat-trend"
+                    style={{ color: data.commissionMensuelle.incendie.seuilAtteint ? "var(--success)" : "var(--text-2)" }}
+                  >
+                    {data.commissionMensuelle.incendie.seuilAtteint
+                      ? `Seuil atteint (≥ ${fcfa(data.commissionMensuelle.incendie.seuil)}) → ${fcfa(data.commissionMensuelle.incendie.commission)} (${data.commissionMensuelle.incendie.tauxPct}%)`
+                      : `Seuil non atteint — ${fcfa(data.commissionMensuelle.incendie.seuil)} requis`}
+                  </div>
+                </div>
+              )}
+              {data.partenaire.produitAccident && (
+                <div className="stat">
+                  <div className="stat-label">Accident — CA prime HT</div>
+                  <div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionMensuelle.accident.caHT)}</div>
+                  <div
+                    className="stat-trend"
+                    style={{ color: data.commissionMensuelle.accident.seuilAtteint ? "var(--success)" : "var(--text-2)" }}
+                  >
+                    {data.commissionMensuelle.accident.seuilAtteint
+                      ? `Seuil atteint (≥ ${fcfa(data.commissionMensuelle.accident.seuil)}) → ${fcfa(data.commissionMensuelle.accident.commission)} (${data.commissionMensuelle.accident.tauxPct}%)`
+                      : `Seuil non atteint — ${fcfa(data.commissionMensuelle.accident.seuil)} requis`}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ fontWeight: 700, margin: "8px 0 8px" }}>Souscripteurs via son canal ({data.souscripteursIncendie.length + data.souscripteursAccident.length})</div>
@@ -126,8 +221,8 @@ function EditModal({
     nomCommerce: partenaire.nomCommerce,
     nomResponsable: partenaire.nomResponsable,
     telephone: partenaire.telephone,
-    localisation: partenaire.localisation,
-    typeCommerce: partenaire.typeCommerce as string,
+    localisation: partenaire.localisation ?? "",
+    typeCommerce: (partenaire.typeCommerce ?? "Electronique") as string,
     produit: (partenaire.produitIncendie ? "incendie" : "accident") as "incendie" | "accident",
     email: partenaire.email ?? "",
   });

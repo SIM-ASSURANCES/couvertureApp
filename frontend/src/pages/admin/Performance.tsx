@@ -9,6 +9,7 @@ import type { Partenaire } from "../../types";
 interface PerfRow {
   id: string;
   nomCommerce: string;
+  nomResponsable: string;
   localisation: string;
   clientsIncendie: number;
   clientsAccident: number;
@@ -68,8 +69,14 @@ export default function Performance() {
 
   const { data, loading, error } = useFetch<Perf>(`/stats/performance?${params.toString()}`);
 
-  // Top 3 sur le mois en cours, classé par nombre de souscriptions
-  const { data: monthlyData } = useFetch<Perf>("/stats/performance?periode=mensuel");
+  // Top 3 sur les 31 derniers jours glissants (même définition du « mensuel »
+  // que la commission mensuelle et les cartes Budget), classé par nombre de souscriptions
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const depuis31 = new Date();
+  depuis31.setDate(depuis31.getDate() - 31);
+  const { data: monthlyData } = useFetch<Perf>(
+    `/stats/performance?from=${iso(depuis31)}&to=${iso(new Date())}`
+  );
   const top3 = [...(monthlyData?.rows ?? [])]
     .filter((r) => r.total > 0)
     .sort((a, b) => b.total - a.total)
@@ -109,6 +116,7 @@ export default function Performance() {
       rows.map((r, i) => ({
         "#": i + 1,
         "Partenaire": r.nomCommerce,
+        "Responsable": r.nomResponsable,
         "Localisation": r.localisation,
         "Volume total": r.total,
         "Clients Incendie": r.clientsIncendie,
@@ -145,7 +153,7 @@ export default function Performance() {
 
       {/* ── Top 3 mensuel ── */}
       {top3.length > 0 && (
-        <Card title="Top 3 partenaires — Souscriptions du mois" style={{ marginBottom: 24 }}>
+        <Card title="Top 3 partenaires — Souscriptions (31 derniers jours)" style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", padding: "4px 0" }}>
             {top3.map((r, i) => (
               <div key={r.id} style={{
@@ -360,7 +368,7 @@ export default function Performance() {
                       <td style={{ color: "var(--text-2)", fontWeight: 600 }}>{i + 1}</td>
                       <td>
                         <strong>{r.nomCommerce}</strong>
-                        <div className="muted" style={{ fontSize: 12 }}>{r.localisation}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{r.nomResponsable}</div>
                       </td>
                       <td style={{ minWidth: 120 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
