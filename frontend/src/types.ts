@@ -80,6 +80,8 @@ export interface ClientIncendie {
   id: string;
   partenaireId: string;
   partenaireNom: string;
+  partenaireResponsable?: string | null;
+  partenaireLocalisation?: string | null;
   telephone: string;
   nom?: string;
   prenom?: string;

@@ -23,6 +23,8 @@ interface Contrat {
   montant: number;
   capitalGaranti: number;
   partenaire: string;
+  partenaireResponsable?: string | null;
+  partenaireLocalisation?: string | null;
   dateDebut: string | null;
   dateFin: string | null;
   date: string;
@@ -192,7 +194,15 @@ export default function Contrats() {
                         {c.telephone}
                       </div>
                     </td>
-                    <td>{c.partenaire}</td>
+                    <td>
+                      <strong>{c.partenaire}</strong>
+                      {c.partenaireResponsable && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                      )}
+                      {c.partenaireLocalisation && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
+                      )}
+                    </td>
                     <td>
                       <strong>{fcfa(c.montant)}</strong>
                     </td>
@@ -351,7 +361,15 @@ export default function Contrats() {
                   </tr>
                   <tr>
                     <td className="muted">Partenaire</td>
-                    <td>{detail.partenaire}</td>
+                    <td>
+                      {detail.partenaire}
+                      {detail.partenaireResponsable && (
+                        <div className="muted" style={{ fontSize: 12 }}>{detail.partenaireResponsable}</div>
+                      )}
+                      {detail.partenaireLocalisation && (
+                        <div className="muted" style={{ fontSize: 12 }}>{detail.partenaireLocalisation}</div>
+                      )}
+                    </td>
                   </tr>
                   {detail.refFacture && (
                     <tr>

@@ -120,7 +120,15 @@ export default function ClientsAccident() {
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
                     <td className="muted">{c.dateNaissance ? fmtDate(c.dateNaissance) : "—"}</td>
-                    <td>{c.partenaireNom}</td>
+                    <td>
+                      <strong>{c.partenaireNom}</strong>
+                      {c.partenaireResponsable && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                      )}
+                      {c.partenaireLocalisation && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
+                      )}
+                    </td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td className="muted">{fcfa(c.capitalGaranti)}</td>
                     <td>{waveBadge(c.waveStatut)}</td>
@@ -180,7 +188,15 @@ export default function ClientsAccident() {
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{detailFor.prenom} {detailFor.nom}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Date de naissance</td><td>{detailFor.dateNaissance ? fmtDate(detailFor.dateNaissance) : "—"}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>
+                  {detailFor.partenaireNom}
+                  {detailFor.partenaireResponsable && (
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireResponsable}</div>
+                  )}
+                  {detailFor.partenaireLocalisation && (
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireLocalisation}</div>
+                  )}
+                </td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
                 <tr><td className="muted">Paiement Wave</td><td>{waveBadge(detailFor.waveStatut)}</td></tr>

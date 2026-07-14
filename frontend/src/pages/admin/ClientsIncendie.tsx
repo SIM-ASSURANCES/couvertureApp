@@ -175,7 +175,15 @@ export default function ClientsIncendie() {
                         <span className="muted">Non renseigné</span>
                       )}
                     </td>
-                    <td>{c.partenaireNom}</td>
+                    <td>
+                      <strong>{c.partenaireNom}</strong>
+                      {c.partenaireResponsable && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                      )}
+                      {c.partenaireLocalisation && (
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
+                      )}
+                    </td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td className="muted">{fcfa(c.capitalGaranti)}</td>
                     <td>{c.refFacture ?? <span className="muted">—</span>}</td>
@@ -278,7 +286,15 @@ export default function ClientsIncendie() {
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Email</td><td>{detailFor.email || "—"}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>
+                  {detailFor.partenaireNom}
+                  {detailFor.partenaireResponsable && (
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireResponsable}</div>
+                  )}
+                  {detailFor.partenaireLocalisation && (
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireLocalisation}</div>
+                  )}
+                </td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
                 <tr><td className="muted">Réf. facture</td><td>{detailFor.refFacture || "—"}</td></tr>

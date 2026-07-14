@@ -33,6 +33,8 @@ souscriptionsRouter.get(
       montant: number;
       capitalGaranti: number;
       partenaire: string;
+      partenaireResponsable: string;
+      partenaireLocalisation: string | null;
       dateDebut: Date | null;
       dateFin: Date | null;
       date: Date;
@@ -59,7 +61,9 @@ souscriptionsRouter.get(
     if (type !== "accident") {
       const inc = await prisma.souscriptionIncendie.findMany({
         where: { statut: "complet" },
-        include: { partenaire: { select: { nomCommerce: true } } },
+        include: {
+          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+        },
         orderBy: { createdAt: "desc" },
       });
       for (const s of inc) {
@@ -77,6 +81,8 @@ souscriptionsRouter.get(
           montant: s.montantPrime,
           capitalGaranti: s.capitalGaranti,
           partenaire: s.partenaire.nomCommerce,
+          partenaireResponsable: s.partenaire.nomResponsable,
+          partenaireLocalisation: s.partenaire.localisation,
           dateDebut: debut,
           dateFin: fin,
           date: s.createdAt,
@@ -95,7 +101,9 @@ souscriptionsRouter.get(
     if (type !== "incendie") {
       const acc = await prisma.souscriptionAccident.findMany({
         where: { waveStatut: "confirme" },
-        include: { partenaire: { select: { nomCommerce: true } } },
+        include: {
+          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+        },
         orderBy: { createdAt: "desc" },
       });
       for (const s of acc) {
@@ -110,6 +118,8 @@ souscriptionsRouter.get(
           montant: s.montantPrime,
           capitalGaranti: s.capitalGaranti,
           partenaire: s.partenaire.nomCommerce,
+          partenaireResponsable: s.partenaire.nomResponsable,
+          partenaireLocalisation: s.partenaire.localisation,
           dateDebut: s.dateDebut,
           dateFin: s.dateFin,
           date: s.createdAt,
@@ -177,11 +187,18 @@ souscriptionsRouter.get(
             : undefined,
         partenaireId: partenaireId || undefined,
       },
-      include: { partenaire: { select: { nomCommerce: true } } },
+      include: {
+        partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
     res.json(
-      rows.map((r) => ({ ...r, partenaireNom: r.partenaire.nomCommerce }))
+      rows.map((r) => ({
+        ...r,
+        partenaireNom: r.partenaire.nomCommerce,
+        partenaireResponsable: r.partenaire.nomResponsable,
+        partenaireLocalisation: r.partenaire.localisation,
+      }))
     );
   })
 );
