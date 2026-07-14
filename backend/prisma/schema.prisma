@@ -531,22 +531,30 @@ enum StatutSouscriptionImf {
   annulee
 }
 
+enum TypePieceIdentite {
+  cni
+  passeport
+  permis_conduire
+}
+
 model SouscriptionImf {
-  id           String                @id @default(uuid())
-  numeroPolice String                @unique
-  agentId      String
-  agent        AgentImf              @relation(fields: [agentId], references: [id])
-  simulationId String?               @unique
-  simulation   SimulationImf?        @relation(fields: [simulationId], references: [id])
-  produitCode  String
-  nom          String
-  prenom       String
-  telephone    String
-  email        String?
-  entrees      Json
-  resultat     Json
-  primeTTC     Int
-  statut       StatutSouscriptionImf @default(en_cours)
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  id            String                @id @default(uuid())
+  numeroPolice  String                @unique
+  agentId       String
+  agent         AgentImf              @relation(fields: [agentId], references: [id])
+  simulationId  String?               @unique
+  simulation    SimulationImf?        @relation(fields: [simulationId], references: [id])
+  produitCode   String
+  nom           String
+  prenom        String
+  telephone     String
+  email         String?
+  typePiece     TypePieceIdentite?
+  numeroPiece   String?
+  entrees       Json
+  resultat      Json
+  primeTTC      Int
+  statut        StatutSouscriptionImf @default(en_cours)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
 }

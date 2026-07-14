@@ -680,6 +680,8 @@ const souscriptionSchema = z.object({
   prenom: z.string().min(1),
   telephone: z.string().min(1),
   email: z.string().email().optional(),
+  typePiece: z.enum(["cni", "passeport", "permis_conduire"]),
+  numeroPiece: z.string().min(1),
 });
 
 agentImfRouter.post(
@@ -711,6 +713,8 @@ agentImfRouter.post(
         prenom: data.prenom,
         telephone: data.telephone,
         email: data.email,
+        typePiece: data.typePiece,
+        numeroPiece: data.numeroPiece,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,
         primeTTC: simulation.primeTTC,

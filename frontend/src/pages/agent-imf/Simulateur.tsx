@@ -68,7 +68,11 @@ export default function Simulateur() {
   const [saved, setSaved] = useState(false);
   const [simulationId, setSimulationId] = useState<string | null>(null);
   const [souscription, setSouscription] = useState<SouscriptionImf | null>(null);
-  const [client, setClient] = useState({ nom: "", prenom: "", telephone: "", email: "" });
+  const [client, setClient] = useState({
+    nom: "", prenom: "", telephone: "", email: "",
+    typePiece: "cni" as "cni" | "passeport" | "permis_conduire",
+    numeroPiece: "",
+  });
   const [souscrivant, setSouscrivant] = useState(false);
   const [erreurSouscription, setErreurSouscription] = useState("");
 
@@ -178,6 +182,8 @@ export default function Simulateur() {
         prenom: client.prenom,
         telephone: client.telephone,
         email: client.email || undefined,
+        typePiece: client.typePiece,
+        numeroPiece: client.numeroPiece,
       });
       setSouscription(res);
     } catch (err) {
@@ -248,7 +254,7 @@ export default function Simulateur() {
                   <label className="label">Classe de risque</label>
                   <select className="select" value={sp.classe} onChange={(e) => setSp({ ...sp, classe: Number(e.target.value) })}>
                     {SECURPRO_CLASSES.map((c) => (
-                      <option key={c.classe} value={c.classe}>Classe {c.classe} — {c.label}</option>
+                      <option key={c.classe} value={c.classe}>{c.label}</option>
                     ))}
                   </select>
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -478,12 +484,34 @@ export default function Simulateur() {
                   <label className="label">Email</label>
                   <input className="input" type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} />
                 </div>
+                <div className="field">
+                  <label className="label">Type de pièce <span className="req">*</span></label>
+                  <select
+                    className="select"
+                    value={client.typePiece}
+                    onChange={(e) => setClient({ ...client, typePiece: e.target.value as typeof client.typePiece })}
+                  >
+                    <option value="cni">CNI</option>
+                    <option value="passeport">Passeport</option>
+                    <option value="permis_conduire">Permis de conduire</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label className="label">N° de la pièce <span className="req">*</span></label>
+                  <input className="input" required value={client.numeroPiece} onChange={(e) => setClient({ ...client, numeroPiece: e.target.value })} />
+                </div>
                 {erreurSouscription && (
                   <div className="empty" style={{ color: "var(--danger)", marginBottom: 12 }}>{erreurSouscription}</div>
                 )}
                 <button
                   className="btn btn-primary btn-block"
-                  disabled={souscrivant || !client.nom.trim() || !client.prenom.trim() || !client.telephone.trim()}
+                  disabled={
+                    souscrivant ||
+                    !client.nom.trim() ||
+                    !client.prenom.trim() ||
+                    !client.telephone.trim() ||
+                    !client.numeroPiece.trim()
+                  }
                 >
                   <FileCheck size={17} /> {souscrivant ? "Création…" : "Créer la souscription"}
                 </button>

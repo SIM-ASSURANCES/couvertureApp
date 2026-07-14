@@ -206,6 +206,8 @@ export interface SouscriptionImf {
   prenom: string;
   telephone: string;
   email: string | null;
+  typePiece?: "cni" | "passeport" | "permis_conduire" | null;
+  numeroPiece?: string | null;
   entrees: Record<string, unknown>;
   resultat: Record<string, unknown>;
   primeTTC: number;
