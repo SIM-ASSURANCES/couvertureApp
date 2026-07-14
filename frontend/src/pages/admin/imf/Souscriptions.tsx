@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { FileSpreadsheet } from "lucide-react";
+import { FileSpreadsheet, Download } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { exportExcel } from "../../../xlsx";
+import { genererContratSecurpro, souscriptionImfToContratSecurpro } from "../../../contract";
 import type { SouscriptionImf } from "../../../types";
 
 const PRODUITS = [
@@ -80,6 +81,7 @@ export default function Souscriptions() {
                   <th>Prime TTC</th>
                   <th>Statut</th>
                   <th>Date</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -98,10 +100,22 @@ export default function Souscriptions() {
                     <td><strong>{fcfa(s.primeTTC)}</strong></td>
                     <td>{statutBadge(s.statut)}</td>
                     <td className="muted">{fmtDate(s.createdAt)}</td>
+                    <td>
+                      {s.produitCode === "securpro" && (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Télécharger le contrat"
+                          onClick={() => genererContratSecurpro(souscriptionImfToContratSecurpro(s))}
+                        >
+                          <Download size={15} />
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {data.length === 0 && (
-                  <tr><td colSpan={7}><div className="empty">Aucune souscription.</div></td></tr>
+                  <tr><td colSpan={8}><div className="empty">Aucune souscription.</div></td></tr>
                 )}
               </tbody>
             </table>

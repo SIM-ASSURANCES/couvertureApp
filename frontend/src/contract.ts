@@ -2,6 +2,8 @@
 // Le bulletin de souscription (CP) est reconstruit avec les données du client,
 // puis les Conditions Générales (CG) sont annexées depuis /public/cg-*.html.
 
+import type { SouscriptionImf } from "./types";
+
 export interface ContratIncendie {
   numeroPolice: string;
   partenaire: string;
@@ -33,11 +35,91 @@ export interface ContratAccident {
   signature?: string | null;
 }
 
+export interface ContratSecurpro {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  classeLabel: string;
+  statutOccupation: "proprietaire" | "locataire";
+  valeurBatimentOuLoyer: number;
+  contenu: number;
+  dansMarche: boolean;
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
 const dfr = (s?: string | null) =>
   s ? new Date(s).toLocaleDateString("fr-FR") : "—";
 const val = (s?: string | number | null) =>
   s === null || s === undefined || s === "" ? "—" : String(s);
+
+function pieceLabel(t?: string | null) {
+  if (t === "cni") return "CNI";
+  if (t === "passeport") return "Passeport";
+  if (t === "permis_conduire") return "Permis de conduire";
+  return "";
+}
+
+const SECURPRO_CLASSE_LABELS: Record<number, string> = {
+  1: "Classe 1 — Bureau",
+  2: "Classe 2 — Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
+  3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
+  4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
+};
+
+/** Reconstitue les champs du contrat SECURPRO à partir d'une souscription IMF (entrees/resultat en JSON libre). */
+export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSecurpro {
+  const entrees = s.entrees as {
+    classe?: number;
+    statutOccupation?: "proprietaire" | "locataire";
+    valeurBatiment?: number;
+    loyerMensuel?: number;
+    contenu?: number;
+    dansMarche?: boolean;
+  };
+  const resultat = s.resultat as {
+    primeNetteHT?: number;
+    accessoires?: number;
+    taxes?: number;
+  };
+  const debut = new Date(s.createdAt);
+  const fin = new Date(debut);
+  fin.setFullYear(fin.getFullYear() + 1);
+  const statutOccupation = entrees.statutOccupation ?? "proprietaire";
+  return {
+    numeroPolice: s.numeroPolice,
+    intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
+    dateDebut: debut.toISOString(),
+    dateFin: fin.toISOString(),
+    dateSouscription: s.createdAt,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    typePiece: s.typePiece,
+    numeroPiece: s.numeroPiece,
+    classeLabel: entrees.classe ? (SECURPRO_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
+    statutOccupation,
+    valeurBatimentOuLoyer: statutOccupation === "locataire" ? (entrees.loyerMensuel ?? 0) : (entrees.valeurBatiment ?? 0),
+    contenu: entrees.contenu ?? 0,
+    dansMarche: !!entrees.dansMarche,
+    primeNetteHT: resultat.primeNetteHT ?? 0,
+    accessoires: resultat.accessoires ?? 0,
+    taxes: resultat.taxes ?? 0,
+    primeTTC: s.primeTTC,
+    signature: null,
+  };
+}
 
 const CSS = `
   *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
@@ -194,5 +276,51 @@ export async function genererContratAccident(c: ContratAccident) {
 
   const cg = await loadCG("cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function genererContratSecurpro(c: ContratSecurpro) {
+  const w = openWindow();
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Conditions Particulières — SECURPRO</h1>
+  <div class="sub">Assurance Multirisque Professionnelle · Distribué via ${val(c.intermediaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Classe de risque</td><td>${val(c.classeLabel)}</td></tr>
+    <tr><td class="k">${c.statutOccupation === "locataire" ? "Loyer mensuel" : "Valeur du bâtiment"}</td><td>${fcfa(c.valeurBatimentOuLoyer)}</td><td class="k">Contenu</td><td>${fcfa(c.contenu)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Marché ou abords de marché</td><td>${c.dansMarche ? "Oui" : "Non"}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
+    lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
+    <br/><br/>
+    <b>Risques garantis :</b> Incendie / Explosion du local professionnel désigné, telle que définie aux Conditions Générales
+    (classe de risque : ${val(c.classeLabel)}). <b>Ne sont pas couvertes :</b> les constructions en bois, ni le changement de
+    local en cours de contrat sans résiliation préalable et souscription d'un nouveau contrat.
+    <b>Indemnisation :</b> le montant de l'indemnité à payer en cas de sinistre est déterminé soit d'un commun accord,
+    soit par un expert à la charge de SIM Assurances. Le souscripteur reconnaît avoir pris connaissance des
+    Conditions Générales Contrat SECUR DOMMAGE.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-incendie.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
   writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
 }

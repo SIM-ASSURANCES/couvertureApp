@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Calculator, FileCheck } from "lucide-react";
+import { Calculator, FileCheck, Download } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
 import { useFetch } from "../../useFetch";
+import { genererContratSecurpro, souscriptionImfToContratSecurpro } from "../../contract";
 import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
@@ -454,14 +455,25 @@ export default function Simulateur() {
         <div style={{ marginTop: 24 }}>
           <Card title="Souscription">
             {souscription ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <FileCheck size={20} color="var(--success, #16a34a)" />
-                <div>
-                  <div style={{ fontWeight: 700 }}>Souscription créée — {souscription.numeroPolice}</div>
-                  <div className="muted" style={{ fontSize: 13 }}>
-                    {souscription.prenom} {souscription.nom} · {fcfa(souscription.primeTTC)}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <FileCheck size={20} color="var(--success, #16a34a)" />
+                  <div>
+                    <div style={{ fontWeight: 700 }}>Souscription créée — {souscription.numeroPolice}</div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      {souscription.prenom} {souscription.nom} · {fcfa(souscription.primeTTC)}
+                    </div>
                   </div>
                 </div>
+                {souscription.produitCode === "securpro" && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => genererContratSecurpro(souscriptionImfToContratSecurpro(souscription))}
+                  >
+                    <Download size={15} /> Télécharger le contrat
+                  </button>
+                )}
               </div>
             ) : (
               <form onSubmit={souscrire}>
