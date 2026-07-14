@@ -198,6 +198,7 @@ publicRouter.get(
       commune: s.commune,
       quartier: s.quartier,
       numeroMaison: s.numeroMaison,
+      signature: s.signature,
       montant: s.montantPrime,
       capitalGaranti: s.capitalGaranti,
       statut: s.statut,
@@ -217,7 +218,7 @@ publicRouter.patch(
       where: { lienFormulaireToken: req.params.token },
     });
     if (!s) return res.status(404).json({ error: "Lien invalide" });
-    const { nom, prenom, email, refFacture, commune, quartier, numeroMaison } =
+    const { nom, prenom, email, refFacture, commune, quartier, numeroMaison, signature } =
       req.body ?? {};
 
     const tenteCompletion = !!(refFacture || commune || quartier || numeroMaison);
@@ -226,6 +227,9 @@ publicRouter.patch(
         return res.status(400).json({
           error: "Réf.facture, commune et quartier sont obligatoires.",
         });
+      }
+      if (!signature) {
+        return res.status(400).json({ error: "La signature est obligatoire." });
       }
       if (!(await refFactureDisponible(refFacture, s.id))) {
         return res.status(409).json({
@@ -254,11 +258,12 @@ publicRouter.patch(
         commune: commune ?? s.commune,
         quartier: quartier ?? s.quartier,
         numeroMaison: numeroMaison ?? s.numeroMaison,
+        signature: signature ?? s.signature,
         statut: tenteCompletion ? "complet" : s.statut,
         commissionCalculee,
       },
     });
-    res.json({ id: updated.id, statut: updated.statut });
+    res.json({ id: updated.id, statut: updated.statut, signature: updated.signature });
   })
 );
 
@@ -270,6 +275,7 @@ const accSchema = z.object({
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date(),
   tarifAccidentId: z.number().int().positive().optional(),
+  signature: z.string().min(1, "La signature est obligatoire."),
 });
 
 publicRouter.post(
@@ -314,6 +320,7 @@ publicRouter.post(
         montantPrime: montant,
         capitalGaranti,
         waveStatut: "en_attente",
+        signature: data.signature,
       },
     });
 
@@ -508,6 +515,7 @@ publicRouter.get(
       capitalGaranti: s.capitalGaranti,
       waveStatut: s.waveStatut,
       partenaire: s.partenaire.nomCommerce,
+      signature: s.signature,
     });
   })
 );
@@ -534,6 +542,7 @@ publicRouter.get(
       prenom: s.prenom,
       telephone: s.telephone,
       partenaire: s.partenaire.nomCommerce,
+      signature: s.signature,
     });
   })
 );

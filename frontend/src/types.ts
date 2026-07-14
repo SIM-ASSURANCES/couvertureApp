@@ -94,6 +94,7 @@ export interface ClientIncendie {
   capitalGaranti: number;
   statut: StatutIncendie;
   relanceCount?: number;
+  signature?: string | null;
   createdAt: string;
 }
 
@@ -113,6 +114,7 @@ export interface ClientAccident {
   numeroPolice?: string;
   statutDossier: StatutAccident;
   relanceCount?: number;
+  signature?: string | null;
   createdAt: string;
 }
 

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE } from "../../api";
 import { genererContratIncendie } from "../../contract";
+import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 
 const BASE = API_BASE;
 
@@ -26,6 +27,7 @@ interface Souscription {
   numeroPolice: string;
   dateDebut: string;
   dateFin: string;
+  signature?: string | null;
 }
 
 type Step = "loading" | "form" | "success" | "error";
@@ -69,6 +71,8 @@ export default function SouscriptionComplement() {
   const [quartier, setQuartier] = useState("");
   const [numeroMaison, setNumeroMaison] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const sigRef = useRef<SignaturePadHandle>(null);
+  const [sigEmpty, setSigEmpty] = useState(true);
 
   useEffect(() => {
     if (!token) {
@@ -105,6 +109,11 @@ export default function SouscriptionComplement() {
       setErrorMsg("Réf.facture, commune et quartier sont obligatoires.");
       return;
     }
+    const signature = sigRef.current?.toDataURL();
+    if (!signature) {
+      setErrorMsg("Votre signature est obligatoire.");
+      return;
+    }
     setSubmitting(true);
     setErrorMsg("");
     try {
@@ -118,6 +127,7 @@ export default function SouscriptionComplement() {
           commune: commune.trim(),
           quartier: quartier.trim(),
           numeroMaison: numeroMaison.trim(),
+          signature,
         }),
       });
       const d = await res.json();
@@ -133,6 +143,7 @@ export default function SouscriptionComplement() {
               quartier: quartier.trim(),
               numeroMaison: numeroMaison.trim(),
               statut: "complet",
+              signature,
             }
           : prev
       );
@@ -276,6 +287,8 @@ export default function SouscriptionComplement() {
                 />
               </FieldRow>
 
+              <SignaturePad ref={sigRef} onChange={setSigEmpty} />
+
               {errorMsg && (
                 <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>
                   {errorMsg}
@@ -284,17 +297,17 @@ export default function SouscriptionComplement() {
 
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || sigEmpty}
                 style={{
                   width: "100%",
                   padding: "14px",
                   borderRadius: 12,
                   border: "none",
-                  background: submitting ? "#7da6d6" : "#004b9c",
+                  background: submitting || sigEmpty ? "#7da6d6" : "#004b9c",
                   color: "#fff",
                   fontWeight: 800,
                   fontSize: 15,
-                  cursor: submitting ? "default" : "pointer",
+                  cursor: submitting || sigEmpty ? "default" : "pointer",
                   marginTop: 6,
                 }}
               >

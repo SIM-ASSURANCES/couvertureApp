@@ -47,6 +47,7 @@ souscriptionsRouter.get(
       primeTTC: number;
       taxes?: number | null;
       fg?: number | null;
+      signature?: string | null;
     };
 
     const out: Contrat[] = [];
@@ -94,6 +95,7 @@ souscriptionsRouter.get(
           primeTTC: s.montantPrime,
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
+          signature: s.signature,
         });
       }
     }
@@ -128,6 +130,7 @@ souscriptionsRouter.get(
           primeTTC: s.montantPrime,
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
+          signature: s.signature,
         });
       }
     }

@@ -37,6 +37,7 @@ interface Contrat {
   taxes?: number | null;
   fg?: number | null;
   dateNaissance?: string | null;
+  signature?: string | null;
 }
 
 function genererContrat(c: Contrat) {
@@ -60,6 +61,7 @@ function genererContrat(c: Contrat) {
       telephone: c.telephone,
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
     });
   } else {
     genererContratIncendie({
@@ -76,6 +78,7 @@ function genererContrat(c: Contrat) {
       numeroMaison: c.numeroMaison ?? null,
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
     });
   }
 }

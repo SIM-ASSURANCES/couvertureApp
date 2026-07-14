@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { API_BASE } from "../../api";
 import { genererContratAccident } from "../../contract";
+import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 const BASE = API_BASE;
 
 interface QrInfo {
@@ -154,6 +155,9 @@ export default function Souscription() {
   const [prenom, setPrenom] = useState("");
   const [telephone, setTelephone] = useState(PHONE_PREFIX);
   const [dateNaissance, setDateNaissance] = useState("");
+  const sigRef = useRef<SignaturePadHandle>(null);
+  const [sigEmpty, setSigEmpty] = useState(true);
+  const [retrySignature, setRetrySignature] = useState<string | null>(null);
 
   // Champs incendie
   const [telephoneInc, setTelephoneInc] = useState(PHONE_PREFIX);
@@ -177,6 +181,7 @@ export default function Souscription() {
     prenom?: string;
     telephone?: string;
     partenaire?: string;
+    signature?: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -234,6 +239,7 @@ export default function Souscription() {
             prenom: data.prenom,
             telephone: data.telephone,
             partenaire: data.partenaire,
+            signature: data.signature,
           });
           setStep("success");
         } catch {
@@ -256,6 +262,7 @@ export default function Souscription() {
           setPrenom(data.prenom);
           setTelephone(data.telephone);
           setDateNaissance(data.dateNaissance ? String(data.dateNaissance).slice(0, 10) : "");
+          setRetrySignature(data.signature ?? null);
           setResult({ montant: data.montant, capitalGaranti: data.capitalGaranti, partenaire: data.partenaire });
           setStep("retry");
         })
@@ -308,6 +315,11 @@ export default function Souscription() {
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
+    const signature = qrInfo.produit === "accident" ? sigRef.current?.toDataURL() : undefined;
+    if (qrInfo.produit === "accident" && !signature) {
+      setErrorMsg("Votre signature est obligatoire.");
+      return;
+    }
     setSubmitting(true);
     try {
       if (qrInfo.produit === "accident") {
@@ -321,6 +333,7 @@ export default function Souscription() {
             telephone,
             dateNaissance,
             tarifAccidentId: selectedTarifId,
+            signature,
           }),
         });
         const data = await res.json();
@@ -375,6 +388,7 @@ export default function Souscription() {
       telephone: result.telephone ?? telephone,
       montant: result.montant ?? 0,
       capitalGaranti: result.capitalGaranti ?? 0,
+      signature: result.signature ?? null,
     });
   }
 
@@ -538,6 +552,7 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
+                  <SignaturePad ref={sigRef} onChange={setSigEmpty} />
                 </>
               ) : (
                 <>
@@ -588,7 +603,8 @@ export default function Souscription() {
                       !prenom ||
                       !phoneLocalPart(telephone) ||
                       !dateNaissance ||
-                      !selectedTarifId
+                      !selectedTarifId ||
+                      sigEmpty
                     : !phoneLocalPart(telephoneInc))
                 }
                 style={{
@@ -662,6 +678,7 @@ export default function Souscription() {
                         telephone,
                         dateNaissance,
                         tarifAccidentId: selectedTarifId ?? undefined,
+                        signature: retrySignature,
                       }),
                     });
                     const data = await res.json();

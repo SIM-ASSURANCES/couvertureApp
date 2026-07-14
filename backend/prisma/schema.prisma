@@ -181,6 +181,7 @@ model SouscriptionIncendie {
   lienFormulaireToken String?        @unique
   whatsappEnvoyeAt    DateTime?
   relanceCount        Int            @default(0)
+  signature           String? // data URL PNG, capturée à la complétion du formulaire
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
 }
@@ -206,6 +207,7 @@ model SouscriptionAccident {
   formulaireComplement Json?
   whatsappEnvoyeAt     DateTime?
   relanceCount         Int           @default(0)
+  signature            String? // data URL PNG, capturée avant le paiement Wave
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 }

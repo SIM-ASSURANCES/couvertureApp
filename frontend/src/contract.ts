@@ -16,6 +16,7 @@ export interface ContratIncendie {
   numeroMaison?: string | null;
   montant: number;
   capitalGaranti: number;
+  signature?: string | null;
 }
 
 export interface ContratAccident {
@@ -29,6 +30,7 @@ export interface ContratAccident {
   dateNaissance?: string | null;
   montant: number;
   capitalGaranti: number;
+  signature?: string | null;
 }
 
 const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
@@ -75,7 +77,12 @@ const RECLAMATION = `<div class="note" style="font-weight:bold;font-style:italic
   l'OQSF-CI (www.oqsf.ci) ou la Médiation de l'Assurance (www.mediationassuranceci.net).
 </div>`;
 
-const SIGNATURES = `<div class="sign"><div>LE SOUSCRIPTEUR</div><div>POUR LA COMPAGNIE</div></div>`;
+function signatures(sig?: string | null) {
+  const gauche = sig
+    ? `<img src="${sig}" style="height:60px;max-width:220px;display:block;margin-bottom:4px;" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">LE SOUSCRIPTEUR</div>`
+    : `<div>LE SOUSCRIPTEUR</div>`;
+  return `<div class="sign"><div>${gauche}</div><div>POUR LA COMPAGNIE</div></div>`;
+}
 
 async function loadCG(file: string): Promise<string> {
   try {
@@ -146,7 +153,7 @@ export async function genererContratIncendie(c: ContratIncendie) {
     Le souscripteur reconnaît avoir pris connaissance des Conditions Générales SECURDOMMAGE.
   </div>
   ${RECLAMATION}
-  ${SIGNATURES}`;
+  ${signatures(c.signature)}`;
 
   const cg = await loadCG("cg-incendie.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECURDOMMAGE</h2><div class="cg">${cg}</div>`;
@@ -182,7 +189,7 @@ export async function genererContratAccident(c: ContratAccident) {
     Le souscripteur reconnaît avoir pris connaissance des Conditions Générales RELAXACCIDENTS.
   </div>
   ${RECLAMATION}
-  ${SIGNATURES}`;
+  ${signatures(c.signature)}`;
 
   const cg = await loadCG("cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
