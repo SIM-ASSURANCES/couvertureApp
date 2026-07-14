@@ -128,6 +128,8 @@ model Admin {
   branches     Branche[]         @default([INCENDIE_ACCIDENT, RELAX])
   createdAt    DateTime          @default(now())
   journal      JournalActivite[]
+  simulationsImf   SimulationImf[]   @relation("AdminSimulationsImf")
+  souscriptionsImf SouscriptionImf[] @relation("AdminSouscriptionsImf")
 }
 
 model Partenaire {
@@ -513,8 +515,12 @@ model IndiceArcImf {
 
 model SimulationImf {
   id          String           @id @default(uuid())
-  agentId     String
-  agent       AgentImf         @relation(fields: [agentId], references: [id])
+  // agentId OU adminId : une simulation est faite soit par un agent du réseau,
+  // soit directement par un admin (indépendant de toute zone/agence/agent).
+  agentId     String?
+  agent       AgentImf?        @relation(fields: [agentId], references: [id])
+  adminId     String?
+  admin       Admin?           @relation("AdminSimulationsImf", fields: [adminId], references: [id])
   produitCode String // "securpro" | "securstock" | "coupsdurs" | "securecolte"
   entrees     Json
   resultat    Json
@@ -540,8 +546,12 @@ enum TypePieceIdentite {
 model SouscriptionImf {
   id            String                @id @default(uuid())
   numeroPolice  String                @unique
-  agentId       String
-  agent         AgentImf              @relation(fields: [agentId], references: [id])
+  // agentId OU adminId : rattachée à un agent du réseau, ou souscrite
+  // directement par un admin (indépendant de toute zone/agence/agent).
+  agentId       String?
+  agent         AgentImf?             @relation(fields: [agentId], references: [id])
+  adminId       String?
+  admin         Admin?                @relation("AdminSouscriptionsImf", fields: [adminId], references: [id])
   simulationId  String?               @unique
   simulation    SimulationImf?        @relation(fields: [simulationId], references: [id])
   produitCode   String

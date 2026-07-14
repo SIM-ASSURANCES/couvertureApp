@@ -228,9 +228,6 @@ publicRouter.patch(
           error: "Réf.facture, commune et quartier sont obligatoires.",
         });
       }
-      if (!signature) {
-        return res.status(400).json({ error: "La signature est obligatoire." });
-      }
       if (!(await refFactureDisponible(refFacture, s.id))) {
         return res.status(409).json({
           error: `Cette référence facture a déjà été utilisée ${MAX_USAGES_REF_FACTURE} fois.`,
@@ -275,7 +272,7 @@ const accSchema = z.object({
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date(),
   tarifAccidentId: z.number().int().positive().optional(),
-  signature: z.string().min(1, "La signature est obligatoire."),
+  signature: z.string().min(1).optional(),
 });
 
 publicRouter.post(

@@ -132,7 +132,9 @@ export const adminNav: AdminNavEntry[] = [
       {
         section: "Portefeuille",
         items: [
+          { to: "/admin/imf/simulateur", label: "Simulateur", icon: Calculator },
           { to: "/admin/imf/souscriptions", label: "Souscriptions", icon: FileText },
+          { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
         ],
       },
     ],

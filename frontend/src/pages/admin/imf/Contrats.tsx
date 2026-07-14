@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { FileSpreadsheet } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fmtDate } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
-import { exportExcel } from "../../../xlsx";
 import SouscriptionsGroupees from "./SouscriptionsGroupees";
 import type { SouscriptionImf } from "../../../types";
 
@@ -15,44 +13,22 @@ const PRODUITS = [
   { value: "securecolte", label: "SECURECOLTE" },
 ];
 
-export default function Souscriptions() {
+/** Contrats IMF actifs de tout le réseau, regroupés par zone puis par agence. */
+export default function Contrats() {
   const [produitCode, setProduitCode] = useState("");
   const params = new URLSearchParams();
   if (produitCode) params.set("produitCode", produitCode);
-  const { data, loading, error } = useFetch<SouscriptionImf[]>(`/imf/souscriptions?${params.toString()}`);
-
-  function exportXlsx() {
-    exportExcel(
-      (data ?? []).map((s) => ({
-        "N° de police": s.numeroPolice,
-        "Client": `${s.prenom} ${s.nom}`,
-        "Téléphone": s.telephone,
-        "Produit": s.produitCode,
-        "Agent": s.agentNom ?? (s.directe ? "Direction" : ""),
-        "Agence": s.agenceNom ?? (s.directe ? "Direction" : ""),
-        "Zone": s.zoneNom ?? (s.directe ? "Direction" : ""),
-        "Prime TTC": s.primeTTC,
-        "Statut": s.statut,
-        "Date": fmtDate(s.createdAt),
-      })),
-      "souscriptions_imf.xlsx"
-    );
-  }
+  const { data, loading, error } = useFetch<SouscriptionImf[]>(`/imf/contrats?${params.toString()}`);
 
   return (
     <>
       <PageHeader
-        title="Souscriptions IMF"
-        subtitle="Toutes les souscriptions du réseau, regroupées par zone et par agence."
-        actions={
-          <button className="btn btn-danger-soft" onClick={exportXlsx}>
-            <FileSpreadsheet size={16} /> Export Excel
-          </button>
-        }
+        title="Contrats IMF"
+        subtitle="Contrats actifs du réseau, regroupés par zone et par agence."
       />
 
       <Card
-        title={data ? `${data.length} souscriptions` : "Souscriptions"}
+        title={data ? `${data.length} contrats` : "Contrats"}
         extra={
           <select className="select" style={{ width: 220, height: 40 }} value={produitCode} onChange={(e) => setProduitCode(e.target.value)}>
             {PRODUITS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}

@@ -61,7 +61,14 @@ interface ResultatFormule {
   primeTTC: number;
 }
 
-export default function Simulateur() {
+/**
+ * `apiBase` permet de réutiliser le même simulateur dans deux espaces :
+ *  - "/agent-imf" (par défaut) : l'agent connecté, souscription rattachée à lui ;
+ *  - "/imf" : l'admin, souscription directe (sans agent/zone/agence).
+ * Les endpoints (baremes/securpro, simulations, souscriptions) existent sous
+ * les deux préfixes avec la même forme de requête/réponse.
+ */
+export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: string }) {
   const [produitCode, setProduitCode] = useState<ProduitCode>("securpro");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -87,7 +94,7 @@ export default function Simulateur() {
     ddeCapital: 0, deCapital: 0, bdgCapital: 0,
   });
   const { data: baremeSecurpro } = useFetch<BaremeClasse[]>(
-    produitCode === "securpro" ? "/agent-imf/baremes/securpro" : null
+    produitCode === "securpro" ? `${apiBase}/baremes/securpro` : null
   );
   const limiteClasseSecurpro = baremeSecurpro?.find((b) => b.classe === sp.classe)?.limiteCapital;
   const limiteApplicableSecurpro =
@@ -157,7 +164,7 @@ export default function Simulateur() {
         entrees = { libelleVariante: variante };
       }
 
-      const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>("/agent-imf/simulations", {
+      const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>(`${apiBase}/simulations`, {
         produitCode,
         entrees,
       });
@@ -177,7 +184,7 @@ export default function Simulateur() {
     setSouscrivant(true);
     setErreurSouscription("");
     try {
-      const res = await api.post<SouscriptionImf>("/agent-imf/souscriptions", {
+      const res = await api.post<SouscriptionImf>(`${apiBase}/souscriptions`, {
         simulationId,
         nom: client.nom,
         prenom: client.prenom,

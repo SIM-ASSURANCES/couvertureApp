@@ -199,7 +199,8 @@ export interface TarifProduitImf {
 export interface SouscriptionImf {
   id: string;
   numeroPolice: string;
-  agentId: string;
+  agentId: string | null;
+  adminId?: string | null;
   simulationId: string | null;
   produitCode: string;
   nom: string;
@@ -213,9 +214,12 @@ export interface SouscriptionImf {
   primeTTC: number;
   statut: "en_cours" | "active" | "annulee";
   createdAt: string;
-  agentNom?: string;
+  agentNom?: string | null;
   agenceNom?: string | null;
   zoneNom?: string | null;
+  adminNom?: string | null;
+  // true pour une souscription directe de l'admin (sans agent/zone/agence).
+  directe?: boolean;
 }
 
 export interface SimulationImf {

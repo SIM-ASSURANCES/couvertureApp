@@ -490,18 +490,33 @@ imfRouter.get(
         agent: {
           select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zone: { select: { nom: true } } },
         },
+        admin: { select: { nom: true } },
       },
     });
-    res.json(
-      rows.map((r) => ({
-        ...r,
-        agentNom: `${r.agent.prenom} ${r.agent.nom}`,
-        agenceNom: r.agent.agence?.nom ?? null,
-        zoneNom: (r.agent.agence?.zone.nom ?? r.agent.zone?.nom) ?? null,
-      }))
-    );
+    res.json(rows.map(mapSouscriptionAdmin));
   })
 );
+
+/**
+ * Sérialise une souscription IMF pour l'espace admin en aplatissant le nom de
+ * l'agent, de l'agence et de la zone. Une souscription faite directement par
+ * l'admin n'a pas d'agent : agentNom/agenceNom/zoneNom valent alors null et
+ * `directe` = true (elle sera regroupée à part, hors des zones/agences).
+ */
+function mapSouscriptionAdmin(r: {
+  agent: { nom: string; prenom: string; agence: { nom: string; zone: { nom: string } } | null; zone: { nom: string } | null } | null;
+  admin: { nom: string } | null;
+  [k: string]: unknown;
+}) {
+  return {
+    ...r,
+    agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null,
+    agenceNom: r.agent?.agence?.nom ?? null,
+    zoneNom: (r.agent?.agence?.zone.nom ?? r.agent?.zone?.nom) ?? null,
+    adminNom: r.admin?.nom ?? null,
+    directe: !r.agent,
+  };
+}
 
 /**
  * Portée réseau d'un agent connecté : la liste des identifiants d'agents
@@ -612,49 +627,54 @@ const simulationSchema = z.object({
   entrees: z.record(z.unknown()),
 });
 
+/**
+ * Calcul d'un devis IMF à partir du produit et des entrées, partagé entre le
+ * simulateur agent (`/agent-imf/simulations`) et le simulateur admin
+ * (`/imf/simulations`). Renvoie soit le résultat + la prime TTC, soit un
+ * message d'erreur métier (barème/variante introuvable, risque non assurable).
+ */
+async function calculerDevisImf(
+  produitCode: string,
+  entrees: Record<string, unknown>
+): Promise<{ ok: true; resultat: unknown; primeTTC: number } | { ok: false; error: string }> {
+  if (produitCode === "securpro") {
+    const input = securproInputSchema.parse(entrees) as SecurproInput;
+    const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
+    if (!bareme) return { ok: false, error: "Barème SECURPRO introuvable pour cette classe" };
+    const r = calculerSecurpro(input, { ...bareme, classe: input.classe });
+    return { ok: true, resultat: r, primeTTC: r.primeTTC };
+  }
+  if (produitCode === "securstock") {
+    const input = securstockInputSchema.parse(entrees) as SecurstockInput;
+    const bareme = await prisma.baremeSecurstock.findUnique({ where: { classe: input.classe } });
+    if (!bareme) return { ok: false, error: "Barème SECURSTOCK introuvable pour cette classe" };
+    const r = calculerSecurstock(input, { ...bareme, classe: input.classe });
+    if ("nonAssurable" in r && r.nonAssurable) return { ok: false, error: r.motif };
+    return { ok: true, resultat: r, primeTTC: (r as { primeTTC: number }).primeTTC };
+  }
+  // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
+  const { libelleVariante } = catalogueInputSchema.parse(entrees);
+  const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
+  if (!produit) return { ok: false, error: "Produit introuvable" };
+  const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
+  if (!tarif) return { ok: false, error: "Variante introuvable pour ce produit" };
+  return { ok: true, resultat: tarif, primeTTC: tarif.prime };
+}
+
 agentImfRouter.post(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
     const { produitCode, entrees } = simulationSchema.parse(req.body);
-
-    let resultat: unknown;
-    let primeTTC: number;
-
-    if (produitCode === "securpro") {
-      const input = securproInputSchema.parse(entrees) as SecurproInput;
-      const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
-      if (!bareme) return res.status(400).json({ error: "Barème SECURPRO introuvable pour cette classe" });
-      const r = calculerSecurpro(input, { ...bareme, classe: input.classe });
-      resultat = r;
-      primeTTC = r.primeTTC;
-    } else if (produitCode === "securstock") {
-      const input = securstockInputSchema.parse(entrees) as SecurstockInput;
-      const bareme = await prisma.baremeSecurstock.findUnique({ where: { classe: input.classe } });
-      if (!bareme) return res.status(400).json({ error: "Barème SECURSTOCK introuvable pour cette classe" });
-      const r = calculerSecurstock(input, { ...bareme, classe: input.classe });
-      if ("nonAssurable" in r && r.nonAssurable) {
-        return res.status(400).json({ error: r.motif });
-      }
-      resultat = r;
-      primeTTC = (r as { primeTTC: number }).primeTTC;
-    } else {
-      // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
-      const { libelleVariante } = catalogueInputSchema.parse(entrees);
-      const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
-      if (!produit) return res.status(400).json({ error: "Produit introuvable" });
-      const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
-      if (!tarif) return res.status(400).json({ error: "Variante introuvable pour ce produit" });
-      resultat = tarif;
-      primeTTC = tarif.prime;
-    }
+    const calc = await calculerDevisImf(produitCode, entrees);
+    if (!calc.ok) return res.status(400).json({ error: calc.error });
 
     const simulation = await prisma.simulationImf.create({
       data: {
         agentId: req.user!.sub,
         produitCode,
         entrees: JSON.parse(JSON.stringify(entrees)),
-        resultat: JSON.parse(JSON.stringify(resultat)),
-        primeTTC: Math.round(primeTTC),
+        resultat: JSON.parse(JSON.stringify(calc.resultat)),
+        primeTTC: Math.round(calc.primeTTC),
       },
     });
     res.status(201).json(simulation);
@@ -750,7 +770,7 @@ agentImfRouter.get(
       orderBy: { createdAt: "desc" },
       include: { agent: { select: { nom: true, prenom: true } } },
     });
-    res.json(rows.map((r) => ({ ...r, agentNom: `${r.agent.prenom} ${r.agent.nom}` })));
+    res.json(rows.map((r) => ({ ...r, agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null })));
   })
 );
 
@@ -836,6 +856,101 @@ agentImfRouter.get(
       orderBy: { createdAt: "desc" },
       include: { agent: { select: { nom: true, prenom: true } } },
     });
-    res.json(rows.map((r) => ({ ...r, agentNom: `${r.agent.prenom} ${r.agent.nom}` })));
+    res.json(rows.map((r) => ({ ...r, agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null })));
+  })
+);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Simulateur & souscription directe de l'admin (imfRouter).
+ * L'admin est au-dessus du réseau : ses simulations/souscriptions sont
+ * rattachées à son adminId, sans agent ni zone ni agence.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+imfRouter.post(
+  "/simulations",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { produitCode, entrees } = simulationSchema.parse(req.body);
+    const calc = await calculerDevisImf(produitCode, entrees);
+    if (!calc.ok) return res.status(400).json({ error: calc.error });
+
+    const simulation = await prisma.simulationImf.create({
+      data: {
+        adminId: req.user!.sub,
+        produitCode,
+        entrees: JSON.parse(JSON.stringify(entrees)),
+        resultat: JSON.parse(JSON.stringify(calc.resultat)),
+        primeTTC: Math.round(calc.primeTTC),
+      },
+    });
+    res.status(201).json(simulation);
+  })
+);
+
+imfRouter.post(
+  "/souscriptions",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = souscriptionSchema.parse(req.body);
+
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: data.simulationId },
+      include: { souscription: true },
+    });
+    if (!simulation || simulation.adminId !== req.user!.sub) {
+      return res.status(404).json({ error: "Simulation introuvable" });
+    }
+    if (simulation.souscription) {
+      return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    }
+
+    const annee = new Date().getFullYear();
+    const numeroPolice = `IMF-${simulation.produitCode.toUpperCase()}-${annee}-${simulation.id.slice(0, 8).toUpperCase()}`;
+
+    const souscription = await prisma.souscriptionImf.create({
+      data: {
+        numeroPolice,
+        adminId: req.user!.sub,
+        simulationId: simulation.id,
+        produitCode: simulation.produitCode,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        email: data.email,
+        typePiece: data.typePiece,
+        numeroPiece: data.numeroPiece,
+        entrees: simulation.entrees as object,
+        resultat: simulation.resultat as object,
+        primeTTC: simulation.primeTTC,
+        statut: "active",
+      },
+    });
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "souscription_imf",
+      objetId: souscription.id,
+      valeurApres: souscription,
+    });
+
+    res.status(201).json(souscription);
+  })
+);
+
+/** Contrats (souscriptions actives) de tout le réseau — vue admin, à regrouper par zone/agence côté frontend. */
+imfRouter.get(
+  "/contrats",
+  asyncHandler(async (req, res) => {
+    const { produitCode } = req.query as { produitCode?: string };
+    const rows = await prisma.souscriptionImf.findMany({
+      where: { statut: "active", produitCode: produitCode || undefined },
+      orderBy: { createdAt: "desc" },
+      include: {
+        agent: {
+          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zone: { select: { nom: true } } },
+        },
+        admin: { select: { nom: true } },
+      },
+    });
+    res.json(rows.map(mapSouscriptionAdmin));
   })
 );

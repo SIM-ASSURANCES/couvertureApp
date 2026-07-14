@@ -34,6 +34,8 @@ import ImfAgents from "./pages/admin/imf/Agents";
 import ImfBaremes from "./pages/admin/imf/Baremes";
 import ImfIndiceArc from "./pages/admin/imf/IndiceArc";
 import ImfSouscriptions from "./pages/admin/imf/Souscriptions";
+import ImfSimulateur from "./pages/admin/imf/Simulateur";
+import ImfContrats from "./pages/admin/imf/Contrats";
 
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
@@ -91,7 +93,9 @@ export default function App() {
             <Route path="imf/agents" element={<ImfAgents />} />
             <Route path="imf/baremes" element={<ImfBaremes />} />
             <Route path="imf/indice-arc" element={<ImfIndiceArc />} />
+            <Route path="imf/simulateur" element={<ImfSimulateur />} />
             <Route path="imf/souscriptions" element={<ImfSouscriptions />} />
+            <Route path="imf/contrats" element={<ImfContrats />} />
           </Route>
 
           <Route

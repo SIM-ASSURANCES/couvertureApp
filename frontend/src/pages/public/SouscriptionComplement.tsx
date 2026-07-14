@@ -72,7 +72,6 @@ export default function SouscriptionComplement() {
   const [numeroMaison, setNumeroMaison] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const sigRef = useRef<SignaturePadHandle>(null);
-  const [sigEmpty, setSigEmpty] = useState(true);
 
   useEffect(() => {
     if (!token) {
@@ -109,11 +108,9 @@ export default function SouscriptionComplement() {
       setErrorMsg("Réf.facture, commune et quartier sont obligatoires.");
       return;
     }
-    const signature = sigRef.current?.toDataURL();
-    if (!signature) {
-      setErrorMsg("Votre signature est obligatoire.");
-      return;
-    }
+    // Signature facultative : on l'envoie si le client a signé, sinon on
+    // poursuit sans (le contrat pourra être signé après impression).
+    const signature = sigRef.current?.toDataURL() ?? undefined;
     setSubmitting(true);
     setErrorMsg("");
     try {
@@ -287,7 +284,7 @@ export default function SouscriptionComplement() {
                 />
               </FieldRow>
 
-              <SignaturePad ref={sigRef} onChange={setSigEmpty} />
+              <SignaturePad ref={sigRef} label="Signature (facultative)" />
 
               {errorMsg && (
                 <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>
@@ -297,17 +294,17 @@ export default function SouscriptionComplement() {
 
               <button
                 onClick={handleSubmit}
-                disabled={submitting || sigEmpty}
+                disabled={submitting}
                 style={{
                   width: "100%",
                   padding: "14px",
                   borderRadius: 12,
                   border: "none",
-                  background: submitting || sigEmpty ? "#7da6d6" : "#004b9c",
+                  background: submitting ? "#7da6d6" : "#004b9c",
                   color: "#fff",
                   fontWeight: 800,
                   fontSize: 15,
-                  cursor: submitting || sigEmpty ? "default" : "pointer",
+                  cursor: submitting ? "default" : "pointer",
                   marginTop: 6,
                 }}
               >

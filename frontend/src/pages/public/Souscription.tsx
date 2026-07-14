@@ -156,7 +156,6 @@ export default function Souscription() {
   const [telephone, setTelephone] = useState(PHONE_PREFIX);
   const [dateNaissance, setDateNaissance] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
-  const [sigEmpty, setSigEmpty] = useState(true);
   const [retrySignature, setRetrySignature] = useState<string | null>(null);
 
   // Champs incendie
@@ -315,11 +314,9 @@ export default function Souscription() {
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
-    const signature = qrInfo.produit === "accident" ? sigRef.current?.toDataURL() : undefined;
-    if (qrInfo.produit === "accident" && !signature) {
-      setErrorMsg("Votre signature est obligatoire.");
-      return;
-    }
+    // Signature facultative : envoyée si le client a signé, sinon on continue sans.
+    const signature =
+      qrInfo.produit === "accident" ? sigRef.current?.toDataURL() ?? undefined : undefined;
     setSubmitting(true);
     try {
       if (qrInfo.produit === "accident") {
@@ -552,7 +549,7 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
-                  <SignaturePad ref={sigRef} onChange={setSigEmpty} />
+                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : (
                 <>
@@ -603,8 +600,7 @@ export default function Souscription() {
                       !prenom ||
                       !phoneLocalPart(telephone) ||
                       !dateNaissance ||
-                      !selectedTarifId ||
-                      sigEmpty
+                      !selectedTarifId
                     : !phoneLocalPart(telephoneInc))
                 }
                 style={{
