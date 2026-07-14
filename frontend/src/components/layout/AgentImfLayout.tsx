@@ -7,7 +7,7 @@ export default function AgentImfLayout() {
   const { user } = useAuth();
   return (
     <DashboardLayout
-      nav={agentImfNav}
+      nav={agentImfNav(user?.roleImf)}
       userName={user?.nom ?? "Agent"}
       userMail={user?.email ?? ""}
       homeTo="/agent-imf"

@@ -19,7 +19,7 @@ export interface SessionUser {
   branches?: BrancheAcces[];
   produit?: "incendie" | "accident";
   // Agent IMF (type === "agent_imf")
-  roleImf?: "AGENT" | "RESPONSABLE_ZONE";
+  roleImf?: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
   agenceNom?: string | null;
   zoneNom?: string | null;
 }

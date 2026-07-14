@@ -18,7 +18,15 @@ const empty = {
 };
 
 function roleLabel(r: RoleImf) {
-  return r === "AGENT" ? "Agent" : "Responsable de zone";
+  if (r === "AGENT") return "Agent";
+  if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
+  return "Responsable de zone";
+}
+
+function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" {
+  if (r === "AGENT") return "neutral";
+  if (r === "RESPONSABLE_AGENCE") return "warning";
+  return "info";
 }
 
 export default function Agents() {
@@ -47,7 +55,7 @@ export default function Agents() {
         email: form.email,
         motDePasse: form.motDePasse,
         roleImf: form.roleImf,
-        agenceId: form.roleImf === "AGENT" ? form.agenceId : undefined,
+        agenceId: form.roleImf === "RESPONSABLE_ZONE" ? undefined : form.agenceId,
         zoneId: form.roleImf === "RESPONSABLE_ZONE" ? form.zoneId : undefined,
       });
       setForm(empty);
@@ -87,7 +95,7 @@ export default function Agents() {
     form.telephone.trim() &&
     form.email.trim() &&
     form.motDePasse.length >= 6 &&
-    (form.roleImf === "AGENT" ? !!form.agenceId : !!form.zoneId);
+    (form.roleImf === "RESPONSABLE_ZONE" ? !!form.zoneId : !!form.agenceId);
 
   return (
     <>
@@ -118,9 +126,9 @@ export default function Agents() {
                         <div className="muted" style={{ fontSize: 12 }}>{a.email}</div>
                       </td>
                       <td>
-                        <Badge kind={a.roleImf === "AGENT" ? "neutral" : "info"}>{roleLabel(a.roleImf)}</Badge>
+                        <Badge kind={roleBadgeKind(a.roleImf)}>{roleLabel(a.roleImf)}</Badge>
                       </td>
-                      <td className="muted">{a.roleImf === "AGENT" ? a.agenceNom : a.zoneNom}</td>
+                      <td className="muted">{a.roleImf === "RESPONSABLE_ZONE" ? a.zoneNom : a.agenceNom}</td>
                       <td>
                         <Badge kind={a.statut === "actif" ? "success" : "neutral"}>
                           {a.statut === "actif" ? "Actif" : "Inactif"}
@@ -180,26 +188,27 @@ export default function Agents() {
                 onChange={(e) => setForm({ ...form, roleImf: e.target.value as RoleImf, agenceId: "", zoneId: "" })}
               >
                 <option value="AGENT">Agent</option>
+                <option value="RESPONSABLE_AGENCE">Responsable d'agence</option>
                 <option value="RESPONSABLE_ZONE">Responsable de zone</option>
               </select>
             </div>
-            {form.roleImf === "AGENT" ? (
-              <div className="field">
-                <label className="label">Agence <span className="req">*</span></label>
-                <select className="select" required value={form.agenceId} onChange={(e) => setForm({ ...form, agenceId: e.target.value })}>
-                  <option value="">Sélectionner…</option>
-                  {agences?.map((a) => (
-                    <option key={a.id} value={a.id}>{a.nom} ({a.zoneNom})</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
+            {form.roleImf === "RESPONSABLE_ZONE" ? (
               <div className="field">
                 <label className="label">Zone <span className="req">*</span></label>
                 <select className="select" required value={form.zoneId} onChange={(e) => setForm({ ...form, zoneId: e.target.value })}>
                   <option value="">Sélectionner…</option>
                   {zones?.map((z) => (
                     <option key={z.id} value={z.id}>{z.nom}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="field">
+                <label className="label">Agence <span className="req">*</span></label>
+                <select className="select" required value={form.agenceId} onChange={(e) => setForm({ ...form, agenceId: e.target.value })}>
+                  <option value="">Sélectionner…</option>
+                  {agences?.map((a) => (
+                    <option key={a.id} value={a.id}>{a.nom} ({a.zoneNom})</option>
                   ))}
                 </select>
               </div>

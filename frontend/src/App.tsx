@@ -46,6 +46,9 @@ import AgentImfLayout from "./components/layout/AgentImfLayout";
 import AgentImfDashboard from "./pages/agent-imf/Dashboard";
 import AgentImfSimulateur from "./pages/agent-imf/Simulateur";
 import AgentImfSouscriptions from "./pages/agent-imf/Souscriptions";
+import AgentImfContrats from "./pages/agent-imf/Contrats";
+import AgentImfReseauZone from "./pages/agent-imf/ReseauZone";
+import AgentImfReseauAgence from "./pages/agent-imf/ReseauAgence";
 
 export default function App() {
   return (
@@ -117,6 +120,9 @@ export default function App() {
             <Route index element={<AgentImfDashboard />} />
             <Route path="simulateur" element={<AgentImfSimulateur />} />
             <Route path="souscriptions" element={<AgentImfSouscriptions />} />
+            <Route path="contrats" element={<AgentImfContrats />} />
+            <Route path="reseau-zone" element={<AgentImfReseauZone />} />
+            <Route path="reseau-agence" element={<AgentImfReseauAgence />} />
           </Route>
 
           <Route path="/souscription/:token" element={<Souscription />} />

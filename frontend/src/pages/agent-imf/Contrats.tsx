@@ -1,27 +1,21 @@
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
 import type { SouscriptionImf } from "../../types";
 
-function statutBadge(s: SouscriptionImf["statut"]) {
-  if (s === "active") return <Badge kind="success">Active</Badge>;
-  if (s === "annulee") return <Badge kind="neutral">Annulée</Badge>;
-  return <Badge kind="warning">En cours</Badge>;
-}
-
-export default function Souscriptions() {
+export default function Contrats() {
   const { user } = useAuth();
   const estResponsable = user?.roleImf && user.roleImf !== "AGENT";
-  const { data, loading, error } = useFetch<SouscriptionImf[]>("/agent-imf/souscriptions");
+  const { data, loading, error } = useFetch<SouscriptionImf[]>("/agent-imf/contrats");
 
   return (
     <>
       <PageHeader
-        title="Souscriptions"
-        subtitle={estResponsable ? "Souscriptions de votre réseau." : "Souscriptions créées à partir de vos simulations."}
+        title="Contrats"
+        subtitle={estResponsable ? "Contrats actifs de votre réseau." : "Vos contrats actifs."}
       />
 
-      <Card title={data ? `${data.length} souscriptions` : "Souscriptions"} noBody style={{ marginTop: 24 }}>
+      <Card title={data ? `${data.length} contrats` : "Contrats"} noBody style={{ marginTop: 24 }}>
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
         {data && (
@@ -34,7 +28,6 @@ export default function Souscriptions() {
                   <th>Produit</th>
                   {estResponsable && <th>Agent</th>}
                   <th>Prime TTC</th>
-                  <th>Statut</th>
                   <th>Date</th>
                 </tr>
               </thead>
@@ -49,12 +42,11 @@ export default function Souscriptions() {
                     <td className="muted">{s.produitCode}</td>
                     {estResponsable && <td className="muted">{s.agentNom}</td>}
                     <td><strong>{fcfa(s.primeTTC)}</strong></td>
-                    <td>{statutBadge(s.statut)}</td>
                     <td className="muted">{fmtDate(s.createdAt)}</td>
                   </tr>
                 ))}
                 {data.length === 0 && (
-                  <tr><td colSpan={estResponsable ? 7 : 6}><div className="empty">Aucune souscription pour l'instant.</div></td></tr>
+                  <tr><td colSpan={estResponsable ? 6 : 5}><div className="empty">Aucun contrat pour l'instant.</div></td></tr>
                 )}
               </tbody>
             </table>

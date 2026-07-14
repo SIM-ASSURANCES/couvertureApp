@@ -64,6 +64,7 @@ enum Branche {
 
 enum RoleImf {
   AGENT
+  RESPONSABLE_AGENCE
   RESPONSABLE_ZONE
 }
 

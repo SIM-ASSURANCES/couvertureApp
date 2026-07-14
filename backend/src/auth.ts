@@ -16,7 +16,7 @@ const SECRET = loadSecret();
 
 export type ActorType = "admin" | "partenaire" | "agent_imf";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
-export type RoleImfAcces = "AGENT" | "RESPONSABLE_ZONE";
+export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
 
 export interface AuthUser {
   sub: string;

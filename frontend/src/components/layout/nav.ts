@@ -147,16 +147,30 @@ export const adminNav: AdminNavEntry[] = [
   },
 ];
 
-export const agentImfNav: NavGroup[] = [
-  {
-    section: "Mon activité",
-    items: [
-      { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
-      { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
-      { to: "/agent-imf/souscriptions", label: "Mes souscriptions", icon: FileText },
-    ],
-  },
-];
+export type RoleImfNav = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
+
+/** Nav de l'espace agent IMF, adaptée selon la portée du rôle connecté. */
+export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
+  const reseau: NavItem[] =
+    roleImf === "RESPONSABLE_ZONE"
+      ? [{ to: "/agent-imf/reseau-zone", label: "Mon réseau", icon: MapPin }]
+      : roleImf === "RESPONSABLE_AGENCE"
+      ? [{ to: "/agent-imf/reseau-agence", label: "Mon agence", icon: Building2 }]
+      : [];
+
+  return [
+    {
+      section: "Mon activité",
+      items: [
+        { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
+        { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
+        ...reseau,
+        { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
+        { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
+      ],
+    },
+  ];
+}
 
 export const partenaireNav: NavGroup[] = [
   {
