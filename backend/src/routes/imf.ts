@@ -566,6 +566,15 @@ agentImfRouter.get(
   })
 );
 
+/** Lecture seule pour le simulateur agent : limites de capital par classe en vigueur. */
+agentImfRouter.get(
+  "/baremes/securpro",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
 /* ── Simulation de devis ── */
 
 const securproInputSchema = z.object({

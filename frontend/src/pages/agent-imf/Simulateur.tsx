@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Calculator, FileCheck } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
+import { useFetch } from "../../useFetch";
 import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
@@ -18,6 +19,32 @@ const VOL_CAISSE_CAPITAUX = [25000, 50000, 100000, 250000, 500000];
 const DDE_CAPITAUX = [1000000, 2000000];
 const DE_CAPITAUX = [100000, 250000, 500000, 1000000, 1500000, 2000000];
 const BDG_CAPITAUX = [250000, 500000, 1000000, 1500000, 2000000];
+const PLAFOND_MARCHE = 5_000_000;
+
+const SECURPRO_CLASSES: { classe: number; label: string }[] = [
+  { classe: 1, label: "Bureau" },
+  {
+    classe: 2,
+    label:
+      "Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
+  },
+  {
+    classe: 3,
+    label:
+      "Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
+  },
+  {
+    classe: 4,
+    label:
+      "Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
+  },
+];
+
+interface BaremeClasse {
+  classe: number;
+  limiteCapital: number;
+  tauxIncendie: number;
+}
 
 interface LignePrime {
   garantie: string;
@@ -48,12 +75,22 @@ export default function Simulateur() {
   // SECURPRO
   const [sp, setSp] = useState({
     classe: 1, statutOccupation: "proprietaire" as "proprietaire" | "locataire",
-    valeurBatiment: 0, loyerMensuel: 0, contenu: 0, dansMarche: false,
+    valeurBatiment: 0, loyerMensuel: 0, contenu: 0, dansMarche: null as boolean | null,
     gardien: false, extincteur: false,
     volContenu: false, majorationVolContenu: false,
     volCaisseCapital: 0, majorationVolCaisse: false,
     ddeCapital: 0, deCapital: 0, bdgCapital: 0,
   });
+  const { data: baremeSecurpro } = useFetch<BaremeClasse[]>(
+    produitCode === "securpro" ? "/agent-imf/baremes/securpro" : null
+  );
+  const limiteClasseSecurpro = baremeSecurpro?.find((b) => b.classe === sp.classe)?.limiteCapital;
+  const limiteApplicableSecurpro =
+    limiteClasseSecurpro !== undefined
+      ? sp.dansMarche
+        ? Math.min(limiteClasseSecurpro, PLAFOND_MARCHE)
+        : limiteClasseSecurpro
+      : undefined;
 
   // SECURSTOCK
   const [ss, setSs] = useState({
@@ -79,6 +116,10 @@ export default function Simulateur() {
 
   async function simuler(e: React.FormEvent) {
     e.preventDefault();
+    if (produitCode === "securpro" && sp.dansMarche === null) {
+      setError("Veuillez répondre à la question sur la localisation du local.");
+      return;
+    }
     setLoading(true);
     setError("");
     setSaved(false);
@@ -94,7 +135,7 @@ export default function Simulateur() {
           valeurBatiment: sp.statutOccupation === "proprietaire" ? sp.valeurBatiment : undefined,
           loyerMensuel: sp.statutOccupation === "locataire" ? sp.loyerMensuel : undefined,
           contenu: sp.contenu,
-          dansMarche: sp.dansMarche,
+          dansMarche: !!sp.dansMarche,
           gardien: sp.gardien,
           extincteur: sp.extincteur,
           volContenu: sp.volContenu,
@@ -177,10 +218,44 @@ export default function Simulateur() {
             {produitCode === "securpro" && (
               <>
                 <div className="field">
+                  <label className="label">Le local se trouve-t-il dans un marché ou à ses abords ? <span className="req">*</span></label>
+                  <div style={{ display: "flex", gap: 16, marginTop: 4 }}>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        type="radio"
+                        name="dansMarche"
+                        checked={sp.dansMarche === true}
+                        onChange={() => setSp({ ...sp, dansMarche: true })}
+                      /> Oui
+                    </label>
+                    <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input
+                        type="radio"
+                        name="dansMarche"
+                        checked={sp.dansMarche === false}
+                        onChange={() => setSp({ ...sp, dansMarche: false })}
+                      /> Non
+                    </label>
+                  </div>
+                  {sp.dansMarche === null && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      Cette réponse détermine la limite de capitaux assurables.
+                    </div>
+                  )}
+                </div>
+
+                <div className="field">
                   <label className="label">Classe de risque</label>
                   <select className="select" value={sp.classe} onChange={(e) => setSp({ ...sp, classe: Number(e.target.value) })}>
-                    {[1, 2, 3, 4].map((c) => <option key={c} value={c}>Classe {c}</option>)}
+                    {SECURPRO_CLASSES.map((c) => (
+                      <option key={c.classe} value={c.classe}>Classe {c.classe} — {c.label}</option>
+                    ))}
                   </select>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {limiteApplicableSecurpro !== undefined
+                      ? `Limite de capitaux assurables : ${fcfa(limiteApplicableSecurpro)}`
+                      : "Chargement de la limite de capitaux…"}
+                  </div>
                 </div>
                 <div className="field">
                   <label className="label">Statut d'occupation</label>
@@ -205,9 +280,6 @@ export default function Simulateur() {
                   <input className="input" type="number" value={sp.contenu} onChange={(e) => setSp({ ...sp, contenu: Number(e.target.value) })} />
                 </div>
                 <div className="field" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input type="checkbox" checked={sp.dansMarche} onChange={(e) => setSp({ ...sp, dansMarche: e.target.checked })} /> Dans / abords d'un marché
-                  </label>
                   <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input type="checkbox" checked={sp.gardien} onChange={(e) => setSp({ ...sp, gardien: e.target.checked })} /> Gardien
                   </label>
@@ -316,7 +388,11 @@ export default function Simulateur() {
               </div>
             )}
 
-            <button className="btn btn-primary btn-block" disabled={loading} style={{ marginTop: 16 }}>
+            <button
+              className="btn btn-primary btn-block"
+              disabled={loading || (produitCode === "securpro" && sp.dansMarche === null)}
+              style={{ marginTop: 16 }}
+            >
               <Calculator size={17} /> {loading ? "Calcul…" : "Calculer le devis"}
             </button>
           </form>
