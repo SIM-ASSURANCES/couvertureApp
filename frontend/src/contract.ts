@@ -81,7 +81,8 @@ function signatures(sig?: string | null) {
   const gauche = sig
     ? `<img src="${sig}" style="height:60px;max-width:220px;display:block;margin-bottom:4px;" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">LE SOUSCRIPTEUR</div>`
     : `<div>LE SOUSCRIPTEUR</div>`;
-  return `<div class="sign"><div>${gauche}</div><div>POUR LA COMPAGNIE</div></div>`;
+  const droite = `<img src="${window.location.origin}/signature-compagnie.png" alt="" style="height:60px;max-width:220px;display:inline-block;margin-bottom:4px;" onerror="this.style.display='none'" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">POUR LA COMPAGNIE</div>`;
+  return `<div class="sign"><div>${gauche}</div><div style="text-align:right;">${droite}</div></div>`;
 }
 
 async function loadCG(file: string): Promise<string> {
