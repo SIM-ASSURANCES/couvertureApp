@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Calculator } from "lucide-react";
+import { Calculator, FileCheck } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
+import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
 
@@ -38,6 +39,11 @@ export default function Simulateur() {
   const [error, setError] = useState("");
   const [resultat, setResultat] = useState<ResultatFormule | { prime: number; capitalGaranti: number } | null>(null);
   const [saved, setSaved] = useState(false);
+  const [simulationId, setSimulationId] = useState<string | null>(null);
+  const [souscription, setSouscription] = useState<SouscriptionImf | null>(null);
+  const [client, setClient] = useState({ nom: "", prenom: "", telephone: "", email: "" });
+  const [souscrivant, setSouscrivant] = useState(false);
+  const [erreurSouscription, setErreurSouscription] = useState("");
 
   // SECURPRO
   const [sp, setSp] = useState({
@@ -66,6 +72,9 @@ export default function Simulateur() {
     setResultat(null);
     setError("");
     setSaved(false);
+    setSimulationId(null);
+    setSouscription(null);
+    setErreurSouscription("");
   }
 
   async function simuler(e: React.FormEvent) {
@@ -73,6 +82,9 @@ export default function Simulateur() {
     setLoading(true);
     setError("");
     setSaved(false);
+    setSimulationId(null);
+    setSouscription(null);
+    setErreurSouscription("");
     try {
       let entrees: Record<string, unknown>;
       if (produitCode === "securpro") {
@@ -99,11 +111,12 @@ export default function Simulateur() {
         entrees = { libelleVariante: variante };
       }
 
-      const res = await api.post<{ resultat: unknown; primeTTC: number }>("/agent-imf/simulations", {
+      const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>("/agent-imf/simulations", {
         produitCode,
         entrees,
       });
       setResultat(res.resultat as ResultatFormule);
+      setSimulationId(res.id);
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);
@@ -111,6 +124,30 @@ export default function Simulateur() {
       setLoading(false);
     }
   }
+
+  async function souscrire(e: React.FormEvent) {
+    e.preventDefault();
+    if (!simulationId) return;
+    setSouscrivant(true);
+    setErreurSouscription("");
+    try {
+      const res = await api.post<SouscriptionImf>("/agent-imf/souscriptions", {
+        simulationId,
+        nom: client.nom,
+        prenom: client.prenom,
+        telephone: client.telephone,
+        email: client.email || undefined,
+      });
+      setSouscription(res);
+    } catch (err) {
+      setErreurSouscription((err as Error).message);
+    } finally {
+      setSouscrivant(false);
+    }
+  }
+
+  const depassement = !!(resultat && "primeTTC" in resultat && resultat.depassementPlafond);
+  const peutSouscrire = !!simulationId && !depassement && !souscription;
 
   const varianteOptions =
     produitCode === "coupsdurs_classique"
@@ -330,6 +367,55 @@ export default function Simulateur() {
           )}
         </Card>
       </div>
+
+      {(peutSouscrire || souscription) && (
+        <div style={{ marginTop: 24 }}>
+          <Card title="Souscription">
+            {souscription ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <FileCheck size={20} color="var(--success, #16a34a)" />
+                <div>
+                  <div style={{ fontWeight: 700 }}>Souscription créée — {souscription.numeroPolice}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>
+                    {souscription.prenom} {souscription.nom} · {fcfa(souscription.primeTTC)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={souscrire}>
+                <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+                  Identité du client pour transformer ce devis en souscription, sans ressaisir les paramètres tarifaires.
+                </p>
+                <div className="field">
+                  <label className="label">Nom <span className="req">*</span></label>
+                  <input className="input" required value={client.nom} onChange={(e) => setClient({ ...client, nom: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="label">Prénom <span className="req">*</span></label>
+                  <input className="input" required value={client.prenom} onChange={(e) => setClient({ ...client, prenom: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="label">Téléphone <span className="req">*</span></label>
+                  <input className="input" required value={client.telephone} onChange={(e) => setClient({ ...client, telephone: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="label">Email</label>
+                  <input className="input" type="email" value={client.email} onChange={(e) => setClient({ ...client, email: e.target.value })} />
+                </div>
+                {erreurSouscription && (
+                  <div className="empty" style={{ color: "var(--danger)", marginBottom: 12 }}>{erreurSouscription}</div>
+                )}
+                <button
+                  className="btn btn-primary btn-block"
+                  disabled={souscrivant || !client.nom.trim() || !client.prenom.trim() || !client.telephone.trim()}
+                >
+                  <FileCheck size={17} /> {souscrivant ? "Création…" : "Créer la souscription"}
+                </button>
+              </form>
+            )}
+          </Card>
+        </div>
+      )}
     </>
   );
 }

@@ -192,6 +192,26 @@ export interface TarifProduitImf {
   commission: number;
 }
 
+export interface SouscriptionImf {
+  id: string;
+  numeroPolice: string;
+  agentId: string;
+  simulationId: string | null;
+  produitCode: string;
+  nom: string;
+  prenom: string;
+  telephone: string;
+  email: string | null;
+  entrees: Record<string, unknown>;
+  resultat: Record<string, unknown>;
+  primeTTC: number;
+  statut: "en_cours" | "active" | "annulee";
+  createdAt: string;
+  agentNom?: string;
+  agenceNom?: string | null;
+  zoneNom?: string | null;
+}
+
 export interface SimulationImf {
   id: string;
   agentId: string;

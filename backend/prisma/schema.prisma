@@ -463,9 +463,10 @@ model AgentImf {
   agence       AgenceImf?       @relation(fields: [agenceId], references: [id])
   zoneId       String? // requis si roleImf = RESPONSABLE_ZONE
   zone         ZoneImf?         @relation(fields: [zoneId], references: [id])
-  statut       StatutPartenaire @default(actif)
-  createdAt    DateTime         @default(now())
-  simulations  SimulationImf[]
+  statut        StatutPartenaire  @default(actif)
+  createdAt     DateTime          @default(now())
+  simulations   SimulationImf[]
+  souscriptions SouscriptionImf[]
 }
 
 // --- Phase 2 : moteur de tarification IMF (SECURPRO/SECURSTOCK à formules, COUPS DURS/SECURECOLTE en catalogue fixe) ---
@@ -508,12 +509,41 @@ model IndiceArcImf {
 }
 
 model SimulationImf {
-  id          String   @id @default(uuid())
+  id          String           @id @default(uuid())
   agentId     String
-  agent       AgentImf @relation(fields: [agentId], references: [id])
+  agent       AgentImf         @relation(fields: [agentId], references: [id])
   produitCode String // "securpro" | "securstock" | "coupsdurs" | "securecolte"
   entrees     Json
   resultat    Json
   primeTTC    Int
-  createdAt   DateTime @default(now())
+  createdAt   DateTime         @default(now())
+  souscription SouscriptionImf?
+}
+
+// --- Phase 3 (réduite) : conversion d'une simulation en souscription ---
+
+enum StatutSouscriptionImf {
+  en_cours
+  active
+  annulee
+}
+
+model SouscriptionImf {
+  id           String                @id @default(uuid())
+  numeroPolice String                @unique
+  agentId      String
+  agent        AgentImf              @relation(fields: [agentId], references: [id])
+  simulationId String?               @unique
+  simulation   SimulationImf?        @relation(fields: [simulationId], references: [id])
+  produitCode  String
+  nom          String
+  prenom       String
+  telephone    String
+  email        String?
+  entrees      Json
+  resultat     Json
+  primeTTC     Int
+  statut       StatutSouscriptionImf @default(en_cours)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 }

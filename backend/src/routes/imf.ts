@@ -444,6 +444,32 @@ imfRouter.get(
   })
 );
 
+/* ── Souscriptions (lecture admin) ── */
+
+imfRouter.get(
+  "/souscriptions",
+  asyncHandler(async (req, res) => {
+    const { produitCode, agentId } = req.query as { produitCode?: string; agentId?: string };
+    const rows = await prisma.souscriptionImf.findMany({
+      where: { produitCode: produitCode || undefined, agentId: agentId || undefined },
+      orderBy: { createdAt: "desc" },
+      include: {
+        agent: {
+          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zone: { select: { nom: true } } },
+        },
+      },
+    });
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        agentNom: `${r.agent.prenom} ${r.agent.nom}`,
+        agenceNom: r.agent.agence?.nom ?? null,
+        zoneNom: (r.agent.agence?.zone.nom ?? r.agent.zone?.nom) ?? null,
+      }))
+    );
+  })
+);
+
 /** Routeur séparé, monté avec requireAuth("agent_imf") : profil de l'agent connecté. */
 export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
@@ -560,6 +586,74 @@ agentImfRouter.get(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.simulationImf.findMany({
+      where: { agentId: req.user!.sub },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(rows);
+  })
+);
+
+/* ── Conversion d'une simulation en souscription ── */
+
+const souscriptionSchema = z.object({
+  simulationId: z.string().min(1),
+  nom: z.string().min(1),
+  prenom: z.string().min(1),
+  telephone: z.string().min(1),
+  email: z.string().email().optional(),
+});
+
+agentImfRouter.post(
+  "/souscriptions",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = souscriptionSchema.parse(req.body);
+
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: data.simulationId },
+      include: { souscription: true },
+    });
+    if (!simulation || simulation.agentId !== req.user!.sub) {
+      return res.status(404).json({ error: "Simulation introuvable" });
+    }
+    if (simulation.souscription) {
+      return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    }
+
+    const annee = new Date().getFullYear();
+    const numeroPolice = `IMF-${simulation.produitCode.toUpperCase()}-${annee}-${simulation.id.slice(0, 8).toUpperCase()}`;
+
+    const souscription = await prisma.souscriptionImf.create({
+      data: {
+        numeroPolice,
+        agentId: req.user!.sub,
+        simulationId: simulation.id,
+        produitCode: simulation.produitCode,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        email: data.email,
+        entrees: simulation.entrees as object,
+        resultat: simulation.resultat as object,
+        primeTTC: simulation.primeTTC,
+      },
+    });
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "souscription_imf",
+      objetId: souscription.id,
+      valeurApres: souscription,
+    });
+
+    res.status(201).json(souscription);
+  })
+);
+
+agentImfRouter.get(
+  "/souscriptions",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const rows = await prisma.souscriptionImf.findMany({
       where: { agentId: req.user!.sub },
       orderBy: { createdAt: "desc" },
     });

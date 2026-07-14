@@ -33,6 +33,7 @@ import ImfAgences from "./pages/admin/imf/Agences";
 import ImfAgents from "./pages/admin/imf/Agents";
 import ImfBaremes from "./pages/admin/imf/Baremes";
 import ImfIndiceArc from "./pages/admin/imf/IndiceArc";
+import ImfSouscriptions from "./pages/admin/imf/Souscriptions";
 
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
@@ -44,6 +45,7 @@ import PartenaireProfil from "./pages/partenaire/Profil";
 import AgentImfLayout from "./components/layout/AgentImfLayout";
 import AgentImfDashboard from "./pages/agent-imf/Dashboard";
 import AgentImfSimulateur from "./pages/agent-imf/Simulateur";
+import AgentImfSouscriptions from "./pages/agent-imf/Souscriptions";
 
 export default function App() {
   return (
@@ -86,6 +88,7 @@ export default function App() {
             <Route path="imf/agents" element={<ImfAgents />} />
             <Route path="imf/baremes" element={<ImfBaremes />} />
             <Route path="imf/indice-arc" element={<ImfIndiceArc />} />
+            <Route path="imf/souscriptions" element={<ImfSouscriptions />} />
           </Route>
 
           <Route
@@ -113,6 +116,7 @@ export default function App() {
           >
             <Route index element={<AgentImfDashboard />} />
             <Route path="simulateur" element={<AgentImfSimulateur />} />
+            <Route path="souscriptions" element={<AgentImfSouscriptions />} />
           </Route>
 
           <Route path="/souscription/:token" element={<Souscription />} />

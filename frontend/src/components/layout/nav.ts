@@ -129,6 +129,12 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/imf/indice-arc", label: "Indice ARC", icon: CloudRain },
         ],
       },
+      {
+        section: "Portefeuille",
+        items: [
+          { to: "/admin/imf/souscriptions", label: "Souscriptions", icon: FileText },
+        ],
+      },
     ],
   },
   {
@@ -147,6 +153,7 @@ export const agentImfNav: NavGroup[] = [
     items: [
       { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
       { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
+      { to: "/agent-imf/souscriptions", label: "Mes souscriptions", icon: FileText },
     ],
   },
 ];
