@@ -630,6 +630,65 @@ const securstockInputSchema = z.object({
 
 const catalogueInputSchema = z.object({ libelleVariante: z.string().min(1) });
 
+/**
+ * COUPS DURS uniquement : déclaration de bonne santé (conditionne l'acceptation)
+ * et répartition des bénéficiaires en cas de décès (parts en % du capital,
+ * doivent totaliser 100 — exigé seulement pour la variante "deces", les
+ * variantes "maladie"/IT ne versant pas à des bénéficiaires tiers).
+ */
+const santeSchema = z.object({
+  taille: z.number().positive().optional(),
+  poids: z.number().positive().optional(),
+  fumeur: z.boolean(),
+  cigarettesParJour: z.number().nonnegative().optional(),
+  sportif: z.boolean(),
+  sportifNiveau: z.enum(["amateur", "professionnel"]).optional(),
+  infirmite: z.boolean(),
+  infirmiteTaux: z.string().optional(),
+  infirmiteNature: z.string().optional(),
+  maladieRecente: z.boolean(),
+  maladieRecentePrecisions: z.string().optional(),
+  touxFievre: z.boolean(),
+  diarrheeFrequente: z.boolean(),
+  transfusion: z.boolean(),
+  enceinte: z.boolean(),
+  affections: z
+    .array(
+      z.enum([
+        "cancer", "diabete", "hypertension", "cardiaque", "vih",
+        "ulcere", "fatigue", "maladie_sang", "insuffisance_renale", "asthme",
+      ])
+    )
+    .default([]),
+  affectionsPrecisions: z.string().optional(),
+  familleBonneSante: z.boolean(),
+  familleBonneSantePrecisions: z.string().optional(),
+  familleHospitalisee: z.boolean(),
+  familleHospitaliseePrecisions: z.string().optional(),
+});
+
+const beneficiaireSchema = z.object({
+  nom: z.string().min(1),
+  contact: z.string().min(1),
+  lien: z.string().min(1),
+  pourcentage: z.number().positive(),
+});
+
+const coupsdursInputSchema = z
+  .object({
+    libelleVariante: z.string().min(1),
+    sante: santeSchema,
+    beneficiaires: z.array(beneficiaireSchema).optional(),
+  })
+  .refine(
+    (d) =>
+      d.libelleVariante !== "deces" ||
+      (!!d.beneficiaires &&
+        d.beneficiaires.length > 0 &&
+        Math.round(d.beneficiaires.reduce((s, b) => s + b.pourcentage, 0)) === 100),
+    { message: "La somme des parts des bénéficiaires doit être égale à 100%.", path: ["beneficiaires"] }
+  );
+
 const simulationSchema = z.object({
   produitCode: z.enum(["securpro", "securstock", "coupsdurs_classique", "coupsdurs_incapacite", "securecolte"]),
   entrees: z.record(z.unknown()),
@@ -661,7 +720,10 @@ async function calculerDevisImf(
     return { ok: true, resultat: r, primeTTC: (r as { primeTTC: number }).primeTTC };
   }
   // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
-  const { libelleVariante } = catalogueInputSchema.parse(entrees);
+  const estCoupsdurs = produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite";
+  const { libelleVariante } = estCoupsdurs
+    ? coupsdursInputSchema.parse(entrees)
+    : catalogueInputSchema.parse(entrees);
   const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
   if (!produit) return { ok: false, error: "Produit introuvable" };
   const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });

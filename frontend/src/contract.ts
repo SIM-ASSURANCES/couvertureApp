@@ -95,6 +95,60 @@ export interface ContratSecurecolte {
   signature?: string | null;
 }
 
+export interface SanteCoupsdurs {
+  taille?: number;
+  poids?: number;
+  fumeur?: boolean;
+  cigarettesParJour?: number;
+  sportif?: boolean;
+  sportifNiveau?: "amateur" | "professionnel";
+  infirmite?: boolean;
+  infirmiteTaux?: string;
+  infirmiteNature?: string;
+  maladieRecente?: boolean;
+  maladieRecentePrecisions?: string;
+  touxFievre?: boolean;
+  diarrheeFrequente?: boolean;
+  transfusion?: boolean;
+  enceinte?: boolean;
+  affections?: string[];
+  affectionsPrecisions?: string;
+  familleBonneSante?: boolean;
+  familleBonneSantePrecisions?: string;
+  familleHospitalisee?: boolean;
+  familleHospitaliseePrecisions?: string;
+}
+
+export interface BeneficiaireCoupsdurs {
+  nom: string;
+  contact: string;
+  lien: string;
+  pourcentage: number;
+}
+
+export interface ContratCoupsdurs {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  variante: string;
+  garantieLabel: string;
+  montantGarantie: number;
+  primeHT?: number | null;
+  accessoires?: number | null;
+  taxes?: number | null;
+  primeTTC: number;
+  sante?: SanteCoupsdurs | null;
+  beneficiaires?: BeneficiaireCoupsdurs[] | null;
+  signature?: string | null;
+}
+
 const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
 const dfr = (s?: string | null) =>
   s ? new Date(s).toLocaleDateString("fr-FR") : "—";
@@ -115,9 +169,11 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
 };
 
-/** true si un contrat PDF est disponible pour ce produit IMF (COUPS DURS à venir). */
+/** true si un contrat PDF est disponible pour ce produit IMF. */
 export function contratImfDisponible(produitCode: string): boolean {
-  return produitCode === "securpro" || produitCode === "securstock" || produitCode === "securecolte";
+  return [
+    "securpro", "securstock", "securecolte", "coupsdurs_classique", "coupsdurs_incapacite",
+  ].includes(produitCode);
 }
 
 /** Génère et ouvre le contrat PDF adapté au produit d'une souscription IMF. */
@@ -125,6 +181,8 @@ export function genererContratImf(s: SouscriptionImf): void {
   if (s.produitCode === "securpro") genererContratSecurpro(souscriptionImfToContratSecurpro(s));
   else if (s.produitCode === "securstock") genererContratSecurstock(souscriptionImfToContratSecurstock(s));
   else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s));
+  else if (s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
+    genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s));
 }
 
 const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
@@ -139,6 +197,57 @@ const SECURSTOCK_LOCALISATION_LABELS: Record<string, string> = {
   abords_marche: "Abords d'un marché",
   marche_zone_industrielle: "Dans un marché / zone industrielle",
 };
+
+const COUPSDURS_VARIANTE_LABELS: Record<string, string> = {
+  maladie: "Maladie Coups Durs",
+  deces: "Décès suite à Coups Durs",
+  plafond_500000: "Incapacité temporaire de l'emprunteur — plafond 500 000 FCFA",
+  plafond_1000000: "Incapacité temporaire de l'emprunteur — plafond 1 000 000 FCFA",
+};
+
+const AFFECTIONS_LABELS: Record<string, string> = {
+  cancer: "Cancer", diabete: "Diabète", hypertension: "Hypertension", cardiaque: "Maladies cardiaques",
+  vih: "VIH", ulcere: "Ulcère", fatigue: "Fatigue", maladie_sang: "Maladie de sang",
+  insuffisance_renale: "Insuffisance rénale", asthme: "Asthme",
+};
+
+const ouiNon = (b?: boolean) => (b ? "Oui" : "Non");
+
+/** Reconstitue les champs du contrat COUPS DURS à partir d'une souscription IMF (produit catalogue). */
+export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCoupsdurs {
+  const entrees = s.entrees as {
+    libelleVariante?: string;
+    sante?: SanteCoupsdurs;
+    beneficiaires?: BeneficiaireCoupsdurs[];
+  };
+  const resultat = s.resultat as { capitalGaranti?: number; primeHT?: number; fg?: number; taxes?: number };
+  const debut = new Date(s.createdAt);
+  const fin = new Date(debut);
+  fin.setFullYear(fin.getFullYear() + 1);
+  const variante = entrees.libelleVariante ?? "—";
+  return {
+    numeroPolice: s.numeroPolice,
+    intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
+    dateDebut: debut.toISOString(),
+    dateFin: fin.toISOString(),
+    dateSouscription: s.createdAt,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    typePiece: s.typePiece,
+    numeroPiece: s.numeroPiece,
+    variante,
+    garantieLabel: COUPSDURS_VARIANTE_LABELS[variante] ?? variante,
+    montantGarantie: resultat.capitalGaranti ?? 0,
+    primeHT: resultat.primeHT ?? null,
+    accessoires: resultat.fg ?? null,
+    taxes: resultat.taxes ?? null,
+    primeTTC: s.primeTTC,
+    sante: entrees.sante ?? null,
+    beneficiaires: entrees.beneficiaires ?? null,
+    signature: s.signature ?? null,
+  };
+}
 
 /** Reconstitue les champs du contrat SECURECOLTE à partir d'une souscription IMF (produit catalogue). */
 export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): ContratSecurecolte {
@@ -525,4 +634,79 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
   const cg = await loadCG("cg-incendie.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
   writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
+  const w = openWindow();
+  const s = c.sante;
+
+  const santeSection = s
+    ? `
+  <h2>Déclaration de bonne santé</h2>
+  <table>
+    <tr><td class="k">Taille / Poids</td><td>${s.taille ?? "—"} cm / ${s.poids ?? "—"} kg</td><td class="k">Fumeur</td><td>${ouiNon(s.fumeur)}${s.fumeur ? ` (${s.cigarettesParJour ?? 0} cig./jour)` : ""}</td></tr>
+    <tr><td class="k">Sportif</td><td>${ouiNon(s.sportif)}${s.sportif ? ` (${s.sportifNiveau === "professionnel" ? "Professionnel" : "Amateur"})` : ""}</td><td class="k">Infirmité</td><td>${ouiNon(s.infirmite)}${s.infirmite ? ` — ${val(s.infirmiteNature)} (${val(s.infirmiteTaux)})` : ""}</td></tr>
+    <tr><td class="k">Malade (5 dernières années)</td><td>${ouiNon(s.maladieRecente)}${s.maladieRecente ? ` — ${val(s.maladieRecentePrecisions)}` : ""}</td><td class="k">Toux + fièvre récentes</td><td>${ouiNon(s.touxFievre)}</td></tr>
+    <tr><td class="k">Diarrhée fréquente</td><td>${ouiNon(s.diarrheeFrequente)}</td><td class="k">Transfusion sanguine</td><td>${ouiNon(s.transfusion)}</td></tr>
+    <tr><td class="k">Grossesse en cours</td><td>${ouiNon(s.enceinte)}</td><td class="k">Famille en bonne santé</td><td>${ouiNon(s.familleBonneSante)}${!s.familleBonneSante ? ` — ${val(s.familleBonneSantePrecisions)}` : ""}</td></tr>
+    <tr><td class="k">Famille hospitalisée (12 mois)</td><td>${ouiNon(s.familleHospitalisee)}${s.familleHospitalisee ? ` — ${val(s.familleHospitaliseePrecisions)}` : ""}</td><td class="k">Affections déclarées</td><td>${s.affections?.length ? s.affections.map((a) => AFFECTIONS_LABELS[a] ?? a).join(", ") : "Aucune"}</td></tr>
+    ${s.affectionsPrecisions ? `<tr><td class="k">Précisions sur les affections</td><td colspan="3">${val(s.affectionsPrecisions)}</td></tr>` : ""}
+  </table>
+  <div class="note" style="font-style:italic;">
+    Le souscripteur certifie avoir répondu sincèrement et sans réticence sur son état de santé passé ou actuel.
+    Toute fausse déclaration ou omission intentionnelle entraîne la nullité du contrat.
+  </div>`
+    : "";
+
+  const beneficiairesSection =
+    c.beneficiaires && c.beneficiaires.length > 0
+      ? `
+  <h2>Bénéficiaires en cas de décès</h2>
+  <table>
+    <tr><td class="k">Nom et prénoms</td><td class="k">Contact</td><td class="k">Lien avec l'assuré</td><td class="k">Part (%)</td></tr>
+    ${c.beneficiaires.map((b) => `<tr><td>${val(b.nom)}</td><td>${val(b.contact)}</td><td>${val(b.lien)}</td><td>${b.pourcentage}%</td></tr>`).join("")}
+  </table>`
+      : "";
+
+  const prestation =
+    c.variante === "deces"
+      ? "En cas de décès consécutif à l'un de ces événements, SIM Assurances verse aux bénéficiaires ci-dessus le capital garanti, selon la répartition indiquée."
+      : c.variante === "maladie"
+      ? "Prise en charge de la maladie dans la limite du capital garanti via le réseau de soins, ou remboursement des dépenses de soins sur présentation des justificatifs, dans la limite du plafond prévu au contrat."
+      : "Paiement des échéances du prêt en cours (net d'intérêt) à l'institution financière pendant la période de convalescence indemnisable, dans la limite du plafond choisi et de la durée résiduelle du prêt, après une franchise de 2 mois.";
+
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Conditions Particulières — COUPS DURS</h1>
+  <div class="sub">${val(c.garantieLabel)} · Distribué via ${val(c.intermediaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Garantie souscrite</td><td>${val(c.garantieLabel)}</td></tr>
+    <tr><td class="k">Montant garanti</td><td><strong>${fcfa(c.montantGarantie)}</strong></td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est régi par les
+    Conditions Générales du contrat COUPS DURS et les présentes Conditions Particulières.
+    <br/><br/>
+    <b>Événements couverts (Coups Durs) :</b> AVC, infarctus du myocarde, accident de la voie publique, traumatisme
+    crânien, hémorragie externe sévère, brûlure sévère et étendue (au-delà de 20 %), morsure de serpent — délai de
+    carence de 7 jours pour l'AVC et la crise cardiaque uniquement.
+    <br/><br/>
+    <b>Prestation :</b> ${prestation}
+  </div>
+  ${santeSection}
+  ${beneficiairesSection}
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp);
 }

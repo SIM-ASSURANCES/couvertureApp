@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Calculator, FileCheck, Download } from "lucide-react";
+import { Calculator, FileCheck, Download, Plus, X } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
 import { useFetch } from "../../useFetch";
@@ -52,6 +52,56 @@ const SECURSTOCK_CLASSES: { classe: number; label: string }[] = [
 // Plafond imposé dès que le local est dans un marché / à ses abords / en zone
 // industrielle, quelle que soit la classe (fiche produit SECURSTOCK, §7 NB).
 const PLAFOND_MARCHE_SECURSTOCK = 2_500_000;
+
+const AFFECTIONS: { value: string; label: string }[] = [
+  { value: "cancer", label: "Cancer" },
+  { value: "diabete", label: "Diabète" },
+  { value: "hypertension", label: "Hypertension" },
+  { value: "cardiaque", label: "Maladies cardiaques" },
+  { value: "vih", label: "VIH" },
+  { value: "ulcere", label: "Ulcère" },
+  { value: "fatigue", label: "Fatigue" },
+  { value: "maladie_sang", label: "Maladie de sang" },
+  { value: "insuffisance_renale", label: "Insuffisance rénale" },
+  { value: "asthme", label: "Asthme" },
+];
+
+function defaultSante() {
+  return {
+    taille: 0, poids: 0,
+    fumeur: false, cigarettesParJour: 0,
+    sportif: false, sportifNiveau: "amateur" as "amateur" | "professionnel",
+    infirmite: false, infirmiteTaux: "", infirmiteNature: "",
+    maladieRecente: false, maladieRecentePrecisions: "",
+    touxFievre: false,
+    diarrheeFrequente: false,
+    transfusion: false,
+    enceinte: false,
+    affections: [] as string[],
+    affectionsPrecisions: "",
+    familleBonneSante: true, familleBonneSantePrecisions: "",
+    familleHospitalisee: false, familleHospitaliseePrecisions: "",
+  };
+}
+
+interface Beneficiaire { nom: string; contact: string; lien: string; pourcentage: number }
+
+/** Question oui/non compacte, utilisée dans la déclaration de bonne santé COUPS DURS. */
+function OuiNon({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+      <span style={{ fontSize: 13 }}>{label}</span>
+      <div style={{ display: "flex", gap: 12 }}>
+        <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
+          <input type="radio" checked={value === true} onChange={() => onChange(true)} /> Oui
+        </label>
+        <label style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
+          <input type="radio" checked={value === false} onChange={() => onChange(false)} /> Non
+        </label>
+      </div>
+    </div>
+  );
+}
 
 interface BaremeClasse {
   classe: number;
@@ -145,6 +195,29 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   // Catalogue à prix fixe
   const [variante, setVariante] = useState("maladie");
 
+  // COUPS DURS : déclaration de bonne santé + bénéficiaires (variante "deces" uniquement)
+  const [sante, setSante] = useState(defaultSante());
+  const [beneficiaires, setBeneficiaires] = useState<Beneficiaire[]>([]);
+  const estCoupsdurs = produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite";
+  const necessiteBeneficiaires = produitCode === "coupsdurs_classique" && variante === "deces";
+  const totalBeneficiaires = beneficiaires.reduce((s, b) => s + (b.pourcentage || 0), 0);
+
+  function toggleAffection(a: string) {
+    setSante((s) => ({
+      ...s,
+      affections: s.affections.includes(a) ? s.affections.filter((x) => x !== a) : [...s.affections, a],
+    }));
+  }
+  function ajouterBeneficiaire() {
+    setBeneficiaires((b) => [...b, { nom: "", contact: "", lien: "", pourcentage: 0 }]);
+  }
+  function retirerBeneficiaire(i: number) {
+    setBeneficiaires((b) => b.filter((_, idx) => idx !== i));
+  }
+  function majBeneficiaire(i: number, patch: Partial<Beneficiaire>) {
+    setBeneficiaires((b) => b.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  }
+
   function reset() {
     setResultat(null);
     setError("");
@@ -153,6 +226,8 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSouscription(null);
     setErreurSouscription("");
     sigRef.current?.clear();
+    setSante(defaultSante());
+    setBeneficiaires([]);
   }
 
   async function simuler(e: React.FormEvent) {
@@ -189,6 +264,12 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         };
       } else if (produitCode === "securstock") {
         entrees = { ...ss };
+      } else if (estCoupsdurs) {
+        entrees = {
+          libelleVariante: variante,
+          sante,
+          beneficiaires: necessiteBeneficiaires ? beneficiaires : undefined,
+        };
       } else {
         entrees = { libelleVariante: variante };
       }
@@ -442,9 +523,120 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
               </div>
             )}
 
+            {estCoupsdurs && (
+              <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <label className="label">Déclaration de bonne santé <span className="req">*</span></label>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
+                  Les réponses inexactes ou les omissions intentionnelles peuvent entraîner la nullité du contrat.
+                </div>
+
+                <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13 }}>Taille (cm)</span>
+                    <input className="input" type="number" value={sante.taille} onChange={(e) => setSante({ ...sante, taille: Number(e.target.value) })} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13 }}>Poids (kg)</span>
+                    <input className="input" type="number" value={sante.poids} onChange={(e) => setSante({ ...sante, poids: Number(e.target.value) })} />
+                  </div>
+                </div>
+
+                <OuiNon label="Fumez-vous ?" value={sante.fumeur} onChange={(v) => setSante({ ...sante, fumeur: v })} />
+                {sante.fumeur && (
+                  <div style={{ marginBottom: 10 }}>
+                    <span style={{ fontSize: 13 }}>Cigarettes par jour</span>
+                    <input className="input" type="number" value={sante.cigarettesParJour} onChange={(e) => setSante({ ...sante, cigarettesParJour: Number(e.target.value) })} />
+                  </div>
+                )}
+
+                <OuiNon label="Pratiquez-vous un sport ?" value={sante.sportif} onChange={(v) => setSante({ ...sante, sportif: v })} />
+                {sante.sportif && (
+                  <div style={{ marginBottom: 10 }}>
+                    <select className="select" value={sante.sportifNiveau} onChange={(e) => setSante({ ...sante, sportifNiveau: e.target.value as "amateur" | "professionnel" })}>
+                      <option value="amateur">Amateur</option>
+                      <option value="professionnel">Professionnel</option>
+                    </select>
+                  </div>
+                )}
+
+                <OuiNon label="Êtes-vous atteint d'une infirmité ?" value={sante.infirmite} onChange={(v) => setSante({ ...sante, infirmite: v })} />
+                {sante.infirmite && (
+                  <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                    <input className="input" placeholder="Taux" value={sante.infirmiteTaux} onChange={(e) => setSante({ ...sante, infirmiteTaux: e.target.value })} />
+                    <input className="input" placeholder="Nature" value={sante.infirmiteNature} onChange={(e) => setSante({ ...sante, infirmiteNature: e.target.value })} />
+                  </div>
+                )}
+
+                <OuiNon label="Avez-vous été malade pendant ces 5 dernières années ?" value={sante.maladieRecente} onChange={(v) => setSante({ ...sante, maladieRecente: v })} />
+                {sante.maladieRecente && (
+                  <input className="input" style={{ marginBottom: 10 }} placeholder="Précisions" value={sante.maladieRecentePrecisions} onChange={(e) => setSante({ ...sante, maladieRecentePrecisions: e.target.value })} />
+                )}
+
+                <OuiNon label="Toussez-vous depuis quelque temps avec de la fièvre ?" value={sante.touxFievre} onChange={(v) => setSante({ ...sante, touxFievre: v })} />
+                <OuiNon label="Faites-vous souvent de la diarrhée ?" value={sante.diarrheeFrequente} onChange={(v) => setSante({ ...sante, diarrheeFrequente: v })} />
+                <OuiNon label="Avez-vous déjà reçu une transfusion de sang ?" value={sante.transfusion} onChange={(v) => setSante({ ...sante, transfusion: v })} />
+                <OuiNon label="Êtes-vous enceinte ?" value={sante.enceinte} onChange={(v) => setSante({ ...sante, enceinte: v })} />
+
+                <div style={{ marginTop: 4 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>Souffrez-vous de :</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+                    {AFFECTIONS.map((a) => (
+                      <label key={a.value} style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 13 }}>
+                        <input type="checkbox" checked={sante.affections.includes(a.value)} onChange={() => toggleAffection(a.value)} /> {a.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                {sante.affections.length > 0 && (
+                  <input className="input" style={{ marginTop: 10 }} placeholder="Précisions sur les affections cochées" value={sante.affectionsPrecisions} onChange={(e) => setSante({ ...sante, affectionsPrecisions: e.target.value })} />
+                )}
+
+                <div style={{ marginTop: 10 }}>
+                  <OuiNon label="Les membres de votre famille sont-ils tous en bonne santé ?" value={sante.familleBonneSante} onChange={(v) => setSante({ ...sante, familleBonneSante: v })} />
+                  {!sante.familleBonneSante && (
+                    <input className="input" style={{ marginBottom: 10 }} placeholder="Précisions" value={sante.familleBonneSantePrecisions} onChange={(e) => setSante({ ...sante, familleBonneSantePrecisions: e.target.value })} />
+                  )}
+                  <OuiNon label="Un membre de votre famille a-t-il été hospitalisé cette dernière année ?" value={sante.familleHospitalisee} onChange={(v) => setSante({ ...sante, familleHospitalisee: v })} />
+                  {sante.familleHospitalisee && (
+                    <input className="input" placeholder="Précisions" value={sante.familleHospitaliseePrecisions} onChange={(e) => setSante({ ...sante, familleHospitaliseePrecisions: e.target.value })} />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {necessiteBeneficiaires && (
+              <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                <label className="label">Bénéficiaires en cas de décès <span className="req">*</span></label>
+                <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
+                  La somme des parts doit être égale à 100 %.
+                </div>
+                {beneficiaires.map((b, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <input className="input" placeholder="Nom et prénoms" value={b.nom} onChange={(e) => majBeneficiaire(i, { nom: e.target.value })} style={{ flex: 2, minWidth: 120 }} />
+                    <input className="input" placeholder="Contact" value={b.contact} onChange={(e) => majBeneficiaire(i, { contact: e.target.value })} style={{ flex: 1, minWidth: 90 }} />
+                    <input className="input" placeholder="Lien" value={b.lien} onChange={(e) => majBeneficiaire(i, { lien: e.target.value })} style={{ flex: 1, minWidth: 90 }} />
+                    <input className="input" type="number" placeholder="%" value={b.pourcentage || ""} onChange={(e) => majBeneficiaire(i, { pourcentage: Number(e.target.value) })} style={{ width: 70 }} />
+                    <button type="button" className="btn btn-ghost" style={{ padding: "6px 8px" }} onClick={() => retirerBeneficiaire(i)}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" className="btn btn-ghost" onClick={ajouterBeneficiaire} style={{ marginTop: 4 }}>
+                  <Plus size={15} /> Ajouter un bénéficiaire
+                </button>
+                <div className="muted" style={{ fontSize: 12, marginTop: 8, color: Math.round(totalBeneficiaires) === 100 ? undefined : "var(--danger)" }}>
+                  Total : {totalBeneficiaires}% {Math.round(totalBeneficiaires) === 100 ? "✓" : "(doit être égal à 100 %)"}
+                </div>
+              </div>
+            )}
+
             <button
               className="btn btn-primary btn-block"
-              disabled={loading || (produitCode === "securpro" && sp.dansMarche === null)}
+              disabled={
+                loading ||
+                (produitCode === "securpro" && sp.dansMarche === null) ||
+                (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100)
+              }
               style={{ marginTop: 16 }}
             >
               <Calculator size={17} /> {loading ? "Calcul…" : "Calculer le devis"}
