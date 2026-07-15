@@ -1,6 +1,6 @@
 import { Download } from "lucide-react";
 import { Badge, fcfa, fmtDate } from "../../../components/ui";
-import { genererContratSecurpro, souscriptionImfToContratSecurpro } from "../../../contract";
+import { genererContratImf, contratImfDisponible } from "../../../contract";
 import type { SouscriptionImf } from "../../../types";
 
 function statutBadge(s: SouscriptionImf["statut"]) {
@@ -101,12 +101,12 @@ export default function SouscriptionsGroupees({ rows }: { rows: SouscriptionImf[
                         <td>{statutBadge(s.statut)}</td>
                         <td className="muted">{fmtDate(s.createdAt)}</td>
                         <td>
-                          {s.produitCode === "securpro" && (
+                          {contratImfDisponible(s.produitCode) && (
                             <button
                               className="btn btn-ghost"
                               style={{ padding: "7px 10px" }}
                               title="Télécharger le contrat"
-                              onClick={() => genererContratSecurpro(souscriptionImfToContratSecurpro(s))}
+                              onClick={() => genererContratImf(s)}
                             >
                               <Download size={15} />
                             </button>

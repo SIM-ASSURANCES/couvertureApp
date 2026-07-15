@@ -58,6 +58,43 @@ export interface ContratSecurpro {
   signature?: string | null;
 }
 
+export interface ContratSecurstock {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  classeLabel: string;
+  localisationLabel: string;
+  montantStock: number;
+  capitalRetenu: number;
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
+export interface ContratSecurecolte {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  montantPack: number;
+  signature?: string | null;
+}
+
 const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
 const dfr = (s?: string | null) =>
   s ? new Date(s).toLocaleDateString("fr-FR") : "—";
@@ -77,6 +114,82 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
   4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
 };
+
+/** true si un contrat PDF est disponible pour ce produit IMF (COUPS DURS à venir). */
+export function contratImfDisponible(produitCode: string): boolean {
+  return produitCode === "securpro" || produitCode === "securstock" || produitCode === "securecolte";
+}
+
+/** Génère et ouvre le contrat PDF adapté au produit d'une souscription IMF. */
+export function genererContratImf(s: SouscriptionImf): void {
+  if (s.produitCode === "securpro") genererContratSecurpro(souscriptionImfToContratSecurpro(s));
+  else if (s.produitCode === "securstock") genererContratSecurstock(souscriptionImfToContratSecurstock(s));
+  else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s));
+}
+
+const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
+  1: "Classe 1 — Produits très peu inflammables (métaux, verre, céramique, électroménager, plastiques rigides)",
+  2: "Classe 2 — Produits à combustion lente (bois, papier, cartons, vêtements, chaussures, alimentaire sec)",
+  3: "Classe 3 — Produits inflammables usuels (produits de beauté, ménagers, plastiques souples, électronique à batterie)",
+  4: "Classe 4 — Produits fortement inflammables (parfums en gros, peintures, solvants, tissus denses, mousse)",
+};
+
+const SECURSTOCK_LOCALISATION_LABELS: Record<string, string> = {
+  hors_marche: "Hors d'un marché",
+  abords_marche: "Abords d'un marché",
+  marche_zone_industrielle: "Dans un marché / zone industrielle",
+};
+
+/** Reconstitue les champs du contrat SECURECOLTE à partir d'une souscription IMF (produit catalogue). */
+export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): ContratSecurecolte {
+  const debut = new Date(s.createdAt);
+  const fin = new Date(debut);
+  fin.setFullYear(fin.getFullYear() + 1);
+  return {
+    numeroPolice: s.numeroPolice,
+    intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
+    dateDebut: debut.toISOString(),
+    dateFin: fin.toISOString(),
+    dateSouscription: s.createdAt,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    typePiece: s.typePiece,
+    numeroPiece: s.numeroPiece,
+    montantPack: s.primeTTC,
+    signature: null,
+  };
+}
+
+/** Reconstitue les champs du contrat SECURSTOCK à partir d'une souscription IMF. */
+export function souscriptionImfToContratSecurstock(s: SouscriptionImf): ContratSecurstock {
+  const entrees = s.entrees as { classe?: number; capitalDeclare?: number; localisation?: string };
+  const resultat = s.resultat as { capitauxTotaux?: number; primeNetteHT?: number; accessoires?: number; taxes?: number };
+  const debut = new Date(s.createdAt);
+  const fin = new Date(debut);
+  fin.setFullYear(fin.getFullYear() + 1);
+  return {
+    numeroPolice: s.numeroPolice,
+    intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
+    dateDebut: debut.toISOString(),
+    dateFin: fin.toISOString(),
+    dateSouscription: s.createdAt,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    typePiece: s.typePiece,
+    numeroPiece: s.numeroPiece,
+    classeLabel: entrees.classe ? (SECURSTOCK_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
+    localisationLabel: entrees.localisation ? (SECURSTOCK_LOCALISATION_LABELS[entrees.localisation] ?? entrees.localisation) : "—",
+    montantStock: entrees.capitalDeclare ?? 0,
+    capitalRetenu: resultat.capitauxTotaux ?? 0,
+    primeNetteHT: resultat.primeNetteHT ?? 0,
+    accessoires: resultat.accessoires ?? 0,
+    taxes: resultat.taxes ?? 0,
+    primeTTC: s.primeTTC,
+    signature: null,
+  };
+}
 
 /** Reconstitue les champs du contrat SECURPRO à partir d'une souscription IMF (entrees/resultat en JSON libre). */
 export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSecurpro {
@@ -316,6 +429,95 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
     <b>Indemnisation :</b> le montant de l'indemnité à payer en cas de sinistre est déterminé soit d'un commun accord,
     soit par un expert à la charge de SIM Assurances. Le souscripteur reconnaît avoir pris connaissance des
     Conditions Générales Contrat SECUR DOMMAGE.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-incendie.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function genererContratSecurecolte(c: ContratSecurecolte) {
+  const w = openWindow();
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Conditions Particulières — SECURECOLTE</h1>
+  <div class="sub">Assurance récolte indicielle sécheresse · Distribué via ${val(c.intermediaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Montant total du pack</td><td><strong>${fcfa(c.montantPack)}</strong></td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales Contrat SECURECOLTE (MFB/DGTCP/DA/N° 01496 du 19 JUIN 2025) et les présentes Conditions Particulières,
+    lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
+    <br/><br/>
+    <b>Garanties (par pack) :</b>
+    <ul style="margin:6px 0 0 18px;">
+      <li>Forte sécheresse : indemnisation à hauteur de <b>100 %</b> par pack ;</li>
+      <li>Moyenne sécheresse : indemnisation à hauteur de <b>50 %</b> par pack ;</li>
+      <li>Faible sécheresse : indemnisation à hauteur de <b>20 %</b> par pack ;</li>
+      <li>Décès du producteur : indemnisation des ayants-droit à hauteur de <b>100 %</b> par pack.</li>
+    </ul>
+    <br/>
+    <b>Indemnisation :</b> les conditions climatiques permettant de confirmer la survenance de l'événement garanti sont
+    données exclusivement par l'AFRICAN RISK CAPACITY (organisme en charge de la collecte et de l'analyse des données).
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp);
+}
+
+export async function genererContratSecurstock(c: ContratSecurstock) {
+  const w = openWindow();
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Conditions Particulières — SECURSTOCK</h1>
+  <div class="sub">Assurance Nantissement de Stock · Distribué via ${val(c.intermediaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Classe de risque</td><td>${val(c.classeLabel)}</td></tr>
+    <tr><td class="k">Localisation du local</td><td>${val(c.localisationLabel)}</td><td class="k">Montant du stock assuré</td><td>${fcfa(c.capitalRetenu)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Montant du stock déclaré</td><td>${fcfa(c.montantStock)}</td><td class="k">Montant du stock retenu</td><td>${fcfa(c.capitalRetenu)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
+    lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
+    <br/><br/>
+    <b>Risque garanti :</b> Incendie / Explosion entraînant la destruction de tout ou partie du stock nanti ou couvert,
+    tel que défini aux Conditions Générales. <b>Ne sont pas couverts :</b> les constructions en bois, ni le changement de
+    local de stockage en cours de contrat sans résiliation préalable.
+    <br/><br/>
+    <b>Nantissement :</b> l'indemnité est payée en priorité à l'institution financière au profit de laquelle un nantissement
+    a été établi, jusqu'à épuisement de l'encours du prêt et dans la limite du montant du sinistre ; le solde éventuel est
+    payé au souscripteur. <b>Indemnisation :</b> le montant de l'indemnité est déterminé d'un commun accord ou par un expert
+    à la charge de SIM Assurances.
   </div>
   ${RECLAMATION}
   ${signatures(c.signature)}`;

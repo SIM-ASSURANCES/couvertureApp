@@ -2,7 +2,7 @@ import { Download } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
-import { genererContratSecurpro, souscriptionImfToContratSecurpro } from "../../contract";
+import { genererContratImf, contratImfDisponible } from "../../contract";
 import type { SouscriptionImf } from "../../types";
 
 export default function Contrats() {
@@ -47,12 +47,12 @@ export default function Contrats() {
                     <td><strong>{fcfa(s.primeTTC)}</strong></td>
                     <td className="muted">{fmtDate(s.createdAt)}</td>
                     <td>
-                      {s.produitCode === "securpro" && (
+                      {contratImfDisponible(s.produitCode) && (
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}
                           title="Télécharger le contrat"
-                          onClick={() => genererContratSecurpro(souscriptionImfToContratSecurpro(s))}
+                          onClick={() => genererContratImf(s)}
                         >
                           <Download size={15} />
                         </button>

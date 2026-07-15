@@ -3,7 +3,7 @@ import { Calculator, FileCheck, Download } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
 import { useFetch } from "../../useFetch";
-import { genererContratSecurpro, souscriptionImfToContratSecurpro } from "../../contract";
+import { genererContratImf, contratImfDisponible } from "../../contract";
 import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
@@ -508,11 +508,11 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     </div>
                   </div>
                 </div>
-                {souscription.produitCode === "securpro" && (
+                {contratImfDisponible(souscription.produitCode) && (
                   <button
                     type="button"
                     className="btn btn-ghost"
-                    onClick={() => genererContratSecurpro(souscriptionImfToContratSecurpro(souscription))}
+                    onClick={() => genererContratImf(souscription)}
                   >
                     <Download size={15} /> Télécharger le contrat
                   </button>
