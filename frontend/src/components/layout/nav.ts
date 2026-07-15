@@ -20,6 +20,7 @@ import {
   Percent,
   CloudRain,
   Calculator,
+  LifeBuoy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -135,6 +136,7 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/imf/simulateur", label: "Simulateur", icon: Calculator },
           { to: "/admin/imf/souscriptions", label: "Souscriptions", icon: FileText },
           { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
+          { to: "/admin/imf/sinistres", label: "Sinistres", icon: LifeBuoy },
         ],
       },
     ],
@@ -169,6 +171,7 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
         ...reseau,
         { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
         { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
+        { to: "/agent-imf/sinistres", label: "Sinistres", icon: LifeBuoy },
       ],
     },
   ];

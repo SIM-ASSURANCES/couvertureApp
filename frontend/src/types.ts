@@ -196,6 +196,37 @@ export interface TarifProduitImf {
   commission: number;
 }
 
+export interface PieceSinistre {
+  label: string;
+  fournie: boolean;
+}
+
+export interface SinistreImf {
+  id: string;
+  numeroSinistre: string;
+  souscriptionId: string;
+  agentId: string | null;
+  adminId?: string | null;
+  agentNom?: string | null;
+  adminNom?: string | null;
+  numeroPolice: string;
+  clientNom: string;
+  clientPrenom: string;
+  clientTelephone: string;
+  produitCode: string;
+  typeEvenement: string;
+  dateSurvenance: string;
+  dateDeclaration: string;
+  pieces: PieceSinistre[];
+  montantEstime?: number | null;
+  montantRegle?: number | null;
+  montantIMF?: number | null;
+  montantSouscripteur?: number | null;
+  motifRejet?: string | null;
+  statut: "declare" | "pieces_attente" | "complet" | "instruction" | "accepte" | "rejete" | "regle";
+  createdAt: string;
+}
+
 export interface SouscriptionImf {
   id: string;
   numeroPolice: string;
@@ -227,6 +258,11 @@ export interface StatsImf {
   global: { ca: number; taxes: number; accessoires: number; nombre: number };
   parProduit: { famille: string; ca: number; taxes: number; accessoires: number; nombre: number }[];
   evolution: ({ mois: string } & Record<string, number>)[];
+}
+
+export interface StatsSinistresImf {
+  global: { primes: number; sinistres: number; ratio: number };
+  parProduit: { famille: string; primes: number; sinistres: number; ratio: number }[];
 }
 
 export interface SimulationImf {

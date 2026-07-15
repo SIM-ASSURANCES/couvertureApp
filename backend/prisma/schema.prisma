@@ -130,6 +130,7 @@ model Admin {
   journal      JournalActivite[]
   simulationsImf   SimulationImf[]   @relation("AdminSimulationsImf")
   souscriptionsImf SouscriptionImf[] @relation("AdminSouscriptionsImf")
+  sinistresImf     SinistreImf[]     @relation("AdminSinistresImf")
 }
 
 model Partenaire {
@@ -472,6 +473,7 @@ model AgentImf {
   createdAt     DateTime          @default(now())
   simulations   SimulationImf[]
   souscriptions SouscriptionImf[]
+  sinistres     SinistreImf[]
 }
 
 // --- Phase 2 : moteur de tarification IMF (SECURPRO/SECURSTOCK à formules, COUPS DURS/SECURECOLTE en catalogue fixe) ---
@@ -570,4 +572,48 @@ model SouscriptionImf {
   statut        StatutSouscriptionImf @default(en_cours)
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
+  sinistres     SinistreImf[]
+}
+
+// --- Phase 6 : sinistres IMF ---
+
+enum StatutSinistreImf {
+  declare
+  pieces_attente
+  complet
+  instruction
+  accepte
+  rejete
+  regle
+}
+
+model SinistreImf {
+  id             String            @id @default(uuid())
+  numeroSinistre String            @unique
+  souscriptionId String
+  souscription   SouscriptionImf   @relation(fields: [souscriptionId], references: [id])
+  // Déclarant : un agent du réseau, ou l'admin (souscriptions directes).
+  agentId        String?
+  agent          AgentImf?         @relation(fields: [agentId], references: [id])
+  adminId        String?
+  admin          Admin?            @relation("AdminSinistresImf", fields: [adminId], references: [id])
+  typeEvenement  String
+  dateSurvenance DateTime
+  dateDeclaration DateTime         @default(now())
+  // Checklist des pièces requises pour ce produit/variante, figée au moment de
+  // la déclaration : [{ label: string, fournie: boolean }]. Pas d'upload de
+  // fichier dans l'appli (aucune infra en place) — l'agent coche après
+  // vérification physique des pièces, cohérent avec la distribution en
+  // présentiel de la branche IMF.
+  pieces         Json
+  montantEstime  Int?
+  montantRegle   Int?
+  // SECURSTOCK uniquement : l'indemnité est versée en priorité à l'IMF nantie
+  // jusqu'à épuisement de l'encours du prêt, le solde revient au souscripteur.
+  montantIMF            Int?
+  montantSouscripteur   Int?
+  motifRejet     String?
+  statut         StatutSinistreImf @default(declare)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 }

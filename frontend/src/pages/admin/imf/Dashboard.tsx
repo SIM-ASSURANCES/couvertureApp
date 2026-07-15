@@ -1,7 +1,7 @@
 import { MapPin, Building2, Users, FileText, TrendingUp, Receipt, Package } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, fcfa } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
-import type { ZoneImf, AgenceImf, AgentImf, StatsImf } from "../../../types";
+import type { ZoneImf, AgenceImf, AgentImf, StatsImf, StatsSinistresImf } from "../../../types";
 
 const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE"] as const;
 const COULEURS: Record<string, string> = {
@@ -106,6 +106,7 @@ export default function Dashboard() {
   const { data: zones, loading: l1, error: e1 } = useFetch<ZoneImf[]>("/imf/zones");
   const { data: agences, loading: l2, error: e2 } = useFetch<AgenceImf[]>("/imf/agences");
   const { data: agents, loading: l3, error: e3 } = useFetch<AgentImf[]>("/imf/agents");
+  const { data: sp } = useFetch<StatsSinistresImf>("/imf/sinistres/stats");
 
   const loading = l0 || l1 || l2 || l3;
   const error = e0 || e1 || e2 || e3;
@@ -178,6 +179,49 @@ export default function Dashboard() {
               Les taxes et accessoires ne sont ventilés que pour SECURPRO et SECURSTOCK (produits à formule). COUPS DURS et SECURECOLTE sont à prime fixe (catalogue).
             </div>
           </Card>
+
+          {/* Sinistralité (S/P) */}
+          {sp && (
+            <Card title="Sinistralité — ratio Sinistres/Primes (S/P)" noBody style={{ marginTop: 24 }}>
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Produit</th>
+                      <th style={{ textAlign: "right" }}>Primes (contrats actifs)</th>
+                      <th style={{ textAlign: "right" }}>Sinistres réglés</th>
+                      <th style={{ textAlign: "right" }}>Ratio S/P</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sp.parProduit.map((p) => (
+                      <tr key={p.famille}>
+                        <td>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: 3, background: COULEURS[p.famille] ?? "#888", display: "inline-block" }} />
+                            <strong>{p.famille}</strong>
+                          </span>
+                        </td>
+                        <td style={{ textAlign: "right" }}>{fcfa(p.primes)}</td>
+                        <td style={{ textAlign: "right" }} className="muted">{fcfa(p.sinistres)}</td>
+                        <td style={{ textAlign: "right" }}>
+                          <strong style={{ color: p.ratio > 0.7 ? "var(--danger)" : p.ratio > 0.4 ? "#f59e0b" : "var(--success, #16a34a)" }}>
+                            {(p.ratio * 100).toFixed(1)}%
+                          </strong>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td><strong>Global</strong></td>
+                      <td style={{ textAlign: "right" }}><strong>{fcfa(sp.global.primes)}</strong></td>
+                      <td style={{ textAlign: "right" }}><strong>{fcfa(sp.global.sinistres)}</strong></td>
+                      <td style={{ textAlign: "right" }}><strong>{(sp.global.ratio * 100).toFixed(1)}%</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           {/* Évolution */}
           <Card title="Évolution du chiffre d'affaires par produit" style={{ marginTop: 24 }}>

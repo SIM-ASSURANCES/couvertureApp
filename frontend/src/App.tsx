@@ -36,6 +36,7 @@ import ImfIndiceArc from "./pages/admin/imf/IndiceArc";
 import ImfSouscriptions from "./pages/admin/imf/Souscriptions";
 import ImfSimulateur from "./pages/admin/imf/Simulateur";
 import ImfContrats from "./pages/admin/imf/Contrats";
+import ImfSinistres from "./pages/admin/imf/Sinistres";
 
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
@@ -49,6 +50,7 @@ import AgentImfDashboard from "./pages/agent-imf/Dashboard";
 import AgentImfSimulateur from "./pages/agent-imf/Simulateur";
 import AgentImfSouscriptions from "./pages/agent-imf/Souscriptions";
 import AgentImfContrats from "./pages/agent-imf/Contrats";
+import AgentImfSinistres from "./pages/agent-imf/Sinistres";
 import AgentImfReseauZone from "./pages/agent-imf/ReseauZone";
 import AgentImfReseauAgence from "./pages/agent-imf/ReseauAgence";
 
@@ -96,6 +98,7 @@ export default function App() {
             <Route path="imf/simulateur" element={<ImfSimulateur />} />
             <Route path="imf/souscriptions" element={<ImfSouscriptions />} />
             <Route path="imf/contrats" element={<ImfContrats />} />
+            <Route path="imf/sinistres" element={<ImfSinistres />} />
           </Route>
 
           <Route
@@ -125,6 +128,7 @@ export default function App() {
             <Route path="simulateur" element={<AgentImfSimulateur />} />
             <Route path="souscriptions" element={<AgentImfSouscriptions />} />
             <Route path="contrats" element={<AgentImfContrats />} />
+            <Route path="sinistres" element={<AgentImfSinistres />} />
             <Route path="reseau-zone" element={<AgentImfReseauZone />} />
             <Route path="reseau-agence" element={<AgentImfReseauAgence />} />
           </Route>

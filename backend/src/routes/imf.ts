@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
+import type { StatutSinistreImf } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
@@ -1097,6 +1098,419 @@ imfRouter.get(
       global,
       parProduit: FAMILLES.map((f) => ({ famille: f, ...parProduit[f] })),
       evolution,
+    });
+  })
+);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Phase 6 — Sinistres IMF
+ * ──────────────────────────────────────────────────────────────────────── */
+
+interface PieceChecklist {
+  label: string;
+  fournie: boolean;
+}
+
+/**
+ * Checklist des pièces à fournir, d'après la lettre "LISTE DES PIECES
+ * NECESSAIRES POUR LE PAIEMENT DES SINISTRES" (SIM Assurances) et les
+ * Conditions Particulières SECURSTOCK pour ses exigences propres
+ * (vidéosurveillance + registre de stock). SECURECOLTE n'a pas de checklist :
+ * son indemnisation est automatique par palier de sécheresse (voir plus bas).
+ */
+function checklistImf(produitCode: string, typeEvenement: string): string[] {
+  if (produitCode === "securpro") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Pièce d'identité de l'assuré",
+      "Facture CIE/SODECI ou quittance de loyer du local",
+      "Photos des dommages et dégâts causés par les flammes",
+      "Justificatifs de la valeur des biens (si nécessaire)",
+    ];
+  }
+  if (produitCode === "securstock") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Pièce d'identité de l'assuré",
+      "Déclaration du sinistre par l'institution bancaire (sous 48h)",
+      "Enregistrements vidéo des 5 jours précédant le sinistre",
+      "Registre de stock à jour (entrées/sorties)",
+      "Justificatifs de la valeur du stock",
+    ];
+  }
+  if (produitCode === "coupsdurs_classique" && typeEvenement === "deces") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Carte d'assuré et pièce d'identité",
+      "Acte de décès",
+      "Certificat de genre de mort",
+      "Extrait de naissance du (des) bénéficiaire(s)",
+      "Pièce d'identité du (des) bénéficiaire(s)",
+      "Acte de mariage du conjoint (si nécessaire)",
+      "Procès-verbal de constat de gendarmerie/police (si accident de la circulation)",
+      "Certificat d'individualité (si nécessaire)",
+    ];
+  }
+  if (produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Carte d'assuré ou pièce d'identité",
+      "Reçus ou tickets de consultation médicale",
+      "Ordonnances médicales",
+      "Reçus ou tickets de caisse de pharmacie",
+      "Certificat médical attestant l'événement Coups Durs",
+      ...(produitCode === "coupsdurs_incapacite"
+        ? ["Échéancier du prêt en cours auprès de l'institution financière"]
+        : ["Certificat d'arrêt de travail (indemnité journalière), si applicable"]),
+    ];
+  }
+  return [];
+}
+
+function numeroSinistre(produitCode: string, id: string) {
+  const annee = new Date().getFullYear();
+  return `SIN-${produitCode.toUpperCase()}-${annee}-${id.slice(0, 8).toUpperCase()}`;
+}
+
+function mapSinistre(sin: {
+  agent: { nom: string; prenom: string } | null;
+  admin: { nom: string } | null;
+  souscription: { numeroPolice: string; nom: string; prenom: string; telephone: string; produitCode: string; primeTTC: number };
+  [k: string]: unknown;
+}) {
+  return {
+    ...sin,
+    agentNom: sin.agent ? `${sin.agent.prenom} ${sin.agent.nom}` : null,
+    adminNom: sin.admin?.nom ?? null,
+    numeroPolice: sin.souscription.numeroPolice,
+    clientNom: sin.souscription.nom,
+    clientPrenom: sin.souscription.prenom,
+    clientTelephone: sin.souscription.telephone,
+    produitCode: sin.souscription.produitCode,
+  };
+}
+
+const sinistreInclude = {
+  agent: { select: { nom: true, prenom: true } },
+  admin: { select: { nom: true } },
+  souscription: { select: { numeroPolice: true, nom: true, prenom: true, telephone: true, produitCode: true, primeTTC: true } },
+};
+
+const declarationSchema = z.object({
+  souscriptionId: z.string().min(1),
+  typeEvenement: z.string().min(1),
+  dateSurvenance: z.coerce.date(),
+  montantEstime: z.number().nonnegative().optional(),
+});
+
+/** Déclaration d'un sinistre par un agent, sur une souscription dans sa portée réseau. */
+agentImfRouter.post(
+  "/sinistres",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = declarationSchema.parse(req.body);
+    const scope = await agentIdsDuReseau({
+      id: req.user!.sub,
+      roleImf: req.user!.roleImf!,
+      agenceId: req.user!.agenceId ?? null,
+      zoneId: req.user!.zoneId ?? null,
+    });
+    const souscription = await prisma.souscriptionImf.findUnique({ where: { id: data.souscriptionId } });
+    if (!souscription || !souscription.agentId || !scope.includes(souscription.agentId)) {
+      return res.status(404).json({ error: "Souscription introuvable." });
+    }
+    if (souscription.produitCode === "securecolte") {
+      return res.status(400).json({
+        error: "SECURECOLTE n'a pas de déclaration individuelle : l'indemnisation est automatique par palier de sécheresse.",
+      });
+    }
+    const pieces: PieceChecklist[] = checklistImf(souscription.produitCode, data.typeEvenement).map((label) => ({
+      label, fournie: false,
+    }));
+
+    const created = await prisma.sinistreImf.create({
+      data: {
+        numeroSinistre: "TMP",
+        souscriptionId: souscription.id,
+        agentId: req.user!.sub,
+        typeEvenement: data.typeEvenement,
+        dateSurvenance: data.dateSurvenance,
+        montantEstime: data.montantEstime ? Math.round(data.montantEstime) : undefined,
+        pieces: pieces as unknown as object,
+      },
+    });
+    const updated = await prisma.sinistreImf.update({
+      where: { id: created.id },
+      data: { numeroSinistre: numeroSinistre(souscription.produitCode, created.id) },
+      include: sinistreInclude,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "sinistre_imf",
+      objetId: updated.id,
+      valeurApres: updated,
+    });
+    res.status(201).json(mapSinistre(updated));
+  })
+);
+
+/** Sinistres dans la portée réseau de l'agent connecté. */
+agentImfRouter.get(
+  "/sinistres",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const scope = await agentIdsDuReseau({
+      id: req.user!.sub,
+      roleImf: req.user!.roleImf!,
+      agenceId: req.user!.agenceId ?? null,
+      zoneId: req.user!.zoneId ?? null,
+    });
+    const rows = await prisma.sinistreImf.findMany({
+      where: { agentId: { in: scope } },
+      orderBy: { createdAt: "desc" },
+      include: sinistreInclude,
+    });
+    res.json(rows.map(mapSinistre));
+  })
+);
+
+const piecesPatchSchema = z.object({
+  pieces: z.array(z.object({ label: z.string(), fournie: z.boolean() })),
+});
+
+/** L'agent coche les pièces fournies après vérification physique ; passe le dossier à "complet" une fois tout coché. */
+agentImfRouter.patch(
+  "/sinistres/:id/pieces",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = piecesPatchSchema.parse(req.body);
+    const scope = await agentIdsDuReseau({
+      id: req.user!.sub,
+      roleImf: req.user!.roleImf!,
+      agenceId: req.user!.agenceId ?? null,
+      zoneId: req.user!.zoneId ?? null,
+    });
+    const sinistre = await prisma.sinistreImf.findUnique({ where: { id: req.params.id } });
+    if (!sinistre || !sinistre.agentId || !scope.includes(sinistre.agentId)) {
+      return res.status(404).json({ error: "Sinistre introuvable." });
+    }
+    const toutesFournies = data.pieces.length > 0 && data.pieces.every((p) => p.fournie);
+    const updated = await prisma.sinistreImf.update({
+      where: { id: sinistre.id },
+      data: {
+        pieces: data.pieces as unknown as object,
+        statut: toutesFournies ? "complet" : "pieces_attente",
+      },
+      include: sinistreInclude,
+    });
+    res.json(mapSinistre(updated));
+  })
+);
+
+/* ── Admin : supervision réseau complet ── */
+
+/** Déclaration par l'admin — pour toute souscription du réseau (visibilité totale), typiquement ses propres souscriptions directes. */
+imfRouter.post(
+  "/sinistres",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = declarationSchema.parse(req.body);
+    const souscription = await prisma.souscriptionImf.findUnique({ where: { id: data.souscriptionId } });
+    if (!souscription) return res.status(404).json({ error: "Souscription introuvable." });
+    if (souscription.produitCode === "securecolte") {
+      return res.status(400).json({
+        error: "SECURECOLTE n'a pas de déclaration individuelle : l'indemnisation est automatique par palier de sécheresse.",
+      });
+    }
+    const pieces: PieceChecklist[] = checklistImf(souscription.produitCode, data.typeEvenement).map((label) => ({
+      label, fournie: false,
+    }));
+    const created = await prisma.sinistreImf.create({
+      data: {
+        numeroSinistre: "TMP",
+        souscriptionId: souscription.id,
+        adminId: req.user!.sub,
+        typeEvenement: data.typeEvenement,
+        dateSurvenance: data.dateSurvenance,
+        montantEstime: data.montantEstime ? Math.round(data.montantEstime) : undefined,
+        pieces: pieces as unknown as object,
+      },
+    });
+    const updated = await prisma.sinistreImf.update({
+      where: { id: created.id },
+      data: { numeroSinistre: numeroSinistre(souscription.produitCode, created.id) },
+      include: sinistreInclude,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "sinistre_imf",
+      objetId: updated.id,
+      valeurApres: updated,
+    });
+    res.status(201).json(mapSinistre(updated));
+  })
+);
+
+imfRouter.get(
+  "/sinistres",
+  asyncHandler(async (req, res) => {
+    const { statut, produitCode } = req.query as { statut?: string; produitCode?: string };
+    const rows = await prisma.sinistreImf.findMany({
+      where: {
+        statut: (statut as StatutSinistreImf) || undefined,
+        souscription: produitCode ? { produitCode } : undefined,
+      },
+      orderBy: { createdAt: "desc" },
+      include: sinistreInclude,
+    });
+    res.json(rows.map(mapSinistre));
+  })
+);
+
+const transitionSchema = z.object({
+  statut: z.enum(["instruction", "accepte", "rejete", "regle"]),
+  montantRegle: z.number().nonnegative().optional(),
+  montantIMF: z.number().nonnegative().optional(),
+  montantSouscripteur: z.number().nonnegative().optional(),
+  motifRejet: z.string().min(1).optional(),
+});
+
+/**
+ * Transition de statut par un admin : instruction / accepté / rejeté (avec
+ * motif) / réglé (avec montant, ventilé montantIMF/montantSouscripteur pour
+ * SECURSTOCK — indemnité versée en priorité à l'IMF nantie).
+ */
+imfRouter.patch(
+  "/sinistres/:id/statut",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = transitionSchema.parse(req.body);
+    const sinistre = await prisma.sinistreImf.findUnique({ where: { id: req.params.id } });
+    if (!sinistre) return res.status(404).json({ error: "Sinistre introuvable." });
+    if (data.statut === "rejete" && !data.motifRejet) {
+      return res.status(400).json({ error: "Le motif de rejet est obligatoire." });
+    }
+    if (data.statut === "regle" && data.montantRegle === undefined) {
+      return res.status(400).json({ error: "Le montant réglé est obligatoire." });
+    }
+    const updated = await prisma.sinistreImf.update({
+      where: { id: sinistre.id },
+      data: {
+        statut: data.statut,
+        montantRegle: data.montantRegle !== undefined ? Math.round(data.montantRegle) : undefined,
+        montantIMF: data.montantIMF !== undefined ? Math.round(data.montantIMF) : undefined,
+        montantSouscripteur: data.montantSouscripteur !== undefined ? Math.round(data.montantSouscripteur) : undefined,
+        motifRejet: data.statut === "rejete" ? data.motifRejet : undefined,
+      },
+      include: sinistreInclude,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "sinistre_imf",
+      objetId: updated.id,
+      valeurApres: updated,
+    });
+    res.json(mapSinistre(updated));
+  })
+);
+
+/**
+ * SECURECOLTE : pas de déclaration individuelle — indemnisation automatique
+ * par palier de sécheresse (indice ARC). L'admin sélectionne les contrats
+ * SECURECOLTE actifs concernés et le palier constaté ; un sinistre "réglé"
+ * est créé directement pour chacun, au pourcentage du palier.
+ */
+const indemnisationSecurecolteSchema = z.object({
+  souscriptionIds: z.array(z.string().min(1)).min(1),
+  palier: z.enum(["forte", "moyenne", "faible"]),
+  region: z.string().min(1),
+});
+
+const TAUX_PALIER: Record<"forte" | "moyenne" | "faible", number> = {
+  forte: 1, moyenne: 0.5, faible: 0.2,
+};
+
+imfRouter.post(
+  "/sinistres/securecolte/indemnisation",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = indemnisationSecurecolteSchema.parse(req.body);
+    const souscriptions = await prisma.souscriptionImf.findMany({
+      where: { id: { in: data.souscriptionIds }, produitCode: "securecolte", statut: "active" },
+    });
+    if (souscriptions.length === 0) {
+      return res.status(400).json({ error: "Aucune souscription SECURECOLTE active dans la sélection." });
+    }
+    const taux = TAUX_PALIER[data.palier];
+    const created = await Promise.all(
+      souscriptions.map(async (s) => {
+        const resultat = s.resultat as { capitalGaranti?: number };
+        const capital = resultat.capitalGaranti ?? s.primeTTC;
+        const montant = Math.round(capital * taux);
+        const sin = await prisma.sinistreImf.create({
+          data: {
+            numeroSinistre: "TMP",
+            souscriptionId: s.id,
+            agentId: s.agentId,
+            adminId: s.adminId,
+            typeEvenement: `secheresse_${data.palier}_${data.region}`,
+            dateSurvenance: new Date(),
+            pieces: [] as unknown as object,
+            montantRegle: montant,
+            statut: "regle",
+          },
+        });
+        return prisma.sinistreImf.update({
+          where: { id: sin.id },
+          data: { numeroSinistre: numeroSinistre("securecolte", sin.id) },
+        });
+      })
+    );
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "indemnisation_securecolte",
+      objetId: data.region,
+      valeurApres: { palier: data.palier, region: data.region, nombre: created.length },
+    });
+    res.status(201).json({ nombre: created.length });
+  })
+);
+
+/** Ratio Sinistres/Primes (S/P), global et par produit, sur les sinistres réglés. */
+imfRouter.get(
+  "/sinistres/stats",
+  asyncHandler(async (_req, res) => {
+    const [sinistres, souscriptions] = await Promise.all([
+      prisma.sinistreImf.findMany({
+        where: { statut: "regle" },
+        select: { montantRegle: true, souscription: { select: { produitCode: true } } },
+      }),
+      prisma.souscriptionImf.findMany({ where: { statut: "active" }, select: { produitCode: true, primeTTC: true } }),
+    ]);
+
+    const primesParFamille: Record<string, number> = {};
+    for (const f of FAMILLES) primesParFamille[f] = 0;
+    for (const s of souscriptions) {
+      const famille = FAMILLE_PRODUIT[s.produitCode] ?? s.produitCode;
+      primesParFamille[famille] = (primesParFamille[famille] ?? 0) + s.primeTTC;
+    }
+
+    const sinistresParFamille: Record<string, number> = {};
+    for (const f of FAMILLES) sinistresParFamille[f] = 0;
+    for (const s of sinistres) {
+      const famille = FAMILLE_PRODUIT[s.souscription.produitCode] ?? s.souscription.produitCode;
+      sinistresParFamille[famille] = (sinistresParFamille[famille] ?? 0) + (s.montantRegle ?? 0);
+    }
+
+    const primesTotal = FAMILLES.reduce((sum, f) => sum + primesParFamille[f], 0);
+    const sinistresTotal = FAMILLES.reduce((sum, f) => sum + sinistresParFamille[f], 0);
+
+    res.json({
+      global: { primes: primesTotal, sinistres: sinistresTotal, ratio: primesTotal ? sinistresTotal / primesTotal : 0 },
+      parProduit: FAMILLES.map((f) => ({
+        famille: f,
+        primes: primesParFamille[f],
+        sinistres: sinistresParFamille[f],
+        ratio: primesParFamille[f] ? sinistresParFamille[f] / primesParFamille[f] : 0,
+      })),
     });
   })
 );
