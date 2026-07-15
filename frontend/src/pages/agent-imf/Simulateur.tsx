@@ -41,10 +41,26 @@ const SECURPRO_CLASSES: { classe: number; label: string }[] = [
   },
 ];
 
+const SECURSTOCK_CLASSES: { classe: number; label: string }[] = [
+  { classe: 1, label: "Produits très peu inflammables (métaux, verre, céramique, électroménager, plastiques rigides)" },
+  { classe: 2, label: "Produits à combustion lente (bois, papier, cartons, vêtements, chaussures, alimentaire sec)" },
+  { classe: 3, label: "Produits inflammables usuels (produits de beauté, ménagers, plastiques souples, électronique à batterie)" },
+  { classe: 4, label: "Produits fortement inflammables (parfums en gros, peintures, solvants, tissus denses, mousse)" },
+];
+
+// Plafond imposé dès que le local est dans un marché / à ses abords / en zone
+// industrielle, quelle que soit la classe (fiche produit SECURSTOCK, §7 NB).
+const PLAFOND_MARCHE_SECURSTOCK = 2_500_000;
+
 interface BaremeClasse {
   classe: number;
   limiteCapital: number;
   tauxIncendie: number;
+}
+
+interface BaremeClasseSecurstock {
+  classe: number;
+  limiteCapital: number;
 }
 
 interface LignePrime {
@@ -113,6 +129,16 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     prevention: "aucun" as "extincteurs_alarme_formation_eau" | "extincteurs_eau" | "extincteurs_seuls" | "aucun",
     gardien: false,
   });
+  const { data: baremeSecurstock } = useFetch<BaremeClasseSecurstock[]>(
+    produitCode === "securstock" ? `${apiBase}/baremes/securstock` : null
+  );
+  const limiteClasseSecurstock = baremeSecurstock?.find((b) => b.classe === ss.classe)?.limiteCapital;
+  const limiteApplicableSecurstock =
+    limiteClasseSecurstock !== undefined
+      ? ss.localisation !== "hors_marche"
+        ? Math.min(limiteClasseSecurstock, PLAFOND_MARCHE_SECURSTOCK)
+        : limiteClasseSecurstock
+      : undefined;
 
   // Catalogue à prix fixe
   const [variante, setVariante] = useState("maladie");
@@ -342,10 +368,28 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             {produitCode === "securstock" && (
               <>
                 <div className="field">
+                  <label className="label">Où se trouve le local de stockage ? <span className="req">*</span></label>
+                  <select className="select" value={ss.localisation} onChange={(e) => setSs({ ...ss, localisation: e.target.value as typeof ss.localisation })}>
+                    <option value="hors_marche">Hors d'un marché</option>
+                    <option value="abords_marche">Abords d'un marché</option>
+                    <option value="marche_zone_industrielle">Dans un marché / zone industrielle</option>
+                  </select>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Un local dans un marché ou à ses abords plafonne les capitaux assurables.
+                  </div>
+                </div>
+                <div className="field">
                   <label className="label">Classe de risque</label>
                   <select className="select" value={ss.classe} onChange={(e) => setSs({ ...ss, classe: Number(e.target.value) })}>
-                    {[1, 2, 3, 4].map((c) => <option key={c} value={c}>Classe {c}</option>)}
+                    {SECURSTOCK_CLASSES.map((c) => (
+                      <option key={c.classe} value={c.classe}>{c.label}</option>
+                    ))}
                   </select>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {limiteApplicableSecurstock !== undefined
+                      ? `Limite de capitaux assurables : ${fcfa(limiteApplicableSecurstock)}`
+                      : "Chargement de la limite de capitaux…"}
+                  </div>
                 </div>
                 <div className="field">
                   <label className="label">Capital déclaré (stock nanti)</label>
@@ -359,14 +403,6 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     <option value="compact">Compact</option>
                     <option value="tres_compact">Très compact</option>
                     <option value="entasse">Entassé / dangereux</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label className="label">Localisation</label>
-                  <select className="select" value={ss.localisation} onChange={(e) => setSs({ ...ss, localisation: e.target.value as typeof ss.localisation })}>
-                    <option value="hors_marche">Hors d'un marché</option>
-                    <option value="abords_marche">Abords d'un marché</option>
-                    <option value="marche_zone_industrielle">Dans un marché / zone industrielle</option>
                   </select>
                 </div>
                 <div className="field">

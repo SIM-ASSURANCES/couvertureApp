@@ -590,6 +590,14 @@ agentImfRouter.get(
   })
 );
 
+agentImfRouter.get(
+  "/baremes/securstock",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
 /* ── Simulation de devis ── */
 
 const securproInputSchema = z.object({
