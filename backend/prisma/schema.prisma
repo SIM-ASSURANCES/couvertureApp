@@ -561,6 +561,9 @@ model SouscriptionImf {
   email         String?
   typePiece     TypePieceIdentite?
   numeroPiece   String?
+  // Signature manuscrite du souscripteur (data URL PNG), facultative — capturée
+  // au moment de la conversion simulation → souscription, cf. contract.ts.
+  signature     String?
   entrees       Json
   resultat      Json
   primeTTC      Int

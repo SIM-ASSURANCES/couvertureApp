@@ -710,6 +710,8 @@ const souscriptionSchema = z.object({
   email: z.string().email().optional(),
   typePiece: z.enum(["cni", "passeport", "permis_conduire"]),
   numeroPiece: z.string().min(1),
+  // Signature manuscrite facultative, capturée au moment de la conversion en souscription.
+  signature: z.string().min(1).optional(),
 });
 
 agentImfRouter.post(
@@ -743,6 +745,7 @@ agentImfRouter.post(
         email: data.email,
         typePiece: data.typePiece,
         numeroPiece: data.numeroPiece,
+        signature: data.signature,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,
         primeTTC: simulation.primeTTC,
@@ -925,6 +928,7 @@ imfRouter.post(
         email: data.email,
         typePiece: data.typePiece,
         numeroPiece: data.numeroPiece,
+        signature: data.signature,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,
         primeTTC: simulation.primeTTC,

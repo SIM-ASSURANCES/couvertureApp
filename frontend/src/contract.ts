@@ -157,7 +157,7 @@ export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): Contrat
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
     montantPack: s.primeTTC,
-    signature: null,
+    signature: s.signature ?? null,
   };
 }
 
@@ -187,7 +187,7 @@ export function souscriptionImfToContratSecurstock(s: SouscriptionImf): ContratS
     accessoires: resultat.accessoires ?? 0,
     taxes: resultat.taxes ?? 0,
     primeTTC: s.primeTTC,
-    signature: null,
+    signature: s.signature ?? null,
   };
 }
 
@@ -230,7 +230,7 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
     accessoires: resultat.accessoires ?? 0,
     taxes: resultat.taxes ?? 0,
     primeTTC: s.primeTTC,
-    signature: null,
+    signature: s.signature ?? null,
   };
 }
 

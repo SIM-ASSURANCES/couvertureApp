@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Calculator, FileCheck, Download } from "lucide-react";
 import { PageHeader, Card, fcfa } from "../../components/ui";
 import { api } from "../../api";
 import { useFetch } from "../../useFetch";
 import { genererContratImf, contratImfDisponible } from "../../contract";
+import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
@@ -99,6 +100,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   });
   const [souscrivant, setSouscrivant] = useState(false);
   const [erreurSouscription, setErreurSouscription] = useState("");
+  const sigRef = useRef<SignaturePadHandle>(null);
 
   // SECURPRO
   const [sp, setSp] = useState({
@@ -150,6 +152,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSimulationId(null);
     setSouscription(null);
     setErreurSouscription("");
+    sigRef.current?.clear();
   }
 
   async function simuler(e: React.FormEvent) {
@@ -218,6 +221,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         email: client.email || undefined,
         typePiece: client.typePiece,
         numeroPiece: client.numeroPiece,
+        signature: sigRef.current?.toDataURL() ?? undefined,
       });
       setSouscription(res);
     } catch (err) {
@@ -555,6 +559,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                   <label className="label">N° de la pièce <span className="req">*</span></label>
                   <input className="input" required value={client.numeroPiece} onChange={(e) => setClient({ ...client, numeroPiece: e.target.value })} />
                 </div>
+                <SignaturePad ref={sigRef} label="Signature du souscripteur (facultative)" />
                 {erreurSouscription && (
                   <div className="empty" style={{ color: "var(--danger)", marginBottom: 12 }}>{erreurSouscription}</div>
                 )}
