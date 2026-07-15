@@ -21,6 +21,7 @@ import {
   CloudRain,
   Calculator,
   LifeBuoy,
+  Banknote,
   type LucideIcon,
 } from "lucide-react";
 
@@ -137,6 +138,7 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/imf/souscriptions", label: "Souscriptions", icon: FileText },
           { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
           { to: "/admin/imf/sinistres", label: "Sinistres", icon: LifeBuoy },
+          { to: "/admin/imf/bordereaux", label: "Bordereaux", icon: Banknote },
         ],
       },
     ],

@@ -131,6 +131,7 @@ model Admin {
   simulationsImf   SimulationImf[]   @relation("AdminSimulationsImf")
   souscriptionsImf SouscriptionImf[] @relation("AdminSouscriptionsImf")
   sinistresImf     SinistreImf[]     @relation("AdminSinistresImf")
+  bordereauxImf    BordereauImf[]    @relation("AdminBordereauxImf")
 }
 
 model Partenaire {
@@ -455,6 +456,7 @@ model AgenceImf {
   localisation String?
   createdAt    DateTime   @default(now())
   agents       AgentImf[]
+  bordereaux   BordereauImf[]
 }
 
 model AgentImf {
@@ -616,4 +618,39 @@ model SinistreImf {
   statut         StatutSinistreImf @default(declare)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
+}
+
+// --- Phase 7 : bordereaux & règlement IMF ---
+// Une AgenceImf correspond en pratique à l'agence d'une institution de
+// microfinance (IMF) dans ce modèle de données — c'est donc l'unité pour
+// laquelle un bordereau de production est émis.
+
+enum StatutBordereauImf {
+  emis
+  partiellement_regle
+  regle
+}
+
+model BordereauImf {
+  id                String             @id @default(uuid())
+  numero            String             @unique
+  agenceId          String
+  agence            AgenceImf          @relation(fields: [agenceId], references: [id])
+  periodeDebut      DateTime
+  periodeFin        DateTime
+  // Souscriptions incluses, figées au moment de la génération (append-only :
+  // un bordereau émis ne change pas rétroactivement si de nouvelles
+  // souscriptions sont créées après coup dans la même période).
+  souscriptionIds   Json
+  nombreSouscriptions Int
+  primeTotal        Int
+  // Virements reçus en règlement, pointés au fil de l'eau (paiements
+  // partiels possibles) : [{ montant, date, reference }]
+  virements         Json               @default("[]")
+  montantRecu       Int                @default(0)
+  statut            StatutBordereauImf @default(emis)
+  genereParAdminId  String?
+  genereParAdmin    Admin?             @relation("AdminBordereauxImf", fields: [genereParAdminId], references: [id])
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 }

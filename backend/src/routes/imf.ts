@@ -1,7 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import type { StatutSinistreImf } from "@prisma/client";
+import type { StatutSinistreImf, StatutBordereauImf } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
@@ -1512,5 +1512,179 @@ imfRouter.get(
         ratio: primesParFamille[f] ? sinistresParFamille[f] / primesParFamille[f] : 0,
       })),
     });
+  })
+);
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Phase 7 — Bordereaux & règlement IMF.
+ * Une AgenceImf correspond en pratique à l'agence d'une institution de
+ * microfinance dans ce modèle de données : c'est l'unité pour laquelle un
+ * bordereau de production est généré.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+interface VirementBordereau {
+  montant: number;
+  date: string;
+  reference: string;
+}
+
+function numeroBordereau(agenceNom: string, periodeDebut: Date, id: string) {
+  const code = agenceNom.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "AGENCE";
+  const aaaamm = `${periodeDebut.getFullYear()}${String(periodeDebut.getMonth() + 1).padStart(2, "0")}`;
+  return `BORD-${code}-${aaaamm}-${id.slice(0, 6).toUpperCase()}`;
+}
+
+function statutBordereau(montantRecu: number, primeTotal: number): "emis" | "partiellement_regle" | "regle" {
+  if (montantRecu <= 0) return "emis";
+  if (montantRecu >= primeTotal) return "regle";
+  return "partiellement_regle";
+}
+
+function mapBordereau(b: { agence: { nom: string; zone: { nom: string } }; genereParAdmin: { nom: string } | null; [k: string]: unknown }) {
+  return {
+    ...b,
+    agenceNom: b.agence.nom,
+    zoneNom: b.agence.zone.nom,
+    genereParNom: b.genereParAdmin?.nom ?? null,
+  };
+}
+
+const bordereauInclude = {
+  agence: { select: { nom: true, zone: { select: { nom: true } } } },
+  genereParAdmin: { select: { nom: true } },
+};
+
+const genererBordereauSchema = z.object({
+  agenceId: z.string().min(1),
+  periodeDebut: z.coerce.date(),
+  periodeFin: z.coerce.date(),
+});
+
+/** Génère un bordereau de production pour une agence sur une période : agrège les souscriptions actives créées dans cette fenêtre. */
+imfRouter.post(
+  "/bordereaux",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = genererBordereauSchema.parse(req.body);
+    if (data.periodeFin < data.periodeDebut) {
+      return res.status(400).json({ error: "La date de fin doit être postérieure à la date de début." });
+    }
+    const agence = await prisma.agenceImf.findUnique({ where: { id: data.agenceId } });
+    if (!agence) return res.status(400).json({ error: "Agence introuvable" });
+
+    const agents = await prisma.agentImf.findMany({ where: { agenceId: data.agenceId }, select: { id: true } });
+    const souscriptions = await prisma.souscriptionImf.findMany({
+      where: {
+        agentId: { in: agents.map((a) => a.id) },
+        statut: "active",
+        createdAt: { gte: data.periodeDebut, lte: data.periodeFin },
+      },
+      select: { id: true, primeTTC: true },
+    });
+
+    const primeTotal = souscriptions.reduce((sum, s) => sum + s.primeTTC, 0);
+
+    const created = await prisma.bordereauImf.create({
+      data: {
+        numero: "TMP",
+        agenceId: data.agenceId,
+        periodeDebut: data.periodeDebut,
+        periodeFin: data.periodeFin,
+        souscriptionIds: souscriptions.map((s) => s.id) as unknown as object,
+        nombreSouscriptions: souscriptions.length,
+        primeTotal,
+        genereParAdminId: req.user!.sub,
+      },
+    });
+    const updated = await prisma.bordereauImf.update({
+      where: { id: created.id },
+      data: { numero: numeroBordereau(agence.nom, data.periodeDebut, created.id) },
+      include: bordereauInclude,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "bordereau_imf",
+      objetId: updated.id,
+      valeurApres: updated,
+    });
+    res.status(201).json(mapBordereau(updated));
+  })
+);
+
+imfRouter.get(
+  "/bordereaux",
+  asyncHandler(async (req, res) => {
+    const { agenceId, statut } = req.query as { agenceId?: string; statut?: string };
+    const rows = await prisma.bordereauImf.findMany({
+      where: { agenceId: agenceId || undefined, statut: (statut as StatutBordereauImf) || undefined },
+      orderBy: { createdAt: "desc" },
+      include: bordereauInclude,
+    });
+    res.json(rows.map(mapBordereau));
+  })
+);
+
+/** Détail d'un bordereau, avec les souscriptions incluses résolues (pour l'export et le contrôle). */
+imfRouter.get(
+  "/bordereaux/:id",
+  asyncHandler(async (req, res) => {
+    const bordereau = await prisma.bordereauImf.findUnique({ where: { id: req.params.id }, include: bordereauInclude });
+    if (!bordereau) return res.status(404).json({ error: "Bordereau introuvable" });
+    const ids = bordereau.souscriptionIds as unknown as string[];
+    const souscriptions = await prisma.souscriptionImf.findMany({
+      where: { id: { in: ids } },
+      include: { agent: { select: { nom: true, prenom: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    res.json({
+      ...mapBordereau(bordereau),
+      souscriptions: souscriptions.map((s) => ({
+        numeroPolice: s.numeroPolice,
+        nom: s.nom,
+        prenom: s.prenom,
+        produitCode: s.produitCode,
+        primeTTC: s.primeTTC,
+        agentNom: s.agent ? `${s.agent.prenom} ${s.agent.nom}` : null,
+        createdAt: s.createdAt,
+      })),
+    });
+  })
+);
+
+const virementSchema = z.object({
+  montant: z.number().positive(),
+  date: z.coerce.date(),
+  reference: z.string().min(1),
+});
+
+/** Pointage d'un virement reçu en règlement du bordereau — paiements partiels supportés. */
+imfRouter.post(
+  "/bordereaux/:id/virements",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = virementSchema.parse(req.body);
+    const bordereau = await prisma.bordereauImf.findUnique({ where: { id: req.params.id } });
+    if (!bordereau) return res.status(404).json({ error: "Bordereau introuvable" });
+
+    const virements = (bordereau.virements as unknown as VirementBordereau[]) ?? [];
+    virements.push({ montant: Math.round(data.montant), date: data.date.toISOString(), reference: data.reference });
+    const montantRecu = virements.reduce((sum, v) => sum + v.montant, 0);
+
+    const updated = await prisma.bordereauImf.update({
+      where: { id: bordereau.id },
+      data: {
+        virements: virements as unknown as object,
+        montantRecu,
+        statut: statutBordereau(montantRecu, bordereau.primeTotal),
+      },
+      include: bordereauInclude,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "bordereau_imf",
+      objetId: updated.id,
+      valeurApres: updated,
+    });
+    res.json(mapBordereau(updated));
   })
 );

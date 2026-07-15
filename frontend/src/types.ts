@@ -265,6 +265,41 @@ export interface StatsSinistresImf {
   parProduit: { famille: string; primes: number; sinistres: number; ratio: number }[];
 }
 
+export interface VirementBordereau {
+  montant: number;
+  date: string;
+  reference: string;
+}
+
+export interface BordereauImf {
+  id: string;
+  numero: string;
+  agenceId: string;
+  agenceNom: string;
+  zoneNom: string;
+  periodeDebut: string;
+  periodeFin: string;
+  nombreSouscriptions: number;
+  primeTotal: number;
+  virements: VirementBordereau[];
+  montantRecu: number;
+  statut: "emis" | "partiellement_regle" | "regle";
+  genereParNom?: string | null;
+  createdAt: string;
+}
+
+export interface BordereauImfDetail extends BordereauImf {
+  souscriptions: {
+    numeroPolice: string;
+    nom: string;
+    prenom: string;
+    produitCode: string;
+    primeTTC: number;
+    agentNom: string | null;
+    createdAt: string;
+  }[];
+}
+
 export interface SimulationImf {
   id: string;
   agentId: string;

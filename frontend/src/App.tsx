@@ -37,6 +37,7 @@ import ImfSouscriptions from "./pages/admin/imf/Souscriptions";
 import ImfSimulateur from "./pages/admin/imf/Simulateur";
 import ImfContrats from "./pages/admin/imf/Contrats";
 import ImfSinistres from "./pages/admin/imf/Sinistres";
+import ImfBordereaux from "./pages/admin/imf/Bordereaux";
 
 import PartenaireLayout from "./components/layout/PartenaireLayout";
 import PartenaireDashboard from "./pages/partenaire/Dashboard";
@@ -99,6 +100,7 @@ export default function App() {
             <Route path="imf/souscriptions" element={<ImfSouscriptions />} />
             <Route path="imf/contrats" element={<ImfContrats />} />
             <Route path="imf/sinistres" element={<ImfSinistres />} />
+            <Route path="imf/bordereaux" element={<ImfBordereaux />} />
           </Route>
 
           <Route
