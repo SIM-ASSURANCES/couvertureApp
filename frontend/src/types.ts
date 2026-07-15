@@ -222,6 +222,12 @@ export interface SouscriptionImf {
   directe?: boolean;
 }
 
+export interface StatsImf {
+  global: { ca: number; taxes: number; accessoires: number; nombre: number };
+  parProduit: { famille: string; ca: number; taxes: number; accessoires: number; nombre: number }[];
+  evolution: ({ mois: string } & Record<string, number>)[];
+}
+
 export interface SimulationImf {
   id: string;
   agentId: string;

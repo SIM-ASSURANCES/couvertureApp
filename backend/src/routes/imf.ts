@@ -962,3 +962,75 @@ imfRouter.get(
     res.json(rows.map(mapSouscriptionAdmin));
   })
 );
+
+/**
+ * Regroupe les 5 codes produit en 4 familles commerciales (les deux variantes
+ * COUPS DURS sont fusionnées) pour le tableau de bord.
+ */
+const FAMILLE_PRODUIT: Record<string, string> = {
+  securpro: "SECURPRO",
+  securstock: "SECURSTOCK",
+  coupsdurs_classique: "COUPS DURS",
+  coupsdurs_incapacite: "COUPS DURS",
+  securecolte: "SECURECOLTE",
+};
+const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE"];
+
+/**
+ * Statistiques du tableau de bord admin : chiffre d'affaires, taxes et
+ * accessoires — globaux et par produit — et évolution mensuelle du CA par
+ * produit. Calculés sur les contrats (souscriptions actives). Les taxes et
+ * accessoires ne sont ventilés que pour SECURPRO/SECURSTOCK (présents dans le
+ * `resultat`) ; les produits catalogue (COUPS DURS/SECURECOLTE) n'ont qu'une
+ * prime fixe, leurs taxes/accessoires valent donc 0.
+ */
+imfRouter.get(
+  "/stats",
+  asyncHandler(async (_req, res) => {
+    const souscriptions = await prisma.souscriptionImf.findMany({
+      where: { statut: "active" },
+      select: { produitCode: true, primeTTC: true, resultat: true, createdAt: true },
+    });
+
+    const parProduit: Record<string, { ca: number; taxes: number; accessoires: number; nombre: number }> = {};
+    for (const f of FAMILLES) parProduit[f] = { ca: 0, taxes: 0, accessoires: 0, nombre: 0 };
+
+    const evolutionMap = new Map<string, Record<string, number>>();
+
+    for (const s of souscriptions) {
+      const famille = FAMILLE_PRODUIT[s.produitCode] ?? s.produitCode;
+      if (!parProduit[famille]) parProduit[famille] = { ca: 0, taxes: 0, accessoires: 0, nombre: 0 };
+      const r = (s.resultat ?? {}) as { taxes?: number; accessoires?: number };
+      parProduit[famille].ca += s.primeTTC;
+      parProduit[famille].taxes += Math.round(r.taxes ?? 0);
+      parProduit[famille].accessoires += Math.round(r.accessoires ?? 0);
+      parProduit[famille].nombre += 1;
+
+      const mois = s.createdAt.toISOString().slice(0, 7); // AAAA-MM
+      if (!evolutionMap.has(mois)) evolutionMap.set(mois, {});
+      const m = evolutionMap.get(mois)!;
+      m[famille] = (m[famille] ?? 0) + s.primeTTC;
+    }
+
+    const global = {
+      ca: FAMILLES.reduce((sum, f) => sum + parProduit[f].ca, 0),
+      taxes: FAMILLES.reduce((sum, f) => sum + parProduit[f].taxes, 0),
+      accessoires: FAMILLES.reduce((sum, f) => sum + parProduit[f].accessoires, 0),
+      nombre: souscriptions.length,
+    };
+
+    const evolution = [...evolutionMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mois, valeurs]) => {
+        const point: Record<string, number | string> = { mois };
+        for (const f of FAMILLES) point[f] = valeurs[f] ?? 0;
+        return point;
+      });
+
+    res.json({
+      global,
+      parProduit: FAMILLES.map((f) => ({ famille: f, ...parProduit[f] })),
+      evolution,
+    });
+  })
+);
