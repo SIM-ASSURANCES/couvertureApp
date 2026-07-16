@@ -693,6 +693,8 @@ const coupsdursInputSchema = z
 const simulationSchema = z.object({
   produitCode: z.enum(["securpro", "securstock", "coupsdurs_classique", "coupsdurs_incapacite", "securecolte"]),
   entrees: z.record(z.unknown()),
+  // Clé d'idempotence PWA (mode hors-ligne) — voir SimulationImf.offlineId.
+  offlineId: z.string().min(1).optional(),
 });
 
 /**
@@ -735,7 +737,16 @@ async function calculerDevisImf(
 agentImfRouter.post(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { produitCode, entrees } = simulationSchema.parse(req.body);
+    const { produitCode, entrees, offlineId } = simulationSchema.parse(req.body);
+
+    // Idempotence (synchronisation PWA hors-ligne) : si cette simulation a déjà
+    // été synchronisée (ex. requête rejouée après coupure réseau juste après
+    // succès), on renvoie l'enregistrement existant plutôt que d'en créer un doublon.
+    if (offlineId) {
+      const existante = await prisma.simulationImf.findUnique({ where: { offlineId } });
+      if (existante) return res.status(200).json(existante);
+    }
+
     const calc = await calculerDevisImf(produitCode, entrees);
     if (!calc.ok) return res.status(400).json({ error: calc.error });
 
@@ -746,6 +757,7 @@ agentImfRouter.post(
         entrees: JSON.parse(JSON.stringify(entrees)),
         resultat: JSON.parse(JSON.stringify(calc.resultat)),
         primeTTC: Math.round(calc.primeTTC),
+        offlineId,
       },
     });
     res.status(201).json(simulation);
@@ -775,12 +787,19 @@ const souscriptionSchema = z.object({
   numeroPiece: z.string().min(1),
   // Signature manuscrite facultative, capturée au moment de la conversion en souscription.
   signature: z.string().min(1).optional(),
+  // Clé d'idempotence PWA (mode hors-ligne) — voir SouscriptionImf.offlineId.
+  offlineId: z.string().min(1).optional(),
 });
 
 agentImfRouter.post(
   "/souscriptions",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = souscriptionSchema.parse(req.body);
+
+    if (data.offlineId) {
+      const existante = await prisma.souscriptionImf.findUnique({ where: { offlineId: data.offlineId } });
+      if (existante) return res.status(200).json(existante);
+    }
 
     const simulation = await prisma.simulationImf.findUnique({
       where: { id: data.simulationId },
@@ -809,6 +828,7 @@ agentImfRouter.post(
         typePiece: data.typePiece,
         numeroPiece: data.numeroPiece,
         signature: data.signature,
+        offlineId: data.offlineId,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,
         primeTTC: simulation.primeTTC,

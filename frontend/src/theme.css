@@ -705,6 +705,9 @@ table.tbl {
     transform: rotate(360deg);
   }
 }
+.spin {
+  animation: spin 1s linear infinite;
+}
 .checkbox-row {
   display: flex;
   gap: 16px;

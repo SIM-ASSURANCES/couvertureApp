@@ -22,6 +22,7 @@ import {
   Calculator,
   LifeBuoy,
   Banknote,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -174,6 +175,7 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
         { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
         { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
         { to: "/agent-imf/sinistres", label: "Sinistres", icon: LifeBuoy },
+        { to: "/agent-imf/hors-ligne", label: "Hors-ligne", icon: WifiOff },
       ],
     },
   ];

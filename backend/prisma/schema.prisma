@@ -531,6 +531,11 @@ model SimulationImf {
   primeTTC    Int
   createdAt   DateTime         @default(now())
   souscription SouscriptionImf?
+  // Identifiant généré côté client lors d'une saisie hors-ligne (PWA), utilisé
+  // comme clé d'idempotence à la synchronisation : si la requête est rejouée
+  // (double tap, coupure réseau après succès), la même simulation est
+  // retournée au lieu d'en créer un doublon.
+  offlineId   String?          @unique
 }
 
 // --- Phase 3 (réduite) : conversion d'une simulation en souscription ---
@@ -575,6 +580,9 @@ model SouscriptionImf {
   createdAt     DateTime              @default(now())
   updatedAt     DateTime              @updatedAt
   sinistres     SinistreImf[]
+  // Clé d'idempotence pour la synchronisation hors-ligne (PWA) — voir
+  // SimulationImf.offlineId.
+  offlineId     String?               @unique
 }
 
 // --- Phase 6 : sinistres IMF ---

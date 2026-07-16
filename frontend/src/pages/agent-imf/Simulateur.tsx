@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
-import { Calculator, FileCheck, Download, Plus, X } from "lucide-react";
-import { PageHeader, Card, fcfa } from "../../components/ui";
+import { Calculator, FileCheck, Download, Plus, X, WifiOff } from "lucide-react";
+import { PageHeader, Card, Badge, fcfa } from "../../components/ui";
 import { api } from "../../api";
-import { useFetch } from "../../useFetch";
 import { genererContratImf, contratImfDisponible } from "../../contract";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
+import { useOnline } from "../../offline/useOnline";
+import { useBaremeCache } from "../../offline/useBaremes";
+import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
+import { tarifCatalogueHorsLigne } from "../../offline/catalogue";
+import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
 import type { SouscriptionImf } from "../../types";
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
@@ -151,6 +155,11 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [souscrivant, setSouscrivant] = useState(false);
   const [erreurSouscription, setErreurSouscription] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
+  const online = useOnline();
+  const [souscriptionHorsLigne, setSouscriptionHorsLigne] = useState<SouscriptionEnAttente | null>(null);
+  const [entreesCourantes, setEntreesCourantes] = useState<Record<string, unknown> | null>(null);
+  const [resultatCourant, setResultatCourant] = useState<unknown>(null);
+  const [primeTTCCourante, setPrimeTTCCourante] = useState(0);
 
   // SECURPRO
   const [sp, setSp] = useState({
@@ -161,8 +170,10 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     volCaisseCapital: 0, majorationVolCaisse: false,
     ddeCapital: 0, deCapital: 0, bdgCapital: 0,
   });
-  const { data: baremeSecurpro } = useFetch<BaremeClasse[]>(
-    produitCode === "securpro" ? `${apiBase}/baremes/securpro` : null
+  const baremeSecurpro = useBaremeCache<BaremeClasse[]>(
+    "baremes_securpro",
+    produitCode === "securpro" ? `${apiBase}/baremes/securpro` : null,
+    online
   );
   const limiteClasseSecurpro = baremeSecurpro?.find((b) => b.classe === sp.classe)?.limiteCapital;
   const limiteApplicableSecurpro =
@@ -181,8 +192,10 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     prevention: "aucun" as "extincteurs_alarme_formation_eau" | "extincteurs_eau" | "extincteurs_seuls" | "aucun",
     gardien: false,
   });
-  const { data: baremeSecurstock } = useFetch<BaremeClasseSecurstock[]>(
-    produitCode === "securstock" ? `${apiBase}/baremes/securstock` : null
+  const baremeSecurstock = useBaremeCache<BaremeClasseSecurstock[]>(
+    "baremes_securstock",
+    produitCode === "securstock" ? `${apiBase}/baremes/securstock` : null,
+    online
   );
   const limiteClasseSecurstock = baremeSecurstock?.find((b) => b.classe === ss.classe)?.limiteCapital;
   const limiteApplicableSecurstock =
@@ -218,12 +231,22 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setBeneficiaires((b) => b.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
   }
 
+  // Le mode hors-ligne n'est offert que dans l'espace agent : l'admin
+  // travaille depuis un poste normalement toujours connecté, et les routes
+  // /imf/... n'implémentent pas l'idempotence par offlineId (voir sync.ts).
+  const offlineCapable = apiBase === "/agent-imf";
+  const modeHorsLigne = offlineCapable && !online;
+
   function reset() {
     setResultat(null);
     setError("");
     setSaved(false);
     setSimulationId(null);
     setSouscription(null);
+    setSouscriptionHorsLigne(null);
+    setEntreesCourantes(null);
+    setResultatCourant(null);
+    setPrimeTTCCourante(0);
     setErreurSouscription("");
     sigRef.current?.clear();
     setSante(defaultSante());
@@ -241,6 +264,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSaved(false);
     setSimulationId(null);
     setSouscription(null);
+    setSouscriptionHorsLigne(null);
     setErreurSouscription("");
     try {
       let entrees: Record<string, unknown>;
@@ -274,13 +298,52 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         entrees = { libelleVariante: variante };
       }
 
-      const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>(`${apiBase}/simulations`, {
-        produitCode,
-        entrees,
-      });
-      setResultat(res.resultat as ResultatFormule);
-      setSimulationId(res.id);
-      setSaved(true);
+      if (modeHorsLigne) {
+        // Calcul local (aucune requête serveur) : le devis reste utilisable
+        // sans réseau, à partir des barèmes mis en cache lors de la dernière
+        // session en ligne (cf. useBaremeCache) et du catalogue figé pour
+        // COUPS DURS/SECURECOLTE (cf. offline/catalogue.ts).
+        let resultatLocal: unknown;
+        let primeTTCLocal: number;
+        if (produitCode === "securpro") {
+          if (!baremeSecurpro) throw new Error("Barèmes SECURPRO non mis en cache — consultez le simulateur en ligne au moins une fois avant de partir hors-ligne.");
+          const bareme = baremeSecurpro.find((b) => b.classe === sp.classe);
+          if (!bareme) throw new Error("Barème introuvable pour cette classe.");
+          const r = calculerSecurproLocal(entrees as unknown as SecurproInput, bareme);
+          resultatLocal = r;
+          primeTTCLocal = r.primeTTC;
+        } else if (produitCode === "securstock") {
+          if (!baremeSecurstock) throw new Error("Barèmes SECURSTOCK non mis en cache — consultez le simulateur en ligne au moins une fois avant de partir hors-ligne.");
+          const bareme = baremeSecurstock.find((b) => b.classe === ss.classe);
+          if (!bareme) throw new Error("Barème introuvable pour cette classe.");
+          const r = calculerSecurstockLocal(entrees as unknown as SecurstockInput, bareme as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxDommageElectrique: number; tauxAutreCause: number });
+          if ("nonAssurable" in r && r.nonAssurable) throw new Error(r.motif);
+          resultatLocal = r;
+          primeTTCLocal = r.primeTTC;
+        } else {
+          const t = tarifCatalogueHorsLigne(produitCode, variante);
+          if (!t) throw new Error("Tarif indisponible hors-ligne pour cette variante.");
+          resultatLocal = { prime: t.prime, capitalGaranti: t.capitalGaranti };
+          primeTTCLocal = t.prime;
+        }
+        setResultat(resultatLocal as ResultatFormule);
+        setEntreesCourantes(entrees);
+        setResultatCourant(resultatLocal);
+        setPrimeTTCCourante(primeTTCLocal);
+        setSimulationId("hors-ligne");
+        setSaved(true);
+      } else {
+        const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>(`${apiBase}/simulations`, {
+          produitCode,
+          entrees,
+        });
+        setResultat(res.resultat as ResultatFormule);
+        setEntreesCourantes(entrees);
+        setResultatCourant(res.resultat);
+        setPrimeTTCCourante(res.primeTTC);
+        setSimulationId(res.id);
+        setSaved(true);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -294,6 +357,34 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSouscrivant(true);
     setErreurSouscription("");
     try {
+      if (simulationId === "hors-ligne") {
+        if (!entreesCourantes) throw new Error("Devis local introuvable — recalculez le devis.");
+        const offlineId = crypto.randomUUID();
+        const item: SouscriptionEnAttente = {
+          offlineId,
+          apiBase,
+          produitCode,
+          entrees: entreesCourantes,
+          resultat: resultatCourant,
+          primeTTC: primeTTCCourante,
+          client: {
+            nom: client.nom,
+            prenom: client.prenom,
+            telephone: client.telephone,
+            email: client.email || undefined,
+            typePiece: client.typePiece,
+            numeroPiece: client.numeroPiece,
+            signature: sigRef.current?.toDataURL() ?? undefined,
+          },
+          tempNumero: `TMP-${Date.now().toString(36).toUpperCase()}`,
+          createdAt: new Date().toISOString(),
+          statut: "en_attente",
+        };
+        await putQueueItem(item);
+        setSouscriptionHorsLigne(item);
+        setSouscrivant(false);
+        return;
+      }
       const res = await api.post<SouscriptionImf>(`${apiBase}/souscriptions`, {
         simulationId,
         nom: client.nom,
@@ -313,7 +404,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   }
 
   const depassement = !!(resultat && "primeTTC" in resultat && resultat.depassementPlafond);
-  const peutSouscrire = !!simulationId && !depassement && !souscription;
+  const peutSouscrire = !!simulationId && !depassement && !souscription && !souscriptionHorsLigne;
 
   const varianteOptions =
     produitCode === "coupsdurs_classique"
@@ -325,6 +416,13 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   return (
     <>
       <PageHeader title="Simulateur" subtitle="Établir un devis pour l'un des produits IMF." />
+
+      {modeHorsLigne && (
+        <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 10, background: "rgba(245,158,11,0.12)", color: "#b45309", display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <WifiOff size={16} />
+          Mode hors-ligne : le devis est calculé localement à titre indicatif (barèmes mis en cache) et la souscription sera mise en file d'attente jusqu'à la reconnexion — le montant définitif sera confirmé par le serveur à la synchronisation.
+        </div>
+      )}
 
       <div className="grid-2" style={{ marginTop: 24 }}>
         <Card title="Paramètres">
@@ -690,7 +788,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         </Card>
       </div>
 
-      {(peutSouscrire || souscription) && (
+      {(peutSouscrire || souscription || souscriptionHorsLigne) && (
         <div style={{ marginTop: 24 }}>
           <Card title="Souscription">
             {souscription ? (
@@ -711,6 +809,50 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     onClick={() => genererContratImf(souscription)}
                   >
                     <Download size={15} /> Télécharger le contrat
+                  </button>
+                )}
+              </div>
+            ) : souscriptionHorsLigne ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <WifiOff size={20} color="#b45309" />
+                  <div>
+                    <div style={{ fontWeight: 700 }}>
+                      Enregistrée hors-ligne — {souscriptionHorsLigne.tempNumero} <Badge kind="warning">En attente de synchronisation</Badge>
+                    </div>
+                    <div className="muted" style={{ fontSize: 13 }}>
+                      {souscriptionHorsLigne.client.prenom} {souscriptionHorsLigne.client.nom} · {fcfa(souscriptionHorsLigne.primeTTC)} (estimation)
+                      {" · "}sera synchronisée et confirmée par le serveur à la reconnexion (voir « Hors-ligne » dans le menu).
+                    </div>
+                  </div>
+                </div>
+                {contratImfDisponible(souscriptionHorsLigne.produitCode) && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() =>
+                      genererContratImf({
+                        id: souscriptionHorsLigne.offlineId,
+                        numeroPolice: souscriptionHorsLigne.tempNumero,
+                        agentId: null,
+                        simulationId: null,
+                        produitCode: souscriptionHorsLigne.produitCode,
+                        nom: souscriptionHorsLigne.client.nom,
+                        prenom: souscriptionHorsLigne.client.prenom,
+                        telephone: souscriptionHorsLigne.client.telephone,
+                        email: souscriptionHorsLigne.client.email ?? null,
+                        typePiece: souscriptionHorsLigne.client.typePiece,
+                        numeroPiece: souscriptionHorsLigne.client.numeroPiece,
+                        signature: souscriptionHorsLigne.client.signature ?? null,
+                        entrees: souscriptionHorsLigne.entrees,
+                        resultat: souscriptionHorsLigne.resultat as Record<string, unknown>,
+                        primeTTC: souscriptionHorsLigne.primeTTC,
+                        statut: "active",
+                        createdAt: souscriptionHorsLigne.createdAt,
+                      })
+                    }
+                  >
+                    <Download size={15} /> Télécharger le contrat (provisoire)
                   </button>
                 )}
               </div>
