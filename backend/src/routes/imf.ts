@@ -814,6 +814,8 @@ const souscriptionSchema = z.object({
   email: z.string().email().optional(),
   typePiece: z.enum(["cni", "passeport", "permis_conduire"]),
   numeroPiece: z.string().min(1),
+  ville: z.string().min(1),
+  communeQuartier: z.string().min(1),
   // Signature manuscrite facultative, capturée au moment de la conversion en souscription.
   signature: z.string().min(1).optional(),
   // Clé d'idempotence PWA (mode hors-ligne) — voir SouscriptionImf.offlineId.
@@ -857,6 +859,8 @@ agentImfRouter.post(
         email: data.email,
         typePiece: data.typePiece,
         numeroPiece: data.numeroPiece,
+        ville: data.ville,
+        communeQuartier: data.communeQuartier,
         signature: data.signature,
         offlineId: data.offlineId,
         entrees: simulation.entrees as object,
@@ -1134,6 +1138,8 @@ imfRouter.post(
         email: data.email,
         typePiece: data.typePiece,
         numeroPiece: data.numeroPiece,
+        ville: data.ville,
+        communeQuartier: data.communeQuartier,
         signature: data.signature,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,

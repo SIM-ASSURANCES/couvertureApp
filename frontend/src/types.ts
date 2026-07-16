@@ -240,6 +240,8 @@ export interface SouscriptionImf {
   email: string | null;
   typePiece?: "cni" | "passeport" | "permis_conduire" | null;
   numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
   signature?: string | null;
   entrees: Record<string, unknown>;
   resultat: Record<string, unknown>;

@@ -31,6 +31,8 @@ export async function syncPendingQueue(): Promise<{ synced: number; failed: numb
         email: item.client.email || undefined,
         typePiece: item.client.typePiece,
         numeroPiece: item.client.numeroPiece,
+        ville: item.client.ville,
+        communeQuartier: item.client.communeQuartier,
         signature: item.client.signature || undefined,
         offlineId: `${item.offlineId}-sub`,
       });

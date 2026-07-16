@@ -145,7 +145,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [client, setClient] = useState({
     nom: "", prenom: "", telephone: "", email: "",
     typePiece: "cni" as "cni" | "passeport" | "permis_conduire",
-    numeroPiece: "",
+    numeroPiece: "", ville: "", communeQuartier: "",
   });
   const [souscrivant, setSouscrivant] = useState(false);
   const [erreurSouscription, setErreurSouscription] = useState("");
@@ -357,6 +357,8 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             email: client.email || undefined,
             typePiece: client.typePiece,
             numeroPiece: client.numeroPiece,
+            ville: client.ville,
+            communeQuartier: client.communeQuartier,
             signature: sigRef.current?.toDataURL() ?? undefined,
           },
           tempNumero: `TMP-${Date.now().toString(36).toUpperCase()}`,
@@ -383,6 +385,8 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         email: client.email || undefined,
         typePiece: client.typePiece,
         numeroPiece: client.numeroPiece,
+        ville: client.ville,
+        communeQuartier: client.communeQuartier,
         signature: sigRef.current?.toDataURL() ?? undefined,
       });
       setSouscription(res);
@@ -854,6 +858,8 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                         email: souscriptionHorsLigne.client.email ?? null,
                         typePiece: souscriptionHorsLigne.client.typePiece,
                         numeroPiece: souscriptionHorsLigne.client.numeroPiece,
+                        ville: souscriptionHorsLigne.client.ville,
+                        communeQuartier: souscriptionHorsLigne.client.communeQuartier,
                         signature: souscriptionHorsLigne.client.signature ?? null,
                         entrees: souscriptionHorsLigne.entrees,
                         resultat: souscriptionHorsLigne.resultat as Record<string, unknown>,
@@ -904,6 +910,14 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                   <label className="label">N° de la pièce <span className="req">*</span></label>
                   <input className="input" required value={client.numeroPiece} onChange={(e) => setClient({ ...client, numeroPiece: e.target.value })} />
                 </div>
+                <div className="field">
+                  <label className="label">Ville <span className="req">*</span></label>
+                  <input className="input" required value={client.ville} onChange={(e) => setClient({ ...client, ville: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label className="label">Commune ou quartier <span className="req">*</span></label>
+                  <input className="input" required value={client.communeQuartier} onChange={(e) => setClient({ ...client, communeQuartier: e.target.value })} />
+                </div>
                 <SignaturePad ref={sigRef} label="Signature du souscripteur (facultative)" />
                 {erreurSouscription && (
                   <div className="empty" style={{ color: "var(--danger)", marginBottom: 12 }}>{erreurSouscription}</div>
@@ -915,7 +929,9 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     !client.nom.trim() ||
                     !client.prenom.trim() ||
                     !client.telephone.trim() ||
-                    !client.numeroPiece.trim()
+                    !client.numeroPiece.trim() ||
+                    !client.ville.trim() ||
+                    !client.communeQuartier.trim()
                   }
                 >
                   <FileCheck size={17} /> {souscrivant ? "Création…" : "Créer la souscription"}

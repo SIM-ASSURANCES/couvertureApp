@@ -46,6 +46,8 @@ export interface ContratSecurpro {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
   classeLabel: string;
   statutOccupation: "proprietaire" | "locataire";
   valeurBatimentOuLoyer: number;
@@ -69,6 +71,8 @@ export interface ContratSecurstock {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
   classeLabel: string;
   localisationLabel: string;
   montantStock: number;
@@ -91,6 +95,8 @@ export interface ContratSecurecolte {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
   montantPack: number;
   valeurPackage?: number | null;
   superficieHa?: number | null;
@@ -135,6 +141,8 @@ export interface ContratCoupsdurs {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
   variante: string;
   garantieLabel: string;
   montantGarantie: number;
@@ -234,6 +242,8 @@ export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCo
     telephone: s.telephone,
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
+    ville: s.ville,
+    communeQuartier: s.communeQuartier,
     variante,
     garantieLabel: COUPSDURS_VARIANTE_LABELS[variante] ?? variante,
     montantGarantie: resultat.capitalGaranti ?? 0,
@@ -264,6 +274,8 @@ export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): Contrat
     telephone: s.telephone,
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
+    ville: s.ville,
+    communeQuartier: s.communeQuartier,
     montantPack: s.primeTTC,
     valeurPackage: entrees.valeurPackage ?? null,
     superficieHa: entrees.superficieHa ?? null,
@@ -289,6 +301,8 @@ export function souscriptionImfToContratSecurstock(s: SouscriptionImf): ContratS
     telephone: s.telephone,
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
+    ville: s.ville,
+    communeQuartier: s.communeQuartier,
     classeLabel: entrees.classe ? (SECURSTOCK_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
     localisationLabel: entrees.localisation ? (SECURSTOCK_LOCALISATION_LABELS[entrees.localisation] ?? entrees.localisation) : "—",
     montantStock: entrees.capitalDeclare ?? 0,
@@ -331,6 +345,8 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
     telephone: s.telephone,
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
+    ville: s.ville,
+    communeQuartier: s.communeQuartier,
     classeLabel: entrees.classe ? (SECURPRO_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
     statutOccupation,
     valeurBatimentOuLoyer: statutOccupation === "locataire" ? (entrees.loyerMensuel ?? 0) : (entrees.valeurBatiment ?? 0),
@@ -345,9 +361,11 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
 }
 
 const CSS = `
+  @page{size:A4 portrait;margin:15mm;}
   *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
   body{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;text-align:justify;}
   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:20px;}
+  .brand{display:flex;align-items:center;gap:16px;}
   .brand img{height:54px;display:block;}
   .pol{text-align:right;font-size:12px;color:#5b6b80;}
   .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
@@ -370,7 +388,10 @@ const CSS = `
 
 function header(numeroPolice: string) {
   return `<div class="head">
-    <div class="brand"><img src="${window.location.origin}/logo.webp" alt="SIM Assurances" onerror="this.style.display='none'" /></div>
+    <div class="brand">
+      <img src="${window.location.origin}/logo.webp" alt="SIM Assurances" onerror="this.style.display='none'" />
+      <img src="${window.location.origin}/LOGO_RCMEC_CI.png" alt="RCMEC CI" onerror="this.style.display='none'" />
+    </div>
     <div class="pol">N° de police<b>${val(numeroPolice)}</b></div>
   </div>`;
 }
@@ -520,6 +541,7 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Marché ou abords de marché</td><td>${c.dansMarche ? "Oui" : "Non"}</td></tr>
   </table>
 
@@ -565,6 +587,7 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Valeur du package</td><td>${c.valeurPackage ? fcfa(c.valeurPackage) : "—"}</td><td class="k">Superficie du champ</td><td>${c.superficieHa ? `${c.superficieHa} ha` : "—"}</td></tr>
   </table>
 
@@ -608,6 +631,7 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Montant du stock déclaré</td><td>${fcfa(c.montantStock)}</td><td class="k">Montant du stock retenu</td><td>${fcfa(c.capitalRetenu)}</td></tr>
   </table>
 
@@ -692,6 +716,7 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
   </table>
 
   <div class="note">

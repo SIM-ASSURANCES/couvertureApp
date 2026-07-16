@@ -28,6 +28,8 @@ export interface SouscriptionEnAttente {
     email?: string;
     typePiece: "cni" | "passeport" | "permis_conduire";
     numeroPiece: string;
+    ville: string;
+    communeQuartier: string;
     signature?: string | null;
   };
   tempNumero: string; // "TMP-…" affiché à l'agent avant synchronisation
