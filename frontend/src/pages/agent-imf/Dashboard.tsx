@@ -1,15 +1,15 @@
-import { Landmark, FileText, IdCard, Wallet, Building2, Users } from "lucide-react";
+import { Landmark, FileText, IdCard, Wallet, Building2, Users, Banknote } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
-import type { SouscriptionImf } from "../../types";
+import type { SouscriptionImf, FinanceImf } from "../../types";
 
 interface Moi {
   nom: string;
   prenom: string;
   email: string;
   telephone: string;
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
   statut: "actif" | "inactif";
   agenceNom: string | null;
   zoneNom: string | null;
@@ -27,6 +27,7 @@ interface AgentReseau {
 function roleLabel(r: Moi["roleImf"]) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
+  if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Responsable de zone";
 }
 
@@ -57,7 +58,12 @@ export default function Dashboard() {
     moi?.roleImf === "RESPONSABLE_ZONE" ? "/agent-imf/reseau/agences" : null
   );
   const { data: agents } = useFetch<AgentReseau[]>(
-    moi?.roleImf === "RESPONSABLE_AGENCE" ? "/agent-imf/reseau/agents" : null
+    moi?.roleImf === "RESPONSABLE_AGENCE" || moi?.roleImf === "FINANCE_COMPTABLE" ? "/agent-imf/reseau/agents" : null
+  );
+  // Commissions : réservées au finance comptable, jamais calculées ni
+  // affichées pour le responsable d'agence.
+  const { data: finance } = useFetch<FinanceImf>(
+    moi?.roleImf === "FINANCE_COMPTABLE" ? "/agent-imf/finance" : null
   );
 
   const loading = l1 || l2;
@@ -78,6 +84,8 @@ export default function Dashboard() {
             ? "Votre activité IMF."
             : moi?.roleImf === "RESPONSABLE_AGENCE"
             ? "Activité de votre agence."
+            : moi?.roleImf === "FINANCE_COMPTABLE"
+            ? "Activité financière de votre agence."
             : "Activité de votre zone."
         }
       />
@@ -93,6 +101,9 @@ export default function Dashboard() {
             <StatCard icon={Wallet} label="Prime totale (contrats actifs)" value={fcfa(primeTotale)} />
             {moi.roleImf === "RESPONSABLE_ZONE" && <StatCard icon={Building2} label="Agences" value={nbAgences} />}
             {moi.roleImf !== "AGENT" && <StatCard icon={Users} label="Agents du réseau" value={nbAgentsReseau} />}
+            {moi.roleImf === "FINANCE_COMPTABLE" && (
+              <StatCard icon={Banknote} label="Commissions générées" value={fcfa(finance?.global.commission ?? 0)} />
+            )}
           </div>
 
           <div style={{ marginTop: 24 }}>

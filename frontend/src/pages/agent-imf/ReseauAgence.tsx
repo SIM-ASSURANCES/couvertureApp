@@ -5,7 +5,7 @@ interface AgentAvecStats {
   id: string;
   nom: string;
   prenom: string;
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
   statut: "actif" | "inactif";
   agenceNom: string | null;
   zoneNom: string | null;
@@ -13,9 +13,14 @@ interface AgentAvecStats {
   primeTotale: number;
 }
 
+// Le responsable d'agence (qui consulte cette page) ne voit jamais les
+// commissions — seul le finance comptable de l'agence y a accès, sur sa
+// propre page Finance. Ici, le finance comptable apparaît comme un membre
+// de l'agence parmi d'autres, sans aucune donnée financière supplémentaire.
 function roleLabel(r: AgentAvecStats["roleImf"]) {
   if (r === "RESPONSABLE_AGENCE") return "Responsable";
   if (r === "RESPONSABLE_ZONE") return "Resp. de zone";
+  if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Agent";
 }
 

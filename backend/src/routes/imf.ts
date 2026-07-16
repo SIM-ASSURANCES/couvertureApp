@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import type { StatutSinistreImf, StatutBordereauImf } from "@prisma/client";
@@ -210,7 +210,7 @@ const agentSchema = z
     telephone: z.string().min(1),
     email: z.string().email(),
     motDePasse: z.string().min(6),
-    roleImf: z.enum(["AGENT", "RESPONSABLE_AGENCE", "RESPONSABLE_ZONE"]).default("AGENT"),
+    roleImf: z.enum(["AGENT", "RESPONSABLE_AGENCE", "RESPONSABLE_ZONE", "FINANCE_COMPTABLE"]).default("AGENT"),
     agenceId: z.string().min(1).optional(),
     zoneId: z.string().min(1).optional(),
   })
@@ -220,13 +220,14 @@ const agentSchema = z
   });
 
 /**
- * Une agence ne peut avoir qu'un seul responsable d'agence, une zone qu'un
- * seul responsable de zone. Vérifié ici plutôt qu'en contrainte SQL : Prisma
- * ne modélise pas d'index unique partiel, et le déploiement applique le
- * schéma via `prisma db push` (pas de migration SQL manuelle possible).
+ * Une agence ne peut avoir qu'un seul responsable d'agence et qu'un seul
+ * finance comptable, une zone qu'un seul responsable de zone. Vérifié ici
+ * plutôt qu'en contrainte SQL : Prisma ne modélise pas d'index unique
+ * partiel, et le déploiement applique le schéma via `prisma db push` (pas de
+ * migration SQL manuelle possible).
  */
 async function verifierUniciteResponsable(
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE",
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE",
   agenceId?: string | null,
   zoneId?: string | null
 ) {
@@ -236,6 +237,14 @@ async function verifierUniciteResponsable(
     });
     if (existant) {
       return `Cette agence a déjà un responsable (${existant.prenom} ${existant.nom}).`;
+    }
+  }
+  if (roleImf === "FINANCE_COMPTABLE" && agenceId) {
+    const existant = await prisma.agentImf.findFirst({
+      where: { roleImf: "FINANCE_COMPTABLE", agenceId },
+    });
+    if (existant) {
+      return `Cette agence a déjà un finance comptable (${existant.prenom} ${existant.nom}).`;
     }
   }
   if (roleImf === "RESPONSABLE_ZONE" && zoneId) {
@@ -533,7 +542,9 @@ async function agentIdsDuReseau(agent: {
 }): Promise<string[]> {
   if (agent.roleImf === "AGENT") return [agent.id];
 
-  if (agent.roleImf === "RESPONSABLE_AGENCE") {
+  // RESPONSABLE_AGENCE et FINANCE_COMPTABLE partagent la même portée (tous
+  // les agents de l'agence) — seule la visibilité des commissions les distingue.
+  if (agent.roleImf === "RESPONSABLE_AGENCE" || agent.roleImf === "FINANCE_COMPTABLE") {
     if (!agent.agenceId) return [agent.id];
     const membres = await prisma.agentImf.findMany({
       where: { agenceId: agent.agenceId },
@@ -559,6 +570,20 @@ async function agentIdsDuReseau(agent: {
 /** Routeur séparé, monté avec requireAuth("agent_imf") : profil de l'agent connecté. */
 export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
+
+/**
+ * Le finance comptable n'a accès qu'au tableau de bord, aux souscriptions,
+ * aux contrats et à sa page finance — jamais à la création de devis/
+ * souscriptions ni à la déclaration de sinistres. Retourne true (et répond
+ * 403) si l'accès doit être bloqué.
+ */
+function bloquerFinanceComptable(req: AuthedRequest, res: Response): boolean {
+  if (req.user!.roleImf === "FINANCE_COMPTABLE") {
+    res.status(403).json({ error: "Action réservée aux agents et responsables — non disponible pour le finance comptable." });
+    return true;
+  }
+  return false;
+}
 
 agentImfRouter.get(
   "/moi",
@@ -737,6 +762,7 @@ async function calculerDevisImf(
 agentImfRouter.post(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
+    if (bloquerFinanceComptable(req, res)) return;
     const { produitCode, entrees, offlineId } = simulationSchema.parse(req.body);
 
     // Idempotence (synchronisation PWA hors-ligne) : si cette simulation a déjà
@@ -794,6 +820,7 @@ const souscriptionSchema = z.object({
 agentImfRouter.post(
   "/souscriptions",
   asyncHandler(async (req: AuthedRequest, res) => {
+    if (bloquerFinanceComptable(req, res)) return;
     const data = souscriptionSchema.parse(req.body);
 
     if (data.offlineId) {
@@ -951,6 +978,99 @@ agentImfRouter.get(
       include: { agent: { select: { nom: true, prenom: true } } },
     });
     res.json(rows.map((r) => ({ ...r, agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null })));
+  })
+);
+
+/**
+ * Finance de l'agence — réservé au finance comptable (jamais au responsable
+ * d'agence : c'est précisément le rôle qui ne doit pas voir les commissions).
+ * Commission = taux courant (BaremeSecurpro/Securstock.tauxCommission ou
+ * TarifProduit.commission) × prime HT de la souscription (jamais la TTC) —
+ * calculée à la volée avec les taux EN VIGUEUR, pas ceux figés au moment du
+ * devis, pour qu'une correction de barème se répercute sur tout l'historique.
+ */
+agentImfRouter.get(
+  "/finance",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    if (req.user!.roleImf !== "FINANCE_COMPTABLE") {
+      return res.status(403).json({ error: "Réservé au finance comptable de l'agence." });
+    }
+    const moi = await prisma.agentImf.findUnique({ where: { id: req.user!.sub } });
+    if (!moi?.agenceId) return res.status(400).json({ error: "Aucune agence rattachée à ce compte." });
+
+    const membres = await prisma.agentImf.findMany({
+      where: { agenceId: moi.agenceId },
+      select: { id: true, nom: true, prenom: true },
+    });
+    const agentIds = membres.map((m) => m.id);
+
+    const [souscriptions, baremesSecurpro, baremesSecurstock, tarifsCatalogue] = await Promise.all([
+      prisma.souscriptionImf.findMany({
+        where: { agentId: { in: agentIds }, statut: "active" },
+        select: { agentId: true, produitCode: true, entrees: true, resultat: true, primeTTC: true },
+      }),
+      prisma.baremeSecurpro.findMany(),
+      prisma.baremeSecurstock.findMany(),
+      prisma.tarifProduit.findMany({ include: { produit: { select: { code: true } } } }),
+    ]);
+
+    function commissionDe(s: (typeof souscriptions)[number]): number {
+      const entrees = s.entrees as { classe?: number; libelleVariante?: string };
+      const resultat = s.resultat as { primeNetteHT?: number; primeHT?: number; prime?: number };
+      if (s.produitCode === "securpro") {
+        const bareme = baremesSecurpro.find((b) => b.classe === entrees.classe);
+        return Math.round((resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0));
+      }
+      if (s.produitCode === "securstock") {
+        const bareme = baremesSecurstock.find((b) => b.classe === entrees.classe);
+        return Math.round((resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0));
+      }
+      // Catalogue (COUPS DURS / SECURECOLTE) : la fiche tarifaire source ne
+      // détaille pas toujours la prime HT — à défaut, on retient la prime TTC
+      // comme base (voir remarque transmise à l'utilisateur).
+      const tarif = tarifsCatalogue.find(
+        (t) => t.produit.code === s.produitCode && t.libelleVariante === entrees.libelleVariante
+      );
+      const primeHT = resultat.primeHT ?? resultat.prime ?? s.primeTTC;
+      return Math.round(primeHT * (tarif?.commission ?? 0));
+    }
+
+    const parAgentMap = new Map<
+      string,
+      { nom: string; prenom: string; nombreSouscriptions: number; primeTTC: number; commission: number }
+    >();
+    for (const m of membres) parAgentMap.set(m.id, { nom: m.nom, prenom: m.prenom, nombreSouscriptions: 0, primeTTC: 0, commission: 0 });
+
+    const parProduitMap: Record<string, { nombreSouscriptions: number; primeTTC: number; commission: number }> = {};
+    for (const f of FAMILLES) parProduitMap[f] = { nombreSouscriptions: 0, primeTTC: 0, commission: 0 };
+
+    let totalPrime = 0;
+    let totalCommission = 0;
+
+    for (const s of souscriptions) {
+      const c = commissionDe(s);
+      totalPrime += s.primeTTC;
+      totalCommission += c;
+      if (s.agentId) {
+        const a = parAgentMap.get(s.agentId);
+        if (a) {
+          a.nombreSouscriptions += 1;
+          a.primeTTC += s.primeTTC;
+          a.commission += c;
+        }
+      }
+      const famille = FAMILLE_PRODUIT[s.produitCode] ?? s.produitCode;
+      if (!parProduitMap[famille]) parProduitMap[famille] = { nombreSouscriptions: 0, primeTTC: 0, commission: 0 };
+      parProduitMap[famille].nombreSouscriptions += 1;
+      parProduitMap[famille].primeTTC += s.primeTTC;
+      parProduitMap[famille].commission += c;
+    }
+
+    res.json({
+      global: { nombreSouscriptions: souscriptions.length, primeTTC: totalPrime, commission: totalCommission },
+      parAgent: [...parAgentMap.entries()].map(([id, v]) => ({ agentId: id, ...v })),
+      parProduit: FAMILLES.map((f) => ({ famille: f, ...parProduitMap[f] })),
+    });
   })
 );
 
@@ -1227,6 +1347,7 @@ const declarationSchema = z.object({
 agentImfRouter.post(
   "/sinistres",
   asyncHandler(async (req: AuthedRequest, res) => {
+    if (bloquerFinanceComptable(req, res)) return;
     const data = declarationSchema.parse(req.body);
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,
@@ -1278,6 +1399,7 @@ agentImfRouter.post(
 agentImfRouter.get(
   "/sinistres",
   asyncHandler(async (req: AuthedRequest, res) => {
+    if (bloquerFinanceComptable(req, res)) return;
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
@@ -1301,6 +1423,7 @@ const piecesPatchSchema = z.object({
 agentImfRouter.patch(
   "/sinistres/:id/pieces",
   asyncHandler(async (req: AuthedRequest, res) => {
+    if (bloquerFinanceComptable(req, res)) return;
     const data = piecesPatchSchema.parse(req.body);
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,

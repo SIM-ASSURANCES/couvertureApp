@@ -120,7 +120,7 @@ export interface ClientAccident {
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---
 
-export type RoleImf = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
+export type RoleImf = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
 
 export interface ZoneImf {
   id: string;
@@ -263,6 +263,13 @@ export interface StatsImf {
 export interface StatsSinistresImf {
   global: { primes: number; sinistres: number; ratio: number };
   parProduit: { famille: string; primes: number; sinistres: number; ratio: number }[];
+}
+
+/** Réservé au finance comptable d'une agence — le responsable d'agence n'y a pas accès. */
+export interface FinanceImf {
+  global: { nombreSouscriptions: number; primeTTC: number; commission: number };
+  parAgent: { agentId: string; nom: string; prenom: string; nombreSouscriptions: number; primeTTC: number; commission: number }[];
+  parProduit: { famille: string; nombreSouscriptions: number; primeTTC: number; commission: number }[];
 }
 
 export interface VirementBordereau {

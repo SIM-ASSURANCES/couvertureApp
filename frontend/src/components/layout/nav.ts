@@ -154,10 +154,30 @@ export const adminNav: AdminNavEntry[] = [
   },
 ];
 
-export type RoleImfNav = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE";
+export type RoleImfNav = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
 
-/** Nav de l'espace agent IMF, adaptée selon la portée du rôle connecté. */
+/**
+ * Nav de l'espace agent IMF, adaptée selon la portée du rôle connecté. Le
+ * finance comptable a un accès volontairement restreint : tableau de bord,
+ * souscriptions, contrats, finance — ni simulateur, ni sinistres, ni gestion
+ * de réseau (cohérent avec le blocage serveur, voir bloquerFinanceComptable
+ * côté backend).
+ */
 export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
+  if (roleImf === "FINANCE_COMPTABLE") {
+    return [
+      {
+        section: "Mon activité",
+        items: [
+          { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
+          { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
+          { to: "/agent-imf/finance", label: "Finance", icon: Wallet },
+        ],
+      },
+    ];
+  }
+
   const reseau: NavItem[] =
     roleImf === "RESPONSABLE_ZONE"
       ? [{ to: "/agent-imf/reseau-zone", label: "Mon réseau", icon: MapPin }]

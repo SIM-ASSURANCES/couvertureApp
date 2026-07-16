@@ -20,12 +20,14 @@ const empty = {
 function roleLabel(r: RoleImf) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
+  if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Responsable de zone";
 }
 
-function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" {
+function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" | "success" {
   if (r === "AGENT") return "neutral";
   if (r === "RESPONSABLE_AGENCE") return "warning";
+  if (r === "FINANCE_COMPTABLE") return "success";
   return "info";
 }
 
@@ -189,6 +191,7 @@ export default function Agents() {
               >
                 <option value="AGENT">Agent</option>
                 <option value="RESPONSABLE_AGENCE">Responsable d'agence</option>
+                <option value="FINANCE_COMPTABLE">Finance comptable</option>
                 <option value="RESPONSABLE_ZONE">Responsable de zone</option>
               </select>
             </div>

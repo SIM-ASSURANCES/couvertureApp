@@ -66,6 +66,10 @@ enum RoleImf {
   AGENT
   RESPONSABLE_AGENCE
   RESPONSABLE_ZONE
+  // Rattaché à une agence comme RESPONSABLE_AGENCE, mais accès restreint
+  // (tableau de bord, souscriptions, contrats, finance) et seul rôle à voir
+  // les commissions générées par l'agence — le responsable ne les voit pas.
+  FINANCE_COMPTABLE
 }
 
 enum TypePaiement {
@@ -490,6 +494,9 @@ model BaremeSecurpro {
   classe        Int      @unique // 1 à 4
   limiteCapital Int
   tauxIncendie  Float // taux décimal, ex 0.00072 pour classe 1
+  // Taux de commission (décimal, ex. 0.20 = 20%), appliqué sur la prime nette
+  // HT de la souscription — pas sur la prime TTC.
+  tauxCommission Float   @default(0.20)
   updatedAt     DateTime @updatedAt
 }
 
@@ -499,6 +506,8 @@ model BaremeSecurstock {
   limiteCapital         Int
   tauxDommageElectrique Float // T1
   tauxAutreCause        Float // T2
+  // Taux de commission (décimal, ex. 0.20 = 20%), appliqué sur la prime nette HT.
+  tauxCommission        Float    @default(0.20)
   updatedAt             DateTime @updatedAt
 }
 

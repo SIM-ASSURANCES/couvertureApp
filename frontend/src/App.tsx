@@ -53,6 +53,7 @@ import AgentImfSouscriptions from "./pages/agent-imf/Souscriptions";
 import AgentImfContrats from "./pages/agent-imf/Contrats";
 import AgentImfSinistres from "./pages/agent-imf/Sinistres";
 import AgentImfHorsLigne from "./pages/agent-imf/HorsLigne";
+import AgentImfFinance from "./pages/agent-imf/Finance";
 import AgentImfReseauZone from "./pages/agent-imf/ReseauZone";
 import AgentImfReseauAgence from "./pages/agent-imf/ReseauAgence";
 
@@ -133,6 +134,7 @@ export default function App() {
             <Route path="contrats" element={<AgentImfContrats />} />
             <Route path="sinistres" element={<AgentImfSinistres />} />
             <Route path="hors-ligne" element={<AgentImfHorsLigne />} />
+            <Route path="finance" element={<AgentImfFinance />} />
             <Route path="reseau-zone" element={<AgentImfReseauZone />} />
             <Route path="reseau-agence" element={<AgentImfReseauAgence />} />
           </Route>

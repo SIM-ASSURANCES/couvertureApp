@@ -66,6 +66,35 @@ async function corrigerCapitalGarantiIncendie() {
 }
 
 /**
+ * Correction ponctuelle : les taux de commission du catalogue IMF (COUPS
+ * DURS, SECURECOLTE) étaient à 0 (valeur de départ à la création des
+ * tarifs). Ne corrige que les lignes encore à 0, pour ne jamais écraser un
+ * ajustement manuel fait depuis. SECURPRO/SECURSTOCK n'ont pas besoin de
+ * cette correction : leur tauxCommission (20%) est le défaut de colonne,
+ * déjà appliqué par Postgres à la création de la colonne.
+ */
+async function corrigerCommissionsImf() {
+  const corrections = [
+    { produitCode: "coupsdurs_classique", libelleVariante: "maladie", taux: 0.1 },
+    { produitCode: "coupsdurs_classique", libelleVariante: "deces", taux: 0.1 },
+    { produitCode: "coupsdurs_incapacite", libelleVariante: "plafond_500000", taux: 0.1 },
+    { produitCode: "coupsdurs_incapacite", libelleVariante: "plafond_1000000", taux: 0.1 },
+    { produitCode: "securecolte", libelleVariante: "pack", taux: 0.22 },
+  ];
+  for (const c of corrections) {
+    const produit = await prisma.produit.findUnique({ where: { code: c.produitCode } });
+    if (!produit) continue;
+    const tarif = await prisma.tarifProduit.findFirst({
+      where: { produitId: produit.id, libelleVariante: c.libelleVariante },
+    });
+    if (tarif && tarif.commission === 0) {
+      await prisma.tarifProduit.update({ where: { id: tarif.id }, data: { commission: c.taux } });
+      console.log(`[seed] TarifProduit ${c.produitCode}/${c.libelleVariante} : commission corrigée 0 -> ${c.taux}.`);
+    }
+  }
+}
+
+/**
  * Barèmes SECURPRO / SECURSTOCK (4 classes de risque chacun) et catalogue à
  * prix fixe COUPS DURS / SECURECOLTE, d'après le dossier TARIFS. Idempotent :
  * n'insère que ce qui manque, ne touche jamais aux valeurs déjà éditées via
@@ -164,6 +193,7 @@ async function main() {
   await seedSuperAdmin();
   await corrigerCapitalGarantiIncendie();
   await seedTarificationImf();
+  await corrigerCommissionsImf();
 }
 
 main()
