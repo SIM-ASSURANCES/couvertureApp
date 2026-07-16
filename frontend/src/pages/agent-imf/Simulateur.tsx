@@ -309,7 +309,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           if (!baremeSecurpro) throw new Error("Barèmes SECURPRO non mis en cache — consultez le simulateur en ligne au moins une fois avant de partir hors-ligne.");
           const bareme = baremeSecurpro.find((b) => b.classe === sp.classe);
           if (!bareme) throw new Error("Barème introuvable pour cette classe.");
-          const r = calculerSecurproLocal(entrees as unknown as SecurproInput, bareme);
+          const r = calculerSecurproLocal(entrees as unknown as SecurproInput, bareme as unknown as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxIncendie: number });
           resultatLocal = r;
           primeTTCLocal = r.primeTTC;
         } else if (produitCode === "securstock") {
