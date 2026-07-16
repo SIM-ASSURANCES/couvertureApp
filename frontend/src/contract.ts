@@ -92,6 +92,8 @@ export interface ContratSecurecolte {
   typePiece?: string | null;
   numeroPiece?: string | null;
   montantPack: number;
+  valeurPackage?: number | null;
+  superficieHa?: number | null;
   signature?: string | null;
 }
 
@@ -251,6 +253,7 @@ export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCo
 
 /** Reconstitue les champs du contrat SECURECOLTE à partir d'une souscription IMF (produit catalogue). */
 export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): ContratSecurecolte {
+  const entrees = s.entrees as { valeurPackage?: number; superficieHa?: number };
   const debut = new Date(s.createdAt);
   const fin = new Date(debut);
   fin.setFullYear(fin.getFullYear() + 1);
@@ -266,6 +269,8 @@ export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): Contrat
     typePiece: s.typePiece,
     numeroPiece: s.numeroPiece,
     montantPack: s.primeTTC,
+    valeurPackage: entrees.valeurPackage ?? null,
+    superficieHa: entrees.superficieHa ?? null,
     signature: s.signature ?? null,
   };
 }
@@ -564,6 +569,7 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Valeur du package</td><td>${c.valeurPackage ? fcfa(c.valeurPackage) : "—"}</td><td class="k">Superficie du champ</td><td>${c.superficieHa ? `${c.superficieHa} ha` : "—"}</td></tr>
   </table>
 
   <div class="note">

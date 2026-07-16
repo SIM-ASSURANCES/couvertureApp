@@ -654,7 +654,14 @@ const securstockInputSchema = z.object({
   gardien: z.boolean(),
 });
 
-const catalogueInputSchema = z.object({ libelleVariante: z.string().min(1) });
+const catalogueInputSchema = z.object({
+  libelleVariante: z.string().min(1),
+  // SECURECOLTE uniquement : purement déclaratif, sans effet sur le tarif
+  // (prime et capital garanti restent ceux du catalogue) — enregistrés pour
+  // le dossier et le contrat.
+  valeurPackage: z.number().positive().optional(),
+  superficieHa: z.number().positive().optional(),
+});
 
 /**
  * COUPS DURS uniquement : déclaration de bonne santé (conditionne l'acceptation)

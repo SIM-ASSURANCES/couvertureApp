@@ -215,6 +215,11 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const necessiteBeneficiaires = produitCode === "coupsdurs_classique" && variante === "deces";
   const totalBeneficiaires = beneficiaires.reduce((s, b) => s + (b.pourcentage || 0), 0);
 
+  // SECURECOLTE : champs purement déclaratifs (sans effet sur la prime/le capital garanti
+  // du pack, fixés au catalogue) — enregistrés pour le dossier et le contrat.
+  const estSecurecolte = produitCode === "securecolte";
+  const [secol, setSecol] = useState({ valeurPackage: 0, superficieHa: 0 });
+
   function toggleAffection(a: string) {
     setSante((s) => ({
       ...s,
@@ -305,6 +310,8 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
       if (t) {
         nextEntrees = estCoupsdurs
           ? { libelleVariante: variante, sante, beneficiaires: necessiteBeneficiaires ? beneficiaires : undefined }
+          : estSecurecolte
+          ? { libelleVariante: variante, valeurPackage: secol.valeurPackage || undefined, superficieHa: secol.superficieHa || undefined }
           : { libelleVariante: variante };
         nextResultat = { prime: t.prime, capitalGaranti: t.capitalGaranti };
         nextPrimeTTC = t.prime;
@@ -317,7 +324,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setPrimeTTCCourante(nextPrimeTTC);
     setError(nextError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, estCoupsdurs, necessiteBeneficiaires]);
+  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, estCoupsdurs, necessiteBeneficiaires, estSecurecolte, secol]);
 
   function reset() {
     setSouscription(null);
@@ -327,6 +334,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     sigRef.current?.clear();
     setSante(defaultSante());
     setBeneficiaires([]);
+    setSecol({ valeurPackage: 0, superficieHa: 0 });
   }
 
   async function souscrire(e: React.FormEvent) {
@@ -615,6 +623,32 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
               </div>
             )}
 
+            {estSecurecolte && (
+              <>
+                <div className="field">
+                  <label className="label">Valeur du package <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={secol.valeurPackage || ""}
+                    onChange={(e) => setSecol({ ...secol, valeurPackage: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="field">
+                  <label className="label">Superficie du champ (ha) <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    value={secol.superficieHa || ""}
+                    onChange={(e) => setSecol({ ...secol, superficieHa: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 8 }}>
+                  Informations déclaratives : sans effet sur la prime ni le capital garanti du pack.
+                </div>
+              </>
+            )}
+
             {estCoupsdurs && (
               <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                 <label className="label">Déclaration de bonne santé <span className="req">*</span></label>
@@ -725,7 +759,11 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             <button
               type="button"
               className="btn btn-primary btn-block"
-              disabled={!devisValide || (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100)}
+              disabled={
+                !devisValide ||
+                (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100) ||
+                (estSecurecolte && (!secol.valeurPackage || !secol.superficieHa))
+              }
               style={{ marginTop: 16 }}
               onClick={() => setPretASouscrire(true)}
             >
