@@ -694,10 +694,6 @@ const santeSchema = z.object({
     )
     .default([]),
   affectionsPrecisions: z.string().optional(),
-  familleBonneSante: z.boolean(),
-  familleBonneSantePrecisions: z.string().optional(),
-  familleHospitalisee: z.boolean(),
-  familleHospitaliseePrecisions: z.string().optional(),
 });
 
 const beneficiaireSchema = z.object({

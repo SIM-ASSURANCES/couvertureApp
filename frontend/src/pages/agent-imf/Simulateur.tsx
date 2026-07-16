@@ -83,8 +83,6 @@ function defaultSante() {
     enceinte: false,
     affections: [] as string[],
     affectionsPrecisions: "",
-    familleBonneSante: true, familleBonneSantePrecisions: "",
-    familleHospitalisee: false, familleHospitaliseePrecisions: "",
   };
 }
 
@@ -716,17 +714,6 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 {sante.affections.length > 0 && (
                   <input className="input" style={{ marginTop: 10 }} placeholder="Précisions sur les affections cochées" value={sante.affectionsPrecisions} onChange={(e) => setSante({ ...sante, affectionsPrecisions: e.target.value })} />
                 )}
-
-                <div style={{ marginTop: 10 }}>
-                  <OuiNon label="Les membres de votre famille sont-ils tous en bonne santé ?" value={sante.familleBonneSante} onChange={(v) => setSante({ ...sante, familleBonneSante: v })} />
-                  {!sante.familleBonneSante && (
-                    <input className="input" style={{ marginBottom: 10 }} placeholder="Précisions" value={sante.familleBonneSantePrecisions} onChange={(e) => setSante({ ...sante, familleBonneSantePrecisions: e.target.value })} />
-                  )}
-                  <OuiNon label="Un membre de votre famille a-t-il été hospitalisé cette dernière année ?" value={sante.familleHospitalisee} onChange={(v) => setSante({ ...sante, familleHospitalisee: v })} />
-                  {sante.familleHospitalisee && (
-                    <input className="input" placeholder="Précisions" value={sante.familleHospitaliseePrecisions} onChange={(e) => setSante({ ...sante, familleHospitaliseePrecisions: e.target.value })} />
-                  )}
-                </div>
               </div>
             )}
 

@@ -115,10 +115,6 @@ export interface SanteCoupsdurs {
   enceinte?: boolean;
   affections?: string[];
   affectionsPrecisions?: string;
-  familleBonneSante?: boolean;
-  familleBonneSantePrecisions?: string;
-  familleHospitalisee?: boolean;
-  familleHospitaliseePrecisions?: string;
 }
 
 export interface BeneficiaireCoupsdurs {
@@ -654,8 +650,7 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
     <tr><td class="k">Sportif</td><td>${ouiNon(s.sportif)}${s.sportif ? ` (${s.sportifNiveau === "professionnel" ? "Professionnel" : "Amateur"})` : ""}</td><td class="k">Infirmité</td><td>${ouiNon(s.infirmite)}${s.infirmite ? ` — ${val(s.infirmiteNature)} (${val(s.infirmiteTaux)})` : ""}</td></tr>
     <tr><td class="k">Malade (5 dernières années)</td><td>${ouiNon(s.maladieRecente)}${s.maladieRecente ? ` — ${val(s.maladieRecentePrecisions)}` : ""}</td><td class="k">Toux + fièvre récentes</td><td>${ouiNon(s.touxFievre)}</td></tr>
     <tr><td class="k">Diarrhée fréquente</td><td>${ouiNon(s.diarrheeFrequente)}</td><td class="k">Transfusion sanguine</td><td>${ouiNon(s.transfusion)}</td></tr>
-    <tr><td class="k">Grossesse en cours</td><td>${ouiNon(s.enceinte)}</td><td class="k">Famille en bonne santé</td><td>${ouiNon(s.familleBonneSante)}${!s.familleBonneSante ? ` — ${val(s.familleBonneSantePrecisions)}` : ""}</td></tr>
-    <tr><td class="k">Famille hospitalisée (12 mois)</td><td>${ouiNon(s.familleHospitalisee)}${s.familleHospitalisee ? ` — ${val(s.familleHospitaliseePrecisions)}` : ""}</td><td class="k">Affections déclarées</td><td>${s.affections?.length ? s.affections.map((a) => AFFECTIONS_LABELS[a] ?? a).join(", ") : "Aucune"}</td></tr>
+    <tr><td class="k">Grossesse en cours</td><td>${ouiNon(s.enceinte)}</td><td class="k">Affections déclarées</td><td>${s.affections?.length ? s.affections.map((a) => AFFECTIONS_LABELS[a] ?? a).join(", ") : "Aucune"}</td></tr>
     ${s.affectionsPrecisions ? `<tr><td class="k">Précisions sur les affections</td><td colspan="3">${val(s.affectionsPrecisions)}</td></tr>` : ""}
   </table>
   <div class="note" style="font-style:italic;">
