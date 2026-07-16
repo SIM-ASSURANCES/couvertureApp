@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { requireAuth } from "../auth.js";
+import { requireAuth, requireSuperAdmin } from "../auth.js";
 import { asyncHandler } from "../util.js";
 
 export const journalRouter = Router();
-journalRouter.use(requireAuth("admin"));
+// Le journal d'audit couvre toutes les branches — réservé au SUPER_ADMIN,
+// jamais à un admin scopé à une seule branche.
+journalRouter.use(requireAuth("admin"), requireSuperAdmin);
 
 journalRouter.get(
   "/",

@@ -16,6 +16,7 @@ function branchesEffectives(a: { role: string; branches: string[] }) {
 
 adminsRouter.get(
   "/",
+  requireSuperAdmin,
   asyncHandler(async (_req, res) => {
     const admins = await prisma.admin.findMany({
       orderBy: { createdAt: "asc" },

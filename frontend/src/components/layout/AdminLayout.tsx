@@ -16,9 +16,13 @@ export default function AdminLayout() {
   // auxquelles il a accès. Un SUPER_ADMIN a toujours accès à toutes (le champ
   // `branches` renvoyé par le backend reflète déjà cette règle).
   const branches = user?.branches;
-  const nav = branches
-    ? adminNav.filter((entry) => !isNavBranch(entry) || branches.includes(NAV_ID_TO_BRANCHE[entry.id]))
-    : adminNav;
+  // « Administration générale » (journal d'audit, comptes admin, paramètres)
+  // n'est visible que du SUPER_ADMIN — même règle appliquée côté backend
+  // (requireSuperAdmin sur ces routes).
+  const estSuperAdmin = user?.role === "SUPER_ADMIN";
+  const nav = adminNav
+    .filter((entry) => !isNavBranch(entry) || !branches || branches.includes(NAV_ID_TO_BRANCHE[entry.id]))
+    .filter((entry) => estSuperAdmin || isNavBranch(entry) || entry.section !== "Administration générale");
 
   return (
     <DashboardLayout

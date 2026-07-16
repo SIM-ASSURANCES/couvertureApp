@@ -6,7 +6,10 @@ import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 
 export const parametresRouter = Router();
-parametresRouter.use(requireAuth("admin"));
+// Paramètres et tarifs sont une fonctionnalité d'administration générale —
+// réservée au SUPER_ADMIN (le flux public de souscription utilise ses
+// propres routes /public/tarifs/*, indépendantes de celles-ci).
+parametresRouter.use(requireAuth("admin"), requireSuperAdmin);
 
 /* ── Tarifications ── */
 
