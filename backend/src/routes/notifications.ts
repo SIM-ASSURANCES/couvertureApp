@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest, type AuthUser } from "../auth.js";
 import { asyncHandler } from "../util.js";
@@ -6,10 +7,21 @@ import { asyncHandler } from "../util.js";
 export const notificationsRouter = Router();
 notificationsRouter.use(requireAuth("admin", "partenaire"));
 
-function whereFor(user: AuthUser) {
-  return user.type === "partenaire"
-    ? { cible: "partenaire", partenaireId: user.sub }
-    : { cible: "admin" };
+/**
+ * Un admin ne voit que les notifications de ses branches (comportement
+ * identique à requireBranche) : un SUPER_ADMIN, ou un jeton émis avant
+ * l'introduction des branches (claim absent), voit tout. Les notifications
+ * sans branche renseignée (branche = null — anciennes lignes, ou une
+ * éventuelle notification transverse future) restent visibles par tous.
+ */
+function whereFor(user: AuthUser): Prisma.NotificationWhereInput {
+  if (user.type === "partenaire") {
+    return { cible: "partenaire", partenaireId: user.sub };
+  }
+  if (user.role === "SUPER_ADMIN" || user.branches === undefined) {
+    return { cible: "admin" };
+  }
+  return { cible: "admin", OR: [{ branche: { in: user.branches } }, { branche: null }] };
 }
 
 notificationsRouter.get(

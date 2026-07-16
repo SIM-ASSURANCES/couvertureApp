@@ -197,6 +197,7 @@ meRouter.post(
       data: { partenaireId: id, montant: stats.due },
     });
     await notifyAdmins(
+      p?.branche ?? "INCENDIE_ACCIDENT",
       "commission_demande",
       "Nouvelle demande de commission",
       `${p?.nomCommerce ?? "Un partenaire"} demande le versement de ${stats.due} FCFA.`,

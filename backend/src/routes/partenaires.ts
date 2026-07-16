@@ -221,6 +221,7 @@ partenairesRouter.post(
       valeurApres: { ...created, passwordHash: undefined },
     });
     await notifyAdmins(
+      created.branche ?? "INCENDIE_ACCIDENT",
       "partenaire_cree",
       "Nouveau partenaire",
       `${created.nomCommerce} (${created.localisation}) a été ajouté au réseau.`,
@@ -324,6 +325,7 @@ partenairesRouter.post(
       valeurApres: { statut },
     });
     await notifyAdmins(
+      updated.branche ?? "INCENDIE_ACCIDENT",
       "partenaire_statut",
       "Statut partenaire modifié",
       `${updated.nomCommerce} est désormais ${statut}.`,

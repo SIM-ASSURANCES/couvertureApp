@@ -248,6 +248,11 @@ model Notification {
   cible        String
   partenaireId String?
   partenaire   Partenaire? @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Branche concernée (notifications admin uniquement) : permet à chaque
+  // admin de ne voir que les notifications de ses branches. Nullable pour ne
+  // jamais masquer les notifications déjà existantes avant l'introduction de
+  // ce champ, ni une éventuelle notification transverse future.
+  branche      Branche?
   type         String
   titre        String
   message      String
