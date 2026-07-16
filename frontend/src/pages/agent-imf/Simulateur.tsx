@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Calculator, FileCheck, Download, Plus, X, WifiOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { FileCheck, Download, Plus, X, WifiOff } from "lucide-react";
 import { PageHeader, Card, Badge, fcfa } from "../../components/ui";
 import { api } from "../../api";
 import { genererContratImf, contratImfDisponible } from "../../contract";
@@ -141,11 +141,8 @@ interface ResultatFormule {
  */
 export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: string }) {
   const [produitCode, setProduitCode] = useState<ProduitCode>("securpro");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resultat, setResultat] = useState<ResultatFormule | { prime: number; capitalGaranti: number } | null>(null);
-  const [saved, setSaved] = useState(false);
-  const [simulationId, setSimulationId] = useState<string | null>(null);
   const [souscription, setSouscription] = useState<SouscriptionImf | null>(null);
   const [client, setClient] = useState({
     nom: "", prenom: "", telephone: "", email: "",
@@ -160,6 +157,9 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [entreesCourantes, setEntreesCourantes] = useState<Record<string, unknown> | null>(null);
   const [resultatCourant, setResultatCourant] = useState<unknown>(null);
   const [primeTTCCourante, setPrimeTTCCourante] = useState(0);
+  // Passe à true au clic sur « Je souscris » : révèle le formulaire d'identité
+  // du client. Le devis lui-même est déjà calculé en direct avant ça.
+  const [pretASouscrire, setPretASouscrire] = useState(false);
 
   // SECURPRO
   const [sp, setSp] = useState({
@@ -237,128 +237,105 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const offlineCapable = apiBase === "/agent-imf";
   const modeHorsLigne = offlineCapable && !online;
 
+  /**
+   * Devis calculé en direct, sans bouton ni requête serveur, à chaque
+   * modification d'un paramètre — via le même moteur que le mode hors-ligne
+   * (offline/tarification.ts, offline/catalogue.ts). Aucune simulation n'est
+   * persistée à ce stade : elle n'est créée côté serveur (avec recalcul sur
+   * le barème EN VIGUEUR, seule source de vérité) qu'au moment de la
+   * conversion effective en souscription — voir souscrire().
+   */
+  useEffect(() => {
+    let nextResultat: ResultatFormule | { prime: number; capitalGaranti: number } | null = null;
+    let nextEntrees: Record<string, unknown> | null = null;
+    let nextPrimeTTC = 0;
+    let nextError = "";
+
+    if (produitCode === "securpro") {
+      if (sp.dansMarche !== null && baremeSecurpro) {
+        const bareme = baremeSecurpro.find((b) => b.classe === sp.classe);
+        if (bareme) {
+          const entrees: Record<string, unknown> = {
+            classe: sp.classe,
+            statutOccupation: sp.statutOccupation,
+            valeurBatiment: sp.statutOccupation === "proprietaire" ? sp.valeurBatiment : undefined,
+            loyerMensuel: sp.statutOccupation === "locataire" ? sp.loyerMensuel : undefined,
+            contenu: sp.contenu,
+            dansMarche: !!sp.dansMarche,
+            gardien: sp.gardien,
+            extincteur: sp.extincteur,
+            volContenu: sp.volContenu,
+            majorationVolContenu: sp.majorationVolContenu,
+            volCaisseCapital: sp.volCaisseCapital || undefined,
+            majorationVolCaisse: sp.majorationVolCaisse,
+            ddeCapital: sp.ddeCapital || undefined,
+            deCapital: sp.deCapital || undefined,
+            bdgCapital: sp.bdgCapital || undefined,
+          };
+          const r = calculerSecurproLocal(
+            entrees as unknown as SecurproInput,
+            bareme as unknown as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxIncendie: number }
+          );
+          nextResultat = r as ResultatFormule;
+          nextEntrees = entrees;
+          nextPrimeTTC = r.primeTTC;
+        }
+      }
+    } else if (produitCode === "securstock") {
+      if (baremeSecurstock) {
+        const bareme = baremeSecurstock.find((b) => b.classe === ss.classe);
+        if (bareme) {
+          const entrees: Record<string, unknown> = { ...ss };
+          const r = calculerSecurstockLocal(
+            entrees as unknown as SecurstockInput,
+            bareme as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxDommageElectrique: number; tauxAutreCause: number }
+          );
+          if ("nonAssurable" in r && r.nonAssurable) {
+            nextError = r.motif;
+          } else {
+            nextResultat = r as ResultatFormule;
+            nextEntrees = entrees;
+            nextPrimeTTC = r.primeTTC;
+          }
+        }
+      }
+    } else {
+      // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
+      const t = tarifCatalogueHorsLigne(produitCode, variante);
+      if (t) {
+        nextEntrees = estCoupsdurs
+          ? { libelleVariante: variante, sante, beneficiaires: necessiteBeneficiaires ? beneficiaires : undefined }
+          : { libelleVariante: variante };
+        nextResultat = { prime: t.prime, capitalGaranti: t.capitalGaranti };
+        nextPrimeTTC = t.prime;
+      }
+    }
+
+    setResultat(nextResultat);
+    setEntreesCourantes(nextEntrees);
+    setResultatCourant(nextResultat);
+    setPrimeTTCCourante(nextPrimeTTC);
+    setError(nextError);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, estCoupsdurs, necessiteBeneficiaires]);
+
   function reset() {
-    setResultat(null);
-    setError("");
-    setSaved(false);
-    setSimulationId(null);
     setSouscription(null);
     setSouscriptionHorsLigne(null);
-    setEntreesCourantes(null);
-    setResultatCourant(null);
-    setPrimeTTCCourante(0);
     setErreurSouscription("");
+    setPretASouscrire(false);
     sigRef.current?.clear();
     setSante(defaultSante());
     setBeneficiaires([]);
   }
 
-  async function simuler(e: React.FormEvent) {
-    e.preventDefault();
-    if (produitCode === "securpro" && sp.dansMarche === null) {
-      setError("Veuillez répondre à la question sur la localisation du local.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    setSaved(false);
-    setSimulationId(null);
-    setSouscription(null);
-    setSouscriptionHorsLigne(null);
-    setErreurSouscription("");
-    try {
-      let entrees: Record<string, unknown>;
-      if (produitCode === "securpro") {
-        entrees = {
-          classe: sp.classe,
-          statutOccupation: sp.statutOccupation,
-          valeurBatiment: sp.statutOccupation === "proprietaire" ? sp.valeurBatiment : undefined,
-          loyerMensuel: sp.statutOccupation === "locataire" ? sp.loyerMensuel : undefined,
-          contenu: sp.contenu,
-          dansMarche: !!sp.dansMarche,
-          gardien: sp.gardien,
-          extincteur: sp.extincteur,
-          volContenu: sp.volContenu,
-          majorationVolContenu: sp.majorationVolContenu,
-          volCaisseCapital: sp.volCaisseCapital || undefined,
-          majorationVolCaisse: sp.majorationVolCaisse,
-          ddeCapital: sp.ddeCapital || undefined,
-          deCapital: sp.deCapital || undefined,
-          bdgCapital: sp.bdgCapital || undefined,
-        };
-      } else if (produitCode === "securstock") {
-        entrees = { ...ss };
-      } else if (estCoupsdurs) {
-        entrees = {
-          libelleVariante: variante,
-          sante,
-          beneficiaires: necessiteBeneficiaires ? beneficiaires : undefined,
-        };
-      } else {
-        entrees = { libelleVariante: variante };
-      }
-
-      if (modeHorsLigne) {
-        // Calcul local (aucune requête serveur) : le devis reste utilisable
-        // sans réseau, à partir des barèmes mis en cache lors de la dernière
-        // session en ligne (cf. useBaremeCache) et du catalogue figé pour
-        // COUPS DURS/SECURECOLTE (cf. offline/catalogue.ts).
-        let resultatLocal: unknown;
-        let primeTTCLocal: number;
-        if (produitCode === "securpro") {
-          if (!baremeSecurpro) throw new Error("Barèmes SECURPRO non mis en cache — consultez le simulateur en ligne au moins une fois avant de partir hors-ligne.");
-          const bareme = baremeSecurpro.find((b) => b.classe === sp.classe);
-          if (!bareme) throw new Error("Barème introuvable pour cette classe.");
-          const r = calculerSecurproLocal(entrees as unknown as SecurproInput, bareme as unknown as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxIncendie: number });
-          resultatLocal = r;
-          primeTTCLocal = r.primeTTC;
-        } else if (produitCode === "securstock") {
-          if (!baremeSecurstock) throw new Error("Barèmes SECURSTOCK non mis en cache — consultez le simulateur en ligne au moins une fois avant de partir hors-ligne.");
-          const bareme = baremeSecurstock.find((b) => b.classe === ss.classe);
-          if (!bareme) throw new Error("Barème introuvable pour cette classe.");
-          const r = calculerSecurstockLocal(entrees as unknown as SecurstockInput, bareme as { classe: 1 | 2 | 3 | 4; limiteCapital: number; tauxDommageElectrique: number; tauxAutreCause: number });
-          if ("nonAssurable" in r && r.nonAssurable) throw new Error(r.motif);
-          resultatLocal = r;
-          primeTTCLocal = r.primeTTC;
-        } else {
-          const t = tarifCatalogueHorsLigne(produitCode, variante);
-          if (!t) throw new Error("Tarif indisponible hors-ligne pour cette variante.");
-          resultatLocal = { prime: t.prime, capitalGaranti: t.capitalGaranti };
-          primeTTCLocal = t.prime;
-        }
-        setResultat(resultatLocal as ResultatFormule);
-        setEntreesCourantes(entrees);
-        setResultatCourant(resultatLocal);
-        setPrimeTTCCourante(primeTTCLocal);
-        setSimulationId("hors-ligne");
-        setSaved(true);
-      } else {
-        const res = await api.post<{ id: string; resultat: unknown; primeTTC: number }>(`${apiBase}/simulations`, {
-          produitCode,
-          entrees,
-        });
-        setResultat(res.resultat as ResultatFormule);
-        setEntreesCourantes(entrees);
-        setResultatCourant(res.resultat);
-        setPrimeTTCCourante(res.primeTTC);
-        setSimulationId(res.id);
-        setSaved(true);
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   async function souscrire(e: React.FormEvent) {
     e.preventDefault();
-    if (!simulationId) return;
+    if (!entreesCourantes || depassement) return;
     setSouscrivant(true);
     setErreurSouscription("");
     try {
-      if (simulationId === "hors-ligne") {
-        if (!entreesCourantes) throw new Error("Devis local introuvable — recalculez le devis.");
+      if (modeHorsLigne) {
         const offlineId = crypto.randomUUID();
         const item: SouscriptionEnAttente = {
           offlineId,
@@ -382,11 +359,18 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         };
         await putQueueItem(item);
         setSouscriptionHorsLigne(item);
-        setSouscrivant(false);
         return;
       }
+      // En ligne : la simulation n'a jamais été persistée pendant la saisie
+      // (devis calculé en direct côté client) — on la crée maintenant, ce qui
+      // déclenche un recalcul serveur sur le barème EN VIGUEUR (seule source
+      // de vérité), puis on convertit aussitôt en souscription.
+      const simulation = await api.post<{ id: string }>(`${apiBase}/simulations`, {
+        produitCode,
+        entrees: entreesCourantes,
+      });
       const res = await api.post<SouscriptionImf>(`${apiBase}/souscriptions`, {
-        simulationId,
+        simulationId: simulation.id,
         nom: client.nom,
         prenom: client.prenom,
         telephone: client.telephone,
@@ -404,7 +388,9 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   }
 
   const depassement = !!(resultat && "primeTTC" in resultat && resultat.depassementPlafond);
-  const peutSouscrire = !!simulationId && !depassement && !souscription && !souscriptionHorsLigne;
+  const devisValide = !!resultat && !depassement;
+  const peutSouscrire = devisValide && !souscription && !souscriptionHorsLigne;
+  const primeVolLigne = resultat && "lignes" in resultat ? resultat.lignes.find((l) => l.garantie === "Vol") : undefined;
 
   const varianteOptions =
     produitCode === "coupsdurs_classique"
@@ -437,7 +423,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             </select>
           </div>
 
-          <form onSubmit={simuler}>
+          <div>
             {produitCode === "securpro" && (
               <>
                 <div className="field">
@@ -513,8 +499,16 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
 
                 <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <label className="label">Garanties optionnelles</label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
-                    <input type="checkbox" checked={sp.volContenu} onChange={(e) => setSp({ ...sp, volContenu: e.target.checked })} /> Vol contenu
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6, justifyContent: "space-between" }}>
+                    <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input type="checkbox" checked={sp.volContenu} onChange={(e) => setSp({ ...sp, volContenu: e.target.checked })} />
+                      Vol contenu
+                    </span>
+                    {sp.volContenu && primeVolLigne && (
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {fcfa(primeVolLigne.prime)}{sp.volCaisseCapital ? " (incl. vol caisse)" : ""}
+                      </span>
+                    )}
                   </label>
                   <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
                     <span style={{ fontSize: 13 }}>Vol caisse</span>
@@ -729,22 +723,20 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             )}
 
             <button
+              type="button"
               className="btn btn-primary btn-block"
-              disabled={
-                loading ||
-                (produitCode === "securpro" && sp.dansMarche === null) ||
-                (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100)
-              }
+              disabled={!devisValide || (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100)}
               style={{ marginTop: 16 }}
+              onClick={() => setPretASouscrire(true)}
             >
-              <Calculator size={17} /> {loading ? "Calcul…" : "Calculer le devis"}
+              <FileCheck size={17} /> Je souscris
             </button>
-          </form>
+          </div>
         </Card>
 
         <Card title="Résultat">
           {error && <div className="empty" style={{ color: "var(--danger)" }}>{error}</div>}
-          {!error && !resultat && <div className="empty">Renseignez les paramètres puis calculez le devis.</div>}
+          {!error && !resultat && <div className="empty">Renseignez les paramètres pour voir le devis.</div>}
 
           {!error && resultat && "primeTTC" in resultat && (
             <>
@@ -753,42 +745,36 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                   Les capitaux dépassent le plafond de la classe — souscription manuelle requise.
                 </div>
               ) : (
-                <>
-                  <table className="tbl" style={{ width: "100%" }}>
-                    <tbody>
-                      {resultat.lignes.map((l, i) => (
-                        <tr key={i}>
-                          <td>{l.garantie}{l.capital ? ` (${fcfa(l.capital)})` : ""}</td>
-                          <td style={{ textAlign: "right" }}>{fcfa(l.prime)}</td>
-                        </tr>
-                      ))}
-                      <tr><td className="muted">Prime nette HT</td><td style={{ textAlign: "right" }}>{fcfa(resultat.primeNetteHT)}</td></tr>
-                      <tr><td className="muted">Accessoires</td><td style={{ textAlign: "right" }}>{fcfa(resultat.accessoires)}</td></tr>
-                      <tr><td className="muted">Taxes</td><td style={{ textAlign: "right" }}>{fcfa(resultat.taxes)}</td></tr>
-                      <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.primeTTC)}</strong></td></tr>
-                    </tbody>
-                  </table>
-                  {saved && <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>Simulation enregistrée ✓</div>}
-                </>
+                <table className="tbl" style={{ width: "100%" }}>
+                  <tbody>
+                    {resultat.lignes.map((l, i) => (
+                      <tr key={i}>
+                        <td>{l.garantie}{l.capital ? ` (${fcfa(l.capital)})` : ""}</td>
+                        <td style={{ textAlign: "right" }}>{fcfa(l.prime)}</td>
+                      </tr>
+                    ))}
+                    <tr><td className="muted">Prime nette HT</td><td style={{ textAlign: "right" }}>{fcfa(resultat.primeNetteHT)}</td></tr>
+                    <tr><td className="muted">Accessoires</td><td style={{ textAlign: "right" }}>{fcfa(resultat.accessoires)}</td></tr>
+                    <tr><td className="muted">Taxes</td><td style={{ textAlign: "right" }}>{fcfa(resultat.taxes)}</td></tr>
+                    <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.primeTTC)}</strong></td></tr>
+                  </tbody>
+                </table>
               )}
             </>
           )}
 
           {!error && resultat && "prime" in resultat && (
-            <>
-              <table className="tbl" style={{ width: "100%" }}>
-                <tbody>
-                  <tr><td className="muted">Capital garanti</td><td style={{ textAlign: "right" }}>{fcfa(resultat.capitalGaranti)}</td></tr>
-                  <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.prime)}</strong></td></tr>
-                </tbody>
-              </table>
-              {saved && <div className="muted" style={{ marginTop: 12, fontSize: 13 }}>Simulation enregistrée ✓</div>}
-            </>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted">Capital garanti</td><td style={{ textAlign: "right" }}>{fcfa(resultat.capitalGaranti)}</td></tr>
+                <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.prime)}</strong></td></tr>
+              </tbody>
+            </table>
           )}
         </Card>
       </div>
 
-      {(peutSouscrire || souscription || souscriptionHorsLigne) && (
+      {((pretASouscrire && peutSouscrire) || souscription || souscriptionHorsLigne) && (
         <div style={{ marginTop: 24 }}>
           <Card title="Souscription">
             {souscription ? (
