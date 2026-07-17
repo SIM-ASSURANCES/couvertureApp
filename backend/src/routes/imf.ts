@@ -652,6 +652,7 @@ const securstockInputSchema = z.object({
   installationElectrique: z.enum(["securisee", "acceptable", "degradee", "dangereuse"]),
   prevention: z.enum(["extincteurs_alarme_formation_eau", "extincteurs_eau", "extincteurs_seuls", "aucun"]),
   gardien: z.boolean(),
+  cameraSurveillance: z.boolean(),
 });
 
 const catalogueInputSchema = z.object({

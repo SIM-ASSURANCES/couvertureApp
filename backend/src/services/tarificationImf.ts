@@ -141,6 +141,7 @@ export interface SecurstockInput {
   installationElectrique: InstallationElectrique;
   prevention: Prevention;
   gardien: boolean;
+  cameraSurveillance: boolean;
 }
 
 const MAJORATION_DENSITE: Record<Densite, number> = {
@@ -176,11 +177,29 @@ export function calculerSecurstock(
   }
 
   // Cl2 : plafond imposé par la localisation et/ou l'installation électrique.
+  // Un local dans un marché ou à ses abords plafonne à 1 000 000, quelle que
+  // soit la classe de risque.
   let cl2 = bareme.limiteCapital;
-  if (input.localisation !== "hors_marche") cl2 = Math.min(cl2, 2_500_000);
+  if (input.localisation !== "hors_marche") cl2 = Math.min(cl2, 1_000_000);
   if (input.installationElectrique === "degradee") cl2 = Math.min(cl2, 2_500_000);
 
-  const capitalRetenu = Math.min(input.capitalDeclare, bareme.limiteCapital, cl2);
+  const limiteApplicable = Math.min(bareme.limiteCapital, cl2);
+  const depassementPlafond = input.capitalDeclare > limiteApplicable;
+
+  if (depassementPlafond) {
+    return {
+      depassementPlafond: true,
+      capitauxTotaux: input.capitalDeclare,
+      limiteApplicable,
+      lignes: [],
+      primeNetteHT: 0,
+      accessoires: 0,
+      taxes: 0,
+      primeTTC: 0,
+    };
+  }
+
+  const capitalRetenu = input.capitalDeclare;
 
   const primeBase = (bareme.tauxDommageElectrique + bareme.tauxAutreCause) * capitalRetenu;
 
@@ -190,7 +209,8 @@ export function calculerSecurstock(
     MAJORATION_LOCALISATION[input.localisation] +
     majorationInstallation +
     MAJORATION_PREVENTION[input.prevention] +
-    (input.gardien ? -0.05 : 0);
+    (input.gardien ? -0.05 : 0) +
+    (input.cameraSurveillance ? -0.05 : 0);
 
   const accessoires = ACCESSOIRE_PAR_GARANTIE; // garantie unique "PACKAGE SECURSTOCK"
   const primeTTC = round2((primeBase * (1 + m) + accessoires) * (1 + TAXE_INCENDIE));
@@ -198,7 +218,7 @@ export function calculerSecurstock(
   return {
     depassementPlafond: false,
     capitauxTotaux: capitalRetenu,
-    limiteApplicable: cl2,
+    limiteApplicable,
     lignes: [{ garantie: "Package Securstock (incendie)", capital: capitalRetenu, prime: round2(primeBase) }],
     primeNetteHT: round2(primeBase),
     accessoires,

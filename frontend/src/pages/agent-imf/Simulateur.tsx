@@ -54,7 +54,7 @@ const SECURSTOCK_CLASSES: { classe: number; label: string }[] = [
 
 // Plafond imposé dès que le local est dans un marché / à ses abords / en zone
 // industrielle, quelle que soit la classe (fiche produit SECURSTOCK, §7 NB).
-const PLAFOND_MARCHE_SECURSTOCK = 2_500_000;
+const PLAFOND_MARCHE_SECURSTOCK = 1_000_000;
 
 const AFFECTIONS: { value: string; label: string }[] = [
   { value: "cancer", label: "Cancer" },
@@ -88,7 +88,7 @@ function defaultSante() {
 interface Beneficiaire { nom: string; contact: string; lien: string; pourcentage: number }
 
 /** Question oui/non compacte, utilisée dans la déclaration de bonne santé COUPS DURS. */
-function OuiNon({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+function OuiNon({ label, value, onChange }: { label: React.ReactNode; value: boolean | null; onChange: (v: boolean) => void }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
       <span style={{ fontSize: 13 }}>{label}</span>
@@ -190,6 +190,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     installationElectrique: "securisee" as "securisee" | "acceptable" | "degradee" | "dangereuse",
     prevention: "aucun" as "extincteurs_alarme_formation_eau" | "extincteurs_eau" | "extincteurs_seuls" | "aucun",
     gardien: false,
+    cameraSurveillance: null as boolean | null,
   });
   const baremeSecurstock = useBaremeCache<BaremeClasseSecurstock[]>(
     "baremes_securstock",
@@ -292,7 +293,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         }
       }
     } else if (produitCode === "securstock") {
-      if (baremeSecurstock) {
+      if (baremeSecurstock && ss.cameraSurveillance !== null) {
         const bareme = baremeSecurstock.find((b) => b.classe === ss.classe);
         if (bareme) {
           const entrees: Record<string, unknown> = { ...ss };
@@ -622,6 +623,13 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <input type="checkbox" checked={ss.gardien} onChange={(e) => setSs({ ...ss, gardien: e.target.checked })} /> Gardien
                 </label>
+                <div className="field" style={{ marginTop: 10 }}>
+                  <OuiNon
+                    label={<>Y a-t-il une caméra de surveillance ? <span className="req">*</span></>}
+                    value={ss.cameraSurveillance}
+                    onChange={(v) => setSs({ ...ss, cameraSurveillance: v })}
+                  />
+                </div>
               </>
             )}
 
