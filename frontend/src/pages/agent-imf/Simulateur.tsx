@@ -7,17 +7,16 @@ import SignaturePad, { type SignaturePadHandle } from "../../components/Signatur
 import { useOnline } from "../../offline/useOnline";
 import { useBaremeCache } from "../../offline/useBaremes";
 import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
-import { tarifCatalogueHorsLigne } from "../../offline/catalogue";
+import { tarifCatalogueHorsLigne, calculerCoupsdursHorsLigne } from "../../offline/catalogue";
 import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
 import type { SouscriptionImf } from "../../types";
 
-type ProduitCode = "securpro" | "securstock" | "coupsdurs_classique" | "coupsdurs_incapacite" | "securecolte";
+type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte";
 
 const PRODUITS: { code: ProduitCode; label: string }[] = [
   { code: "securpro", label: "SECURPRO" },
   { code: "securstock", label: "SECURSTOCK" },
-  { code: "coupsdurs_classique", label: "Coups Durs — Classique" },
-  { code: "coupsdurs_incapacite", label: "Coups Durs — Incapacité temporaire" },
+  { code: "coupsdurs", label: "Coups Durs" },
   { code: "securecolte", label: "SECURECOLTE" },
 ];
 
@@ -140,7 +139,9 @@ interface ResultatFormule {
 export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: string }) {
   const [produitCode, setProduitCode] = useState<ProduitCode>("securpro");
   const [error, setError] = useState("");
-  const [resultat, setResultat] = useState<ResultatFormule | { prime: number; capitalGaranti: number } | null>(null);
+  const [resultat, setResultat] = useState<
+    ResultatFormule | { lignes: LignePrime[]; primeTTC: number } | { prime: number; capitalGaranti: number } | null
+  >(null);
   const [souscription, setSouscription] = useState<SouscriptionImf | null>(null);
   const [client, setClient] = useState({
     nom: "", prenom: "", telephone: "", email: "",
@@ -203,14 +204,20 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         : limiteClasseSecurstock
       : undefined;
 
-  // Catalogue à prix fixe
-  const [variante, setVariante] = useState("maladie");
+  // SECURECOLTE : variante unique du catalogue ("pack")
+  const [variante, setVariante] = useState("pack");
 
-  // COUPS DURS : déclaration de bonne santé + bénéficiaires (variante "deces" uniquement)
+  // COUPS DURS (produit fusionné) : Maladie est incluse d'office (garantie
+  // socle, non désactivable), Décès est une case à cocher facultative,
+  // Incapacité temporaire est un plafond optionnel (500 000 OU 1 000 000,
+  // jamais les deux) — voir calculerCoupsdursHorsLigne().
+  const [cd, setCd] = useState({ deces: false, incapacite: null as null | "plafond_500000" | "plafond_1000000" });
+  const estCoupsdurs = produitCode === "coupsdurs";
+  const necessiteBeneficiaires = estCoupsdurs && cd.deces;
+
+  // COUPS DURS : déclaration de bonne santé + bénéficiaires (si Décès coché)
   const [sante, setSante] = useState(defaultSante());
   const [beneficiaires, setBeneficiaires] = useState<Beneficiaire[]>([]);
-  const estCoupsdurs = produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite";
-  const necessiteBeneficiaires = produitCode === "coupsdurs_classique" && variante === "deces";
   const totalBeneficiaires = beneficiaires.reduce((s, b) => s + (b.pourcentage || 0), 0);
 
   // SECURECOLTE : champs purement déclaratifs (sans effet sur la prime/le capital garanti
@@ -249,7 +256,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
    * conversion effective en souscription — voir souscrire().
    */
   useEffect(() => {
-    let nextResultat: ResultatFormule | { prime: number; capitalGaranti: number } | null = null;
+    let nextResultat: ResultatFormule | { lignes: LignePrime[]; primeTTC: number } | { prime: number; capitalGaranti: number } | null = null;
     let nextEntrees: Record<string, unknown> | null = null;
     let nextPrimeTTC = 0;
     let nextError = "";
@@ -302,15 +309,23 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           }
         }
       }
+    } else if (produitCode === "coupsdurs") {
+      const r = calculerCoupsdursHorsLigne(cd.deces, cd.incapacite);
+      if (r) {
+        nextEntrees = {
+          deces: cd.deces,
+          incapacite: cd.incapacite,
+          sante,
+          beneficiaires: cd.deces ? beneficiaires : undefined,
+        };
+        nextResultat = r;
+        nextPrimeTTC = r.primeTTC;
+      }
     } else {
-      // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
+      // SECURECOLTE : catalogue à prix fixe restant.
       const t = tarifCatalogueHorsLigne(produitCode, variante);
       if (t) {
-        nextEntrees = estCoupsdurs
-          ? { libelleVariante: variante, sante, beneficiaires: necessiteBeneficiaires ? beneficiaires : undefined }
-          : estSecurecolte
-          ? { libelleVariante: variante, valeurPackage: secol.valeurPackage || undefined, superficieHa: secol.superficieHa || undefined }
-          : { libelleVariante: variante };
+        nextEntrees = { libelleVariante: variante, valeurPackage: secol.valeurPackage || undefined, superficieHa: secol.superficieHa || undefined };
         nextResultat = { prime: t.prime, capitalGaranti: t.capitalGaranti };
         nextPrimeTTC = t.prime;
       }
@@ -322,7 +337,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setPrimeTTCCourante(nextPrimeTTC);
     setError(nextError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, estCoupsdurs, necessiteBeneficiaires, estSecurecolte, secol]);
+  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, cd, secol]);
 
   function reset() {
     setSouscription(null);
@@ -333,6 +348,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSante(defaultSante());
     setBeneficiaires([]);
     setSecol({ valeurPackage: 0, superficieHa: 0 });
+    setCd({ deces: false, incapacite: null });
   }
 
   async function souscrire(e: React.FormEvent) {
@@ -397,17 +413,10 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     }
   }
 
-  const depassement = !!(resultat && "primeTTC" in resultat && resultat.depassementPlafond);
+  const depassement = !!(resultat && "depassementPlafond" in resultat && resultat.depassementPlafond);
   const devisValide = !!resultat && !depassement;
   const peutSouscrire = devisValide && !souscription && !souscriptionHorsLigne;
   const primeVolLigne = resultat && "lignes" in resultat ? resultat.lignes.find((l) => l.garantie === "Vol") : undefined;
-
-  const varianteOptions =
-    produitCode === "coupsdurs_classique"
-      ? [{ value: "maladie", label: "Maladie Coups Durs (500 000 FCFA)" }, { value: "deces", label: "Décès suite à Coups Durs (500 000 FCFA)" }]
-      : produitCode === "coupsdurs_incapacite"
-      ? [{ value: "plafond_500000", label: "Plafond 500 000 FCFA" }, { value: "plafond_1000000", label: "Plafond 1 000 000 FCFA" }]
-      : [{ value: "pack", label: "Pack SECURECOLTE" }];
 
   return (
     <>
@@ -616,13 +625,61 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
               </>
             )}
 
-            {(produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite" || produitCode === "securecolte") && (
+            {produitCode === "securecolte" && (
               <div className="field">
                 <label className="label">Variante</label>
                 <select className="select" value={variante} onChange={(e) => setVariante(e.target.value)}>
-                  {varianteOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  <option value="pack">Pack SECURECOLTE</option>
                 </select>
               </div>
+            )}
+
+            {estCoupsdurs && (
+              <>
+                <div className="field">
+                  <label className="label">Option 1 — Classique</label>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, opacity: 0.7 }}>
+                    <input type="checkbox" checked disabled />
+                    Maladie Coups Durs (500 000 FCFA)
+                  </label>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                    <input type="checkbox" checked={cd.deces} onChange={(e) => setCd({ ...cd, deces: e.target.checked })} />
+                    Décès suite à Coups Durs (500 000 FCFA)
+                  </label>
+                </div>
+
+                <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  <label className="label">Option 2 — Incapacité temporaire</label>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={cd.incapacite !== null}
+                      onChange={(e) => setCd({ ...cd, incapacite: e.target.checked ? "plafond_500000" : null })}
+                    />
+                    Incapacité temporaire de l'emprunteur
+                  </label>
+                  {cd.incapacite !== null && (
+                    <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          type="radio"
+                          name="plafondIncapacite"
+                          checked={cd.incapacite === "plafond_500000"}
+                          onChange={() => setCd({ ...cd, incapacite: "plafond_500000" })}
+                        /> 500 000 FCFA
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <input
+                          type="radio"
+                          name="plafondIncapacite"
+                          checked={cd.incapacite === "plafond_1000000"}
+                          onChange={() => setCd({ ...cd, incapacite: "plafond_1000000" })}
+                        /> 1 000 000 FCFA
+                      </label>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             {estSecurecolte && (
@@ -767,7 +824,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           {error && <div className="empty" style={{ color: "var(--danger)" }}>{error}</div>}
           {!error && !resultat && <div className="empty">Renseignez les paramètres pour voir le devis.</div>}
 
-          {!error && resultat && "primeTTC" in resultat && (
+          {!error && resultat && "depassementPlafond" in resultat && (
             <>
               {resultat.depassementPlafond ? (
                 <div className="empty" style={{ color: "var(--danger)" }}>
@@ -790,6 +847,20 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 </table>
               )}
             </>
+          )}
+
+          {!error && resultat && "lignes" in resultat && !("depassementPlafond" in resultat) && (
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                {resultat.lignes.map((l, i) => (
+                  <tr key={i}>
+                    <td>{l.garantie}{l.capital ? ` (${fcfa(l.capital)})` : ""}</td>
+                    <td style={{ textAlign: "right" }}>{fcfa(l.prime)}</td>
+                  </tr>
+                ))}
+                <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.primeTTC)}</strong></td></tr>
+              </tbody>
+            </table>
           )}
 
           {!error && resultat && "prime" in resultat && (

@@ -336,7 +336,11 @@ model TarifProduit {
   tauxCommissionMensuelle Float?
   createdAt               DateTime @default(now())
 
-  @@unique([produitId, prime])
+  // Identité d'une variante = (produit, libellé), pas (produit, prime) : deux
+  // garanties d'un même produit peuvent légitimement partager le même prix
+  // (ex. COUPS DURS fusionné : "deces" et "plafond_500000" valent tous deux
+  // 4 000 FCFA). Anciennement unique sur (produitId, prime).
+  @@unique([produitId, libelleVariante])
 }
 
 model QrCode {

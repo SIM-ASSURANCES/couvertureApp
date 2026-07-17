@@ -8,12 +8,22 @@ import type { SinistreImf, SouscriptionImf } from "../../../types";
 const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]> = {
   securpro: [{ value: "incendie", label: "Incendie / explosion" }],
   securstock: [{ value: "incendie", label: "Incendie / explosion du stock nanti" }],
+  // Anciens produits COUPS DURS (avant fusion) — conservés pour les polices déjà émises.
   coupsdurs_classique: [
     { value: "maladie", label: "Maladie Coups Durs" },
     { value: "deces", label: "Décès suite à Coups Durs" },
   ],
   coupsdurs_incapacite: [{ value: "incapacite_temporaire", label: "Incapacité temporaire de l'emprunteur" }],
 };
+
+/** COUPS DURS (produit fusionné) : ne propose que les garanties réellement souscrites. */
+function optionsCoupsdurs(entrees: unknown): { value: string; label: string }[] {
+  const e = entrees as { deces?: boolean; incapacite?: string | null } | undefined;
+  const options = [{ value: "maladie", label: "Maladie Coups Durs" }];
+  if (e?.deces) options.push({ value: "deces", label: "Décès suite à Coups Durs" });
+  if (e?.incapacite) options.push({ value: "incapacite_temporaire", label: "Incapacité temporaire de l'emprunteur" });
+  return options;
+}
 
 const STATUTS = [
   { value: "", label: "Tous statuts" },
@@ -30,8 +40,9 @@ const PRODUITS = [
   { value: "", label: "Tous produits" },
   { value: "securpro", label: "SECURPRO" },
   { value: "securstock", label: "SECURSTOCK" },
-  { value: "coupsdurs_classique", label: "Coups Durs — Classique" },
-  { value: "coupsdurs_incapacite", label: "Coups Durs — Incapacité" },
+  { value: "coupsdurs", label: "Coups Durs" },
+  { value: "coupsdurs_classique", label: "Coups Durs — Classique (ancien)" },
+  { value: "coupsdurs_incapacite", label: "Coups Durs — Incapacité (ancien)" },
 ];
 
 function statutBadge(s: SinistreImf["statut"]) {
@@ -69,8 +80,12 @@ export default function Sinistres() {
   const [montantEstime, setMontantEstime] = useState(0);
   const [declaring, setDeclaring] = useState(false);
   const [declareError, setDeclareError] = useState("");
-  const produitSelectionne = declarables.find((s) => s.id === souscriptionId)?.produitCode;
-  const optionsEvenement = produitSelectionne ? TYPE_EVENEMENT_OPTIONS[produitSelectionne] ?? [] : [];
+  const souscriptionSelectionnee = declarables.find((s) => s.id === souscriptionId);
+  const optionsEvenement = !souscriptionSelectionnee
+    ? []
+    : souscriptionSelectionnee.produitCode === "coupsdurs"
+    ? optionsCoupsdurs(souscriptionSelectionnee.entrees)
+    : TYPE_EVENEMENT_OPTIONS[souscriptionSelectionnee.produitCode] ?? [];
 
   async function declarer(e: React.FormEvent) {
     e.preventDefault();

@@ -140,17 +140,33 @@ async function seedTarificationImf() {
     if (!existant) await prisma.palierSecurecolte.create({ data: p });
   }
 
-  // Catalogue à prix fixe : COUPS DURS (2 produits distincts, chacun avec ses
-  // variantes) et SECURECOLTE (1 pack). Ces produits ne dépendent d'aucune
-  // formule — de simples lignes TarifProduit, comme pour Relax.
+  // Catalogue à prix fixe : COUPS DURS (produit unique fusionné, garanties
+  // combinables — voir calculerDevisImf) et SECURECOLTE (1 pack). Ces
+  // produits ne dépendent d'aucune formule — de simples lignes TarifProduit,
+  // comme pour Relax.
+  //
+  // NB : "coupsdurs_classique"/"coupsdurs_incapacite" (ci-dessous) sont les
+  // anciens produits, avant la fusion en un seul écran de souscription —
+  // conservés uniquement pour l'historique des polices déjà émises (sinistres,
+  // bordereaux, contrats), plus jamais proposés à la souscription.
   const produits: {
     code: string;
     libelle: string;
     tarifs: { libelleVariante: string; prime: number; primeHT?: number; fg?: number; taxes?: number; capitalGaranti: number; commission: number }[];
   }[] = [
     {
+      code: "coupsdurs",
+      libelle: "Coups Durs",
+      tarifs: [
+        { libelleVariante: "maladie", prime: 14000, capitalGaranti: 500_000, commission: 0.1 },
+        { libelleVariante: "deces", prime: 4000, capitalGaranti: 500_000, commission: 0.1 },
+        { libelleVariante: "plafond_500000", prime: 4000, primeHT: 3229, fg: 1500, taxes: 271, capitalGaranti: 500_000, commission: 0.1 },
+        { libelleVariante: "plafond_1000000", prime: 6000, primeHT: 5094, fg: 1500, taxes: 406, capitalGaranti: 1_000_000, commission: 0.1 },
+      ],
+    },
+    {
       code: "coupsdurs_classique",
-      libelle: "Coups Durs — Classique",
+      libelle: "Coups Durs — Classique (ancien)",
       tarifs: [
         { libelleVariante: "maladie", prime: 14000, capitalGaranti: 500_000, commission: 0 },
         { libelleVariante: "deces", prime: 4000, capitalGaranti: 500_000, commission: 0 },
@@ -158,7 +174,7 @@ async function seedTarificationImf() {
     },
     {
       code: "coupsdurs_incapacite",
-      libelle: "Coups Durs — Incapacité temporaire de l'emprunteur",
+      libelle: "Coups Durs — Incapacité temporaire de l'emprunteur (ancien)",
       tarifs: [
         { libelleVariante: "plafond_500000", prime: 4000, primeHT: 3229, fg: 1500, taxes: 271, capitalGaranti: 500_000, commission: 0 },
         { libelleVariante: "plafond_1000000", prime: 6000, primeHT: 5094, fg: 1500, taxes: 406, capitalGaranti: 1_000_000, commission: 0 },
@@ -181,7 +197,7 @@ async function seedTarificationImf() {
     });
     for (const t of p.tarifs) {
       await prisma.tarifProduit.upsert({
-        where: { produitId_prime: { produitId: produit.id, prime: t.prime } },
+        where: { produitId_libelleVariante: { produitId: produit.id, libelleVariante: t.libelleVariante } },
         update: {},
         create: { produitId: produit.id, ...t },
       });

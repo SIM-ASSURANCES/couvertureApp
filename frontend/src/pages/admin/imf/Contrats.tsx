@@ -8,8 +8,9 @@ const PRODUITS = [
   { value: "", label: "Tous produits" },
   { value: "securpro", label: "SECURPRO" },
   { value: "securstock", label: "SECURSTOCK" },
-  { value: "coupsdurs_classique", label: "Coups Durs — Classique" },
-  { value: "coupsdurs_incapacite", label: "Coups Durs — Incapacité" },
+  { value: "coupsdurs", label: "Coups Durs" },
+  { value: "coupsdurs_classique", label: "Coups Durs — Classique (ancien)" },
+  { value: "coupsdurs_incapacite", label: "Coups Durs — Incapacité (ancien)" },
   { value: "securecolte", label: "SECURECOLTE" },
 ];
 

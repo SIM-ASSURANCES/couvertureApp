@@ -8,12 +8,22 @@ import type { SinistreImf, SouscriptionImf } from "../../types";
 const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]> = {
   securpro: [{ value: "incendie", label: "Incendie / explosion" }],
   securstock: [{ value: "incendie", label: "Incendie / explosion du stock nanti" }],
+  // Anciens produits COUPS DURS (avant fusion) — conservés pour les polices déjà émises.
   coupsdurs_classique: [
     { value: "maladie", label: "Maladie Coups Durs" },
     { value: "deces", label: "Décès suite à Coups Durs" },
   ],
   coupsdurs_incapacite: [{ value: "incapacite_temporaire", label: "Incapacité temporaire de l'emprunteur" }],
 };
+
+/** COUPS DURS (produit fusionné) : ne propose que les garanties réellement souscrites. */
+function optionsCoupsdurs(entrees: unknown): { value: string; label: string }[] {
+  const e = entrees as { deces?: boolean; incapacite?: string | null } | undefined;
+  const options = [{ value: "maladie", label: "Maladie Coups Durs" }];
+  if (e?.deces) options.push({ value: "deces", label: "Décès suite à Coups Durs" });
+  if (e?.incapacite) options.push({ value: "incapacite_temporaire", label: "Incapacité temporaire de l'emprunteur" });
+  return options;
+}
 
 function statutBadge(s: SinistreImf["statut"]) {
   if (s === "regle") return <Badge kind="success">Réglé</Badge>;
@@ -42,8 +52,12 @@ export default function Sinistres() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [savingPieces, setSavingPieces] = useState(false);
 
-  const produitSelectionne = declarables.find((s) => s.id === souscriptionId)?.produitCode;
-  const options = produitSelectionne ? TYPE_EVENEMENT_OPTIONS[produitSelectionne] ?? [] : [];
+  const souscriptionSelectionnee = declarables.find((s) => s.id === souscriptionId);
+  const options = !souscriptionSelectionnee
+    ? []
+    : souscriptionSelectionnee.produitCode === "coupsdurs"
+    ? optionsCoupsdurs(souscriptionSelectionnee.entrees)
+    : TYPE_EVENEMENT_OPTIONS[souscriptionSelectionnee.produitCode] ?? [];
 
   async function declarer(e: React.FormEvent) {
     e.preventDefault();

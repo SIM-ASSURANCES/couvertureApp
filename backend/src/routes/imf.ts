@@ -703,23 +703,38 @@ const beneficiaireSchema = z.object({
   pourcentage: z.number().positive(),
 });
 
-const coupsdursInputSchema = z
+/**
+ * COUPS DURS (produit unique fusionné) : Maladie Coups Durs est incluse
+ * d'office (garantie socle, toujours facturée), Décès suite à Coups Durs est
+ * une case à cocher facultative, Incapacité temporaire de l'emprunteur est un
+ * plafond optionnel (500 000 OU 1 000 000, jamais les deux). La prime totale
+ * est la somme des garanties retenues — voir calculerDevisImf().
+ */
+const coupsdursCombineSchema = z
   .object({
-    libelleVariante: z.string().min(1),
+    deces: z.boolean().default(false),
+    incapacite: z.enum(["plafond_500000", "plafond_1000000"]).nullable().optional(),
     sante: santeSchema,
     beneficiaires: z.array(beneficiaireSchema).optional(),
   })
   .refine(
     (d) =>
-      d.libelleVariante !== "deces" ||
+      !d.deces ||
       (!!d.beneficiaires &&
         d.beneficiaires.length > 0 &&
         Math.round(d.beneficiaires.reduce((s, b) => s + b.pourcentage, 0)) === 100),
     { message: "La somme des parts des bénéficiaires doit être égale à 100%.", path: ["beneficiaires"] }
   );
 
+const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
+  maladie: "Maladie Coups Durs",
+  deces: "Décès suite à Coups Durs",
+  plafond_500000: "Incapacité temporaire — plafond 500 000",
+  plafond_1000000: "Incapacité temporaire — plafond 1 000 000",
+};
+
 const simulationSchema = z.object({
-  produitCode: z.enum(["securpro", "securstock", "coupsdurs_classique", "coupsdurs_incapacite", "securecolte"]),
+  produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte"]),
   entrees: z.record(z.unknown()),
   // Clé d'idempotence PWA (mode hors-ligne) — voir SimulationImf.offlineId.
   offlineId: z.string().min(1).optional(),
@@ -750,11 +765,26 @@ async function calculerDevisImf(
     if ("nonAssurable" in r && r.nonAssurable) return { ok: false, error: r.motif };
     return { ok: true, resultat: r, primeTTC: (r as { primeTTC: number }).primeTTC };
   }
-  // Catalogue à prix fixe : coupsdurs_classique / coupsdurs_incapacite / securecolte
-  const estCoupsdurs = produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite";
-  const { libelleVariante } = estCoupsdurs
-    ? coupsdursInputSchema.parse(entrees)
-    : catalogueInputSchema.parse(entrees);
+  if (produitCode === "coupsdurs") {
+    const input = coupsdursCombineSchema.parse(entrees);
+    const produit = await prisma.produit.findUnique({ where: { code: "coupsdurs" } });
+    if (!produit) return { ok: false, error: "Produit introuvable" };
+    const variantes = ["maladie", ...(input.deces ? ["deces"] : []), ...(input.incapacite ? [input.incapacite] : [])];
+    const tarifsCoupsdurs = await prisma.tarifProduit.findMany({
+      where: { produitId: produit.id, libelleVariante: { in: variantes } },
+    });
+    if (tarifsCoupsdurs.length !== variantes.length) {
+      return { ok: false, error: "Garantie introuvable dans le catalogue" };
+    }
+    const lignes = variantes.map((v) => {
+      const t = tarifsCoupsdurs.find((t) => t.libelleVariante === v)!;
+      return { garantie: LABEL_GARANTIE_COUPSDURS[v] ?? v, capital: t.capitalGaranti, prime: t.prime };
+    });
+    const primeTTC = lignes.reduce((s, l) => s + l.prime, 0);
+    return { ok: true, resultat: { lignes, primeTTC }, primeTTC };
+  }
+  // Catalogue à prix fixe restant : SECURECOLTE.
+  const { libelleVariante } = catalogueInputSchema.parse(entrees);
   const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
   if (!produit) return { ok: false, error: "Produit introuvable" };
   const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
@@ -1022,7 +1052,7 @@ agentImfRouter.get(
     ]);
 
     function commissionDe(s: (typeof souscriptions)[number]): number {
-      const entrees = s.entrees as { classe?: number; libelleVariante?: string };
+      const entrees = s.entrees as { classe?: number; libelleVariante?: string; deces?: boolean; incapacite?: string | null };
       const resultat = s.resultat as { primeNetteHT?: number; primeHT?: number; prime?: number };
       if (s.produitCode === "securpro") {
         const bareme = baremesSecurpro.find((b) => b.classe === entrees.classe);
@@ -1032,9 +1062,19 @@ agentImfRouter.get(
         const bareme = baremesSecurstock.find((b) => b.classe === entrees.classe);
         return Math.round((resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0));
       }
-      // Catalogue (COUPS DURS / SECURECOLTE) : la fiche tarifaire source ne
-      // détaille pas toujours la prime HT — à défaut, on retient la prime TTC
-      // comme base (voir remarque transmise à l'utilisateur).
+      if (s.produitCode === "coupsdurs") {
+        // Garanties combinées : commission = somme, garantie par garantie, de
+        // (prime HT de la ligne × taux courant de la ligne) — jamais figée au devis.
+        const variantes = ["maladie", ...(entrees.deces ? ["deces"] : []), ...(entrees.incapacite ? [entrees.incapacite] : [])];
+        return variantes.reduce((sum, v) => {
+          const t = tarifsCatalogue.find((t) => t.produit.code === "coupsdurs" && t.libelleVariante === v);
+          if (!t) return sum;
+          return sum + Math.round((t.primeHT ?? t.prime) * t.commission);
+        }, 0);
+      }
+      // Catalogue (SECURECOLTE, anciens codes COUPS DURS) : la fiche tarifaire
+      // source ne détaille pas toujours la prime HT — à défaut, on retient la
+      // prime TTC comme base (voir remarque transmise à l'utilisateur).
       const tarif = tarifsCatalogue.find(
         (t) => t.produit.code === s.produitCode && t.libelleVariante === entrees.libelleVariante
       );
@@ -1186,6 +1226,8 @@ imfRouter.get(
 const FAMILLE_PRODUIT: Record<string, string> = {
   securpro: "SECURPRO",
   securstock: "SECURSTOCK",
+  coupsdurs: "COUPS DURS",
+  // Anciens codes produit (avant fusion) — conservés pour les souscriptions déjà émises.
   coupsdurs_classique: "COUPS DURS",
   coupsdurs_incapacite: "COUPS DURS",
   securecolte: "SECURECOLTE",
@@ -1287,31 +1329,31 @@ function checklistImf(produitCode: string, typeEvenement: string): string[] {
       "Justificatifs de la valeur du stock",
     ];
   }
-  if (produitCode === "coupsdurs_classique" && typeEvenement === "deces") {
-    return [
-      "Formulaire de déclaration de sinistre",
-      "Carte d'assuré et pièce d'identité",
-      "Acte de décès",
-      "Certificat de genre de mort",
-      "Extrait de naissance du (des) bénéficiaire(s)",
-      "Pièce d'identité du (des) bénéficiaire(s)",
-      "Acte de mariage du conjoint (si nécessaire)",
-      "Procès-verbal de constat de gendarmerie/police (si accident de la circulation)",
-      "Certificat d'individualité (si nécessaire)",
-    ];
-  }
-  if (produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite") {
-    return [
+  if (produitCode === "coupsdurs" || produitCode === "coupsdurs_classique" || produitCode === "coupsdurs_incapacite") {
+    if (typeEvenement === "deces") {
+      return [
+        "Formulaire de déclaration de sinistre",
+        "Carte d'assuré et pièce d'identité",
+        "Acte de décès",
+        "Certificat de genre de mort",
+        "Extrait de naissance du (des) bénéficiaire(s)",
+        "Pièce d'identité du (des) bénéficiaire(s)",
+        "Acte de mariage du conjoint (si nécessaire)",
+        "Procès-verbal de constat de gendarmerie/police (si accident de la circulation)",
+        "Certificat d'individualité (si nécessaire)",
+      ];
+    }
+    const commun = [
       "Formulaire de déclaration de sinistre",
       "Carte d'assuré ou pièce d'identité",
       "Reçus ou tickets de consultation médicale",
       "Ordonnances médicales",
       "Reçus ou tickets de caisse de pharmacie",
       "Certificat médical attestant l'événement Coups Durs",
-      ...(produitCode === "coupsdurs_incapacite"
-        ? ["Échéancier du prêt en cours auprès de l'institution financière"]
-        : ["Certificat d'arrêt de travail (indemnité journalière), si applicable"]),
     ];
+    return typeEvenement === "incapacite_temporaire"
+      ? [...commun, "Échéancier du prêt en cours auprès de l'institution financière"]
+      : [...commun, "Certificat d'arrêt de travail (indemnité journalière), si applicable"];
   }
   return [];
 }

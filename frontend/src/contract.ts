@@ -130,6 +130,13 @@ export interface BeneficiaireCoupsdurs {
   pourcentage: number;
 }
 
+export interface LigneCoupsdurs {
+  cle: string;
+  garantieLabel: string;
+  capital: number;
+  prime: number;
+}
+
 export interface ContratCoupsdurs {
   numeroPolice: string;
   intermediaire: string;
@@ -143,12 +150,11 @@ export interface ContratCoupsdurs {
   numeroPiece?: string | null;
   ville?: string | null;
   communeQuartier?: string | null;
-  variante: string;
-  garantieLabel: string;
-  montantGarantie: number;
-  primeHT?: number | null;
-  accessoires?: number | null;
-  taxes?: number | null;
+  // Une police COUPS DURS peut combiner plusieurs garanties (Maladie
+  // toujours incluse, Décès et/ou Incapacité en options) — chaque garantie
+  // retenue a sa propre ligne (capital + prime). Les polices émises avant la
+  // fusion des produits n'ont qu'une seule ligne.
+  lignes: LigneCoupsdurs[];
   primeTTC: number;
   sante?: SanteCoupsdurs | null;
   beneficiaires?: BeneficiaireCoupsdurs[] | null;
@@ -178,7 +184,7 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
 /** true si un contrat PDF est disponible pour ce produit IMF. */
 export function contratImfDisponible(produitCode: string): boolean {
   return [
-    "securpro", "securstock", "securecolte", "coupsdurs_classique", "coupsdurs_incapacite",
+    "securpro", "securstock", "securecolte", "coupsdurs", "coupsdurs_classique", "coupsdurs_incapacite",
   ].includes(produitCode);
 }
 
@@ -187,7 +193,7 @@ export function genererContratImf(s: SouscriptionImf): void {
   if (s.produitCode === "securpro") genererContratSecurpro(souscriptionImfToContratSecurpro(s));
   else if (s.produitCode === "securstock") genererContratSecurstock(souscriptionImfToContratSecurstock(s));
   else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s));
-  else if (s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
+  else if (s.produitCode === "coupsdurs" || s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
     genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s));
 }
 
@@ -207,8 +213,15 @@ const SECURSTOCK_LOCALISATION_LABELS: Record<string, string> = {
 const COUPSDURS_VARIANTE_LABELS: Record<string, string> = {
   maladie: "Maladie Coups Durs",
   deces: "Décès suite à Coups Durs",
-  plafond_500000: "Incapacité temporaire de l'emprunteur — plafond 500 000 FCFA",
-  plafond_1000000: "Incapacité temporaire de l'emprunteur — plafond 1 000 000 FCFA",
+  plafond_500000: "Incapacité temporaire de l'emprunteur — plafond 500 000",
+  plafond_1000000: "Incapacité temporaire de l'emprunteur — plafond 1 000 000",
+};
+
+const COUPSDURS_PRESTATIONS: Record<string, string> = {
+  deces: "Décès : SIM Assurances verse aux bénéficiaires ci-dessus le capital garanti de cette garantie, selon la répartition indiquée.",
+  maladie: "Maladie : prise en charge dans la limite du capital garanti via le réseau de soins, ou remboursement des dépenses de soins sur présentation des justificatifs.",
+  plafond_500000: "Incapacité temporaire : paiement des échéances du prêt en cours (net d'intérêt) à l'institution financière pendant la période de convalescence indemnisable, dans la limite du plafond choisi et de la durée résiduelle du prêt, après une franchise de 2 mois.",
+  plafond_1000000: "Incapacité temporaire : paiement des échéances du prêt en cours (net d'intérêt) à l'institution financière pendant la période de convalescence indemnisable, dans la limite du plafond choisi et de la durée résiduelle du prêt, après une franchise de 2 mois.",
 };
 
 const AFFECTIONS_LABELS: Record<string, string> = {
@@ -223,14 +236,39 @@ const ouiNon = (b?: boolean) => (b ? "Oui" : "Non");
 export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCoupsdurs {
   const entrees = s.entrees as {
     libelleVariante?: string;
+    deces?: boolean;
+    incapacite?: string | null;
     sante?: SanteCoupsdurs;
     beneficiaires?: BeneficiaireCoupsdurs[];
   };
-  const resultat = s.resultat as { capitalGaranti?: number; primeHT?: number; fg?: number; taxes?: number };
   const debut = new Date(s.createdAt);
   const fin = new Date(debut);
   fin.setFullYear(fin.getFullYear() + 1);
-  const variante = entrees.libelleVariante ?? "—";
+
+  let lignes: LigneCoupsdurs[];
+  if (s.produitCode === "coupsdurs") {
+    // Produit fusionné : une ou plusieurs garanties combinées (Maladie
+    // toujours incluse), reconstituées dans le même ordre que le serveur.
+    const resultat = s.resultat as { lignes?: { capital: number; prime: number }[] };
+    const cles = ["maladie", ...(entrees.deces ? ["deces"] : []), ...(entrees.incapacite ? [entrees.incapacite] : [])];
+    lignes = cles.map((cle, i) => ({
+      cle,
+      garantieLabel: COUPSDURS_VARIANTE_LABELS[cle] ?? cle,
+      capital: resultat.lignes?.[i]?.capital ?? 0,
+      prime: resultat.lignes?.[i]?.prime ?? 0,
+    }));
+  } else {
+    // Polices émises avant la fusion des produits : une seule garantie.
+    const resultat = s.resultat as { capitalGaranti?: number; prime?: number };
+    const variante = entrees.libelleVariante ?? "—";
+    lignes = [{
+      cle: variante,
+      garantieLabel: COUPSDURS_VARIANTE_LABELS[variante] ?? variante,
+      capital: resultat.capitalGaranti ?? 0,
+      prime: resultat.prime ?? s.primeTTC,
+    }];
+  }
+
   return {
     numeroPolice: s.numeroPolice,
     intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
@@ -244,12 +282,7 @@ export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCo
     numeroPiece: s.numeroPiece,
     ville: s.ville,
     communeQuartier: s.communeQuartier,
-    variante,
-    garantieLabel: COUPSDURS_VARIANTE_LABELS[variante] ?? variante,
-    montantGarantie: resultat.capitalGaranti ?? 0,
-    primeHT: resultat.primeHT ?? null,
-    accessoires: resultat.fg ?? null,
-    taxes: resultat.taxes ?? null,
+    lignes,
     primeTTC: s.primeTTC,
     sante: entrees.sante ?? null,
     beneficiaires: entrees.beneficiaires ?? null,
@@ -693,24 +726,27 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
   </table>`
       : "";
 
-  const prestation =
-    c.variante === "deces"
-      ? "En cas de décès consécutif à l'un de ces événements, SIM Assurances verse aux bénéficiaires ci-dessus le capital garanti, selon la répartition indiquée."
-      : c.variante === "maladie"
-      ? "Prise en charge de la maladie dans la limite du capital garanti via le réseau de soins, ou remboursement des dépenses de soins sur présentation des justificatifs, dans la limite du plafond prévu au contrat."
-      : "Paiement des échéances du prêt en cours (net d'intérêt) à l'institution financière pendant la période de convalescence indemnisable, dans la limite du plafond choisi et de la durée résiduelle du prêt, après une franchise de 2 mois.";
+  const garantiesLabel = c.lignes.map((l) => l.garantieLabel).join(" + ");
+  const prestations = c.lignes
+    .map((l) => COUPSDURS_PRESTATIONS[l.cle])
+    .filter((p, i, arr): p is string => !!p && arr.indexOf(p) === i);
 
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Conditions Particulières — COUPS DURS</h1>
-  <div class="sub">${val(c.garantieLabel)} · Distribué via ${val(c.intermediaire)}</div>
+  <div class="sub">${val(garantiesLabel)} · Distribué via ${val(c.intermediaire)}</div>
 
   <h2>Conditions Particulières</h2>
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
-    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Garantie souscrite</td><td>${val(c.garantieLabel)}</td></tr>
-    <tr><td class="k">Montant garanti</td><td><strong>${fcfa(c.montantGarantie)}</strong></td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <h2>Garanties souscrites</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital garanti</td><td class="k">Prime</td></tr>
+    ${c.lignes.map((l) => `<tr><td>${val(l.garantieLabel)}</td><td>${fcfa(l.capital)}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
   </table>
 
   <table>
@@ -727,7 +763,10 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
     crânien, hémorragie externe sévère, brûlure sévère et étendue (au-delà de 20 %), morsure de serpent — délai de
     carence de 7 jours pour l'AVC et la crise cardiaque uniquement.
     <br/><br/>
-    <b>Prestation :</b> ${prestation}
+    <b>Prestations :</b>
+    <ul style="margin:6px 0 0 18px;">
+      ${prestations.map((p) => `<li>${p}</li>`).join("")}
+    </ul>
   </div>
   ${santeSection}
   ${beneficiairesSection}
