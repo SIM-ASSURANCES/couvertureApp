@@ -418,20 +418,20 @@ const CSS = `
   .pol{text-align:right;font-size:12px;color:#5b6b80;}
   .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
   h1{font-size:18px;margin:0 0 4px;color:#004b9c;}
-  h2{font-size:15px;margin:22px 0 8px;color:#004b9c;border-bottom:1px solid #e3e9f1;padding-bottom:4px;}
-  .sub{color:#5b6b80;font-size:12px;margin-bottom:18px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:14px;}
-  td{padding:7px 10px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
+  h2{font-size:14px;margin:16px 0 6px;color:#004b9c;border-bottom:1px solid #e3e9f1;padding-bottom:3px;}
+  .sub{color:#5b6b80;font-size:12px;margin-bottom:14px;}
+  table{width:100%;border-collapse:collapse;margin-bottom:10px;page-break-inside:avoid;}
+  td{padding:5px 9px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
   td.k{background:#f5f8fc;font-weight:600;width:34%;color:#5b6b80;}
   .cg h3{font-size:13px;margin:14px 0 4px;color:#0f1b2d;}
   .cg p{margin:4px 0;font-size:11.5px;color:#25324a;}
   .cg ul{margin:4px 0 8px 18px;padding:0;}
   .cg li{font-size:11.5px;margin:2px 0;}
   .cg .cg-tbl td{font-size:11px;}
-  .note{font-size:11px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:12px;margin-top:16px;}
-  .sign{display:flex;justify-content:space-between;margin-top:40px;font-size:12px;color:#5b6b80;}
+  .note{font-size:11px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:10px;margin-top:12px;}
+  .sign{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#5b6b80;page-break-inside:avoid;}
   .pagebreak{page-break-before:always;}
-  @media print{body{padding:22px;}}
+  @media print{body{padding:18px;}}
 `;
 
 function header(numeroPolice: string) {
@@ -578,7 +578,6 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
   <h1>Conditions Particulières — SECURPRO</h1>
   <div class="sub">Assurance Multirisque Professionnelle · Distribué via ${val(c.intermediaire)}</div>
 
-  <h2>Conditions Particulières</h2>
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
@@ -608,7 +607,14 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
     les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
     lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
-    <br/><br/>
+  </div>
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-incendie.html");
+  const cgSection = `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — SECUR DOMMAGE</h1>
+  <div class="note">
     <b>Risques garantis :</b> Incendie / Explosion du local professionnel désigné, telle que définie aux Conditions Générales
     (classe de risque : ${val(c.classeLabel)}). <b>Ne sont pas couvertes :</b> les constructions en bois, ni le changement de
     local en cours de contrat sans résiliation préalable et souscription d'un nouveau contrat.
@@ -617,10 +623,7 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
     Conditions Générales Contrat SECUR DOMMAGE.
   </div>
   ${RECLAMATION}
-  ${signatures(c.signature)}`;
-
-  const cg = await loadCG("cg-incendie.html");
-  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
+  <div class="cg">${cg}</div>`;
   writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
@@ -649,7 +652,13 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
     les Conditions Générales Contrat SECURECOLTE (MFB/DGTCP/DA/N° 01496 du 19 JUIN 2025) et les présentes Conditions Particulières,
     lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
-    <br/><br/>
+  </div>
+  ${signatures(c.signature)}`;
+
+  const cgSection = `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — SECURECOLTE</h1>
+  <div class="note">
     <b>Garanties (par pack) :</b>
     <ul style="margin:6px 0 0 18px;">
       <li>Forte sécheresse : indemnisation à hauteur de <b>100 %</b> par pack ;</li>
@@ -661,10 +670,9 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
     <b>Indemnisation :</b> les conditions climatiques permettant de confirmer la survenance de l'événement garanti sont
     données exclusivement par l'AFRICAN RISK CAPACITY (organisme en charge de la collecte et de l'analyse des données).
   </div>
-  ${RECLAMATION}
-  ${signatures(c.signature)}`;
+  ${RECLAMATION}`;
 
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp);
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
 export async function genererContratSecurstock(c: ContratSecurstock) {
@@ -704,7 +712,14 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
     les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
     lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
-    <br/><br/>
+  </div>
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-incendie.html");
+  const cgSection = `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — SECUR DOMMAGE</h1>
+  <div class="note">
     <b>Risque garanti :</b> Incendie / Explosion entraînant la destruction de tout ou partie du stock nanti ou couvert,
     tel que défini aux Conditions Générales. <b>Ne sont pas couverts :</b> les constructions en bois, ni le changement de
     local de stockage en cours de contrat sans résiliation préalable.
@@ -715,10 +730,7 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
     à la charge de SIM Assurances.
   </div>
   ${RECLAMATION}
-  ${signatures(c.signature)}`;
-
-  const cg = await loadCG("cg-incendie.html");
-  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
+  <div class="cg">${cg}</div>`;
   writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
@@ -785,7 +797,15 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est régi par les
     Conditions Générales du contrat COUPS DURS et les présentes Conditions Particulières.
-    <br/><br/>
+  </div>
+  ${santeSection}
+  ${beneficiairesSection}
+  ${signatures(c.signature)}`;
+
+  const cgSection = `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — COUPS DURS</h1>
+  <div class="note">
     <b>Événements couverts (Coups Durs) :</b> AVC, infarctus du myocarde, accident de la voie publique, traumatisme
     crânien, hémorragie externe sévère, brûlure sévère et étendue (au-delà de 20 %), morsure de serpent — délai de
     carence de 7 jours pour l'AVC et la crise cardiaque uniquement.
@@ -795,10 +815,7 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
       ${prestations.map((p) => `<li>${p}</li>`).join("")}
     </ul>
   </div>
-  ${santeSection}
-  ${beneficiairesSection}
-  ${RECLAMATION}
-  ${signatures(c.signature)}`;
+  ${RECLAMATION}`;
 
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp);
+  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
 }
