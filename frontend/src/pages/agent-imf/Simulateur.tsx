@@ -221,8 +221,9 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [beneficiaires, setBeneficiaires] = useState<Beneficiaire[]>([]);
   const totalBeneficiaires = beneficiaires.reduce((s, b) => s + (b.pourcentage || 0), 0);
 
-  // SECURECOLTE : champs purement déclaratifs (sans effet sur la prime/le capital garanti
-  // du pack, fixés au catalogue) — enregistrés pour le dossier et le contrat.
+  // SECURECOLTE : 1 hectare = 1 pack — la prime et le capital garanti du
+  // catalogue sont multipliés par la superficie déclarée. La valeur du
+  // package reste purement déclarative (sans effet sur le tarif).
   const estSecurecolte = produitCode === "securecolte";
   const [secol, setSecol] = useState({ valeurPackage: 0, superficieHa: 0 });
 
@@ -322,13 +323,19 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         nextResultat = r;
         nextPrimeTTC = r.primeTTC;
       }
-    } else {
-      // SECURECOLTE : catalogue à prix fixe restant.
+    } else if (secol.superficieHa > 0) {
+      // SECURECOLTE : 1 hectare = 1 pack — prime et capital garanti du
+      // catalogue multipliés par la superficie déclarée.
       const t = tarifCatalogueHorsLigne(produitCode, variante);
       if (t) {
-        nextEntrees = { libelleVariante: variante, valeurPackage: secol.valeurPackage || undefined, superficieHa: secol.superficieHa || undefined };
-        nextResultat = { prime: t.prime, capitalGaranti: t.capitalGaranti };
-        nextPrimeTTC = t.prime;
+        nextEntrees = {
+          libelleVariante: variante,
+          valeurPackage: secol.valeurPackage || undefined,
+          superficieHa: secol.superficieHa,
+        };
+        const primeCalculee = Math.round(t.prime * secol.superficieHa);
+        nextResultat = { prime: primeCalculee, capitalGaranti: Math.round(t.capitalGaranti * secol.superficieHa) };
+        nextPrimeTTC = primeCalculee;
       }
     }
 

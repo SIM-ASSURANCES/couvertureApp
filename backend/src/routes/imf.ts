@@ -657,11 +657,11 @@ const securstockInputSchema = z.object({
 
 const catalogueInputSchema = z.object({
   libelleVariante: z.string().min(1),
-  // SECURECOLTE uniquement : purement déclaratif, sans effet sur le tarif
-  // (prime et capital garanti restent ceux du catalogue) — enregistrés pour
-  // le dossier et le contrat.
+  // SECURECOLTE uniquement : 1 hectare = 1 pack, la prime et le capital
+  // garanti du catalogue sont multipliés par la superficie déclarée. La
+  // valeur du package reste purement déclarative (sans effet sur le tarif).
   valeurPackage: z.number().positive().optional(),
-  superficieHa: z.number().positive().optional(),
+  superficieHa: z.number().positive(),
 });
 
 /**
@@ -785,12 +785,20 @@ async function calculerDevisImf(
     return { ok: true, resultat: { lignes, primeTTC }, primeTTC };
   }
   // Catalogue à prix fixe restant : SECURECOLTE.
-  const { libelleVariante } = catalogueInputSchema.parse(entrees);
+  const { libelleVariante, superficieHa, valeurPackage } = catalogueInputSchema.parse(entrees);
   const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
   if (!produit) return { ok: false, error: "Produit introuvable" };
   const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
   if (!tarif) return { ok: false, error: "Variante introuvable pour ce produit" };
-  return { ok: true, resultat: tarif, primeTTC: tarif.prime };
+  // 1 hectare = 1 pack : la prime et le capital garanti du catalogue sont
+  // multipliés par la superficie déclarée par le client.
+  const primeTTC = Math.round(tarif.prime * superficieHa);
+  const capitalGaranti = Math.round(tarif.capitalGaranti * superficieHa);
+  return {
+    ok: true,
+    resultat: { ...tarif, prime: primeTTC, capitalGaranti, superficieHa, valeurPackage },
+    primeTTC,
+  };
 }
 
 agentImfRouter.post(
