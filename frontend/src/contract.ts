@@ -4,6 +4,12 @@
 
 import type { SouscriptionImf } from "./types";
 
+export interface LigneGarantie {
+  garantie: string;
+  capital?: number;
+  prime: number;
+}
+
 export interface ContratIncendie {
   numeroPolice: string;
   partenaire: string;
@@ -53,6 +59,7 @@ export interface ContratSecurpro {
   valeurBatimentOuLoyer: number;
   contenu: number;
   dansMarche: boolean;
+  lignes: LigneGarantie[];
   primeNetteHT: number;
   accessoires: number;
   taxes: number;
@@ -77,6 +84,7 @@ export interface ContratSecurstock {
   localisationLabel: string;
   montantStock: number;
   capitalRetenu: number;
+  lignes: LigneGarantie[];
   primeNetteHT: number;
   accessoires: number;
   taxes: number;
@@ -166,6 +174,9 @@ const dfr = (s?: string | null) =>
   s ? new Date(s).toLocaleDateString("fr-FR") : "—";
 const val = (s?: string | number | null) =>
   s === null || s === undefined || s === "" ? "—" : String(s);
+// Les libellés de classe de risque (Simulateur) détaillent des exemples entre
+// parenthèses, utiles à la saisie mais superflus sur le contrat imprimé.
+const sansParentheses = (s: string) => s.replace(/\s*\([^)]*\)/g, "").trim();
 
 function pieceLabel(t?: string | null) {
   if (t === "cni") return "CNI";
@@ -319,7 +330,7 @@ export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): Contrat
 /** Reconstitue les champs du contrat SECURSTOCK à partir d'une souscription IMF. */
 export function souscriptionImfToContratSecurstock(s: SouscriptionImf): ContratSecurstock {
   const entrees = s.entrees as { classe?: number; capitalDeclare?: number; localisation?: string };
-  const resultat = s.resultat as { capitauxTotaux?: number; primeNetteHT?: number; accessoires?: number; taxes?: number };
+  const resultat = s.resultat as { capitauxTotaux?: number; lignes?: LigneGarantie[]; primeNetteHT?: number; accessoires?: number; taxes?: number };
   const debut = new Date(s.createdAt);
   const fin = new Date(debut);
   fin.setFullYear(fin.getFullYear() + 1);
@@ -336,10 +347,11 @@ export function souscriptionImfToContratSecurstock(s: SouscriptionImf): ContratS
     numeroPiece: s.numeroPiece,
     ville: s.ville,
     communeQuartier: s.communeQuartier,
-    classeLabel: entrees.classe ? (SECURSTOCK_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
+    classeLabel: entrees.classe ? sansParentheses(SECURSTOCK_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
     localisationLabel: entrees.localisation ? (SECURSTOCK_LOCALISATION_LABELS[entrees.localisation] ?? entrees.localisation) : "—",
     montantStock: entrees.capitalDeclare ?? 0,
     capitalRetenu: resultat.capitauxTotaux ?? 0,
+    lignes: resultat.lignes ?? [],
     primeNetteHT: resultat.primeNetteHT ?? 0,
     accessoires: resultat.accessoires ?? 0,
     taxes: resultat.taxes ?? 0,
@@ -359,6 +371,7 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
     dansMarche?: boolean;
   };
   const resultat = s.resultat as {
+    lignes?: LigneGarantie[];
     primeNetteHT?: number;
     accessoires?: number;
     taxes?: number;
@@ -380,11 +393,12 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
     numeroPiece: s.numeroPiece,
     ville: s.ville,
     communeQuartier: s.communeQuartier,
-    classeLabel: entrees.classe ? (SECURPRO_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
+    classeLabel: entrees.classe ? sansParentheses(SECURPRO_CLASSE_LABELS[entrees.classe] ?? `Classe ${entrees.classe}`) : "—",
     statutOccupation,
     valeurBatimentOuLoyer: statutOccupation === "locataire" ? (entrees.loyerMensuel ?? 0) : (entrees.valeurBatiment ?? 0),
     contenu: entrees.contenu ?? 0,
     dansMarche: !!entrees.dansMarche,
+    lignes: resultat.lignes ?? [],
     primeNetteHT: resultat.primeNetteHT ?? 0,
     accessoires: resultat.accessoires ?? 0,
     taxes: resultat.taxes ?? 0,
@@ -399,7 +413,8 @@ const CSS = `
   body{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;text-align:justify;}
   .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:20px;}
   .brand{display:flex;align-items:center;gap:16px;}
-  .brand img{height:54px;display:block;}
+  .brand img.logo-sim{height:88px;display:block;}
+  .brand img.logo-rcmec{height:50px;display:block;}
   .pol{text-align:right;font-size:12px;color:#5b6b80;}
   .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
   h1{font-size:18px;margin:0 0 4px;color:#004b9c;}
@@ -422,8 +437,8 @@ const CSS = `
 function header(numeroPolice: string) {
   return `<div class="head">
     <div class="brand">
-      <img src="${window.location.origin}/logo.webp" alt="SIM Assurances" onerror="this.style.display='none'" />
-      <img src="${window.location.origin}/LOGO_RCMEC_CI.png" alt="RCMEC CI" onerror="this.style.display='none'" />
+      <img class="logo-sim" src="${window.location.origin}/logo.webp" alt="SIM Assurances" onerror="this.style.display='none'" />
+      <img class="logo-rcmec" src="${window.location.origin}/LOGO_RCMEC_CI.png" alt="RCMEC CI" onerror="this.style.display='none'" />
     </div>
     <div class="pol">N° de police<b>${val(numeroPolice)}</b></div>
   </div>`;
@@ -578,6 +593,12 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
     <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Marché ou abords de marché</td><td>${c.dansMarche ? "Oui" : "Non"}</td></tr>
   </table>
 
+  <h2>Garanties souscrites</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital</td><td class="k">Prime</td></tr>
+    ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
+  </table>
+
   <table>
     <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
     <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
@@ -666,6 +687,12 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${c.numeroPiece}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Montant du stock déclaré</td><td>${fcfa(c.montantStock)}</td><td class="k">Montant du stock retenu</td><td>${fcfa(c.capitalRetenu)}</td></tr>
+  </table>
+
+  <h2>Garanties souscrites</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital</td><td class="k">Prime</td></tr>
+    ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
   </table>
 
   <table>
