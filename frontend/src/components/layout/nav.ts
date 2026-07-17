@@ -22,7 +22,6 @@ import {
   Calculator,
   LifeBuoy,
   Banknote,
-  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -136,7 +135,6 @@ export const adminNav: AdminNavEntry[] = [
         section: "Portefeuille",
         items: [
           { to: "/admin/imf/simulateur", label: "Simulateur", icon: Calculator },
-          { to: "/admin/imf/souscriptions", label: "Souscriptions", icon: FileText },
           { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
           { to: "/admin/imf/sinistres", label: "Sinistres", icon: LifeBuoy },
           { to: "/admin/imf/bordereaux", label: "Bordereaux", icon: Banknote },
@@ -170,7 +168,6 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
         section: "Mon activité",
         items: [
           { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
-          { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
           { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
           { to: "/agent-imf/finance", label: "Finance", icon: Wallet },
         ],
@@ -192,10 +189,8 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
         { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
         { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
         ...reseau,
-        { to: "/agent-imf/souscriptions", label: "Souscriptions", icon: FileText },
         { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
         { to: "/agent-imf/sinistres", label: "Sinistres", icon: LifeBuoy },
-        { to: "/agent-imf/hors-ligne", label: "Hors-ligne", icon: WifiOff },
       ],
     },
   ];

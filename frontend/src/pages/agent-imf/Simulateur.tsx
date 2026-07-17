@@ -837,7 +837,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     </div>
                     <div className="muted" style={{ fontSize: 13 }}>
                       {souscriptionHorsLigne.client.prenom} {souscriptionHorsLigne.client.nom} · {fcfa(souscriptionHorsLigne.primeTTC)} (estimation)
-                      {" · "}sera synchronisée et confirmée par le serveur à la reconnexion (voir « Hors-ligne » dans le menu).
+                      {" · "}sera synchronisée et confirmée par le serveur automatiquement dès la reconnexion.
                     </div>
                   </div>
                 </div>

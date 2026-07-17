@@ -33,7 +33,6 @@ import ImfAgences from "./pages/admin/imf/Agences";
 import ImfAgents from "./pages/admin/imf/Agents";
 import ImfBaremes from "./pages/admin/imf/Baremes";
 import ImfIndiceArc from "./pages/admin/imf/IndiceArc";
-import ImfSouscriptions from "./pages/admin/imf/Souscriptions";
 import ImfSimulateur from "./pages/admin/imf/Simulateur";
 import ImfContrats from "./pages/admin/imf/Contrats";
 import ImfSinistres from "./pages/admin/imf/Sinistres";
@@ -49,10 +48,8 @@ import PartenaireProfil from "./pages/partenaire/Profil";
 import AgentImfLayout from "./components/layout/AgentImfLayout";
 import AgentImfDashboard from "./pages/agent-imf/Dashboard";
 import AgentImfSimulateur from "./pages/agent-imf/Simulateur";
-import AgentImfSouscriptions from "./pages/agent-imf/Souscriptions";
 import AgentImfContrats from "./pages/agent-imf/Contrats";
 import AgentImfSinistres from "./pages/agent-imf/Sinistres";
-import AgentImfHorsLigne from "./pages/agent-imf/HorsLigne";
 import AgentImfFinance from "./pages/agent-imf/Finance";
 import AgentImfReseauZone from "./pages/agent-imf/ReseauZone";
 import AgentImfReseauAgence from "./pages/agent-imf/ReseauAgence";
@@ -99,7 +96,6 @@ export default function App() {
             <Route path="imf/baremes" element={<ImfBaremes />} />
             <Route path="imf/indice-arc" element={<ImfIndiceArc />} />
             <Route path="imf/simulateur" element={<ImfSimulateur />} />
-            <Route path="imf/souscriptions" element={<ImfSouscriptions />} />
             <Route path="imf/contrats" element={<ImfContrats />} />
             <Route path="imf/sinistres" element={<ImfSinistres />} />
             <Route path="imf/bordereaux" element={<ImfBordereaux />} />
@@ -130,10 +126,8 @@ export default function App() {
           >
             <Route index element={<AgentImfDashboard />} />
             <Route path="simulateur" element={<AgentImfSimulateur />} />
-            <Route path="souscriptions" element={<AgentImfSouscriptions />} />
             <Route path="contrats" element={<AgentImfContrats />} />
             <Route path="sinistres" element={<AgentImfSinistres />} />
-            <Route path="hors-ligne" element={<AgentImfHorsLigne />} />
             <Route path="finance" element={<AgentImfFinance />} />
             <Route path="reseau-zone" element={<AgentImfReseauZone />} />
             <Route path="reseau-agence" element={<AgentImfReseauAgence />} />
