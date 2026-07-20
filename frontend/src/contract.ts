@@ -108,6 +108,7 @@ export interface ContratSecurecolte {
   montantPack: number;
   valeurPackage?: number | null;
   superficieHa?: number | null;
+  capitaux?: { label: string; montant: number }[];
   signature?: string | null;
 }
 
@@ -304,9 +305,24 @@ export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCo
 /** Reconstitue les champs du contrat SECURECOLTE à partir d'une souscription IMF (produit catalogue). */
 export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): ContratSecurecolte {
   const entrees = s.entrees as { valeurPackage?: number; superficieHa?: number };
+  const resultat = s.resultat as {
+    capitalFaible?: number;
+    capitalMoyenne?: number;
+    capitalForte?: number;
+    capitalDeces?: number;
+  };
   const debut = new Date(s.createdAt);
   const fin = new Date(debut);
   fin.setFullYear(fin.getFullYear() + 1);
+  const capitaux =
+    resultat.capitalFaible !== undefined
+      ? [
+          { label: "Faible sécheresse (20%)", montant: resultat.capitalFaible },
+          { label: "Moyenne sécheresse (50%)", montant: resultat.capitalMoyenne ?? 0 },
+          { label: "Forte sécheresse (100%)", montant: resultat.capitalForte ?? 0 },
+          { label: "Décès de l'agriculteur (100%)", montant: resultat.capitalDeces ?? 0 },
+        ]
+      : undefined;
   return {
     numeroPolice: s.numeroPolice,
     intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
@@ -323,6 +339,7 @@ export function souscriptionImfToContratSecurecolte(s: SouscriptionImf): Contrat
     montantPack: s.primeTTC,
     valeurPackage: entrees.valeurPackage ?? null,
     superficieHa: entrees.superficieHa ?? null,
+    capitaux,
     signature: s.signature ?? null,
   };
 }
@@ -647,6 +664,13 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
     <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Valeur du package</td><td>${c.valeurPackage ? fcfa(c.valeurPackage) : "—"}</td><td class="k">Superficie du champ</td><td>${c.superficieHa ? `${c.superficieHa} ha` : "—"}</td></tr>
   </table>
+
+  ${c.capitaux ? `
+  <h2>Capitaux garantis</h2>
+  <table>
+    <tr><td class="k">Palier</td><td class="k">Capital garanti</td></tr>
+    ${c.capitaux.map((cx) => `<tr><td>${val(cx.label)}</td><td>${fcfa(cx.montant)}</td></tr>`).join("")}
+  </table>` : ""}
 
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par

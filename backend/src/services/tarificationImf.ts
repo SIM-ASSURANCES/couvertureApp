@@ -237,6 +237,63 @@ export function palierSecheresse(valeur: number, reference: number): "forte" | "
   return "aucune";
 }
 
+// Fréquences de déclenchement — modèle ARC (sécheresse) et TD CIMA 45 ans (décès).
+const FREQ_FAIBLE = 0.1307; // p
+const FREQ_MOYENNE = 0.0366; // q
+const FREQ_FORTE = 0.0043; // r
+const FREQ_DECES = 0.0053; // s
+const CHARGEMENT_DISTRIBUTION = 0.22; // g
+const MARGE_FRAIS_ASSUREUR = 0.4; // h
+const TAXE_SECHERESSE = 0.0725; // k
+
+export interface ResultatSecurecolte {
+  capitalFaible: number; // a — 20% de la valeur du package
+  capitalMoyenne: number; // b — 50%
+  capitalForte: number; // c — 100%
+  capitalDeces: number; // d — 100% (= c)
+  primeTTC: number; // "Vente" — prime commerciale TTC arrondie
+}
+
+/**
+ * Tarification SECURECOLTE (modèle actuariel ARC) : à partir de la valeur du
+ * package déclarée par le client, calcule les capitaux garantis par palier de
+ * sécheresse (+ décès) et la prime commerciale TTC ("Vente"). Pour 1 pack
+ * (1 hectare) ; à multiplier par la superficie déclarée pour le total.
+ *
+ *   a/b/c/d = 20%/50%/100%/100% de la valeur du package
+ *   e (prime de risque sécheresse) = p·a + q·(b-a) + r·(c-b)
+ *   f (prime de risque décès)      = s·c
+ *   i/j (primes commerciales HT)   = e / (1-g-h), f / (1-g-h)
+ *   l (prime commerciale TTC)      = i·(1+k) + j
+ *   Vente = (ARRONDI(l/1000 ; 1) + 0,1) × 1000
+ *
+ * Vérifié contre l'exemple fourni : valeur du package 250 000 → Vente 31 300.
+ */
+export function calculerSecurecolte(valeurPackage: number): ResultatSecurecolte {
+  const a = 0.2 * valeurPackage;
+  const b = 0.5 * valeurPackage;
+  const c = valeurPackage;
+  const d = c;
+
+  const e = FREQ_FAIBLE * a + FREQ_MOYENNE * (b - a) + FREQ_FORTE * (c - b);
+  const f = FREQ_DECES * c;
+
+  const denom = 1 - CHARGEMENT_DISTRIBUTION - MARGE_FRAIS_ASSUREUR;
+  const i = e / denom;
+  const j = f / denom;
+  const l = i * (1 + TAXE_SECHERESSE) + j;
+
+  const vente = (Math.round((l / 1000) * 10) / 10 + 0.1) * 1000;
+
+  return {
+    capitalFaible: Math.round(a),
+    capitalMoyenne: Math.round(b),
+    capitalForte: Math.round(c),
+    capitalDeces: Math.round(d),
+    primeTTC: Math.round(vente),
+  };
+}
+
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }

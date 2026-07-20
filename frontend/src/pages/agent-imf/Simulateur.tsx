@@ -7,7 +7,7 @@ import SignaturePad, { type SignaturePadHandle } from "../../components/Signatur
 import { useOnline } from "../../offline/useOnline";
 import { useBaremeCache } from "../../offline/useBaremes";
 import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
-import { tarifCatalogueHorsLigne, calculerCoupsdursHorsLigne } from "../../offline/catalogue";
+import { calculerCoupsdursHorsLigne, calculerSecurecolteHorsLigne } from "../../offline/catalogue";
 import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
 import type { SouscriptionImf } from "../../types";
 
@@ -140,7 +140,10 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [produitCode, setProduitCode] = useState<ProduitCode>("securpro");
   const [error, setError] = useState("");
   const [resultat, setResultat] = useState<
-    ResultatFormule | { lignes: LignePrime[]; primeTTC: number } | { prime: number; capitalGaranti: number } | null
+    | ResultatFormule
+    | { lignes: LignePrime[]; primeTTC: number }
+    | { capitaux: { label: string; montant: number }[]; primeTTC: number }
+    | null
   >(null);
   const [souscription, setSouscription] = useState<SouscriptionImf | null>(null);
   const [client, setClient] = useState({
@@ -227,9 +230,9 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   const [beneficiaires, setBeneficiaires] = useState<Beneficiaire[]>([]);
   const totalBeneficiaires = beneficiaires.reduce((s, b) => s + (b.pourcentage || 0), 0);
 
-  // SECURECOLTE : 1 hectare = 1 pack — la prime et le capital garanti du
-  // catalogue sont multipliés par la superficie déclarée. La valeur du
-  // package reste purement déclarative (sans effet sur le tarif).
+  // SECURECOLTE : modèle actuariel ARC — la valeur du package saisie par
+  // l'agent est la base du calcul (capitaux garantis + prime), 1 hectare = 1
+  // pack — voir calculerSecurecolteHorsLigne().
   const estSecurecolte = produitCode === "securecolte";
   const [secol, setSecol] = useState({ valeurPackage: 0, superficieHa: 0 });
 
@@ -264,7 +267,11 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
    * conversion effective en souscription — voir souscrire().
    */
   useEffect(() => {
-    let nextResultat: ResultatFormule | { lignes: LignePrime[]; primeTTC: number } | { prime: number; capitalGaranti: number } | null = null;
+    let nextResultat:
+      | ResultatFormule
+      | { lignes: LignePrime[]; primeTTC: number }
+      | { capitaux: { label: string; montant: number }[]; primeTTC: number }
+      | null = null;
     let nextEntrees: Record<string, unknown> | null = null;
     let nextPrimeTTC = 0;
     let nextError = "";
@@ -334,20 +341,25 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         nextResultat = r;
         nextPrimeTTC = r.primeTTC;
       }
-    } else if (secol.superficieHa > 0) {
-      // SECURECOLTE : 1 hectare = 1 pack — prime et capital garanti du
-      // catalogue multipliés par la superficie déclarée.
-      const t = tarifCatalogueHorsLigne(produitCode, variante);
-      if (t) {
-        nextEntrees = {
-          libelleVariante: variante,
-          valeurPackage: secol.valeurPackage || undefined,
-          superficieHa: secol.superficieHa,
-        };
-        const primeCalculee = Math.round(t.prime * secol.superficieHa);
-        nextResultat = { prime: primeCalculee, capitalGaranti: Math.round(t.capitalGaranti * secol.superficieHa) };
-        nextPrimeTTC = primeCalculee;
-      }
+    } else if (secol.superficieHa > 0 && secol.valeurPackage > 0) {
+      // SECURECOLTE : modèle actuariel ARC — la valeur du package saisie est
+      // la base du calcul (voir calculerSecurecolteHorsLigne), 1 hectare = 1 pack.
+      const r = calculerSecurecolteHorsLigne(secol.valeurPackage, secol.superficieHa);
+      nextEntrees = {
+        libelleVariante: variante,
+        valeurPackage: secol.valeurPackage,
+        superficieHa: secol.superficieHa,
+      };
+      nextResultat = {
+        capitaux: [
+          { label: "Faible sécheresse (20%)", montant: r.capitalFaible },
+          { label: "Moyenne sécheresse (50%)", montant: r.capitalMoyenne },
+          { label: "Forte sécheresse (100%)", montant: r.capitalForte },
+          { label: "Décès de l'agriculteur (100%)", montant: r.capitalDeces },
+        ],
+        primeTTC: r.primeTTC,
+      };
+      nextPrimeTTC = r.primeTTC;
     }
 
     setResultat(nextResultat);
@@ -762,7 +774,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                   />
                 </div>
                 <div className="muted" style={{ fontSize: 12, marginTop: -8, marginBottom: 8 }}>
-                  Informations déclaratives : sans effet sur la prime ni le capital garanti du pack.
+                  La valeur du package détermine les capitaux garantis et la prime (par hectare).
                 </div>
               </>
             )}
@@ -922,11 +934,16 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             </table>
           )}
 
-          {!error && resultat && "prime" in resultat && (
+          {!error && resultat && "capitaux" in resultat && (
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
-                <tr><td className="muted">Capital garanti</td><td style={{ textAlign: "right" }}>{fcfa(resultat.capitalGaranti)}</td></tr>
-                <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.prime)}</strong></td></tr>
+                {resultat.capitaux.map((c, i) => (
+                  <tr key={i}>
+                    <td className="muted">{c.label}</td>
+                    <td style={{ textAlign: "right" }}>{fcfa(c.montant)}</td>
+                  </tr>
+                ))}
+                <tr><td><strong>Prime TTC</strong></td><td style={{ textAlign: "right" }}><strong>{fcfa(resultat.primeTTC)}</strong></td></tr>
               </tbody>
             </table>
           )}

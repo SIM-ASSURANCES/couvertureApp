@@ -9,6 +9,7 @@ import { logAction } from "../journal.js";
 import {
   calculerSecurpro,
   calculerSecurstock,
+  calculerSecurecolte,
   palierSecheresse,
   type SecurproInput,
   type SecurstockInput,
@@ -775,10 +776,11 @@ const securstockInputSchema = z.object({
 
 const catalogueInputSchema = z.object({
   libelleVariante: z.string().min(1),
-  // SECURECOLTE uniquement : 1 hectare = 1 pack, la prime et le capital
-  // garanti du catalogue sont multipliés par la superficie déclarée. La
-  // valeur du package reste purement déclarative (sans effet sur le tarif).
-  valeurPackage: z.number().positive().optional(),
+  // SECURECOLTE uniquement : la valeur du package saisie par le client est
+  // la base du modèle actuariel ARC (voir calculerSecurecolte) — ce n'est
+  // plus une donnée déclarative. 1 hectare = 1 pack : la prime et les
+  // capitaux garantis par palier sont multipliés par la superficie déclarée.
+  valeurPackage: z.number().positive(),
   superficieHa: z.number().positive(),
 });
 
@@ -914,19 +916,23 @@ async function calculerDevisImf(
     const primeTTC = lignes.reduce((s, l) => s + l.prime, 0);
     return { ok: true, resultat: { lignes, primeTTC }, primeTTC };
   }
-  // Catalogue à prix fixe restant : SECURECOLTE.
-  const { libelleVariante, superficieHa, valeurPackage } = catalogueInputSchema.parse(entrees);
-  const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
-  if (!produit) return { ok: false, error: "Produit introuvable" };
-  const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante } });
-  if (!tarif) return { ok: false, error: "Variante introuvable pour ce produit" };
-  // 1 hectare = 1 pack : la prime et le capital garanti du catalogue sont
-  // multipliés par la superficie déclarée par le client.
-  const primeTTC = Math.round(tarif.prime * superficieHa);
-  const capitalGaranti = Math.round(tarif.capitalGaranti * superficieHa);
+  // Catalogue restant : SECURECOLTE — modèle actuariel ARC, prime calculée
+  // à partir de la valeur du package (1 hectare = 1 pack).
+  const { superficieHa, valeurPackage } = catalogueInputSchema.parse(entrees);
+  const parPack = calculerSecurecolte(valeurPackage);
+  const primeTTC = Math.round(parPack.primeTTC * superficieHa);
   return {
     ok: true,
-    resultat: { ...tarif, prime: primeTTC, capitalGaranti, superficieHa, valeurPackage },
+    resultat: {
+      capitalFaible: Math.round(parPack.capitalFaible * superficieHa),
+      capitalMoyenne: Math.round(parPack.capitalMoyenne * superficieHa),
+      capitalForte: Math.round(parPack.capitalForte * superficieHa),
+      capitalDeces: Math.round(parPack.capitalDeces * superficieHa),
+      capitalGaranti: Math.round(parPack.capitalForte * superficieHa),
+      superficieHa,
+      valeurPackage,
+      primeTTC,
+    },
     primeTTC,
   };
 }
@@ -1753,12 +1759,14 @@ imfRouter.patch(
  */
 const indemnisationSecurecolteSchema = z.object({
   souscriptionIds: z.array(z.string().min(1)).min(1),
-  palier: z.enum(["forte", "moyenne", "faible"]),
+  palier: z.enum(["forte", "moyenne", "faible", "deces"]),
   region: z.string().min(1),
 });
 
-const TAUX_PALIER: Record<"forte" | "moyenne" | "faible", number> = {
-  forte: 1, moyenne: 0.5, faible: 0.2,
+// Taux appliqué au capital garanti "forte" (= capitalGaranti) pour les
+// souscriptions antérieures au modèle ARC (sans capitaux détaillés par palier).
+const TAUX_PALIER: Record<"forte" | "moyenne" | "faible" | "deces", number> = {
+  forte: 1, moyenne: 0.5, faible: 0.2, deces: 1,
 };
 
 imfRouter.post(
@@ -1771,12 +1779,28 @@ imfRouter.post(
     if (souscriptions.length === 0) {
       return res.status(400).json({ error: "Aucune souscription SECURECOLTE active dans la sélection." });
     }
-    const taux = TAUX_PALIER[data.palier];
     const created = await Promise.all(
       souscriptions.map(async (s) => {
-        const resultat = s.resultat as { capitalGaranti?: number };
-        const capital = resultat.capitalGaranti ?? s.primeTTC;
-        const montant = Math.round(capital * taux);
+        // Modèle ARC (voir calculerSecurecolte) : le capital à verser pour ce
+        // palier est déjà calculé et stocké tel quel dans le résultat. À
+        // défaut (souscriptions antérieures à ce modèle), on retombe sur
+        // l'ancien taux appliqué au capital garanti global.
+        const resultat = s.resultat as {
+          capitalGaranti?: number;
+          capitalFaible?: number;
+          capitalMoyenne?: number;
+          capitalForte?: number;
+          capitalDeces?: number;
+        };
+        const capitalDirect =
+          data.palier === "faible" ? resultat.capitalFaible
+          : data.palier === "moyenne" ? resultat.capitalMoyenne
+          : data.palier === "forte" ? resultat.capitalForte
+          : resultat.capitalDeces;
+        const montant =
+          capitalDirect !== undefined
+            ? Math.round(capitalDirect)
+            : Math.round((resultat.capitalGaranti ?? s.primeTTC) * TAUX_PALIER[data.palier]);
         const sin = await prisma.sinistreImf.create({
           data: {
             numeroSinistre: "TMP",

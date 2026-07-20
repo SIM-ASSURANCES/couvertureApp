@@ -60,6 +60,7 @@ const PALIERS = [
   { value: "forte", label: "Forte sécheresse (100%)" },
   { value: "moyenne", label: "Moyenne sécheresse (50%)" },
   { value: "faible", label: "Faible sécheresse (20%)" },
+  { value: "deces", label: "Décès de l'agriculteur (100%)" },
 ];
 
 export default function Sinistres() {
@@ -178,7 +179,7 @@ export default function Sinistres() {
   const { data: souscriptionsSecurecolte } = useFetch<SouscriptionImf[]>("/imf/souscriptions?produitCode=securecolte");
   const actives = (souscriptionsSecurecolte ?? []).filter((s) => s.statut === "active");
   const [selection, setSelection] = useState<string[]>([]);
-  const [palier, setPalier] = useState<"forte" | "moyenne" | "faible">("forte");
+  const [palier, setPalier] = useState<"forte" | "moyenne" | "faible" | "deces">("forte");
   const [region, setRegion] = useState("");
   const [indemnisant, setIndemnisant] = useState(false);
   const [indemnisationMsg, setIndemnisationMsg] = useState("");

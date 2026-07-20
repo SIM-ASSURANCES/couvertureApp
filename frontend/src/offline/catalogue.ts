@@ -1,10 +1,11 @@
 /**
- * Tarifs catalogue (COUPS DURS / SECURECOLTE) pour le mode hors-ligne.
- * Ces produits sont à prime fixe (pas de moteur de calcul) : la table
- * ci-dessous est une copie figée des valeurs de référence semées côté
- * serveur (backend/src/seed.ts). Si ces tarifs évoluent un jour, cette
- * table doit être mise à jour manuellement — elle ne se synchronise pas
- * automatiquement, contrairement aux barèmes SECURPRO/SECURSTOCK.
+ * Tarifs catalogue (COUPS DURS) pour le mode hors-ligne. Prix fixe (pas de
+ * moteur de calcul) : la table ci-dessous est une copie figée des valeurs de
+ * référence semées côté serveur (backend/src/seed.ts). Si ces tarifs
+ * évoluent un jour, cette table doit être mise à jour manuellement — elle ne
+ * se synchronise pas automatiquement, contrairement aux barèmes
+ * SECURPRO/SECURSTOCK. SECURECOLTE n'est plus ici : voir
+ * calculerSecurecolteHorsLigne (formule, pas de catalogue).
  */
 export interface TarifCatalogue {
   libelleVariante: string;
@@ -19,8 +20,54 @@ export const CATALOGUE_HORS_LIGNE: Record<string, TarifCatalogue[]> = {
     { libelleVariante: "plafond_500000", prime: 4000, capitalGaranti: 500_000 },
     { libelleVariante: "plafond_1000000", prime: 6000, capitalGaranti: 1_000_000 },
   ],
-  securecolte: [{ libelleVariante: "pack", prime: 31300, capitalGaranti: 250_000 }],
 };
+
+// Fréquences de déclenchement — modèle ARC (sécheresse) et TD CIMA 45 ans (décès).
+const FREQ_FAIBLE = 0.1307; // p
+const FREQ_MOYENNE = 0.0366; // q
+const FREQ_FORTE = 0.0043; // r
+const FREQ_DECES = 0.0053; // s
+const CHARGEMENT_DISTRIBUTION = 0.22; // g
+const MARGE_FRAIS_ASSUREUR = 0.4; // h
+const TAXE_SECHERESSE = 0.0725; // k
+
+export interface ResultatSecurecolte {
+  capitalFaible: number;
+  capitalMoyenne: number;
+  capitalForte: number;
+  capitalDeces: number;
+  primeTTC: number;
+}
+
+/**
+ * SECURECOLTE (modèle actuariel ARC) : miroir hors-ligne exact de
+ * calculerSecurecolte() côté serveur (backend/src/services/tarificationImf.ts).
+ * 1 hectare = 1 pack — le résultat est déjà mis à l'échelle de la superficie.
+ */
+export function calculerSecurecolteHorsLigne(valeurPackage: number, superficieHa: number): ResultatSecurecolte {
+  const a = 0.2 * valeurPackage;
+  const b = 0.5 * valeurPackage;
+  const c = valeurPackage;
+  const d = c;
+
+  const e = FREQ_FAIBLE * a + FREQ_MOYENNE * (b - a) + FREQ_FORTE * (c - b);
+  const f = FREQ_DECES * c;
+
+  const denom = 1 - CHARGEMENT_DISTRIBUTION - MARGE_FRAIS_ASSUREUR;
+  const i = e / denom;
+  const j = f / denom;
+  const l = i * (1 + TAXE_SECHERESSE) + j;
+
+  const vente = (Math.round((l / 1000) * 10) / 10 + 0.1) * 1000;
+
+  return {
+    capitalFaible: Math.round(a * superficieHa),
+    capitalMoyenne: Math.round(b * superficieHa),
+    capitalForte: Math.round(c * superficieHa),
+    capitalDeces: Math.round(d * superficieHa),
+    primeTTC: Math.round(vente * superficieHa),
+  };
+}
 
 export function tarifCatalogueHorsLigne(produitCode: string, libelleVariante: string): TarifCatalogue | null {
   const tarifs = CATALOGUE_HORS_LIGNE[produitCode];
