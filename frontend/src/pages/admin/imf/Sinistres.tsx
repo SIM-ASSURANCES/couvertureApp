@@ -1,8 +1,9 @@
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronUp, Droplets, FilePlus } from "lucide-react";
+import { ChevronDown, ChevronUp, Droplets, FilePlus, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
+import { exportExcel } from "../../../xlsx";
 import type { SinistreImf, SouscriptionImf } from "../../../types";
 
 const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -68,6 +69,28 @@ export default function Sinistres() {
   if (statut) params.set("statut", statut);
   if (produitCode) params.set("produitCode", produitCode);
   const { data, loading, error, reload, setData } = useFetch<SinistreImf[]>(`/imf/sinistres?${params.toString()}`);
+
+  function exporter() {
+    if (!data) return;
+    exportExcel(
+      data.map((s) => ({
+        "N° sinistre": s.numeroSinistre,
+        "N° de police": s.numeroPolice,
+        "Client": `${s.clientPrenom} ${s.clientNom}`,
+        "Téléphone": s.clientTelephone,
+        "Produit": s.produitCode,
+        "Événement": s.typeEvenement,
+        "Déclaré par": s.agentNom ?? s.adminNom ?? "",
+        "Statut": s.statut,
+        "Montant estimé": s.montantEstime ?? "",
+        "Montant réglé": s.montantRegle ?? "",
+        "Motif de rejet": s.motifRejet ?? "",
+        "Date de survenance": fmtDate(s.dateSurvenance),
+        "Déclaré le": fmtDate(s.dateDeclaration),
+      })),
+      "sinistres-imf.xlsx"
+    );
+  }
 
   // Déclaration par l'admin (souscriptions directes, sans agent/zone/agence).
   const { data: toutesSouscriptions } = useFetch<SouscriptionImf[]>("/imf/souscriptions");
@@ -240,6 +263,9 @@ export default function Sinistres() {
             <select className="select" style={{ width: 200, height: 40 }} value={produitCode} onChange={(e) => setProduitCode(e.target.value)}>
               {PRODUITS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
+            <button className="btn btn-ghost" onClick={exporter} disabled={!data || data.length === 0}>
+              <FileSpreadsheet size={15} /> Export Excel
+            </button>
           </div>
         }
         noBody

@@ -163,12 +163,18 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   // SECURPRO
   const [sp, setSp] = useState({
     classe: 1, statutOccupation: "proprietaire" as "proprietaire" | "locataire",
-    valeurBatiment: 0, loyerMensuel: 0, contenu: 0, dansMarche: null as boolean | null,
+    valeurBatiment: 0, loyerMensuel: 0, dansMarche: null as boolean | null,
+    // Contenu déclaré n'est plus saisi directement : c'est la somme de ces
+    // 5 postes détaillés (voir contenuDeclare plus bas).
+    materielExploitation: 0, mobilierMaterielBureau: 0, amenagement: 0,
+    materielInformatique: 0, stocksMarchandises: 0,
     gardien: false, extincteur: false,
     volContenu: false, majorationVolContenu: false,
     volCaisseCapital: 0, majorationVolCaisse: false,
     ddeCapital: 0, deCapital: 0, bdgCapital: 0,
   });
+  const contenuDeclare =
+    sp.materielExploitation + sp.mobilierMaterielBureau + sp.amenagement + sp.materielInformatique + sp.stocksMarchandises;
   const baremeSecurpro = useBaremeCache<BaremeClasse[]>(
     "baremes_securpro",
     produitCode === "securpro" ? `${apiBase}/baremes/securpro` : null,
@@ -272,7 +278,12 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
             statutOccupation: sp.statutOccupation,
             valeurBatiment: sp.statutOccupation === "proprietaire" ? sp.valeurBatiment : undefined,
             loyerMensuel: sp.statutOccupation === "locataire" ? sp.loyerMensuel : undefined,
-            contenu: sp.contenu,
+            materielExploitation: sp.materielExploitation,
+            mobilierMaterielBureau: sp.mobilierMaterielBureau,
+            amenagement: sp.amenagement,
+            materielInformatique: sp.materielInformatique,
+            stocksMarchandises: sp.stocksMarchandises,
+            contenu: contenuDeclare,
             dansMarche: !!sp.dansMarche,
             gardien: sp.gardien,
             extincteur: sp.extincteur,
@@ -512,8 +523,31 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                   </div>
                 )}
                 <div className="field">
+                  <label className="label">Matériel d'exploitation</label>
+                  <input className="input" type="number" value={sp.materielExploitation} onChange={(e) => setSp({ ...sp, materielExploitation: Number(e.target.value) })} />
+                </div>
+                <div className="field">
+                  <label className="label">Mobilier et matériel de bureau</label>
+                  <input className="input" type="number" value={sp.mobilierMaterielBureau} onChange={(e) => setSp({ ...sp, mobilierMaterielBureau: Number(e.target.value) })} />
+                </div>
+                <div className="field">
+                  <label className="label">Aménagement</label>
+                  <input className="input" type="number" value={sp.amenagement} onChange={(e) => setSp({ ...sp, amenagement: Number(e.target.value) })} />
+                </div>
+                <div className="field">
+                  <label className="label">Matériel informatique</label>
+                  <input className="input" type="number" value={sp.materielInformatique} onChange={(e) => setSp({ ...sp, materielInformatique: Number(e.target.value) })} />
+                </div>
+                <div className="field">
+                  <label className="label">Stocks marchandises</label>
+                  <input className="input" type="number" value={sp.stocksMarchandises} onChange={(e) => setSp({ ...sp, stocksMarchandises: Number(e.target.value) })} />
+                </div>
+                <div className="field">
                   <label className="label">Contenu déclaré</label>
-                  <input className="input" type="number" value={sp.contenu} onChange={(e) => setSp({ ...sp, contenu: Number(e.target.value) })} />
+                  <input className="input" type="number" value={contenuDeclare} disabled readOnly />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Calculé automatiquement : somme des 5 postes ci-dessus.
+                  </div>
                 </div>
                 <div className="field" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   <label style={{ display: "flex", gap: 8, alignItems: "center" }}>

@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fmtDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
+import { exportExcel } from "../../../xlsx";
 import type { AgentImf, AgenceImf, ZoneImf, RoleImf } from "../../../types";
 
 const empty = {
@@ -91,6 +92,23 @@ export default function Agents() {
     }
   }
 
+  function exporter() {
+    if (!data) return;
+    exportExcel(
+      data.map((a) => ({
+        "Nom": a.nom,
+        "Prénom": a.prenom,
+        "Email": a.email,
+        "Téléphone": a.telephone,
+        "Rôle": roleLabel(a.roleImf),
+        "Rattachement": a.roleImf === "RESPONSABLE_ZONE" ? a.zoneNom ?? "" : a.agenceNom ?? "",
+        "Statut": a.statut,
+        "Créé le": fmtDate(a.createdAt),
+      })),
+      "agents-imf.xlsx"
+    );
+  }
+
   const canSubmit =
     form.nom.trim() &&
     form.prenom.trim() &&
@@ -104,7 +122,15 @@ export default function Agents() {
       <PageHeader title="Agents" subtitle="Comptes de connexion des agents et responsables de zone IMF." />
 
       <div className="grid-2" style={{ marginTop: 24 }}>
-        <Card title={data ? `${data.length} agents` : "Agents"} noBody>
+        <Card
+          title={data ? `${data.length} agents` : "Agents"}
+          extra={
+            <button className="btn btn-ghost" onClick={exporter} disabled={!data || data.length === 0}>
+              <FileSpreadsheet size={15} /> Export Excel
+            </button>
+          }
+          noBody
+        >
           {loading && <Loader />}
           {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
           {data && (

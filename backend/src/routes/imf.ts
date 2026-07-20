@@ -743,7 +743,13 @@ const securproInputSchema = z.object({
   statutOccupation: z.enum(["proprietaire", "locataire"]),
   valeurBatiment: z.number().nonnegative().optional(),
   loyerMensuel: z.number().nonnegative().optional(),
-  contenu: z.number().nonnegative(),
+  // Le contenu déclaré n'est plus saisi directement : il est recalculé côté
+  // serveur comme la somme de ces 5 postes (seule source de vérité).
+  materielExploitation: z.number().nonnegative(),
+  mobilierMaterielBureau: z.number().nonnegative(),
+  amenagement: z.number().nonnegative(),
+  materielInformatique: z.number().nonnegative(),
+  stocksMarchandises: z.number().nonnegative(),
   dansMarche: z.boolean(),
   gardien: z.boolean(),
   extincteur: z.boolean(),
@@ -868,7 +874,15 @@ async function calculerDevisImf(
   entrees: Record<string, unknown>
 ): Promise<{ ok: true; resultat: unknown; primeTTC: number } | { ok: false; error: string }> {
   if (produitCode === "securpro") {
-    const input = securproInputSchema.parse(entrees) as SecurproInput;
+    const parsed = securproInputSchema.parse(entrees);
+    // Contenu déclaré = somme des 5 postes détaillés (jamais saisi directement).
+    const contenu =
+      parsed.materielExploitation +
+      parsed.mobilierMaterielBureau +
+      parsed.amenagement +
+      parsed.materielInformatique +
+      parsed.stocksMarchandises;
+    const input = { ...parsed, contenu } as SecurproInput;
     const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
     if (!bareme) return { ok: false, error: "Barème SECURPRO introuvable pour cette classe" };
     const r = calculerSecurpro(input, { ...bareme, classe: input.classe });

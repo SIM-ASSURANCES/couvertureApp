@@ -1,14 +1,32 @@
-import { Download } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
 import { genererContratImf, contratImfDisponible } from "../../contract";
+import { exportExcel } from "../../xlsx";
 import type { SouscriptionImf } from "../../types";
 
 export default function Contrats() {
   const { user } = useAuth();
   const estResponsable = user?.roleImf && user.roleImf !== "AGENT";
   const { data, loading, error } = useFetch<SouscriptionImf[]>("/agent-imf/contrats");
+
+  function exporter() {
+    if (!data) return;
+    exportExcel(
+      data.map((s) => ({
+        "N° de police": s.numeroPolice,
+        "Client": `${s.prenom} ${s.nom}`,
+        "Téléphone": s.telephone,
+        "Produit": s.produitCode,
+        "Agent": s.agentNom ?? "",
+        "Prime TTC": s.primeTTC,
+        "Statut": s.statut,
+        "Date": fmtDate(s.createdAt),
+      })),
+      "contrats.xlsx"
+    );
+  }
 
   return (
     <>
@@ -17,7 +35,16 @@ export default function Contrats() {
         subtitle={estResponsable ? "Contrats actifs de votre réseau." : "Vos contrats actifs."}
       />
 
-      <Card title={data ? `${data.length} contrats` : "Contrats"} noBody style={{ marginTop: 24 }}>
+      <Card
+        title={data ? `${data.length} contrats` : "Contrats"}
+        extra={
+          <button className="btn btn-ghost" onClick={exporter} disabled={!data || data.length === 0}>
+            <FileSpreadsheet size={15} /> Export Excel
+          </button>
+        }
+        noBody
+        style={{ marginTop: 24 }}
+      >
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
         {data && (

@@ -1,8 +1,9 @@
 import { Fragment, useState } from "react";
-import { FilePlus, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { FilePlus, ChevronDown, ChevronUp, Check, FileSpreadsheet } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
+import { exportExcel } from "../../xlsx";
 import type { SinistreImf, SouscriptionImf } from "../../types";
 
 const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -97,6 +98,26 @@ export default function Sinistres() {
     }
   }
 
+  function exporter() {
+    if (!sinistres) return;
+    exportExcel(
+      sinistres.map((s) => ({
+        "N° sinistre": s.numeroSinistre,
+        "N° de police": s.numeroPolice,
+        "Client": `${s.clientPrenom} ${s.clientNom}`,
+        "Téléphone": s.clientTelephone,
+        "Produit": s.produitCode,
+        "Événement": s.typeEvenement,
+        "Statut": s.statut,
+        "Montant estimé": s.montantEstime ?? "",
+        "Montant réglé": s.montantRegle ?? "",
+        "Date de survenance": fmtDate(s.dateSurvenance),
+        "Déclaré le": fmtDate(s.dateDeclaration),
+      })),
+      "sinistres.xlsx"
+    );
+  }
+
   return (
     <>
       <PageHeader title="Sinistres" subtitle="Déclarer un sinistre et suivre son instruction." />
@@ -153,7 +174,16 @@ export default function Sinistres() {
         </form>
       </Card>
 
-      <Card title={sinistres ? `${sinistres.length} sinistres déclarés` : "Sinistres"} noBody style={{ marginTop: 24 }}>
+      <Card
+        title={sinistres ? `${sinistres.length} sinistres déclarés` : "Sinistres"}
+        extra={
+          <button className="btn btn-ghost" onClick={exporter} disabled={!sinistres || sinistres.length === 0}>
+            <FileSpreadsheet size={15} /> Export Excel
+          </button>
+        }
+        noBody
+        style={{ marginTop: 24 }}
+      >
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
         {sinistres && (
