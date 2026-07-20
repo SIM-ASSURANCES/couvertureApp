@@ -184,6 +184,17 @@ export interface IndiceArcImf {
   updatedAt: string;
 }
 
+export interface SousPrefectureArc {
+  id: string;
+  region: string;
+  district: string;
+  sousPrefecture: string;
+  populationAgricole: number;
+  moyenneIndemnite: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface TarifProduitImf {
   id: number;
   produitId: string;

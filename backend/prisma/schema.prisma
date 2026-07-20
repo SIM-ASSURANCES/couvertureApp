@@ -535,6 +535,28 @@ model IndiceArcImf {
   @@unique([region, annee])
 }
 
+/**
+ * Référentiel des sous-préfectures pour le modèle actuariel ARC de
+ * SECURECOLTE : sert à recalculer périodiquement le tarif national
+ * (SOMMEPROD des indemnités moyennes historiques pondérée par la
+ * population agricole / somme des populations agricoles), voir
+ * /imf/securecolte/tarif-national. Importé depuis un export du tableur
+ * ARC officiel (pas de saisie manuelle ligne par ligne).
+ */
+model SousPrefectureArc {
+  id                 String   @id @default(uuid())
+  region             String
+  district           String
+  sousPrefecture     String   @unique
+  populationAgricole Int
+  // Indemnité annuelle moyenne historique (XOF), calculée hors appli à
+  // partir des déviations WRSI observées 2001-2024 (colonne "Moyenne" du
+  // modèle ARC fourni).
+  moyenneIndemnite   Float
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
 model SimulationImf {
   id          String           @id @default(uuid())
   // agentId OU adminId : une simulation est faite soit par un agent du réseau,

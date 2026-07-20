@@ -658,21 +658,31 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     Maladie Coups Durs (500 000 FCFA)
                   </label>
                   <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-                    <input type="checkbox" checked={cd.deces} onChange={(e) => setCd({ ...cd, deces: e.target.checked })} />
+                    <input
+                      type="checkbox"
+                      checked={cd.deces}
+                      onChange={(e) => setCd({ ...cd, deces: e.target.checked, incapacite: e.target.checked ? cd.incapacite : null })}
+                    />
                     Décès suite à Coups Durs (500 000 FCFA)
                   </label>
                 </div>
 
                 <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <label className="label">Option 2 — Incapacité temporaire</label>
-                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, opacity: cd.deces ? 1 : 0.5 }}>
                     <input
                       type="checkbox"
+                      disabled={!cd.deces}
                       checked={cd.incapacite !== null}
                       onChange={(e) => setCd({ ...cd, incapacite: e.target.checked ? "plafond_500000" : null })}
                     />
                     Incapacité temporaire de l'emprunteur
                   </label>
+                  {!cd.deces && (
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      Disponible uniquement si la garantie Décès (ci-dessus) est cochée.
+                    </div>
+                  )}
                   {cd.incapacite !== null && (
                     <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
                       <label style={{ display: "flex", gap: 6, alignItems: "center" }}>

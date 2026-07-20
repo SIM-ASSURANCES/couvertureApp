@@ -472,6 +472,118 @@ imfRouter.post(
   })
 );
 
+/* ── Référentiel sous-préfectures ARC + recalcul du tarif national SECURECOLTE ── */
+
+imfRouter.get(
+  "/securecolte/sous-prefectures",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.sousPrefectureArc.findMany({ orderBy: [{ region: "asc" }, { sousPrefecture: "asc" }] });
+    res.json(rows);
+  })
+);
+
+const ligneSousPrefectureSchema = z.object({
+  region: z.string().min(1),
+  district: z.string().min(1),
+  sousPrefecture: z.string().min(1),
+  populationAgricole: z.number().int().positive(),
+  moyenneIndemnite: z.number().nonnegative(),
+});
+
+const importSousPrefecturesSchema = z.object({
+  lignes: z.array(ligneSousPrefectureSchema).min(1),
+});
+
+/**
+ * Import en masse du référentiel ARC (remplace tout le référentiel existant
+ * par les lignes fournies — idempotent, reflète toujours le dernier export
+ * du tableur ARC transmis). Saisie via CSV/TSV côté admin, jamais retapée
+ * ligne par ligne : les données brutes viennent directement du fichier ARC.
+ */
+imfRouter.post(
+  "/securecolte/sous-prefectures/import",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = importSousPrefecturesSchema.parse(req.body);
+    await prisma.$transaction([
+      prisma.sousPrefectureArc.deleteMany({}),
+      prisma.sousPrefectureArc.createMany({ data: data.lignes }),
+    ]);
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "sous_prefectures_arc",
+      valeurApres: { nombre: data.lignes.length },
+    });
+    res.status(201).json({ nombre: data.lignes.length });
+  })
+);
+
+/**
+ * Tarif national SECURECOLTE recalculé à partir du référentiel ARC :
+ * SOMMEPROD(moyenneIndemnite, populationAgricole) / SOMME(populationAgricole)
+ * — moyenne des indemnités historiques par sous-préfecture, pondérée par la
+ * population agricole. Ne modifie rien : lecture seule, à appliquer
+ * explicitement via /tarif-national/appliquer.
+ */
+imfRouter.get(
+  "/securecolte/tarif-national",
+  asyncHandler(async (_req, res) => {
+    const lignes = await prisma.sousPrefectureArc.findMany({
+      select: { populationAgricole: true, moyenneIndemnite: true },
+    });
+    const produit = await prisma.produit.findUnique({ where: { code: "securecolte" } });
+    const tarifActuel = produit
+      ? await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: "pack" } })
+      : null;
+    if (lignes.length === 0) {
+      return res.json({ nombreSousPrefectures: 0, tarifCalcule: null, tarifActuel: tarifActuel?.prime ?? null });
+    }
+    const sommePopulation = lignes.reduce((s, l) => s + l.populationAgricole, 0);
+    const sommeProduit = lignes.reduce((s, l) => s + l.moyenneIndemnite * l.populationAgricole, 0);
+    const tarifCalcule = sommePopulation > 0 ? sommeProduit / sommePopulation : null;
+    res.json({
+      nombreSousPrefectures: lignes.length,
+      tarifCalcule: tarifCalcule !== null ? Math.round(tarifCalcule) : null,
+      tarifActuel: tarifActuel?.prime ?? null,
+    });
+  })
+);
+
+imfRouter.post(
+  "/securecolte/tarif-national/appliquer",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const lignes = await prisma.sousPrefectureArc.findMany({
+      select: { populationAgricole: true, moyenneIndemnite: true },
+    });
+    if (lignes.length === 0) {
+      return res.status(400).json({ error: "Aucune donnée de référence ARC importée." });
+    }
+    const sommePopulation = lignes.reduce((s, l) => s + l.populationAgricole, 0);
+    const sommeProduit = lignes.reduce((s, l) => s + l.moyenneIndemnite * l.populationAgricole, 0);
+    if (sommePopulation === 0) {
+      return res.status(400).json({ error: "Population agricole totale nulle — calcul impossible." });
+    }
+    const nouveauTarif = Math.round(sommeProduit / sommePopulation);
+
+    const produit = await prisma.produit.findUnique({ where: { code: "securecolte" } });
+    if (!produit) return res.status(404).json({ error: "Produit SECURECOLTE introuvable." });
+    const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: "pack" } });
+    if (!tarif) return res.status(404).json({ error: "Tarif SECURECOLTE introuvable." });
+
+    const ancienTarif = tarif.prime;
+    const updated = await prisma.tarifProduit.update({ where: { id: tarif.id }, data: { prime: nouveauTarif } });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "tarif_national_securecolte",
+      objetId: String(updated.id),
+      valeurAvant: { prime: ancienTarif },
+      valeurApres: { prime: nouveauTarif },
+    });
+    res.json({ ancienTarif, nouveauTarif });
+  })
+);
+
 /* ── Historique des simulations (lecture admin) ── */
 
 imfRouter.get(
@@ -725,7 +837,11 @@ const coupsdursCombineSchema = z
         d.beneficiaires.length > 0 &&
         Math.round(d.beneficiaires.reduce((s, b) => s + b.pourcentage, 0)) === 100),
     { message: "La somme des parts des bénéficiaires doit être égale à 100%.", path: ["beneficiaires"] }
-  );
+  )
+  .refine((d) => !d.incapacite || d.deces, {
+    message: "L'Incapacité temporaire n'est proposée que si la garantie Décès est cochée.",
+    path: ["incapacite"],
+  });
 
 const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
   maladie: "Maladie Coups Durs",
