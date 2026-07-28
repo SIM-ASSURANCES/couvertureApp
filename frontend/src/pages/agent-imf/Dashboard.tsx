@@ -28,7 +28,7 @@ function roleLabel(r: Moi["roleImf"]) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
-  return "Responsable de zone";
+  return "Chef de zone";
 }
 
 function StatCard({ icon: Icon, label, value }: { icon: typeof Landmark; label: string; value: string | number }) {

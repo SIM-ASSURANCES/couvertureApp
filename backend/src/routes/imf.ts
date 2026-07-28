@@ -689,14 +689,16 @@ export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
 
 /**
- * Le finance comptable n'a accès qu'au tableau de bord, aux souscriptions,
- * aux contrats et à sa page finance — jamais à la création de devis/
- * souscriptions ni à la déclaration de sinistres. Retourne true (et répond
- * 403) si l'accès doit être bloqué.
+ * Le finance comptable et le chef de zone n'ont accès qu'au tableau de bord,
+ * aux souscriptions/contrats (et, pour le chef de zone, à son réseau) —
+ * jamais à la création de devis/souscriptions ni à la déclaration de
+ * sinistres (le chef de zone supervise la production de son réseau, il ne
+ * fait ni simulation ni sinistre). Retourne true (et répond 403) si l'accès
+ * doit être bloqué.
  */
 function bloquerFinanceComptable(req: AuthedRequest, res: Response): boolean {
-  if (req.user!.roleImf === "FINANCE_COMPTABLE") {
-    res.status(403).json({ error: "Action réservée aux agents et responsables — non disponible pour le finance comptable." });
+  if (req.user!.roleImf === "FINANCE_COMPTABLE" || req.user!.roleImf === "RESPONSABLE_ZONE") {
+    res.status(403).json({ error: "Action non disponible pour ce rôle." });
     return true;
   }
   return false;

@@ -182,6 +182,22 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
       ? [{ to: "/agent-imf/reseau-agence", label: "Mon agence", icon: Building2 }]
       : [];
 
+  // Le chef de zone (RESPONSABLE_ZONE) supervise uniquement la production de
+  // son réseau : ni simulateur, ni sinistres (voir bloquerFinanceComptable
+  // côté backend, qui applique la même restriction).
+  if (roleImf === "RESPONSABLE_ZONE") {
+    return [
+      {
+        section: "Mon activité",
+        items: [
+          { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
+          ...reseau,
+          { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
+        ],
+      },
+    ];
+  }
+
   return [
     {
       section: "Mon activité",

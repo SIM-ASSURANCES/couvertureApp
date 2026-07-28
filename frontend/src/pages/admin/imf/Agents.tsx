@@ -22,7 +22,7 @@ function roleLabel(r: RoleImf) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
-  return "Responsable de zone";
+  return "Chef de zone";
 }
 
 function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" | "success" {
@@ -218,7 +218,7 @@ export default function Agents() {
                 <option value="AGENT">Agent</option>
                 <option value="RESPONSABLE_AGENCE">Responsable d'agence</option>
                 <option value="FINANCE_COMPTABLE">Finance comptable</option>
-                <option value="RESPONSABLE_ZONE">Responsable de zone</option>
+                <option value="RESPONSABLE_ZONE">Chef de zone</option>
               </select>
             </div>
             {form.roleImf === "RESPONSABLE_ZONE" ? (

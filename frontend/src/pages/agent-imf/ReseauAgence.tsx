@@ -19,7 +19,7 @@ interface AgentAvecStats {
 // de l'agence parmi d'autres, sans aucune donnée financière supplémentaire.
 function roleLabel(r: AgentAvecStats["roleImf"]) {
   if (r === "RESPONSABLE_AGENCE") return "Responsable";
-  if (r === "RESPONSABLE_ZONE") return "Resp. de zone";
+  if (r === "RESPONSABLE_ZONE") return "Chef de zone";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Agent";
 }
