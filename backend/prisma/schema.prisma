@@ -68,7 +68,15 @@ enum Branche {
 enum RoleImf {
   AGENT
   RESPONSABLE_AGENCE
+  // Responsable d'une seule zone — accès complet (simulateur, contrats,
+  // sinistres) en plus de la supervision de son réseau. Rattaché via le
+  // champ scalaire `zoneId` (une seule zone, sélection par menu déroulant).
   RESPONSABLE_ZONE
+  // Chef de zone — supervise la production de PLUSIEURS zones à la fois
+  // (rattaché via la relation `zones`, cases à cocher côté admin). Rôle
+  // volontairement restreint : ni simulateur, ni déclaration de sinistres,
+  // ni commissions — uniquement la vue d'ensemble de la production.
+  CHEF_ZONE
   // Rattaché à une agence comme RESPONSABLE_AGENCE, mais accès restreint
   // (tableau de bord, souscriptions, contrats, finance) et seul rôle à voir
   // les commissions générées par l'agence — le responsable ne les voit pas.
@@ -460,13 +468,12 @@ model ZoneImf {
   nom       String      @unique
   createdAt DateTime    @default(now())
   agences   AgenceImf[]
-  // Déprécié : rattachement direct historique d'un seul RESPONSABLE_ZONE par
-  // zone (avant l'introduction du multi-zone). Conservé pour compat des
-  // anciens enregistrements — voir `responsables` pour le modèle actuel.
+  // Rattachement direct du/des RESPONSABLE_ZONE de cette zone (une seule zone
+  // par responsable, via le champ scalaire AgentImf.zoneId).
   agents    AgentImf[]
-  // Un chef de zone peut désormais être rattaché à plusieurs zones (cases à
-  // cocher côté admin) — relation many-to-many, une zone peut donc aussi
-  // avoir plusieurs responsables.
+  // Chefs de zone (CHEF_ZONE) supervisant cette zone parmi d'autres — relation
+  // many-to-many, un chef peut couvrir plusieurs zones et une zone peut avoir
+  // plusieurs chefs.
   responsables AgentImf[] @relation("ResponsableZones")
 }
 
@@ -492,13 +499,11 @@ model AgentImf {
   roleImf      RoleImf          @default(AGENT)
   agenceId     String? // requis si roleImf = AGENT
   agence       AgenceImf?       @relation(fields: [agenceId], references: [id])
-  // Déprécié : ancien rattachement à une seule zone. Conservé pour compat des
-  // enregistrements créés avant le multi-zone — voir `zones` pour le modèle
-  // actuel (utilisé par tout le code applicatif).
+  // Zone unique du RESPONSABLE_ZONE (sélection par menu déroulant).
   zoneId       String?
   zone         ZoneImf?         @relation(fields: [zoneId], references: [id])
-  // Zones gérées par ce responsable (roleImf = RESPONSABLE_ZONE) — plusieurs
-  // zones possibles, sélectionnées via cases à cocher côté admin.
+  // Zones supervisées par le CHEF_ZONE — plusieurs zones possibles,
+  // sélectionnées via cases à cocher côté admin.
   zones        ZoneImf[]        @relation("ResponsableZones")
   statut        StatutPartenaire  @default(actif)
   createdAt     DateTime          @default(now())

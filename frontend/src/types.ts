@@ -120,7 +120,7 @@ export interface ClientAccident {
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---
 
-export type RoleImf = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+export type RoleImf = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 
 export interface ZoneImf {
   id: string;

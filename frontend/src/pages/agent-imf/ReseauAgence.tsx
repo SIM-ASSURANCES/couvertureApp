@@ -5,7 +5,7 @@ interface AgentAvecStats {
   id: string;
   nom: string;
   prenom: string;
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
   statut: "actif" | "inactif";
   agenceNom: string | null;
   zoneNom: string | null;
@@ -19,7 +19,8 @@ interface AgentAvecStats {
 // de l'agence parmi d'autres, sans aucune donnée financière supplémentaire.
 function roleLabel(r: AgentAvecStats["roleImf"]) {
   if (r === "RESPONSABLE_AGENCE") return "Responsable";
-  if (r === "RESPONSABLE_ZONE") return "Chef de zone";
+  if (r === "RESPONSABLE_ZONE") return "Resp. de zone";
+  if (r === "CHEF_ZONE") return "Chef de zone";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Agent";
 }

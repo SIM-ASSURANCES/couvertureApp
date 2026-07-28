@@ -205,35 +205,11 @@ async function seedTarificationImf() {
   }
 }
 
-/**
- * Migration ponctuelle et idempotente : avant l'introduction du multi-zone,
- * un RESPONSABLE_ZONE n'avait qu'un seul `zoneId` scalaire. On reporte cette
- * zone dans la nouvelle relation many-to-many `zones` pour que les
- * responsables déjà en poste ne perdent pas l'accès à leur zone. Ne touche
- * pas les enregistrements déjà migrés (relation `zones` non vide).
- */
-async function backfillZonesResponsables() {
-  const aMigrer = await prisma.agentImf.findMany({
-    where: { roleImf: "RESPONSABLE_ZONE", zoneId: { not: null }, zones: { none: {} } },
-    select: { id: true, zoneId: true },
-  });
-  for (const a of aMigrer) {
-    await prisma.agentImf.update({
-      where: { id: a.id },
-      data: { zones: { connect: { id: a.zoneId! } } },
-    });
-  }
-  if (aMigrer.length) {
-    console.log(`[seed] ${aMigrer.length} responsable(s) de zone migré(s) vers le multi-zone.`);
-  }
-}
-
 async function main() {
   await seedSuperAdmin();
   await corrigerCapitalGarantiIncendie();
   await seedTarificationImf();
   await corrigerCommissionsImf();
-  await backfillZonesResponsables();
 }
 
 main()

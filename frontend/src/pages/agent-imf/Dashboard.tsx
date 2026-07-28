@@ -9,7 +9,7 @@ interface Moi {
   prenom: string;
   email: string;
   telephone: string;
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
   statut: "actif" | "inactif";
   agenceNom: string | null;
   zoneNom: string | null;
@@ -28,7 +28,8 @@ function roleLabel(r: Moi["roleImf"]) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
-  return "Chef de zone";
+  if (r === "CHEF_ZONE") return "Chef de zone";
+  return "Responsable de zone";
 }
 
 function StatCard({ icon: Icon, label, value }: { icon: typeof Landmark; label: string; value: string | number }) {
@@ -55,7 +56,7 @@ export default function Dashboard() {
   const { data: moi, loading: l1, error: e1 } = useFetch<Moi>("/agent-imf/moi");
   const { data: souscriptions, loading: l2, error: e2 } = useFetch<SouscriptionImf[]>("/agent-imf/souscriptions");
   const { data: agences } = useFetch<AgenceAvecAgents[]>(
-    moi?.roleImf === "RESPONSABLE_ZONE" ? "/agent-imf/reseau/agences" : null
+    moi?.roleImf === "RESPONSABLE_ZONE" || moi?.roleImf === "CHEF_ZONE" ? "/agent-imf/reseau/agences" : null
   );
   const { data: agents } = useFetch<AgentReseau[]>(
     moi?.roleImf === "RESPONSABLE_AGENCE" || moi?.roleImf === "FINANCE_COMPTABLE" ? "/agent-imf/reseau/agents" : null
@@ -99,7 +100,9 @@ export default function Dashboard() {
             <StatCard icon={FileText} label="Souscriptions" value={nb(total)} />
             <StatCard icon={IdCard} label="Contrats actifs" value={nb(actives)} />
             <StatCard icon={Wallet} label="Prime totale (contrats actifs)" value={fcfa(primeTotale)} />
-            {moi.roleImf === "RESPONSABLE_ZONE" && <StatCard icon={Building2} label="Agences" value={nb(nbAgences)} />}
+            {(moi.roleImf === "RESPONSABLE_ZONE" || moi.roleImf === "CHEF_ZONE") && (
+              <StatCard icon={Building2} label="Agences" value={nb(nbAgences)} />
+            )}
             {moi.roleImf !== "AGENT" && <StatCard icon={Users} label="Agents du réseau" value={nb(nbAgentsReseau)} />}
             {moi.roleImf === "FINANCE_COMPTABLE" && (
               <StatCard icon={Banknote} label="Commissions générées" value={fcfa(finance?.global.commission ?? 0)} />

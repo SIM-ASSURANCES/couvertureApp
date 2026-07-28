@@ -152,7 +152,7 @@ export const adminNav: AdminNavEntry[] = [
   },
 ];
 
-export type RoleImfNav = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+export type RoleImfNav = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 
 /**
  * Nav de l'espace agent IMF, adaptée selon la portée du rôle connecté. Le
@@ -176,16 +176,18 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
   }
 
   const reseau: NavItem[] =
-    roleImf === "RESPONSABLE_ZONE"
+    roleImf === "RESPONSABLE_ZONE" || roleImf === "CHEF_ZONE"
       ? [{ to: "/agent-imf/reseau-zone", label: "Mon réseau", icon: MapPin }]
       : roleImf === "RESPONSABLE_AGENCE"
       ? [{ to: "/agent-imf/reseau-agence", label: "Mon agence", icon: Building2 }]
       : [];
 
-  // Le chef de zone (RESPONSABLE_ZONE) supervise uniquement la production de
-  // son réseau : ni simulateur, ni sinistres (voir bloquerFinanceComptable
-  // côté backend, qui applique la même restriction).
-  if (roleImf === "RESPONSABLE_ZONE") {
+  // Le chef de zone (CHEF_ZONE) supervise uniquement la production de son
+  // réseau (plusieurs zones) : ni simulateur, ni sinistres (voir
+  // bloquerFinanceComptable côté backend, qui applique la même restriction).
+  // Le responsable de zone (RESPONSABLE_ZONE, une seule zone) garde lui
+  // l'accès complet, comme un agent classique.
+  if (roleImf === "CHEF_ZONE") {
     return [
       {
         section: "Mon activité",

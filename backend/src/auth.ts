@@ -16,7 +16,7 @@ const SECRET = loadSecret();
 
 export type ActorType = "admin" | "partenaire" | "agent_imf";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
-export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 
 export interface AuthUser {
   sub: string;
@@ -26,8 +26,8 @@ export interface AuthUser {
   branches?: BrancheAcces[];
   // Rattachement d'un agent IMF (uniquement pour type === "agent_imf").
   agenceId?: string;
-  // Zones gérées par un RESPONSABLE_ZONE (plusieurs possibles depuis le
-  // multi-zone) — absent/vide pour les autres rôles IMF.
+  // Zone(s) gérée(s) : une seule pour un RESPONSABLE_ZONE, plusieurs pour un
+  // CHEF_ZONE — absent/vide pour les autres rôles IMF.
   zoneIds?: string[];
   roleImf?: RoleImfAcces;
 }

@@ -15,6 +15,7 @@ const empty = {
   motDePasse: "",
   roleImf: "AGENT" as RoleImf,
   agenceId: "",
+  zoneId: "",
   zoneIds: [] as string[],
 };
 
@@ -22,7 +23,8 @@ function roleLabel(r: RoleImf) {
   if (r === "AGENT") return "Agent";
   if (r === "RESPONSABLE_AGENCE") return "Responsable d'agence";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
-  return "Chef de zone";
+  if (r === "CHEF_ZONE") return "Chef de zone";
+  return "Responsable de zone";
 }
 
 function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" | "success" {
@@ -58,8 +60,9 @@ export default function Agents() {
         email: form.email,
         motDePasse: form.motDePasse,
         roleImf: form.roleImf,
-        agenceId: form.roleImf === "RESPONSABLE_ZONE" ? undefined : form.agenceId,
-        zoneIds: form.roleImf === "RESPONSABLE_ZONE" ? form.zoneIds : undefined,
+        agenceId: form.roleImf === "RESPONSABLE_ZONE" || form.roleImf === "CHEF_ZONE" ? undefined : form.agenceId,
+        zoneId: form.roleImf === "RESPONSABLE_ZONE" ? form.zoneId : undefined,
+        zoneIds: form.roleImf === "CHEF_ZONE" ? form.zoneIds : undefined,
       });
       setForm(empty);
       notify("Agent créé ✓");
@@ -101,7 +104,7 @@ export default function Agents() {
         "Email": a.email,
         "Téléphone": a.telephone,
         "Rôle": roleLabel(a.roleImf),
-        "Rattachement": a.roleImf === "RESPONSABLE_ZONE" ? a.zoneNom ?? "" : a.agenceNom ?? "",
+        "Rattachement": a.roleImf === "RESPONSABLE_ZONE" || a.roleImf === "CHEF_ZONE" ? a.zoneNom ?? "" : a.agenceNom ?? "",
         "Statut": a.statut,
         "Créé le": fmtDate(a.createdAt),
       })),
@@ -115,7 +118,11 @@ export default function Agents() {
     form.telephone.trim() &&
     form.email.trim() &&
     form.motDePasse.length >= 6 &&
-    (form.roleImf === "RESPONSABLE_ZONE" ? form.zoneIds.length > 0 : !!form.agenceId);
+    (form.roleImf === "RESPONSABLE_ZONE"
+      ? !!form.zoneId
+      : form.roleImf === "CHEF_ZONE"
+      ? form.zoneIds.length > 0
+      : !!form.agenceId);
 
   return (
     <>
@@ -156,7 +163,7 @@ export default function Agents() {
                       <td>
                         <Badge kind={roleBadgeKind(a.roleImf)}>{roleLabel(a.roleImf)}</Badge>
                       </td>
-                      <td className="muted">{a.roleImf === "RESPONSABLE_ZONE" ? a.zoneNom : a.agenceNom}</td>
+                      <td className="muted">{a.roleImf === "RESPONSABLE_ZONE" || a.roleImf === "CHEF_ZONE" ? a.zoneNom : a.agenceNom}</td>
                       <td>
                         <Badge kind={a.statut === "actif" ? "success" : "neutral"}>
                           {a.statut === "actif" ? "Actif" : "Inactif"}
@@ -213,15 +220,28 @@ export default function Agents() {
               <select
                 className="select"
                 value={form.roleImf}
-                onChange={(e) => setForm({ ...form, roleImf: e.target.value as RoleImf, agenceId: "", zoneIds: [] })}
+                onChange={(e) =>
+                  setForm({ ...form, roleImf: e.target.value as RoleImf, agenceId: "", zoneId: "", zoneIds: [] })
+                }
               >
                 <option value="AGENT">Agent</option>
                 <option value="RESPONSABLE_AGENCE">Responsable d'agence</option>
                 <option value="FINANCE_COMPTABLE">Finance comptable</option>
-                <option value="RESPONSABLE_ZONE">Chef de zone</option>
+                <option value="RESPONSABLE_ZONE">Responsable de zone</option>
+                <option value="CHEF_ZONE">Chef de zone</option>
               </select>
             </div>
             {form.roleImf === "RESPONSABLE_ZONE" ? (
+              <div className="field">
+                <label className="label">Zone <span className="req">*</span></label>
+                <select className="select" required value={form.zoneId} onChange={(e) => setForm({ ...form, zoneId: e.target.value })}>
+                  <option value="">Sélectionner…</option>
+                  {zones?.map((z) => (
+                    <option key={z.id} value={z.id}>{z.nom}</option>
+                  ))}
+                </select>
+              </div>
+            ) : form.roleImf === "CHEF_ZONE" ? (
               <div className="field">
                 <label className="label">Zone(s) <span className="req">*</span></label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>

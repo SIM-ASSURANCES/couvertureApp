@@ -6,7 +6,7 @@ interface AgentDeLAgence {
   id: string;
   nom: string;
   prenom: string;
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE";
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
   statut: "actif" | "inactif";
   telephone: string;
   email: string;
@@ -22,7 +22,8 @@ interface AgenceAvecAgents {
 
 function roleLabel(r: AgentDeLAgence["roleImf"]) {
   if (r === "RESPONSABLE_AGENCE") return "Responsable";
-  if (r === "RESPONSABLE_ZONE") return "Chef de zone";
+  if (r === "RESPONSABLE_ZONE") return "Resp. de zone";
+  if (r === "CHEF_ZONE") return "Chef de zone";
   if (r === "FINANCE_COMPTABLE") return "Finance comptable";
   return "Agent";
 }

@@ -190,6 +190,7 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agence: { select: { nom: true, zone: { select: { nom: true } } } },
+        zone: { select: { nom: true } },
         zones: { select: { nom: true } },
       },
     });
@@ -198,7 +199,7 @@ imfRouter.get(
         ...a,
         passwordHash: undefined,
         agenceNom: a.agence?.nom ?? null,
-        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
+        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
       }))
     );
   })
@@ -211,27 +212,39 @@ const agentSchema = z
     telephone: z.string().min(1),
     email: z.string().email(),
     motDePasse: z.string().min(6),
-    roleImf: z.enum(["AGENT", "RESPONSABLE_AGENCE", "RESPONSABLE_ZONE", "FINANCE_COMPTABLE"]).default("AGENT"),
+    roleImf: z.enum(["AGENT", "RESPONSABLE_AGENCE", "RESPONSABLE_ZONE", "CHEF_ZONE", "FINANCE_COMPTABLE"]).default("AGENT"),
     agenceId: z.string().min(1).optional(),
-    // Un responsable de zone peut être rattaché à plusieurs zones (cases à cocher côté admin).
+    // RESPONSABLE_ZONE : une seule zone (menu déroulant).
+    zoneId: z.string().min(1).optional(),
+    // CHEF_ZONE : plusieurs zones (cases à cocher côté admin).
     zoneIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((d) => (d.roleImf === "RESPONSABLE_ZONE" ? !!d.zoneIds?.length : !!d.agenceId), {
-    message: "Un agent ou un responsable d'agence doit être rattaché à une agence, un responsable de zone à au moins une zone.",
-    path: ["agenceId"],
-  });
+  .refine(
+    (d) =>
+      d.roleImf === "RESPONSABLE_ZONE"
+        ? !!d.zoneId
+        : d.roleImf === "CHEF_ZONE"
+        ? !!d.zoneIds?.length
+        : !!d.agenceId,
+    {
+      message: "Un agent ou un responsable d'agence doit être rattaché à une agence, un responsable de zone à une zone, un chef de zone à au moins une zone.",
+      path: ["agenceId"],
+    }
+  );
 
 /**
  * Une agence ne peut avoir qu'un seul responsable d'agence et qu'un seul
- * finance comptable, une zone qu'un seul responsable de zone. Vérifié ici
- * plutôt qu'en contrainte SQL : Prisma ne modélise pas d'index unique
- * partiel, et le déploiement applique le schéma via `prisma db push` (pas de
- * migration SQL manuelle possible).
+ * finance comptable, une zone qu'un seul responsable de zone (un chef de
+ * zone peut en revanche partager une zone avec d'autres chefs, et coexister
+ * avec le responsable de zone de cette même zone — rôles complémentaires,
+ * pas concurrents). Vérifié ici plutôt qu'en contrainte SQL : Prisma ne
+ * modélise pas d'index unique partiel, et le déploiement applique le schéma
+ * via `prisma db push` (pas de migration SQL manuelle possible).
  */
 async function verifierUniciteResponsable(
-  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE",
+  roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE",
   agenceId?: string | null,
-  zoneIds?: string[] | null
+  zoneId?: string | null
 ) {
   if (roleImf === "RESPONSABLE_AGENCE" && agenceId) {
     const existant = await prisma.agentImf.findFirst({
@@ -249,12 +262,12 @@ async function verifierUniciteResponsable(
       return `Cette agence a déjà un finance comptable (${existant.prenom} ${existant.nom}).`;
     }
   }
-  if (roleImf === "RESPONSABLE_ZONE" && zoneIds?.length) {
+  if (roleImf === "RESPONSABLE_ZONE" && zoneId) {
     const existant = await prisma.agentImf.findFirst({
-      where: { roleImf: "RESPONSABLE_ZONE", zones: { some: { id: { in: zoneIds } } } },
+      where: { roleImf: "RESPONSABLE_ZONE", zoneId },
     });
     if (existant) {
-      return `Une des zones sélectionnées a déjà un responsable (${existant.prenom} ${existant.nom}).`;
+      return `Cette zone a déjà un responsable (${existant.prenom} ${existant.nom}).`;
     }
   }
   return null;
@@ -265,13 +278,16 @@ imfRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agentSchema.parse(req.body);
     if (data.roleImf === "RESPONSABLE_ZONE") {
+      const zone = await prisma.zoneImf.findUnique({ where: { id: data.zoneId! } });
+      if (!zone) return res.status(400).json({ error: "Zone introuvable" });
+    } else if (data.roleImf === "CHEF_ZONE") {
       const zones = await prisma.zoneImf.findMany({ where: { id: { in: data.zoneIds! } } });
       if (zones.length !== data.zoneIds!.length) return res.status(400).json({ error: "Zone introuvable" });
     } else {
       const agence = await prisma.agenceImf.findUnique({ where: { id: data.agenceId! } });
       if (!agence) return res.status(400).json({ error: "Agence introuvable" });
     }
-    const conflit = await verifierUniciteResponsable(data.roleImf, data.agenceId, data.zoneIds);
+    const conflit = await verifierUniciteResponsable(data.roleImf, data.agenceId, data.zoneId);
     if (conflit) return res.status(409).json({ error: conflit });
 
     const created = await prisma.agentImf.create({
@@ -281,13 +297,14 @@ imfRouter.post(
         telephone: data.telephone,
         email: data.email,
         roleImf: data.roleImf,
-        agenceId: data.roleImf === "RESPONSABLE_ZONE" ? null : data.agenceId,
-        zones: data.roleImf === "RESPONSABLE_ZONE" ? { connect: data.zoneIds!.map((id) => ({ id })) } : undefined,
+        agenceId: data.roleImf === "RESPONSABLE_ZONE" || data.roleImf === "CHEF_ZONE" ? null : data.agenceId,
+        zoneId: data.roleImf === "RESPONSABLE_ZONE" ? data.zoneId : null,
+        zones: data.roleImf === "CHEF_ZONE" ? { connect: data.zoneIds!.map((id) => ({ id })) } : undefined,
         passwordHash: await bcrypt.hash(data.motDePasse, 10),
       },
       select: {
         id: true, nom: true, prenom: true, telephone: true, email: true,
-        roleImf: true, agenceId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
+        roleImf: true, agenceId: true, zoneId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
       },
     });
     await logAction({
@@ -326,7 +343,7 @@ imfRouter.patch(
       },
       select: {
         id: true, nom: true, prenom: true, telephone: true, email: true,
-        roleImf: true, agenceId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
+        roleImf: true, agenceId: true, zoneId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
       },
     });
     await logAction({
@@ -612,7 +629,12 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
-          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zones: { select: { nom: true } } },
+          select: {
+            nom: true, prenom: true,
+            agence: { select: { nom: true, zone: { select: { nom: true } } } },
+            zone: { select: { nom: true } },
+            zones: { select: { nom: true } },
+          },
         },
         admin: { select: { nom: true } },
       },
@@ -626,11 +648,16 @@ imfRouter.get(
  * l'agent, de l'agence et de la/les zone(s). Une souscription faite
  * directement par l'admin n'a pas d'agent : agentNom/agenceNom/zoneNom
  * valent alors null et `directe` = true (elle sera regroupée à part, hors
- * des zones/agences). Un responsable rattaché à plusieurs zones affiche ses
- * zones jointes par une virgule.
+ * des zones/agences). Un RESPONSABLE_ZONE affiche sa zone unique, un
+ * CHEF_ZONE ses zones jointes par une virgule.
  */
 function mapSouscriptionAdmin(r: {
-  agent: { nom: string; prenom: string; agence: { nom: string; zone: { nom: string } } | null; zones: { nom: string }[] } | null;
+  agent: {
+    nom: string; prenom: string;
+    agence: { nom: string; zone: { nom: string } } | null;
+    zone: { nom: string } | null;
+    zones: { nom: string }[];
+  } | null;
   admin: { nom: string } | null;
   [k: string]: unknown;
 }) {
@@ -638,7 +665,9 @@ function mapSouscriptionAdmin(r: {
     ...r,
     agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null,
     agenceNom: r.agent?.agence?.nom ?? null,
-    zoneNom: r.agent?.agence?.zone.nom ?? (r.agent?.zones.length ? r.agent.zones.map((z) => z.nom).join(", ") : null),
+    zoneNom:
+      r.agent?.agence?.zone.nom ??
+      (r.agent?.zones.length ? r.agent.zones.map((z) => z.nom).join(", ") : r.agent?.zone?.nom ?? null),
     adminNom: r.admin?.nom ?? null,
     directe: !r.agent,
   };
@@ -689,15 +718,15 @@ export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
 
 /**
- * Le finance comptable et le chef de zone n'ont accès qu'au tableau de bord,
- * aux souscriptions/contrats (et, pour le chef de zone, à son réseau) —
- * jamais à la création de devis/souscriptions ni à la déclaration de
- * sinistres (le chef de zone supervise la production de son réseau, il ne
- * fait ni simulation ni sinistre). Retourne true (et répond 403) si l'accès
- * doit être bloqué.
+ * Le finance comptable et le chef de zone (CHEF_ZONE) n'ont accès qu'au
+ * tableau de bord et aux souscriptions/contrats (et, pour le chef de zone, à
+ * son réseau multi-zones) — jamais à la création de devis/souscriptions ni à
+ * la déclaration de sinistres. Le RESPONSABLE_ZONE (une seule zone), lui,
+ * garde l'accès complet — seul le CHEF_ZONE est restreint à la supervision
+ * pure. Retourne true (et répond 403) si l'accès doit être bloqué.
  */
 function bloquerFinanceComptable(req: AuthedRequest, res: Response): boolean {
-  if (req.user!.roleImf === "FINANCE_COMPTABLE" || req.user!.roleImf === "RESPONSABLE_ZONE") {
+  if (req.user!.roleImf === "FINANCE_COMPTABLE" || req.user!.roleImf === "CHEF_ZONE") {
     res.status(403).json({ error: "Action non disponible pour ce rôle." });
     return true;
   }
@@ -709,7 +738,7 @@ agentImfRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.agentImf.findUnique({
       where: { id: req.user!.sub },
-      include: { agence: { include: { zone: true } }, zones: true },
+      include: { agence: { include: { zone: true } }, zone: true, zones: true },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
     res.json({
@@ -721,7 +750,7 @@ agentImfRouter.get(
       roleImf: a.roleImf,
       statut: a.statut,
       agenceNom: a.agence?.nom ?? null,
-      zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
+      zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
     });
   })
 );
@@ -1085,12 +1114,15 @@ agentImfRouter.get(
 
 /* ── Réseau (supervision, réservé aux responsables) ── */
 
-/** Agences de la zone du responsable de zone connecté, chacune avec ses agents. */
+/** Agences de la/les zone(s) du responsable ou chef de zone connecté, chacune avec ses agents. */
 agentImfRouter.get(
   "/reseau/agences",
   asyncHandler(async (req: AuthedRequest, res) => {
-    if (req.user!.roleImf !== "RESPONSABLE_ZONE" || !req.user!.zoneIds?.length) {
-      return res.status(403).json({ error: "Réservé aux responsables de zone." });
+    if (
+      (req.user!.roleImf !== "RESPONSABLE_ZONE" && req.user!.roleImf !== "CHEF_ZONE") ||
+      !req.user!.zoneIds?.length
+    ) {
+      return res.status(403).json({ error: "Réservé aux responsables et chefs de zone." });
     }
     const agences = await prisma.agenceImf.findMany({
       where: { zoneId: { in: req.user!.zoneIds } },
@@ -1124,6 +1156,7 @@ agentImfRouter.get(
         orderBy: { nom: "asc" },
         include: {
           agence: { select: { nom: true, zone: { select: { nom: true } } } },
+          zone: { select: { nom: true } },
           zones: { select: { nom: true } },
         },
       }),
@@ -1143,7 +1176,7 @@ agentImfRouter.get(
         roleImf: a.roleImf,
         statut: a.statut,
         agenceNom: a.agence?.nom ?? null,
-        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
+        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
         nbSouscriptions: statsParAgent.get(a.id)?._count._all ?? 0,
         primeTotale: statsParAgent.get(a.id)?._sum.primeTTC ?? 0,
       }))
@@ -1361,7 +1394,12 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
-          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zones: { select: { nom: true } } },
+          select: {
+            nom: true, prenom: true,
+            agence: { select: { nom: true, zone: { select: { nom: true } } } },
+            zone: { select: { nom: true } },
+            zones: { select: { nom: true } },
+          },
         },
         admin: { select: { nom: true } },
       },
