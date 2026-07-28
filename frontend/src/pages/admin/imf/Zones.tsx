@@ -8,7 +8,7 @@ import type { ZoneImf } from "../../../types";
 
 export default function Zones() {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
   const { data, loading, error, reload } = useFetch<ZoneImf[]>("/imf/zones");
   const [nom, setNom] = useState("");
   const [saving, setSaving] = useState(false);

@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import type { StatutSinistreImf, StatutBordereauImf } from "@prisma/client";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import {
@@ -73,7 +73,7 @@ imfRouter.patch(
 
 imfRouter.delete(
   "/zones/:id",
-  requireSuperAdmin,
+  requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const zone = await prisma.zoneImf.findUnique({
       where: { id: req.params.id },
@@ -158,7 +158,7 @@ imfRouter.patch(
 
 imfRouter.delete(
   "/agences/:id",
-  requireSuperAdmin,
+  requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const agence = await prisma.agenceImf.findUnique({
       where: { id: req.params.id },
@@ -359,7 +359,7 @@ imfRouter.patch(
 
 imfRouter.delete(
   "/agents/:id",
-  requireSuperAdmin,
+  requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
     await prisma.agentImf.delete({ where: { id: req.params.id } });
     await logAction({

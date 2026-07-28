@@ -10,7 +10,7 @@ const empty = { nom: "", zoneId: "", telephone: "", localisation: "" };
 
 export default function Agences() {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
   const { data, loading, error, reload } = useFetch<AgenceImf[]>("/imf/agences");
   const { data: zones } = useFetch<ZoneImf[]>("/imf/zones");
   const [form, setForm] = useState(empty);

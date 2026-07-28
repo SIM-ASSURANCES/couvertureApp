@@ -36,7 +36,7 @@ function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" | "success" {
 
 export default function Agents() {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
   const { data, loading, error, reload } = useFetch<AgentImf[]>("/imf/agents");
   const { data: agences } = useFetch<AgenceImf[]>("/imf/agences");
   const { data: zones } = useFetch<ZoneImf[]>("/imf/zones");
