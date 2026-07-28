@@ -21,7 +21,7 @@ export default function Contrats() {
   const [produitCode, setProduitCode] = useState("");
   const params = new URLSearchParams();
   if (produitCode) params.set("produitCode", produitCode);
-  const { data, loading, error } = useFetch<SouscriptionImf[]>(`/imf/contrats?${params.toString()}`);
+  const { data, loading, error, reload } = useFetch<SouscriptionImf[]>(`/imf/contrats?${params.toString()}`);
 
   function exporter() {
     if (!data) return;
@@ -68,7 +68,7 @@ export default function Contrats() {
       >
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
-        {data && <SouscriptionsGroupees rows={data} />}
+        {data && <SouscriptionsGroupees rows={data} onDeleted={reload} />}
       </Card>
     </>
   );

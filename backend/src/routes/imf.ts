@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import type { StatutSinistreImf, StatutBordereauImf } from "@prisma/client";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireSuperAdmin, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import {
@@ -190,7 +190,7 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agence: { select: { nom: true, zone: { select: { nom: true } } } },
-        zone: { select: { nom: true } },
+        zones: { select: { nom: true } },
       },
     });
     res.json(
@@ -198,7 +198,7 @@ imfRouter.get(
         ...a,
         passwordHash: undefined,
         agenceNom: a.agence?.nom ?? null,
-        zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
       }))
     );
   })
@@ -213,10 +213,11 @@ const agentSchema = z
     motDePasse: z.string().min(6),
     roleImf: z.enum(["AGENT", "RESPONSABLE_AGENCE", "RESPONSABLE_ZONE", "FINANCE_COMPTABLE"]).default("AGENT"),
     agenceId: z.string().min(1).optional(),
-    zoneId: z.string().min(1).optional(),
+    // Un responsable de zone peut être rattaché à plusieurs zones (cases à cocher côté admin).
+    zoneIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((d) => (d.roleImf === "RESPONSABLE_ZONE" ? !!d.zoneId : !!d.agenceId), {
-    message: "Un agent ou un responsable d'agence doit être rattaché à une agence, un responsable de zone à une zone.",
+  .refine((d) => (d.roleImf === "RESPONSABLE_ZONE" ? !!d.zoneIds?.length : !!d.agenceId), {
+    message: "Un agent ou un responsable d'agence doit être rattaché à une agence, un responsable de zone à au moins une zone.",
     path: ["agenceId"],
   });
 
@@ -230,7 +231,7 @@ const agentSchema = z
 async function verifierUniciteResponsable(
   roleImf: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "FINANCE_COMPTABLE",
   agenceId?: string | null,
-  zoneId?: string | null
+  zoneIds?: string[] | null
 ) {
   if (roleImf === "RESPONSABLE_AGENCE" && agenceId) {
     const existant = await prisma.agentImf.findFirst({
@@ -248,12 +249,12 @@ async function verifierUniciteResponsable(
       return `Cette agence a déjà un finance comptable (${existant.prenom} ${existant.nom}).`;
     }
   }
-  if (roleImf === "RESPONSABLE_ZONE" && zoneId) {
+  if (roleImf === "RESPONSABLE_ZONE" && zoneIds?.length) {
     const existant = await prisma.agentImf.findFirst({
-      where: { roleImf: "RESPONSABLE_ZONE", zoneId },
+      where: { roleImf: "RESPONSABLE_ZONE", zones: { some: { id: { in: zoneIds } } } },
     });
     if (existant) {
-      return `Cette zone a déjà un responsable (${existant.prenom} ${existant.nom}).`;
+      return `Une des zones sélectionnées a déjà un responsable (${existant.prenom} ${existant.nom}).`;
     }
   }
   return null;
@@ -264,13 +265,13 @@ imfRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agentSchema.parse(req.body);
     if (data.roleImf === "RESPONSABLE_ZONE") {
-      const zone = await prisma.zoneImf.findUnique({ where: { id: data.zoneId! } });
-      if (!zone) return res.status(400).json({ error: "Zone introuvable" });
+      const zones = await prisma.zoneImf.findMany({ where: { id: { in: data.zoneIds! } } });
+      if (zones.length !== data.zoneIds!.length) return res.status(400).json({ error: "Zone introuvable" });
     } else {
       const agence = await prisma.agenceImf.findUnique({ where: { id: data.agenceId! } });
       if (!agence) return res.status(400).json({ error: "Agence introuvable" });
     }
-    const conflit = await verifierUniciteResponsable(data.roleImf, data.agenceId, data.zoneId);
+    const conflit = await verifierUniciteResponsable(data.roleImf, data.agenceId, data.zoneIds);
     if (conflit) return res.status(409).json({ error: conflit });
 
     const created = await prisma.agentImf.create({
@@ -281,12 +282,12 @@ imfRouter.post(
         email: data.email,
         roleImf: data.roleImf,
         agenceId: data.roleImf === "RESPONSABLE_ZONE" ? null : data.agenceId,
-        zoneId: data.roleImf === "RESPONSABLE_ZONE" ? data.zoneId : null,
+        zones: data.roleImf === "RESPONSABLE_ZONE" ? { connect: data.zoneIds!.map((id) => ({ id })) } : undefined,
         passwordHash: await bcrypt.hash(data.motDePasse, 10),
       },
       select: {
         id: true, nom: true, prenom: true, telephone: true, email: true,
-        roleImf: true, agenceId: true, zoneId: true, statut: true, createdAt: true,
+        roleImf: true, agenceId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
       },
     });
     await logAction({
@@ -325,7 +326,7 @@ imfRouter.patch(
       },
       select: {
         id: true, nom: true, prenom: true, telephone: true, email: true,
-        roleImf: true, agenceId: true, zoneId: true, statut: true, createdAt: true,
+        roleImf: true, agenceId: true, zones: { select: { id: true, nom: true } }, statut: true, createdAt: true,
       },
     });
     await logAction({
@@ -611,7 +612,7 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
-          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zone: { select: { nom: true } } },
+          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zones: { select: { nom: true } } },
         },
         admin: { select: { nom: true } },
       },
@@ -622,12 +623,14 @@ imfRouter.get(
 
 /**
  * Sérialise une souscription IMF pour l'espace admin en aplatissant le nom de
- * l'agent, de l'agence et de la zone. Une souscription faite directement par
- * l'admin n'a pas d'agent : agentNom/agenceNom/zoneNom valent alors null et
- * `directe` = true (elle sera regroupée à part, hors des zones/agences).
+ * l'agent, de l'agence et de la/les zone(s). Une souscription faite
+ * directement par l'admin n'a pas d'agent : agentNom/agenceNom/zoneNom
+ * valent alors null et `directe` = true (elle sera regroupée à part, hors
+ * des zones/agences). Un responsable rattaché à plusieurs zones affiche ses
+ * zones jointes par une virgule.
  */
 function mapSouscriptionAdmin(r: {
-  agent: { nom: string; prenom: string; agence: { nom: string; zone: { nom: string } } | null; zone: { nom: string } | null } | null;
+  agent: { nom: string; prenom: string; agence: { nom: string; zone: { nom: string } } | null; zones: { nom: string }[] } | null;
   admin: { nom: string } | null;
   [k: string]: unknown;
 }) {
@@ -635,7 +638,7 @@ function mapSouscriptionAdmin(r: {
     ...r,
     agentNom: r.agent ? `${r.agent.prenom} ${r.agent.nom}` : null,
     agenceNom: r.agent?.agence?.nom ?? null,
-    zoneNom: (r.agent?.agence?.zone.nom ?? r.agent?.zone?.nom) ?? null,
+    zoneNom: r.agent?.agence?.zone.nom ?? (r.agent?.zones.length ? r.agent.zones.map((z) => z.nom).join(", ") : null),
     adminNom: r.admin?.nom ?? null,
     directe: !r.agent,
   };
@@ -651,7 +654,7 @@ async function agentIdsDuReseau(agent: {
   id: string;
   roleImf: string;
   agenceId: string | null;
-  zoneId: string | null;
+  zoneIds: string[];
 }): Promise<string[]> {
   if (agent.roleImf === "AGENT") return [agent.id];
 
@@ -666,15 +669,16 @@ async function agentIdsDuReseau(agent: {
     return membres.map((m) => m.id);
   }
 
-  // RESPONSABLE_ZONE : lui-même + agents rattachés directement à la zone +
-  // agents de toutes les agences de la zone.
-  if (!agent.zoneId) return [agent.id];
+  // RESPONSABLE_ZONE : lui-même + agents rattachés directement à l'une de ses
+  // zones + agents de toutes les agences de ces zones (un responsable peut
+  // désormais gérer plusieurs zones).
+  if (!agent.zoneIds.length) return [agent.id];
   const agences = await prisma.agenceImf.findMany({
-    where: { zoneId: agent.zoneId },
+    where: { zoneId: { in: agent.zoneIds } },
     select: { id: true },
   });
   const membres = await prisma.agentImf.findMany({
-    where: { OR: [{ zoneId: agent.zoneId }, { agenceId: { in: agences.map((a) => a.id) } }] },
+    where: { OR: [{ zones: { some: { id: { in: agent.zoneIds } } } }, { agenceId: { in: agences.map((a) => a.id) } }] },
     select: { id: true },
   });
   return membres.map((m) => m.id);
@@ -703,7 +707,7 @@ agentImfRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.agentImf.findUnique({
       where: { id: req.user!.sub },
-      include: { agence: { include: { zone: true } }, zone: true },
+      include: { agence: { include: { zone: true } }, zones: true },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
     res.json({
@@ -715,7 +719,7 @@ agentImfRouter.get(
       roleImf: a.roleImf,
       statut: a.statut,
       agenceNom: a.agence?.nom ?? null,
-      zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+      zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
     });
   })
 );
@@ -1066,7 +1070,7 @@ agentImfRouter.get(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const rows = await prisma.souscriptionImf.findMany({
       where: { agentId: { in: scope } },
@@ -1083,11 +1087,11 @@ agentImfRouter.get(
 agentImfRouter.get(
   "/reseau/agences",
   asyncHandler(async (req: AuthedRequest, res) => {
-    if (req.user!.roleImf !== "RESPONSABLE_ZONE" || !req.user!.zoneId) {
+    if (req.user!.roleImf !== "RESPONSABLE_ZONE" || !req.user!.zoneIds?.length) {
       return res.status(403).json({ error: "Réservé aux responsables de zone." });
     }
     const agences = await prisma.agenceImf.findMany({
-      where: { zoneId: req.user!.zoneId },
+      where: { zoneId: { in: req.user!.zoneIds } },
       orderBy: { nom: "asc" },
       include: {
         agents: {
@@ -1110,7 +1114,7 @@ agentImfRouter.get(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const [agents, souscriptions] = await Promise.all([
       prisma.agentImf.findMany({
@@ -1118,7 +1122,7 @@ agentImfRouter.get(
         orderBy: { nom: "asc" },
         include: {
           agence: { select: { nom: true, zone: { select: { nom: true } } } },
-          zone: { select: { nom: true } },
+          zones: { select: { nom: true } },
         },
       }),
       prisma.souscriptionImf.groupBy({
@@ -1137,7 +1141,7 @@ agentImfRouter.get(
         roleImf: a.roleImf,
         statut: a.statut,
         agenceNom: a.agence?.nom ?? null,
-        zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
         nbSouscriptions: statsParAgent.get(a.id)?._count._all ?? 0,
         primeTotale: statsParAgent.get(a.id)?._sum.primeTTC ?? 0,
       }))
@@ -1152,7 +1156,7 @@ agentImfRouter.get(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const rows = await prisma.souscriptionImf.findMany({
       where: { agentId: { in: scope }, statut: "active" },
@@ -1355,12 +1359,38 @@ imfRouter.get(
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
-          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zone: { select: { nom: true } } },
+          select: { nom: true, prenom: true, agence: { select: { nom: true, zone: { select: { nom: true } } } }, zones: { select: { nom: true } } },
         },
         admin: { select: { nom: true } },
       },
     });
     res.json(rows.map(mapSouscriptionAdmin));
+  })
+);
+
+/** Suppression d'un contrat IMF — réservée au Super Administrateur (global ou de la branche IMF). */
+imfRouter.delete(
+  "/contrats/:id",
+  requireSuperAdminBranche("IMF"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const souscription = await prisma.souscriptionImf.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { sinistres: true } } },
+    });
+    if (!souscription) return res.status(404).json({ error: "Introuvable" });
+    if (souscription._count.sinistres > 0) {
+      return res.status(409).json({
+        error: "Impossible de supprimer un contrat ayant des sinistres déclarés.",
+      });
+    }
+    await prisma.souscriptionImf.delete({ where: { id: req.params.id } });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "suppression",
+      objetType: "souscription_imf",
+      objetId: req.params.id,
+    });
+    res.status(204).end();
   })
 );
 
@@ -1549,7 +1579,7 @@ agentImfRouter.post(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const souscription = await prisma.souscriptionImf.findUnique({ where: { id: data.souscriptionId } });
     if (!souscription || !souscription.agentId || !scope.includes(souscription.agentId)) {
@@ -1600,7 +1630,7 @@ agentImfRouter.get(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const rows = await prisma.sinistreImf.findMany({
       where: { agentId: { in: scope } },
@@ -1625,7 +1655,7 @@ agentImfRouter.patch(
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
       agenceId: req.user!.agenceId ?? null,
-      zoneId: req.user!.zoneId ?? null,
+      zoneIds: req.user!.zoneIds ?? [],
     });
     const sinistre = await prisma.sinistreImf.findUnique({ where: { id: req.params.id } });
     if (!sinistre || !sinistre.agentId || !scope.includes(sinistre.agentId)) {

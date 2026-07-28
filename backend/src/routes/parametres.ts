@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 
@@ -9,7 +9,7 @@ export const parametresRouter = Router();
 // Paramètres et tarifs sont une fonctionnalité d'administration générale —
 // réservée au SUPER_ADMIN (le flux public de souscription utilise ses
 // propres routes /public/tarifs/*, indépendantes de celles-ci).
-parametresRouter.use(requireAuth("admin"), requireSuperAdmin);
+parametresRouter.use(requireAuth("admin"), requireSuperAdminBranche("INCENDIE_ACCIDENT"));
 
 /* ── Tarifications ── */
 
@@ -27,14 +27,14 @@ parametresRouter.get("/tarifs/accident", asyncHandler(async (_req, res) => {
   res.json(await prisma.tarifAccident.findMany({ orderBy: { prime: "asc" } }));
 }));
 
-parametresRouter.post("/tarifs/accident", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.post("/tarifs/accident", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const data = tarifSchema.parse(req.body);
   const t = await prisma.tarifAccident.create({ data });
   await logAction({ adminId: req.user!.sub, typeAction: "creation", objetType: "tarif_accident", objetId: String(t.id), valeurApres: data });
   res.status(201).json(t);
 }));
 
-parametresRouter.patch("/tarifs/accident/:id", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.patch("/tarifs/accident/:id", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const id = parseInt(req.params.id);
   const data = tarifSchema.partial().parse(req.body);
   const t = await prisma.tarifAccident.update({ where: { id }, data });
@@ -42,7 +42,7 @@ parametresRouter.patch("/tarifs/accident/:id", requireSuperAdmin, asyncHandler(a
   res.json(t);
 }));
 
-parametresRouter.delete("/tarifs/accident/:id", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.delete("/tarifs/accident/:id", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const id = parseInt(req.params.id);
   await prisma.tarifAccident.delete({ where: { id } });
   await logAction({ adminId: req.user!.sub, typeAction: "suppression", objetType: "tarif_accident", objetId: String(id) });
@@ -54,14 +54,14 @@ parametresRouter.get("/tarifs/incendie", asyncHandler(async (_req, res) => {
   res.json(await prisma.tarifIncendie.findMany({ orderBy: { prime: "asc" } }));
 }));
 
-parametresRouter.post("/tarifs/incendie", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.post("/tarifs/incendie", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const data = tarifSchema.parse(req.body);
   const t = await prisma.tarifIncendie.create({ data });
   await logAction({ adminId: req.user!.sub, typeAction: "creation", objetType: "tarif_incendie", objetId: String(t.id), valeurApres: data });
   res.status(201).json(t);
 }));
 
-parametresRouter.patch("/tarifs/incendie/:id", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.patch("/tarifs/incendie/:id", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const id = parseInt(req.params.id);
   const data = tarifSchema.partial().parse(req.body);
   const t = await prisma.tarifIncendie.update({ where: { id }, data });
@@ -69,7 +69,7 @@ parametresRouter.patch("/tarifs/incendie/:id", requireSuperAdmin, asyncHandler(a
   res.json(t);
 }));
 
-parametresRouter.delete("/tarifs/incendie/:id", requireSuperAdmin, asyncHandler(async (req: AuthedRequest, res) => {
+parametresRouter.delete("/tarifs/incendie/:id", requireSuperAdminBranche("INCENDIE_ACCIDENT"), asyncHandler(async (req: AuthedRequest, res) => {
   const id = parseInt(req.params.id);
   await prisma.tarifIncendie.delete({ where: { id } });
   await logAction({ adminId: req.user!.sub, typeAction: "suppression", objetType: "tarif_incendie", objetId: String(id) });
@@ -96,7 +96,7 @@ const schema = z.object({
 
 parametresRouter.patch(
   "/",
-  requireSuperAdmin,
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = schema.parse(req.body);
     const updated = await prisma.parametre.upsert({

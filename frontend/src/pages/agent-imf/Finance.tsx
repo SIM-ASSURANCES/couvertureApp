@@ -1,5 +1,5 @@
 import { Banknote, FileText, Wallet } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fcfa } from "../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fcfa, nb } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import type { FinanceImf } from "../../types";
 
@@ -37,7 +37,7 @@ export default function Finance() {
       {data && (
         <>
           <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-            <StatCard icon={FileText} label="Souscriptions actives" value={data.global.nombreSouscriptions} />
+            <StatCard icon={FileText} label="Souscriptions actives" value={nb(data.global.nombreSouscriptions)} />
             <StatCard icon={Wallet} label="Prime TTC totale" value={fcfa(data.global.primeTTC)} />
             <StatCard icon={Banknote} label="Commission totale" value={fcfa(data.global.commission)} />
           </div>
@@ -57,7 +57,7 @@ export default function Finance() {
                   {data.parAgent.map((a) => (
                     <tr key={a.agentId}>
                       <td><strong>{a.prenom} {a.nom}</strong></td>
-                      <td style={{ textAlign: "right" }}>{a.nombreSouscriptions}</td>
+                      <td style={{ textAlign: "right" }}>{nb(a.nombreSouscriptions)}</td>
                       <td style={{ textAlign: "right" }}>{fcfa(a.primeTTC)}</td>
                       <td style={{ textAlign: "right" }}><strong>{fcfa(a.commission)}</strong></td>
                     </tr>
@@ -85,7 +85,7 @@ export default function Finance() {
                   {data.parProduit.map((p) => (
                     <tr key={p.famille}>
                       <td><strong>{p.famille}</strong></td>
-                      <td style={{ textAlign: "right" }}>{p.nombreSouscriptions}</td>
+                      <td style={{ textAlign: "right" }}>{nb(p.nombreSouscriptions)}</td>
                       <td style={{ textAlign: "right" }}>{fcfa(p.primeTTC)}</td>
                       <td style={{ textAlign: "right" }}><strong>{fcfa(p.commission)}</strong></td>
                     </tr>

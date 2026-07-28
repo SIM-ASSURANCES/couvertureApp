@@ -95,7 +95,7 @@ authRouter.post(
 
     const a = await prisma.agentImf.findUnique({
       where: { email },
-      include: { agence: { include: { zone: true } }, zone: true },
+      include: { agence: { include: { zone: true } }, zones: true },
     });
     if (a && (await bcrypt.compare(password, a.passwordHash))) {
       const token = signToken({
@@ -103,7 +103,7 @@ authRouter.post(
         type: "agent_imf",
         nom: `${a.prenom} ${a.nom}`,
         agenceId: a.agenceId ?? undefined,
-        zoneId: a.zoneId ?? undefined,
+        zoneIds: a.zones.map((z) => z.id),
         roleImf: a.roleImf,
       });
       return res.json({
@@ -115,7 +115,7 @@ authRouter.post(
           type: "agent_imf",
           roleImf: a.roleImf,
           agenceNom: a.agence?.nom ?? null,
-          zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+          zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
         },
       });
     }
@@ -130,7 +130,7 @@ authRouter.post(
     const { email, password } = req.body ?? {};
     const a = await prisma.agentImf.findUnique({
       where: { email },
-      include: { agence: { include: { zone: true } }, zone: true },
+      include: { agence: { include: { zone: true } }, zones: true },
     });
     if (!a || !(await bcrypt.compare(password ?? "", a.passwordHash))) {
       return res.status(401).json({ error: "Identifiants invalides" });
@@ -140,7 +140,7 @@ authRouter.post(
       type: "agent_imf",
       nom: `${a.prenom} ${a.nom}`,
       agenceId: a.agenceId ?? undefined,
-      zoneId: a.zoneId ?? undefined,
+      zoneIds: a.zones.map((z) => z.id),
       roleImf: a.roleImf,
     });
     res.json({
@@ -152,7 +152,7 @@ authRouter.post(
         type: "agent_imf",
         roleImf: a.roleImf,
         agenceNom: a.agence?.nom ?? null,
-        zoneNom: (a.agence?.zone.nom ?? a.zone?.nom) ?? null,
+        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : null),
       },
     });
   })

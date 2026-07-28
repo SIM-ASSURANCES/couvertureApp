@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
 import {
@@ -407,7 +407,7 @@ souscriptionsRouter.get(
 
 souscriptionsRouter.delete(
   "/incendie/:id",
-  requireSuperAdmin,
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionIncendie.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
@@ -427,7 +427,7 @@ souscriptionsRouter.delete(
 
 souscriptionsRouter.delete(
   "/accident/:id",
-  requireSuperAdmin,
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });

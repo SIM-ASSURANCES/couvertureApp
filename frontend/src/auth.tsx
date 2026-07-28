@@ -7,7 +7,7 @@ import {
 import { Navigate } from "react-router-dom";
 import { api, getUser } from "./api";
 
-type Role = "ADMIN" | "SUPER_ADMIN";
+type Role = "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
 export interface SessionUser {
   id: string;

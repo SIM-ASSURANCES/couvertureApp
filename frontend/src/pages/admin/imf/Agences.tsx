@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fmtDate } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
@@ -81,7 +81,7 @@ export default function Agences() {
                     <tr key={a.id}>
                       <td><strong>{a.nom}</strong></td>
                       <td className="muted">{a.zoneNom}</td>
-                      <td className="muted">{a.nbAgents ?? 0}</td>
+                      <td className="muted">{nb(a.nbAgents ?? 0)}</td>
                       <td className="muted">{a.localisation ?? "—"}</td>
                       <td className="muted">{fmtDate(a.createdAt)}</td>
                       {isSuper && (

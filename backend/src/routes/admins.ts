@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 
@@ -16,13 +16,21 @@ function branchesEffectives(a: { role: string; branches: string[] }) {
 
 adminsRouter.get(
   "/",
-  requireSuperAdmin,
-  asyncHandler(async (_req, res) => {
+  requireAnySuperAdmin,
+  asyncHandler(async (req: AuthedRequest, res) => {
     const admins = await prisma.admin.findMany({
       orderBy: { createdAt: "asc" },
       select: { id: true, nom: true, email: true, role: true, branches: true, createdAt: true },
     });
-    res.json(admins.map((a) => ({ ...a, branches: branchesEffectives(a) })));
+    // Un BRANCH_SUPER_ADMIN ne voit que les comptes ADMIN rattachés à sa
+    // branche — jamais les autres super-administrateurs (globaux ou d'une
+    // autre branche), pour éviter qu'une branche n'ait de visibilité sur les
+    // comptes à privilèges d'une autre.
+    const visibles =
+      req.user!.role === "SUPER_ADMIN"
+        ? admins
+        : admins.filter((a) => a.role === "ADMIN" && a.branches.some((b) => req.user!.branches?.includes(b as BrancheAcces)));
+    res.json(visibles.map((a) => ({ ...a, branches: branchesEffectives(a) })));
   })
 );
 
@@ -68,7 +76,7 @@ const createSchema = z.object({
   nom: z.string().min(1),
   email: z.string().email(),
   motDePasse: z.string().min(6),
-  role: z.enum(["ADMIN", "SUPER_ADMIN"]).default("ADMIN"),
+  role: z.enum(["ADMIN", "BRANCH_SUPER_ADMIN", "SUPER_ADMIN"]).default("ADMIN"),
   branches: z.array(z.enum(["INCENDIE_ACCIDENT", "RELAX", "IMF"])).default([]),
 }).refine(
   (data) => data.role === "SUPER_ADMIN" || data.branches.length > 0,
@@ -77,10 +85,23 @@ const createSchema = z.object({
 
 adminsRouter.post(
   "/",
-  requireSuperAdmin,
+  requireAnySuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createSchema.parse(req.body);
-    // Un SUPER_ADMIN reçoit toujours les trois branches automatiquement.
+    // Un BRANCH_SUPER_ADMIN ne peut créer que des comptes ADMIN, et
+    // uniquement scopés à sa/ses propre(s) branche(s) — jamais un autre
+    // super-administrateur (global ou de branche), pour éviter toute
+    // élévation de privilèges depuis un compte scopé à une branche.
+    if (req.user!.role === "BRANCH_SUPER_ADMIN") {
+      if (data.role !== "ADMIN") {
+        return res.status(403).json({ error: "Vous ne pouvez créer que des comptes Administrateur." });
+      }
+      const horsBranche = data.branches.some((b) => !req.user!.branches?.includes(b));
+      if (horsBranche) {
+        return res.status(403).json({ error: "Vous ne pouvez assigner que les branches auxquelles vous avez accès." });
+      }
+    }
+    // Un SUPER_ADMIN global reçoit toujours les trois branches automatiquement.
     const branches: ("INCENDIE_ACCIDENT" | "RELAX" | "IMF")[] =
       data.role === "SUPER_ADMIN" ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"] : data.branches;
     const created = await prisma.admin.create({
@@ -106,12 +127,18 @@ adminsRouter.post(
 
 adminsRouter.delete(
   "/:id",
-  requireSuperAdmin,
+  requireAnySuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     if (req.params.id === req.user!.sub) {
       return res
         .status(400)
         .json({ error: "Vous ne pouvez pas supprimer votre propre compte" });
+    }
+    if (req.user!.role === "BRANCH_SUPER_ADMIN") {
+      const cible = await prisma.admin.findUnique({ where: { id: req.params.id } });
+      if (!cible || cible.role !== "ADMIN" || !cible.branches.some((b) => req.user!.branches?.includes(b as BrancheAcces))) {
+        return res.status(403).json({ error: "Vous ne pouvez supprimer que les comptes Administrateur de votre branche." });
+      }
     }
     await prisma.admin.delete({ where: { id: req.params.id } });
     await logAction({

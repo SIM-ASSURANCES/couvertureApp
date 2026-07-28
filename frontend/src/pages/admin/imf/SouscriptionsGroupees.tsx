@@ -1,6 +1,8 @@
-import { Download } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 import { Badge, fcfa, fmtDate } from "../../../components/ui";
 import { genererContratImf, contratImfDisponible } from "../../../contract";
+import { api } from "../../../api";
+import { useAuth } from "../../../auth";
 import type { SouscriptionImf } from "../../../types";
 
 function statutBadge(s: SouscriptionImf["statut"]) {
@@ -55,7 +57,20 @@ function grouperParZoneAgence(rows: SouscriptionImf[]): Groupe[] {
 }
 
 /** Tableau des souscriptions/contrats IMF, regroupé par zone puis par agence. */
-export default function SouscriptionsGroupees({ rows }: { rows: SouscriptionImf[] }) {
+export default function SouscriptionsGroupees({ rows, onDeleted }: { rows: SouscriptionImf[]; onDeleted?: () => void }) {
+  const { user } = useAuth();
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
+
+  async function supprimer(s: SouscriptionImf) {
+    if (!confirm(`Supprimer le contrat ${s.numeroPolice} ?`)) return;
+    try {
+      await api.del(`/imf/contrats/${s.id}`);
+      onDeleted?.();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
+
   if (rows.length === 0) {
     return <div className="empty" style={{ padding: 20 }}>Aucune souscription.</div>;
   }
@@ -101,16 +116,28 @@ export default function SouscriptionsGroupees({ rows }: { rows: SouscriptionImf[
                         <td>{statutBadge(s.statut)}</td>
                         <td className="muted">{fmtDate(s.createdAt)}</td>
                         <td>
-                          {contratImfDisponible(s.produitCode) && (
-                            <button
-                              className="btn btn-ghost"
-                              style={{ padding: "7px 10px" }}
-                              title="Télécharger le contrat"
-                              onClick={() => genererContratImf(s)}
-                            >
-                              <Download size={15} />
-                            </button>
-                          )}
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {contratImfDisponible(s.produitCode) && (
+                              <button
+                                className="btn btn-ghost"
+                                style={{ padding: "7px 10px" }}
+                                title="Télécharger le contrat"
+                                onClick={() => genererContratImf(s)}
+                              >
+                                <Download size={15} />
+                              </button>
+                            )}
+                            {isSuper && (
+                              <button
+                                className="btn btn-ghost"
+                                style={{ padding: "7px 10px" }}
+                                title="Supprimer le contrat"
+                                onClick={() => supprimer(s)}
+                              >
+                                <Trash2 size={15} color="var(--danger)" />
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}

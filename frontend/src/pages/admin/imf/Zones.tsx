@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fmtDate } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
@@ -69,8 +69,8 @@ export default function Zones() {
                   {data.map((z) => (
                     <tr key={z.id}>
                       <td><strong>{z.nom}</strong></td>
-                      <td className="muted">{z.nbAgences ?? 0}</td>
-                      <td className="muted">{z.nbAgents ?? 0}</td>
+                      <td className="muted">{nb(z.nbAgences ?? 0)}</td>
+                      <td className="muted">{nb(z.nbAgents ?? 0)}</td>
                       <td className="muted">{fmtDate(z.createdAt)}</td>
                       {isSuper && (
                         <td>

@@ -21,12 +21,14 @@ export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" |
 export interface AuthUser {
   sub: string;
   type: ActorType;
-  role?: "ADMIN" | "SUPER_ADMIN";
+  role?: "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
   nom?: string;
   branches?: BrancheAcces[];
   // Rattachement d'un agent IMF (uniquement pour type === "agent_imf").
   agenceId?: string;
-  zoneId?: string;
+  // Zones gérées par un RESPONSABLE_ZONE (plusieurs possibles depuis le
+  // multi-zone) — absent/vide pour les autres rôles IMF.
+  zoneIds?: string[];
   roleImf?: RoleImfAcces;
 }
 
@@ -63,6 +65,40 @@ export function requireSuperAdmin(
   next: NextFunction
 ) {
   if (req.user?.role !== "SUPER_ADMIN") {
+    return res.status(403).json({ error: "Réservé au Super Administrateur" });
+  }
+  next();
+}
+
+/** Vrai si l'utilisateur a les pleins pouvoirs de super-administrateur sur cette branche : SUPER_ADMIN global, ou BRANCH_SUPER_ADMIN scopé à cette branche. */
+export function estSuperAdminBranche(user: AuthUser | undefined, branche: BrancheAcces): boolean {
+  if (!user) return false;
+  if (user.role === "SUPER_ADMIN") return true;
+  return user.role === "BRANCH_SUPER_ADMIN" && !!user.branches?.includes(branche);
+}
+
+/**
+ * Réserve la route au SUPER_ADMIN global ou à un BRANCH_SUPER_ADMIN scopé à
+ * la branche donnée — pour les pouvoirs de super-administrateur qui doivent
+ * pouvoir être délégués branche par branche (suppression de contrats,
+ * gestion des comptes admin de la branche, etc.).
+ */
+export function requireSuperAdminBranche(branche: BrancheAcces) {
+  return (req: AuthedRequest, res: Response, next: NextFunction) => {
+    if (!estSuperAdminBranche(req.user, branche)) {
+      return res.status(403).json({ error: "Réservé au Super Administrateur" });
+    }
+    next();
+  };
+}
+
+/** Autorise le SUPER_ADMIN global ou n'importe quel BRANCH_SUPER_ADMIN — le filtrage par branche se fait ensuite dans le handler. */
+export function requireAnySuperAdmin(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  if (req.user?.role !== "SUPER_ADMIN" && req.user?.role !== "BRANCH_SUPER_ADMIN") {
     return res.status(403).json({ error: "Réservé au Super Administrateur" });
   }
   next();

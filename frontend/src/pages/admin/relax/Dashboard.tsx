@@ -1,6 +1,6 @@
 import { Bike, Car, Store, Clock, ArrowUpRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { PageHeader, StatCard, Card, Loader, ErrorBox, fcfa, fmtDate, waveBadge } from "../../../components/ui";
+import { PageHeader, StatCard, Card, Loader, ErrorBox, fcfa, fmtDate, waveBadge, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 
 interface Overview {
@@ -38,25 +38,25 @@ export default function RelaxDashboard() {
       {data && (
         <>
           <div className="stat-grid stat-grid-7" style={{ marginTop: 24 }}>
-            <StatCard icon={<Store size={20} />} label="Partenaires Relax" value={String(data.partenairesRelax)} />
+            <StatCard icon={<Store size={20} />} label="Partenaires Relax" value={nb(data.partenairesRelax)} />
             <StatCard
               icon={<Bike size={20} />}
               label="Abonnements RelaxMoto actifs"
-              value={String(moto?.confirmes ?? 0)}
+              value={nb(moto?.confirmes ?? 0)}
               color="#16215E"
               bg="#eceefb"
             />
             <StatCard
               icon={<Car size={20} />}
               label="Abonnements RelaxAuto actifs"
-              value={String(auto?.confirmes ?? 0)}
+              value={nb(auto?.confirmes ?? 0)}
               color="#51AEE2"
               bg="#eaf6fd"
             />
             <StatCard
               icon={<Clock size={20} />}
               label="Échéances en attente"
-              value={String((moto?.enAttente ?? 0) + (auto?.enAttente ?? 0))}
+              value={nb((moto?.enAttente ?? 0) + (auto?.enAttente ?? 0))}
               color="#b45309"
               bg="#fdf3e3"
             />

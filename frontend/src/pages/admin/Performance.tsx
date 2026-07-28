@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, Check, X, FileSpreadsheet } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate } from "../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, nb } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { downloadCsv, api } from "../../api";
 import { exportExcel } from "../../xlsx";
@@ -170,7 +170,7 @@ export default function Performance() {
                 <div style={{ fontWeight: 800, fontSize: 15 }}>{r.nomCommerce}</div>
                 <div style={{ color: "var(--text-2)", fontSize: 12 }}>{r.localisation}</div>
                 <div style={{ fontWeight: 800, color: "var(--sim-primary)", fontSize: 22, marginTop: 4 }}>
-                  {r.total} souscription{r.total > 1 ? "s" : ""}
+                  {nb(r.total)} souscription{r.total > 1 ? "s" : ""}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-2)" }}>
                   {r.clientsIncendie} incendie · {r.clientsAccident} accident · {fcfa(r.ca)} CA
@@ -316,7 +316,7 @@ export default function Performance() {
           <div className="stat-grid" style={{ marginBottom: 24 }}>
             <div className="stat">
               <div className="stat-label">Total souscriptions</div>
-              <div className="stat-value">{totalSous}</div>
+              <div className="stat-value">{nb(totalSous)}</div>
             </div>
             <div className="stat">
               <div className="stat-label">Primes Incendie HT</div>
@@ -375,7 +375,7 @@ export default function Performance() {
                           <div className="bar-track" style={{ flex: 1 }}>
                             <div className="bar-fill" style={{ width: `${(r.total / max) * 100}%` }} />
                           </div>
-                          <span style={{ fontWeight: 600 }}>{r.total}</span>
+                          <span style={{ fontWeight: 600 }}>{nb(r.total)}</span>
                         </div>
                       </td>
                       <td>{r.clientsIncendie}</td>

@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { FilePlus, ChevronDown, ChevronUp, FileSpreadsheet, Banknote } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
@@ -62,7 +62,7 @@ function DetailBordereau({ id, onUpdated }: { id: string; onUpdated: (b: Bordere
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div className="muted" style={{ fontSize: 13 }}>
-          {data.nombreSouscriptions} souscription(s) · {fcfa(data.primeTotal)} · reçu : {fcfa(data.montantRecu)}
+          {nb(data.nombreSouscriptions)} souscription(s) · {fcfa(data.primeTotal)} · reçu : {fcfa(data.montantRecu)}
         </div>
         <button className="btn btn-ghost" onClick={exporter}>
           <FileSpreadsheet size={15} /> Export Excel
@@ -240,7 +240,7 @@ export default function Bordereaux() {
                       <td><strong>{b.numero}</strong></td>
                       <td>{b.agenceNom}<div className="muted" style={{ fontSize: 12 }}>{b.zoneNom}</div></td>
                       <td className="muted">{fmtDate(b.periodeDebut)} — {fmtDate(b.periodeFin)}</td>
-                      <td style={{ textAlign: "right" }}>{b.nombreSouscriptions}</td>
+                      <td style={{ textAlign: "right" }}>{nb(b.nombreSouscriptions)}</td>
                       <td style={{ textAlign: "right" }}><strong>{fcfa(b.primeTotal)}</strong></td>
                       <td style={{ textAlign: "right" }} className="muted">{fcfa(b.montantRecu)}</td>
                       <td>{statutBadge(b.statut)}</td>

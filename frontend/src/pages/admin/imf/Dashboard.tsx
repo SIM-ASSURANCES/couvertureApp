@@ -1,5 +1,5 @@
 import { MapPin, Building2, Users, FileText, TrendingUp, Receipt, Package } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fcfa } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fcfa, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import type { ZoneImf, AgenceImf, AgentImf, StatsImf, StatsSinistresImf } from "../../../types";
 
@@ -127,7 +127,7 @@ export default function Dashboard() {
             <StatCard icon={TrendingUp} label="Chiffre d'affaires global" value={fcfa(stats.global.ca)} accent="#16a34a" bg="rgba(22,163,74,0.12)" />
             <StatCard icon={Receipt} label="Taxes globales" value={fcfa(stats.global.taxes)} accent="#db2777" bg="rgba(219,39,119,0.12)" />
             <StatCard icon={Package} label="Accessoires globaux" value={fcfa(stats.global.accessoires)} accent="#f59e0b" bg="rgba(245,158,11,0.12)" />
-            <StatCard icon={FileText} label="Contrats actifs" value={stats.global.nombre} />
+            <StatCard icon={FileText} label="Contrats actifs" value={nb(stats.global.nombre)} />
           </div>
 
           {/* Détail par produit */}
@@ -153,7 +153,7 @@ export default function Dashboard() {
                           <strong>{p.famille}</strong>
                         </span>
                       </td>
-                      <td style={{ textAlign: "right" }}>{p.nombre}</td>
+                      <td style={{ textAlign: "right" }}>{nb(p.nombre)}</td>
                       <td style={{ textAlign: "right" }}><strong>{fcfa(p.ca)}</strong></td>
                       <td style={{ textAlign: "right" }} className="muted">{fcfa(p.taxes)}</td>
                       <td style={{ textAlign: "right" }} className="muted">{fcfa(p.accessoires)}</td>
@@ -166,7 +166,7 @@ export default function Dashboard() {
                   ))}
                   <tr>
                     <td><strong>Total</strong></td>
-                    <td style={{ textAlign: "right" }}><strong>{stats.global.nombre}</strong></td>
+                    <td style={{ textAlign: "right" }}><strong>{nb(stats.global.nombre)}</strong></td>
                     <td style={{ textAlign: "right" }}><strong>{fcfa(stats.global.ca)}</strong></td>
                     <td style={{ textAlign: "right" }}><strong>{fcfa(stats.global.taxes)}</strong></td>
                     <td style={{ textAlign: "right" }}><strong>{fcfa(stats.global.accessoires)}</strong></td>

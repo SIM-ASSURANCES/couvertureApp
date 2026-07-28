@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { ChevronDown, ChevronUp, Droplets, FilePlus, FileSpreadsheet } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
@@ -198,7 +198,7 @@ export default function Sinistres() {
         palier,
         region: region.trim(),
       });
-      setIndemnisationMsg(`${res.nombre} indemnisation(s) créée(s).`);
+      setIndemnisationMsg(`${nb(res.nombre)} indemnisation(s) créée(s).`);
       setSelection([]);
       reload();
     } catch (err) {

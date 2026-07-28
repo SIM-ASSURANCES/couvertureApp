@@ -15,7 +15,7 @@ const empty = {
   motDePasse: "",
   roleImf: "AGENT" as RoleImf,
   agenceId: "",
-  zoneId: "",
+  zoneIds: [] as string[],
 };
 
 function roleLabel(r: RoleImf) {
@@ -59,7 +59,7 @@ export default function Agents() {
         motDePasse: form.motDePasse,
         roleImf: form.roleImf,
         agenceId: form.roleImf === "RESPONSABLE_ZONE" ? undefined : form.agenceId,
-        zoneId: form.roleImf === "RESPONSABLE_ZONE" ? form.zoneId : undefined,
+        zoneIds: form.roleImf === "RESPONSABLE_ZONE" ? form.zoneIds : undefined,
       });
       setForm(empty);
       notify("Agent créé ✓");
@@ -115,7 +115,7 @@ export default function Agents() {
     form.telephone.trim() &&
     form.email.trim() &&
     form.motDePasse.length >= 6 &&
-    (form.roleImf === "RESPONSABLE_ZONE" ? !!form.zoneId : !!form.agenceId);
+    (form.roleImf === "RESPONSABLE_ZONE" ? form.zoneIds.length > 0 : !!form.agenceId);
 
   return (
     <>
@@ -213,7 +213,7 @@ export default function Agents() {
               <select
                 className="select"
                 value={form.roleImf}
-                onChange={(e) => setForm({ ...form, roleImf: e.target.value as RoleImf, agenceId: "", zoneId: "" })}
+                onChange={(e) => setForm({ ...form, roleImf: e.target.value as RoleImf, agenceId: "", zoneIds: [] })}
               >
                 <option value="AGENT">Agent</option>
                 <option value="RESPONSABLE_AGENCE">Responsable d'agence</option>
@@ -223,13 +223,31 @@ export default function Agents() {
             </div>
             {form.roleImf === "RESPONSABLE_ZONE" ? (
               <div className="field">
-                <label className="label">Zone <span className="req">*</span></label>
-                <select className="select" required value={form.zoneId} onChange={(e) => setForm({ ...form, zoneId: e.target.value })}>
-                  <option value="">Sélectionner…</option>
+                <label className="label">Zone(s) <span className="req">*</span></label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
                   {zones?.map((z) => (
-                    <option key={z.id} value={z.id}>{z.nom}</option>
+                    <label key={z.id} style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={form.zoneIds.includes(z.id)}
+                        onChange={() =>
+                          setForm((f) => ({
+                            ...f,
+                            zoneIds: f.zoneIds.includes(z.id)
+                              ? f.zoneIds.filter((id) => id !== z.id)
+                              : [...f.zoneIds, z.id],
+                          }))
+                        }
+                      />
+                      <span>{z.nom}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
+                {form.zoneIds.length === 0 && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Sélectionnez au moins une zone.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="field">

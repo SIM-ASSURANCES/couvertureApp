@@ -9,6 +9,9 @@ datasource db {
 
 enum Role {
   ADMIN
+  // Super-administrateur scopé à une seule branche (voir Admin.branches) —
+  // mêmes pouvoirs qu'un SUPER_ADMIN global mais limités à sa/ses branche(s).
+  BRANCH_SUPER_ADMIN
   SUPER_ADMIN
 }
 
@@ -457,7 +460,14 @@ model ZoneImf {
   nom       String      @unique
   createdAt DateTime    @default(now())
   agences   AgenceImf[]
-  agents    AgentImf[] // rattachement direct d'un RESPONSABLE_ZONE (pas d'agence intermédiaire)
+  // Déprécié : rattachement direct historique d'un seul RESPONSABLE_ZONE par
+  // zone (avant l'introduction du multi-zone). Conservé pour compat des
+  // anciens enregistrements — voir `responsables` pour le modèle actuel.
+  agents    AgentImf[]
+  // Un chef de zone peut désormais être rattaché à plusieurs zones (cases à
+  // cocher côté admin) — relation many-to-many, une zone peut donc aussi
+  // avoir plusieurs responsables.
+  responsables AgentImf[] @relation("ResponsableZones")
 }
 
 model AgenceImf {
@@ -482,8 +492,14 @@ model AgentImf {
   roleImf      RoleImf          @default(AGENT)
   agenceId     String? // requis si roleImf = AGENT
   agence       AgenceImf?       @relation(fields: [agenceId], references: [id])
-  zoneId       String? // requis si roleImf = RESPONSABLE_ZONE
+  // Déprécié : ancien rattachement à une seule zone. Conservé pour compat des
+  // enregistrements créés avant le multi-zone — voir `zones` pour le modèle
+  // actuel (utilisé par tout le code applicatif).
+  zoneId       String?
   zone         ZoneImf?         @relation(fields: [zoneId], references: [id])
+  // Zones gérées par ce responsable (roleImf = RESPONSABLE_ZONE) — plusieurs
+  // zones possibles, sélectionnées via cases à cocher côté admin.
+  zones        ZoneImf[]        @relation("ResponsableZones")
   statut        StatutPartenaire  @default(actif)
   createdAt     DateTime          @default(now())
   simulations   SimulationImf[]

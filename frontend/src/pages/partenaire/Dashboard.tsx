@@ -10,6 +10,7 @@ import {
   waveBadge,
   statutIncendieBadge,
   fmtDate,
+  nb,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
@@ -98,7 +99,7 @@ export default function PartenaireDashboard() {
           {produit === "incendie" ? (
             <>
               <div className="stat-grid" style={{ marginTop: 24 }}>
-                <StatCard icon={<Flame size={20} />} label="Clients Incendie" value={String(data.clientsIncendie)} color="#b45309" bg="#fdf3e3" />
+                <StatCard icon={<Flame size={20} />} label="Clients Incendie" value={nb(data.clientsIncendie)} color="#b45309" bg="#fdf3e3" />
                 <StatCard icon={<FileText size={20} />} label="Primes Incendie" value={fcfa(data.primesIncendie)} color="#b45309" bg="#fdf3e3" />
                 <StatCard icon={<TrendingUp size={20} />} label="Chiffre d'affaires" value={fcfa(data.chiffreAffaires)} />
                 <StatCard icon={<Wallet size={20} />} label="Commission estimée" value={fcfa(data.commission)} />
@@ -138,7 +139,7 @@ export default function PartenaireDashboard() {
           ) : (
             <>
               <div className="stat-grid" style={{ marginTop: 24 }}>
-                <StatCard icon={<ShieldCheck size={20} />} label="Clients Accident" value={String(data.clientsAccident)} color="#15803d" bg="#e8f6ec" />
+                <StatCard icon={<ShieldCheck size={20} />} label="Clients Accident" value={nb(data.clientsAccident)} color="#15803d" bg="#e8f6ec" />
                 <StatCard icon={<FileText size={20} />} label="Primes Accident" value={fcfa(data.primesAccident)} color="#15803d" bg="#e8f6ec" />
                 <StatCard icon={<TrendingUp size={20} />} label="Chiffre d'affaires" value={fcfa(data.chiffreAffaires)} />
                 <StatCard icon={<Wallet size={20} />} label="Commission estimée" value={fcfa(data.commission)} />

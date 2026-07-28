@@ -17,7 +17,7 @@ import type { ClientIncendie, Partenaire } from "../../types";
 
 export default function ClientsIncendie() {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [statut, setStatut] = useState("");
   const [part, setPart] = useState("");
   const [toast, setToast] = useState("");

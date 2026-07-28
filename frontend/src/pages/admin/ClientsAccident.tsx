@@ -18,7 +18,7 @@ import type { ClientAccident, Partenaire } from "../../types";
 
 export default function ClientsAccident() {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN";
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [part, setPart] = useState("");
   const [toast, setToast] = useState("");
   const params = new URLSearchParams();

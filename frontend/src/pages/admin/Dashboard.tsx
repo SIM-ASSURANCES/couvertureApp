@@ -10,6 +10,7 @@ import {
   fcfa,
   statutIncendieBadge,
   waveBadge,
+  nb,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 
@@ -138,19 +139,19 @@ export default function AdminDashboard() {
             <StatCard
               icon={<Store size={20} />}
               label="Partenaires actifs"
-              value={`${data.partenairesActifs}/${data.partenairesTotal}`}
+              value={`${nb(data.partenairesActifs)}/${nb(data.partenairesTotal)}`}
             />
             <StatCard
               icon={<Flame size={20} />}
               label="Souscr. Incendie"
-              value={String(data.incendieTotal)}
+              value={nb(data.incendieTotal)}
               color="#b45309"
               bg="#fdf3e3"
             />
             <StatCard
               icon={<ShieldCheck size={20} />}
               label="Souscr. Accident"
-              value={String(data.accidentTotal)}
+              value={nb(data.accidentTotal)}
               color="#15803d"
               bg="#e8f6ec"
             />

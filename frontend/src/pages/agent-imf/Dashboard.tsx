@@ -1,5 +1,5 @@
 import { Landmark, FileText, IdCard, Wallet, Building2, Users, Banknote } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa } from "../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, nb } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
 import type { SouscriptionImf, FinanceImf } from "../../types";
@@ -96,11 +96,11 @@ export default function Dashboard() {
       {moi && (
         <>
           <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 16 }}>
-            <StatCard icon={FileText} label="Souscriptions" value={total} />
-            <StatCard icon={IdCard} label="Contrats actifs" value={actives} />
+            <StatCard icon={FileText} label="Souscriptions" value={nb(total)} />
+            <StatCard icon={IdCard} label="Contrats actifs" value={nb(actives)} />
             <StatCard icon={Wallet} label="Prime totale (contrats actifs)" value={fcfa(primeTotale)} />
-            {moi.roleImf === "RESPONSABLE_ZONE" && <StatCard icon={Building2} label="Agences" value={nbAgences} />}
-            {moi.roleImf !== "AGENT" && <StatCard icon={Users} label="Agents du réseau" value={nbAgentsReseau} />}
+            {moi.roleImf === "RESPONSABLE_ZONE" && <StatCard icon={Building2} label="Agences" value={nb(nbAgences)} />}
+            {moi.roleImf !== "AGENT" && <StatCard icon={Users} label="Agents du réseau" value={nb(nbAgentsReseau)} />}
             {moi.roleImf === "FINANCE_COMPTABLE" && (
               <StatCard icon={Banknote} label="Commissions générées" value={fcfa(finance?.global.commission ?? 0)} />
             )}

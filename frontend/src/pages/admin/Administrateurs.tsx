@@ -12,7 +12,7 @@ interface Admin {
   id: string;
   nom: string;
   email: string;
-  role: "ADMIN" | "SUPER_ADMIN";
+  role: "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
   branches: Branche[];
   createdAt: string;
 }
@@ -34,6 +34,13 @@ function brancheLabel(b: Branche) {
 export default function Administrateurs() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN";
+  const isBranchSuper = user?.role === "BRANCH_SUPER_ADMIN";
+  const canManage = isSuper || isBranchSuper;
+  // Branches assignables par ce compte : toutes pour un SUPER_ADMIN global,
+  // uniquement les siennes pour un BRANCH_SUPER_ADMIN.
+  const branchesAssignables: Branche[] = isSuper
+    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"]
+    : (user?.branches as Branche[] | undefined) ?? [];
   const { data, loading, error, reload } = useFetch<Admin[]>("/admins");
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
@@ -121,7 +128,7 @@ export default function Administrateurs() {
                     <th>Rôle</th>
                     <th>Branches</th>
                     <th>Créé le</th>
-                    {isSuper && <th></th>}
+                    {canManage && <th></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -132,6 +139,8 @@ export default function Administrateurs() {
                       <td>
                         {a.role === "SUPER_ADMIN" ? (
                           <Badge kind="info">Super Admin</Badge>
+                        ) : a.role === "BRANCH_SUPER_ADMIN" ? (
+                          <Badge kind="warning">Super Admin de branche</Badge>
                         ) : (
                           <Badge kind="neutral">Admin</Badge>
                         )}
@@ -149,7 +158,7 @@ export default function Administrateurs() {
                         </div>
                       </td>
                       <td className="muted">{fmtDate(a.createdAt)}</td>
-                      {isSuper && (
+                      {canManage && (
                         <td>
                           {a.id !== user?.id && (
                             <button className="btn btn-ghost" style={{ padding: 8 }} onClick={() => remove(a)}>
@@ -166,7 +175,7 @@ export default function Administrateurs() {
           )}
         </Card>
 
-        {isSuper ? (
+        {canManage ? (
           <Card title="Ajouter un administrateur">
             <form onSubmit={create}>
               <div className="field">
@@ -181,13 +190,21 @@ export default function Administrateurs() {
                 <label className="label">Mot de passe <span className="req">*</span></label>
                 <input className="input" type="password" required minLength={6} value={form.motDePasse} onChange={(e) => setForm({ ...form, motDePasse: e.target.value })} />
               </div>
-              <div className="field">
-                <label className="label">Rôle</label>
-                <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                  <option value="ADMIN">Administrateur</option>
-                  <option value="SUPER_ADMIN">Super Administrateur</option>
-                </select>
-              </div>
+              {isSuper && (
+                <div className="field">
+                  <label className="label">Rôle</label>
+                  <select className="select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                    <option value="ADMIN">Administrateur</option>
+                    <option value="BRANCH_SUPER_ADMIN">Super Administrateur de branche</option>
+                    <option value="SUPER_ADMIN">Super Administrateur</option>
+                  </select>
+                </div>
+              )}
+              {isBranchSuper && (
+                <div className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                  Vous ne pouvez créer que des comptes Administrateur, rattachés à votre/vos branche(s).
+                </div>
+              )}
 
               <div className="field">
                 <label className="label">
@@ -195,35 +212,41 @@ export default function Administrateurs() {
                 </label>
                 {isSuperForm ? (
                   <div className="muted" style={{ fontSize: 12 }}>
-                    Un Super Administrateur a automatiquement accès aux deux branches.
+                    Un Super Administrateur a automatiquement accès aux trois branches.
                   </div>
                 ) : (
                   <>
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 2 }}>
-                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={form.branches.includes("INCENDIE_ACCIDENT")}
-                          onChange={() => toggleBranche("INCENDIE_ACCIDENT")}
-                        />
-                        <span>Assurances Incendie et Accident</span>
-                      </label>
-                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={form.branches.includes("RELAX")}
-                          onChange={() => toggleBranche("RELAX")}
-                        />
-                        <span>Assurances RelaxMoto et RelaxAuto</span>
-                      </label>
-                      <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                        <input
-                          type="checkbox"
-                          checked={form.branches.includes("IMF")}
-                          onChange={() => toggleBranche("IMF")}
-                        />
-                        <span>Assurances IMF</span>
-                      </label>
+                      {branchesAssignables.includes("INCENDIE_ACCIDENT") && (
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={form.branches.includes("INCENDIE_ACCIDENT")}
+                            onChange={() => toggleBranche("INCENDIE_ACCIDENT")}
+                          />
+                          <span>Assurances Incendie et Accident</span>
+                        </label>
+                      )}
+                      {branchesAssignables.includes("RELAX") && (
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={form.branches.includes("RELAX")}
+                            onChange={() => toggleBranche("RELAX")}
+                          />
+                          <span>Assurances RelaxMoto et RelaxAuto</span>
+                        </label>
+                      )}
+                      {branchesAssignables.includes("IMF") && (
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={form.branches.includes("IMF")}
+                            onChange={() => toggleBranche("IMF")}
+                          />
+                          <span>Assurances IMF</span>
+                        </label>
+                      )}
                     </div>
                     {form.branches.length === 0 && (
                       <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -241,7 +264,7 @@ export default function Administrateurs() {
           </Card>
         ) : (
           <Card>
-            <div className="empty">Seul le Super Administrateur peut créer des comptes.</div>
+            <div className="empty">Seul un Super Administrateur peut créer des comptes.</div>
           </Card>
         )}
       </div>

@@ -122,6 +122,11 @@ export function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
 }
 
+/** Formate un nombre (compteur, quantité...) avec séparateur de milliers, sans unité. */
+export function nb(n: number) {
+  return n.toLocaleString("fr-FR");
+}
+
 export function Loader({ label = "Chargement…" }: { label?: string }) {
   return (
     <div className="empty" style={{ padding: 48 }}>
