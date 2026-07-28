@@ -205,8 +205,58 @@ async function seedTarificationImf() {
   }
 }
 
+/**
+ * Tarifs RelaxMoto/RelaxAuto : deux formules par produit, chacune avec son
+ * propre montant PAR échéance (voir echeancier.ts — le mensuel n'est jamais
+ * la prime annuelle divisée). Valeurs de départ à ajuster depuis l'admin ;
+ * idempotent (upsert), ne touche jamais un montant déjà édité en prod.
+ */
+async function seedTarificationRelax() {
+  const produits: {
+    code: string;
+    libelle: string;
+    capitalGaranti: number;
+    tarifs: { libelleVariante: string; prime: number; commission: number }[];
+  }[] = [
+    {
+      code: "relaxmoto",
+      libelle: "RelaxMoto",
+      capitalGaranti: 500_000,
+      tarifs: [
+        { libelleVariante: "annuel", prime: 25_000, commission: 0.1 },
+        { libelleVariante: "mensuel", prime: 2_500, commission: 0.1 },
+      ],
+    },
+    {
+      code: "relaxauto",
+      libelle: "RelaxAuto",
+      capitalGaranti: 1_000_000,
+      tarifs: [
+        { libelleVariante: "annuel", prime: 25_000, commission: 0.1 },
+        { libelleVariante: "mensuel", prime: 2_500, commission: 0.1 },
+      ],
+    },
+  ];
+
+  for (const p of produits) {
+    const produit = await prisma.produit.upsert({
+      where: { code: p.code },
+      update: {},
+      create: { code: p.code, libelle: p.libelle, branche: "RELAX", typePaiement: "WAVE" },
+    });
+    for (const t of p.tarifs) {
+      await prisma.tarifProduit.upsert({
+        where: { produitId_libelleVariante: { produitId: produit.id, libelleVariante: t.libelleVariante } },
+        update: {},
+        create: { produitId: produit.id, capitalGaranti: p.capitalGaranti, ...t },
+      });
+    }
+  }
+}
+
 async function main() {
   await seedSuperAdmin();
+  await seedTarificationRelax();
   await corrigerCapitalGarantiIncendie();
   await seedTarificationImf();
   await corrigerCommissionsImf();

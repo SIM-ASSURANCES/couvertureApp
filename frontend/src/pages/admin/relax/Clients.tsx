@@ -6,7 +6,6 @@ import { exportExcel } from "../../../xlsx";
 import type { ProduitRelax, SouscriptionRelax } from "../../../types";
 
 const CYCLE_LABEL: Record<string, string> = {
-  hebdo5semaines: "Hebdo (5 sem.)",
   mensuel: "Mensuel",
   annuel: "Annuel",
 };

@@ -14,6 +14,24 @@ export function newFormulaireToken() {
   return randomUUID();
 }
 
+/**
+ * Mot de passe client (RelaxMoto/RelaxAuto) — généré à l'activation du
+ * contrat, envoyé en clair par SMS une seule fois puis jamais reconstitué
+ * (seul le hash est stocké). Alphabet sans caractères ambigus (0/O, 1/I/l)
+ * pour rester lisible dans un SMS.
+ */
+export function genererMotDePasseClient(): string {
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const octets = randomBytes(8);
+  let mdp = "";
+  for (let i = 0; i < 8; i++) mdp += alphabet[octets[i] % alphabet.length];
+  return mdp;
+}
+
+export function lienClientRelax() {
+  return `${BASE}/client/connexion`;
+}
+
 export function lienFormulaire(produit: string, token: string) {
   return `${BASE}/s/${produit}/complement/${token}`;
 }
@@ -105,6 +123,18 @@ export function messageAccident(
 /** Relance admin d'un paiement Wave en attente, avec le montant exact de la prime. */
 export function messageRelancePaiement(montant: number, lienPaiement: string) {
   return `SIM Assurances : payez ${montant} FCFA : ${lienPaiement}`;
+}
+
+/**
+ * Activation RelaxMoto/RelaxAuto : contrat confirmé + accès à l'espace client
+ * (identifiant = numéro de téléphone) envoyés en un seul SMS.
+ */
+export function messageClientRelax(
+  numeroPolice: string,
+  motDePasse: string,
+  lien: string
+) {
+  return `SIM Assurances : contrat activé, N° ${numeroPolice}. Accès espace client : mot de passe ${motDePasse} sur ${lien}`;
 }
 
 /**

@@ -18,6 +18,7 @@ import { commissionsRouter } from "./routes/commissions.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
 import { imfRouter, agentImfRouter } from "./routes/imf.js";
+import { clientRouter } from "./routes/client.js";
 import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
 import { requireAuth, requireBranche } from "./auth.js";
@@ -101,6 +102,7 @@ app.use(
   imfRouter
 );
 app.use("/api/agent-imf", agentImfRouter);
+app.use("/api/client", clientRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ZodError) {

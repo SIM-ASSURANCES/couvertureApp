@@ -158,6 +158,43 @@ authRouter.post(
   })
 );
 
+/**
+ * Connexion de l'espace client RelaxMoto/RelaxAuto (téléphone + mot de passe
+ * reçu par SMS à l'activation du contrat). Un client peut avoir plusieurs
+ * contrats sur le même téléphone (ex. moto puis auto) — la connexion cible
+ * le plus récent contrat activé pour ce numéro.
+ */
+authRouter.post(
+  "/client/login",
+  asyncHandler(async (req, res) => {
+    const { telephone, motDePasse } = req.body ?? {};
+    if (!telephone || !motDePasse) {
+      return res.status(400).json({ error: "Téléphone et mot de passe requis" });
+    }
+    const s = await prisma.souscription.findFirst({
+      where: { telephone, clientPasswordHash: { not: null } },
+      orderBy: { createdAt: "desc" },
+      include: { produit: { select: { code: true, libelle: true } } },
+    });
+    if (!s || !s.clientPasswordHash || !(await bcrypt.compare(motDePasse, s.clientPasswordHash))) {
+      return res.status(401).json({ error: "Identifiants invalides" });
+    }
+    const token = signToken({ sub: s.id, type: "client", nom: `${s.prenom ?? ""} ${s.nom ?? ""}`.trim() });
+    res.json({
+      token,
+      user: {
+        id: s.id,
+        nom: `${s.prenom ?? ""} ${s.nom ?? ""}`.trim(),
+        telephone: s.telephone,
+        type: "client",
+        produit: s.produit.code,
+        produitLibelle: s.produit.libelle,
+        numeroPolice: s.numeroPolice,
+      },
+    });
+  })
+);
+
 authRouter.post(
   "/partenaire/login",
   asyncHandler(async (req, res) => {

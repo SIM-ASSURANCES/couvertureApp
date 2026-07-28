@@ -94,8 +94,12 @@ enum StatutSouscription {
   expire
 }
 
+// Deux formules seulement (RelaxMoto/RelaxAuto) : chaque TarifProduit (via
+// libelleVariante = "annuel" | "mensuel") porte le montant PAR échéance
+// directement — le mensuel n'est pas la prime annuelle divisée, c'est un
+// montant fixe indépendant (payer mensuellement coûte plus cher au total,
+// c'est le surcoût de flexibilité).
 enum CycleFacturation {
-  hebdo5semaines
   mensuel
   annuel
 }
@@ -116,6 +120,7 @@ enum StatutEcheance {
 enum TypeDocument {
   CNI
   Permis
+  Selfie
 }
 
 enum StatutValidationDocument {
@@ -408,12 +413,19 @@ model Souscription {
   paiements        Paiement[]
   documents        Document[]
   carte            Carte?
+
+  // --- Espace client (RelaxMoto/RelaxAuto) : créé automatiquement à la
+  // confirmation du 1er paiement, permet au client de se reconnecter pour
+  // renouveler son contrat ou déclarer un sinistre. Identifiant = téléphone,
+  // mot de passe généré et envoyé par SMS.
+  clientPasswordHash String?
+  sinistres          SinistreRelax[]
 }
 
 /**
  * Échéance d'un abonnement récurrent (RelaxMoto/RelaxAuto). `TarifProduit.prime`
- * reste la prime annuelle de référence ; le cycle choisi (hebdo5semaines/mensuel/
- * annuel) détermine seulement le nombre d'échéances et la répartition du montant.
+ * est le montant PAR échéance pour le cycle choisi (mensuel/annuel) — jamais
+ * une prime annuelle divisée, voir echeancier.ts.
  */
 model Paiement {
   id                String         @id @default(uuid())
@@ -425,6 +437,10 @@ model Paiement {
   dateEcheance      DateTime
   datePaiement      DateTime?
   waveTransactionId String?
+  // Paiement de renouvellement (depuis l'espace client) plutôt qu'échéance du
+  // cycle initial — confirmerEcheance prolonge alors juste dateFin d'un an,
+  // sans reproduire la logique de première activation.
+  estRenouvellement Boolean        @default(false)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
@@ -459,6 +475,28 @@ model Carte {
   dateRenouvellement DateTime?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
+}
+
+enum StatutSinistreRelax {
+  declare
+  en_cours
+  traite
+  rejete
+}
+
+/** Déclaration de sinistre par un client RelaxMoto/RelaxAuto depuis son espace personnel. */
+model SinistreRelax {
+  id              String              @id @default(uuid())
+  souscriptionId  String
+  souscription    Souscription        @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numeroSinistre  String              @unique
+  typeEvenement   String
+  dateSurvenance  DateTime
+  description     String?
+  photoUrl        String?
+  statut          StatutSinistreRelax @default(declare)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 }
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent (distribution par agent, pas par QR) ---

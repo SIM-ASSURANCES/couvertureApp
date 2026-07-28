@@ -4,10 +4,15 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../../api";
 import { genererContratAccident } from "../../contract";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
+import PhotoCapture from "../../components/PhotoCapture";
 const BASE = API_BASE;
 
+function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
+  return p === "relaxmoto" || p === "relaxauto";
+}
+
 interface QrInfo {
-  produit: "incendie" | "accident";
+  produit: "incendie" | "accident" | "relaxmoto" | "relaxauto";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -18,6 +23,13 @@ interface TarifAccident {
   prime: number;
   capitalGaranti: number;
   commission: number;
+}
+
+interface TarifRelax {
+  id: number;
+  libelleVariante: "annuel" | "mensuel";
+  prime: number;
+  capitalGaranti: number;
 }
 
 type Step = "loading" | "infos" | "confirm" | "retry" | "success" | "error";
@@ -137,11 +149,15 @@ function TarifCard({
 }
 
 export default function Souscription() {
-  const { token } = useParams<{ token: string }>();
+  const { token, produit: produitParam } = useParams<{ token: string; produit?: string }>();
   const [searchParams] = useSearchParams();
   const paidId = searchParams.get("paid");
   const retryId = searchParams.get("retry");
   const paiementEchec = searchParams.get("paiement") === "echec";
+  // Avant la résolution du QR (ou pour le retour Wave, où qrInfo n'est pas
+  // encore chargé), le produit vient du segment d'URL — "accident" par
+  // défaut pour compat avec l'ancienne route /souscription/:token.
+  const produitEffectif = produitParam || "accident";
 
   const [step, setStep] = useState<Step>("loading");
   const [qrInfo, setQrInfo] = useState<QrInfo | null>(null);
@@ -165,6 +181,16 @@ export default function Souscription() {
   const [communeInc, setCommuneInc] = useState("");
   const [quartierInc, setQuartierInc] = useState("");
 
+  // Champs RelaxMoto/RelaxAuto
+  const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
+  const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
+  const [nomRx, setNomRx] = useState("");
+  const [prenomRx, setPrenomRx] = useState("");
+  const [telephoneRx, setTelephoneRx] = useState(PHONE_PREFIX);
+  const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
+  const [piecePhotoRx, setPiecePhotoRx] = useState<string | null>(null);
+  const [selfiePhotoRx, setSelfiePhotoRx] = useState<string | null>(null);
+
   // Résultat souscription
   const [result, setResult] = useState<{
     checkoutUrl?: string;
@@ -187,17 +213,23 @@ export default function Souscription() {
     // Retour depuis Wave après paiement réussi
     if (paidId) {
       const finaliser = async () => {
+        const relax = isRelax(produitEffectif);
+        const urlVerify = relax
+          ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
+          : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
+        const urlContrat = relax
+          ? `${BASE}/public/souscriptions/${produitEffectif}/${paidId}/contrat`
+          : `${BASE}/public/souscriptions/accident/${paidId}/contrat`;
+
         // 1) Confirme le paiement via Wave (filet de sécurité si le webhook n'arrive pas).
         //    Plusieurs tentatives : Wave peut mettre quelques secondes à valider.
         let statut = "en_attente";
         for (let i = 0; i < 5; i++) {
           try {
-            const r = await fetch(
-              `${BASE}/public/souscriptions/accident/${paidId}/verify`
-            );
+            const r = await fetch(urlVerify);
             const v = await r.json();
             statut = v.statut ?? statut;
-            if (statut === "confirme" || statut === "echoue") break;
+            if (statut === "confirme" || statut === "paye" || statut === "echoue") break;
           } catch {
             /* on réessaie */
           }
@@ -210,11 +242,9 @@ export default function Souscription() {
           return;
         }
 
-        // 2) Récupère le contrat
+        // 2) Récupère le contrat (relax : disponible seulement quand la 1ère échéance est confirmée)
         try {
-          const r = await fetch(
-            `${BASE}/public/souscriptions/accident/${paidId}/contrat`
-          );
+          const r = await fetch(urlContrat);
           const data = await r.json();
           if (data.error) {
             setErrorMsg(
@@ -224,7 +254,7 @@ export default function Souscription() {
             return;
           }
           setQrInfo({
-            produit: "accident",
+            produit: relax ? produitEffectif : "accident",
             partenaire: { id: "", nomCommerce: data.partenaire ?? "" },
           });
           setResult({
@@ -282,26 +312,29 @@ export default function Souscription() {
       return;
     }
 
-    Promise.all([
-      fetch(`${BASE}/public/qr/${token}`).then((r) => r.json()),
-      fetch(`${BASE}/public/tarifs/accident`).then((r) => r.json()),
-    ])
-      .then(([qr, acc]) => {
+    fetch(`${BASE}/public/qr/${token}`)
+      .then((r) => r.json())
+      .then(async (qr) => {
         if (qr.error) {
           setErrorMsg(qr.error);
           setStep("error");
           return;
         }
         setQrInfo(qr);
-        // La formule 1000 FCFA doit apparaître en premier et être sélectionnée par défaut.
-        const accTriee = [...acc].sort(
-          (a: TarifAccident, b: TarifAccident) =>
-            (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime)
-        );
-        setTarifsAcc(accTriee);
 
         if (qr.produit === "accident") {
+          const acc = await fetch(`${BASE}/public/tarifs/accident`).then((r) => r.json());
+          // La formule 1000 FCFA doit apparaître en premier et être sélectionnée par défaut.
+          const accTriee = [...acc].sort(
+            (a: TarifAccident, b: TarifAccident) =>
+              (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime)
+          );
+          setTarifsAcc(accTriee);
           if (accTriee.length > 0) setSelectedTarifId(accTriee[0].id);
+        } else if (isRelax(qr.produit)) {
+          const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${qr.produit}`).then((r) => r.json());
+          setTarifsRelax(tarifs);
+          setCycle("annuel");
         }
         setStep("infos");
       })
@@ -309,7 +342,7 @@ export default function Souscription() {
         setErrorMsg("Impossible de charger les informations. Veuillez réessayer.");
         setStep("error");
       });
-  }, [token, paidId, retryId, paiementEchec]);
+  }, [token, paidId, retryId, paiementEchec, produitEffectif]);
 
   async function handleSubmit() {
     if (!qrInfo || !token) return;
@@ -342,6 +375,34 @@ export default function Souscription() {
           capitalGaranti: data.capitalGaranti,
         });
         // Redirection immédiate vers Wave (ou stub = success URL directe)
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (isRelax(qrInfo.produit)) {
+        const produit = qrInfo.produit;
+        const res = await fetch(`${BASE}/public/souscriptions/${produit}/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ qrToken: token, nom: nomRx, prenom: prenomRx, telephone: telephoneRx, cycle }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+
+        // Dépôt des photos (pièce d'identité + selfie) — best-effort, ne bloque
+        // jamais le paiement si l'envoi échoue (aucune perte de la vente).
+        const documents = [
+          piecePhotoRx ? { type: typePieceRx, url: piecePhotoRx } : null,
+          selfiePhotoRx ? { type: "Selfie" as const, url: selfiePhotoRx } : null,
+        ].filter((d): d is { type: "CNI" | "Permis" | "Selfie"; url: string } => d !== null);
+        await Promise.all(
+          documents.map((doc) =>
+            fetch(`${BASE}/public/souscriptions/${produit}/${data.souscriptionId}/documents`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(doc),
+            }).catch(() => null)
+          )
+        );
+
         window.location.href = data.checkoutUrl;
         return;
       } else {
@@ -427,8 +488,13 @@ export default function Souscription() {
           {qrInfo && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>
-                Assurance{" "}
-                {qrInfo.produit === "incendie" ? "Incendie" : "Accidents"}
+                {qrInfo.produit === "incendie"
+                  ? "Assurance Incendie"
+                  : qrInfo.produit === "accident"
+                  ? "Assurance Accidents"
+                  : qrInfo.produit === "relaxmoto"
+                  ? "RelaxMoto"
+                  : "RelaxAuto"}
               </div>
               <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
                 via {qrInfo.partenaire.nomCommerce}
@@ -496,6 +562,43 @@ export default function Souscription() {
                 </div>
               )}
 
+              {/* Sélecteur de formule pour RelaxMoto/RelaxAuto */}
+              {qrInfo && isRelax(qrInfo.produit) && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
+                    Choisissez votre formule
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {[...tarifsRelax]
+                      .sort((a, b) => (a.libelleVariante === "annuel" ? -1 : b.libelleVariante === "annuel" ? 1 : 0))
+                      .map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setCycle(t.libelleVariante)}
+                          style={{
+                            width: "100%",
+                            padding: "16px 20px",
+                            border: `2px solid ${cycle === t.libelleVariante ? "var(--sim-primary)" : "var(--border-strong)"}`,
+                            borderRadius: 14,
+                            background: cycle === t.libelleVariante ? "var(--sim-primary-50)" : "#fff",
+                            cursor: "pointer",
+                            textAlign: "left",
+                          }}
+                        >
+                          <div style={{ fontSize: 13, color: "#5b6b80", fontWeight: 600 }}>
+                            {t.libelleVariante === "annuel" ? "Prime annuelle" : "Prime mensuelle"}
+                          </div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "var(--sim-primary)", marginTop: 2 }}>
+                            {fcfa(t.prime)}
+                            {t.libelleVariante === "mensuel" && <span style={{ fontSize: 13, fontWeight: 600, color: "#5b6b80" }}> / mois</span>}
+                          </div>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
+
               {/* Récapitulatif incendie : capital garanti uniquement (prime masquée) */}
               {qrInfo?.produit === "incendie" && qrInfo.capitalGaranti && (
                 <div
@@ -551,6 +654,54 @@ export default function Souscription() {
                   </FieldRow>
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
+              ) : qrInfo && isRelax(qrInfo.produit) ? (
+                <>
+                  <FieldRow label="Prénom *">
+                    <input
+                      value={prenomRx}
+                      onChange={(e) => setPrenomRx(e.target.value)}
+                      placeholder="Votre prénom"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Nom *">
+                    <input
+                      value={nomRx}
+                      onChange={(e) => setNomRx(e.target.value)}
+                      placeholder="Votre nom"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Téléphone * (pour recevoir vos accès par SMS)">
+                    <PhoneInput value={telephoneRx} onChange={setTelephoneRx} />
+                  </FieldRow>
+                  <FieldRow label="Pièce d'identité *">
+                    <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceRx === "CNI"} onChange={() => setTypePieceRx("CNI")} />
+                        CNI
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceRx === "Permis"} onChange={() => setTypePieceRx("Permis")} />
+                        Permis de conduire
+                      </label>
+                    </div>
+                  </FieldRow>
+                  <PhotoCapture
+                    label={`Photo de votre ${typePieceRx === "CNI" ? "CNI" : "permis"}`}
+                    value={piecePhotoRx}
+                    onChange={setPiecePhotoRx}
+                    capture="environment"
+                    required
+                  />
+                  <PhotoCapture
+                    label="Selfie (photo de votre visage)"
+                    value={selfiePhotoRx}
+                    onChange={setSelfiePhotoRx}
+                    capture="user"
+                    required
+                  />
+                </>
               ) : (
                 <>
                   <FieldRow label="Téléphone * (pour recevoir le lien par SMS)">
@@ -591,48 +742,40 @@ export default function Souscription() {
                 </>
               )}
 
-              <button
-                onClick={handleSubmit}
-                disabled={
+              {(() => {
+                const bloque =
                   submitting ||
                   (qrInfo?.produit === "accident"
-                    ? !nom ||
-                      !prenom ||
-                      !phoneLocalPart(telephone) ||
-                      !dateNaissance ||
-                      !selectedTarifId
-                    : !phoneLocalPart(telephoneInc))
-                }
-                style={{
-                  marginTop: 8,
-                  width: "100%",
-                  padding: "13px 0",
-                  background: "#004b9c",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 12,
-                  fontWeight: 700,
-                  fontSize: 15,
-                  cursor: "pointer",
-                  opacity:
-                    submitting ||
-                    (qrInfo?.produit === "accident"
-                      ? !nom ||
-                        !prenom ||
-                        !phoneLocalPart(telephone) ||
-                        !dateNaissance ||
-                        !selectedTarifId
-                      : !phoneLocalPart(telephoneInc))
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                {submitting
-                  ? "Traitement…"
-                  : qrInfo?.produit === "accident"
-                  ? "Passer au paiement →"
-                  : "Confirmer la souscription →"}
-              </button>
+                    ? !nom || !prenom || !phoneLocalPart(telephone) || !dateNaissance || !selectedTarifId
+                    : qrInfo && isRelax(qrInfo.produit)
+                    ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !piecePhotoRx || !selfiePhotoRx
+                    : !phoneLocalPart(telephoneInc));
+                return (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={bloque}
+                    style={{
+                      marginTop: 8,
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                      opacity: bloque ? 0.5 : 1,
+                    }}
+                  >
+                    {submitting
+                      ? "Traitement…"
+                      : qrInfo?.produit === "accident" || (qrInfo && isRelax(qrInfo.produit))
+                      ? "Passer au paiement →"
+                      : "Confirmer la souscription →"}
+                  </button>
+                );
+              })()}
             </div>
           )}
 
@@ -781,6 +924,51 @@ export default function Souscription() {
                   >
                     ⬇ Télécharger mon contrat
                   </button>
+                </>
+              ) : qrInfo && isRelax(qrInfo.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Bienvenue chez SIM Assurances !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre contrat {qrInfo.produit === "relaxmoto" ? "RelaxMoto" : "RelaxAuto"} est activé.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de contrat
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    style={{
+                      background: "#e6f1fb",
+                      borderRadius: 10,
+                      padding: "12px 16px",
+                      fontSize: 13,
+                      color: "#004b9c",
+                    }}
+                  >
+                    Vous avez reçu un SMS avec votre mot de passe et le lien de
+                    votre espace client — vous pourrez y renouveler votre
+                    contrat et déclarer un sinistre.
+                  </div>
                 </>
               ) : (
                 <>

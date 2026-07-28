@@ -557,8 +557,10 @@ const relaxSchema = z.object({
   prenom: z.string().min(1),
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date().optional(),
-  tarifId: z.number().int().positive().optional(),
-  cycle: z.enum(["hebdo5semaines", "mensuel", "annuel"]),
+  cycle: z.enum(["mensuel", "annuel"]),
+  // Photo CNI/Permis + selfie (data URL), capturées depuis le téléphone du
+  // souscripteur — voir documentSchema pour le dépôt effectif après création
+  // de la souscription (id requis).
 });
 
 publicRouter.post(
@@ -577,9 +579,12 @@ publicRouter.post(
     });
     if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
 
-    let tarif = data.tarifId
-      ? await prisma.tarifProduit.findFirst({ where: { id: data.tarifId, produitId: prod.id } })
-      : await prisma.tarifProduit.findFirst({ where: { produitId: prod.id }, orderBy: { prime: "asc" } });
+    // Le tarif est déterminé par la formule choisie (libelleVariante = cycle),
+    // jamais par un id envoyé par le client — chaque cycle porte son propre
+    // montant PAR échéance (voir echeancier.ts).
+    const tarif = await prisma.tarifProduit.findFirst({
+      where: { produitId: prod.id, libelleVariante: data.cycle },
+    });
     if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
 
     const echeancier = genererEcheancier(tarif.prime, data.cycle);
@@ -670,7 +675,7 @@ publicRouter.get(
  * (aucun service de stockage de fichiers n'est encore intégré côté backend).
  */
 const documentSchema = z.object({
-  type: z.enum(["CNI", "Permis"]),
+  type: z.enum(["CNI", "Permis", "Selfie"]),
   url: z.string().min(1),
 });
 

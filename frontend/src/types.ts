@@ -25,7 +25,7 @@ export interface Partenaire {
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---
 
 export type ProduitRelax = "relaxmoto" | "relaxauto";
-export type CycleFacturation = "hebdo5semaines" | "mensuel" | "annuel";
+export type CycleFacturation = "mensuel" | "annuel";
 export type StatutAbonnement = "actif" | "suspendu" | "expire" | "resilie";
 export type StatutEcheance = "en_attente" | "paye" | "echoue";
 export type StatutCarte = "generee" | "envoyee" | "activee";
