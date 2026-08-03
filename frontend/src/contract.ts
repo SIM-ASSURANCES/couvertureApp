@@ -451,11 +451,13 @@ const CSS = `
   @media print{body{padding:18px;}}
 `;
 
-function header(numeroPolice: string) {
+// Le logo RCMEC-CI n'est affiché que sur les contrats de la branche IMF
+// (partenariat propre à cette branche) — jamais sur Incendie/Accident/Relax.
+function header(numeroPolice: string, avecLogoRcmec = false) {
   return `<div class="head">
     <div class="brand">
       <img class="logo-sim" src="${window.location.origin}/logo.webp" alt="SIM Assurances" onerror="this.style.display='none'" />
-      <img class="logo-rcmec" src="${window.location.origin}/LOGO_RCMEC_CI.png" alt="RCMEC CI" onerror="this.style.display='none'" />
+      ${avecLogoRcmec ? `<img class="logo-rcmec" src="${window.location.origin}/LOGO_RCMEC_CI.png" alt="RCMEC CI" onerror="this.style.display='none'" />` : ""}
     </div>
     <div class="pol">N° de police<b>${val(numeroPolice)}</b></div>
   </div>`;
@@ -591,7 +593,7 @@ export async function genererContratAccident(c: ContratAccident) {
 export async function genererContratSecurpro(c: ContratSecurpro) {
   const w = openWindow();
   const cp = `
-  ${header(c.numeroPolice)}
+  ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURPRO</h1>
   <div class="sub">Assurance Multirisque Professionnelle · Distribué via ${val(c.intermediaire)}</div>
 
@@ -647,7 +649,7 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
 export async function genererContratSecurecolte(c: ContratSecurecolte) {
   const w = openWindow();
   const cp = `
-  ${header(c.numeroPolice)}
+  ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURECOLTE</h1>
   <div class="sub">Assurance récolte indicielle sécheresse · Distribué via ${val(c.intermediaire)}</div>
 
@@ -702,7 +704,7 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
 export async function genererContratSecurstock(c: ContratSecurstock) {
   const w = openWindow();
   const cp = `
-  ${header(c.numeroPolice)}
+  ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURSTOCK</h1>
   <div class="sub">Assurance Nantissement de Stock · Distribué via ${val(c.intermediaire)}</div>
 
@@ -795,7 +797,7 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
     .filter((p, i, arr): p is string => !!p && arr.indexOf(p) === i);
 
   const cp = `
-  ${header(c.numeroPolice)}
+  ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — COUPS DURS</h1>
   <div class="sub">${val(garantiesLabel)} · Distribué via ${val(c.intermediaire)}</div>
 
