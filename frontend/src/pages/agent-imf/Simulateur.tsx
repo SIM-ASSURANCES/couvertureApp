@@ -565,7 +565,6 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
       )}
 
       <div className="grid-2" style={{ marginTop: 24 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         <Card title="Paramètres">
           <div className="field">
             <label className="label">Produit</label>
@@ -1037,50 +1036,6 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           </div>
         </Card>
 
-        {brouillons.length > 0 && (
-          <Card title={`Mes brouillons (${brouillons.length})`} noBody>
-            <div className="table-wrap">
-              <table className="tbl">
-                <thead>
-                  <tr>
-                    <th>Produit</th>
-                    <th>Prime TTC</th>
-                    <th>Enregistré le</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {brouillons.map((b) => (
-                    <tr key={b.id}>
-                      <td>{PRODUIT_LABEL[b.produitCode] ?? b.produitCode}</td>
-                      <td>{fcfa(b.primeTTC)}</td>
-                      <td className="muted">{fmtDate(b.createdAt)}</td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => reprendreBrouillon(b)}>
-                            <RotateCcw size={14} /> Reprendre
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{ padding: 8 }}
-                            onClick={() => {
-                              if (confirm("Supprimer ce brouillon ?")) supprimerBrouillon(b.id);
-                            }}
-                          >
-                            <Trash2 size={14} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        )}
-        </div>
-
         <Card title="Résultat">
           {error && <div className="empty" style={{ color: "var(--danger)" }}>{error}</div>}
           {!error && !resultat && <div className="empty">Renseignez les paramètres pour voir le devis.</div>}
@@ -1275,6 +1230,51 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 </button>
               </form>
             )}
+          </Card>
+        </div>
+      )}
+
+      {brouillons.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <Card title={`Mes brouillons (${brouillons.length})`} noBody>
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Produit</th>
+                    <th>Prime TTC</th>
+                    <th>Enregistré le</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {brouillons.map((b) => (
+                    <tr key={b.id}>
+                      <td>{PRODUIT_LABEL[b.produitCode] ?? b.produitCode}</td>
+                      <td>{fcfa(b.primeTTC)}</td>
+                      <td className="muted">{fmtDate(b.createdAt)}</td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => reprendreBrouillon(b)}>
+                            <RotateCcw size={14} /> Reprendre
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            onClick={() => {
+                              if (confirm("Supprimer ce brouillon ?")) supprimerBrouillon(b.id);
+                            }}
+                          >
+                            <Trash2 size={14} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
         </div>
       )}
