@@ -7,6 +7,8 @@ import Souscription from "./pages/public/Souscription";
 import SouscriptionComplement from "./pages/public/SouscriptionComplement";
 import ClientLogin from "./pages/client/Login";
 import ClientDashboard from "./pages/client/Dashboard";
+import AgentDistributionLogin from "./pages/agent-distribution/Login";
+import AgentDistributionDashboard from "./pages/agent-distribution/Dashboard";
 
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -143,6 +145,9 @@ export default function App() {
 
           <Route path="/client/connexion" element={<ClientLogin />} />
           <Route path="/client" element={<ClientDashboard />} />
+
+          <Route path="/agent-distribution/connexion" element={<AgentDistributionLogin />} />
+          <Route path="/agent-distribution" element={<AgentDistributionDashboard />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

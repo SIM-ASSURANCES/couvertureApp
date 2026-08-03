@@ -6,6 +6,7 @@ import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
 import { commissionStatsPartenaire, commissionTotaleAgent } from "../services/commission.js";
+import { genererMotDePasseClient } from "../services/notify.js";
 import { notifyAdmins } from "../services/notifications.js";
 
 export const meRouter = Router();
@@ -266,6 +267,7 @@ meRouter.patch(
 const agentSchema = z.object({
   nom: z.string().min(1),
   telephone: z.string().min(1),
+  localisation: z.string().min(1).optional(),
 });
 
 meRouter.get(
@@ -286,6 +288,7 @@ meRouter.get(
           id: a.id,
           nom: a.nom,
           telephone: a.telephone,
+          localisation: a.localisation,
           statut: a.statut,
           createdAt: a.createdAt,
           nombreSouscriptions: nbIncendie + nbAccident,
@@ -304,24 +307,47 @@ meRouter.post(
     const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
 
+    const motDePasse = genererMotDePasseClient();
     const created = await prisma.agentDistribution.create({
       data: {
         partenaireId: p.id,
         nom: data.nom,
         telephone: data.telephone,
+        localisation: data.localisation,
+        passwordHash: await bcrypt.hash(motDePasse, 10),
         // L'agent hérite des produits du partenaire — mêmes QR codes que lui.
         qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
         qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
         qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
       },
     });
-    res.status(201).json(created);
+    // Le mot de passe en clair n'est renvoyé qu'ici, une seule fois — jamais
+    // stocké ni récupérable ensuite (seul son hash est conservé).
+    res.status(201).json({ ...created, motDePasseProvisoire: motDePasse });
+  })
+);
+
+/** Régénère le mot de passe d'un agent (perdu/oublié) — affiché une seule fois au partenaire. */
+meRouter.post(
+  "/agents/:id/reinitialiser-mot-de-passe",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.id } });
+    if (!agent || agent.partenaireId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    const motDePasse = genererMotDePasseClient();
+    await prisma.agentDistribution.update({
+      where: { id: agent.id },
+      data: { passwordHash: await bcrypt.hash(motDePasse, 10) },
+    });
+    res.json({ motDePasseProvisoire: motDePasse });
   })
 );
 
 const agentPatchSchema = z.object({
   nom: z.string().min(1).optional(),
   telephone: z.string().min(1).optional(),
+  localisation: z.string().min(1).optional(),
   statut: z.enum(["actif", "inactif"]).optional(),
 });
 

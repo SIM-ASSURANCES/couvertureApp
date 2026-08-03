@@ -14,7 +14,7 @@ function loadSecret(): string {
 
 const SECRET = loadSecret();
 
-export type ActorType = "admin" | "partenaire" | "agent_imf" | "client";
+export type ActorType = "admin" | "partenaire" | "agent_imf" | "client" | "agent_distribution";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
 export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 

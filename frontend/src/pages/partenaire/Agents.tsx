@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Power, Download, X, Flame, ShieldCheck } from "lucide-react";
+import { Plus, Power, Download, X, Flame, ShieldCheck, Copy, KeyRound } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
@@ -9,10 +9,60 @@ interface AgentDistribution {
   id: string;
   nom: string;
   telephone: string;
+  localisation: string | null;
   statut: "actif" | "inactif";
   createdAt: string;
   nombreSouscriptions: number;
   commissionTotale: number;
+}
+
+/** Accès (téléphone + mot de passe en clair) d'un agent, affichés une seule fois — jamais récupérables ensuite. */
+interface AccesAgent {
+  nom: string;
+  telephone: string;
+  motDePasse: string;
+}
+
+function messageAcces(a: AccesAgent) {
+  return `SIM Assurances : voici vos accès pour vous connecter à votre espace agent (${window.location.origin}/agent-distribution/connexion) — Téléphone : ${a.telephone} — Mot de passe : ${a.motDePasse}. Vous pourrez le changer une fois connecté.`;
+}
+
+function EncartAcces({ acces, onClose }: { acces: AccesAgent; onClose: () => void }) {
+  const [copie, setCopie] = useState(false);
+  return (
+    <div style={{ marginTop: 24 }}>
+      <Card
+        title={`Accès de ${acces.nom}`}
+        extra={
+          <button className="btn btn-ghost" onClick={onClose}>
+            <X size={15} /> Fermer
+          </button>
+        }
+      >
+        <p className="muted" style={{ fontSize: 13, marginTop: -4 }}>
+          À communiquer à l'agent pour qu'il se connecte — ce mot de passe ne sera plus jamais affiché après fermeture.
+        </p>
+        <div style={{ background: "var(--sim-primary-50, #e6f1fb)", borderRadius: 10, padding: "14px 18px", marginTop: 12 }}>
+          <div style={{ fontSize: 13 }}><strong>Téléphone :</strong> {acces.telephone}</div>
+          <div style={{ fontSize: 13, marginTop: 4 }}>
+            <strong>Mot de passe :</strong>{" "}
+            <span style={{ fontFamily: "monospace", fontSize: 15, letterSpacing: 1 }}>{acces.motDePasse}</span>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: 14 }}
+          onClick={async () => {
+            await navigator.clipboard.writeText(messageAcces(acces));
+            setCopie(true);
+            setTimeout(() => setCopie(false), 2000);
+          }}
+        >
+          <Copy size={15} /> {copie ? "Copié ✓" : "Copier le message à envoyer"}
+        </button>
+      </Card>
+    </div>
+  );
 }
 
 interface Qr {
@@ -62,9 +112,12 @@ export default function PartenaireAgents() {
   const { data, loading, error, reload } = useFetch<AgentDistribution[]>("/me/agents");
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
+  const [localisation, setLocalisation] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [acces, setAcces] = useState<AccesAgent | null>(null);
+  const [reinitialisant, setReinitialisant] = useState(false);
   const { data: souscriptions, loading: loadingSouscriptions } = useFetch<{ incendie: SouscriptionAgent[]; accident: SouscriptionAgent[] }>(
     detailId ? `/me/agents/${detailId}/souscriptions` : null
   );
@@ -78,9 +131,15 @@ export default function PartenaireAgents() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/me/agents", { nom, telephone });
+      const created = await api.post<AgentDistribution & { motDePasseProvisoire: string }>("/me/agents", {
+        nom,
+        telephone,
+        localisation: localisation || undefined,
+      });
       setNom("");
       setTelephone("");
+      setLocalisation("");
+      setAcces({ nom: created.nom, telephone: created.telephone, motDePasse: created.motDePasseProvisoire });
       notify("Agent créé ✓");
       reload();
     } catch (err) {
@@ -97,6 +156,18 @@ export default function PartenaireAgents() {
       reload();
     } catch (err) {
       notify((err as Error).message);
+    }
+  }
+
+  async function reinitialiserMotDePasse(a: AgentDistribution) {
+    setReinitialisant(true);
+    try {
+      const r = await api.post<{ motDePasseProvisoire: string }>(`/me/agents/${a.id}/reinitialiser-mot-de-passe`);
+      setAcces({ nom: a.nom, telephone: a.telephone, motDePasse: r.motDePasseProvisoire });
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setReinitialisant(false);
     }
   }
 
@@ -123,6 +194,7 @@ export default function PartenaireAgents() {
                   <tr>
                     <th>Nom</th>
                     <th>Téléphone</th>
+                    <th>Localisation</th>
                     <th>Souscriptions</th>
                     <th>Commission totale</th>
                     <th>Statut</th>
@@ -134,6 +206,7 @@ export default function PartenaireAgents() {
                     <tr key={a.id}>
                       <td><strong>{a.nom}</strong></td>
                       <td className="muted">{a.telephone}</td>
+                      <td className="muted">{a.localisation ?? "—"}</td>
                       <td>{a.nombreSouscriptions}</td>
                       <td>{fcfa(a.commissionTotale)}</td>
                       <td>
@@ -159,7 +232,7 @@ export default function PartenaireAgents() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={6}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
+                    <tr><td colSpan={7}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -177,6 +250,10 @@ export default function PartenaireAgents() {
               <label className="label">Téléphone <span className="req">*</span></label>
               <input className="input" required value={telephone} onChange={(e) => setTelephone(e.target.value)} />
             </div>
+            <div className="field">
+              <label className="label">Localisation</label>
+              <input className="input" placeholder="Ex. Cocody, Angré" value={localisation} onChange={(e) => setLocalisation(e.target.value)} />
+            </div>
             <button className="btn btn-primary btn-block" disabled={saving || !nom.trim() || !telephone.trim()}>
               <Plus size={17} /> {saving ? "Création…" : "Créer l'agent"}
             </button>
@@ -184,14 +261,21 @@ export default function PartenaireAgents() {
         </Card>
       </div>
 
+      {acces && <EncartAcces acces={acces} onClose={() => setAcces(null)} />}
+
       {detailId && agentDetail && (
         <div style={{ marginTop: 24 }}>
           <Card
             title={`Détails — ${agentDetail.nom}`}
             extra={
-              <button className="btn btn-ghost" onClick={() => setDetailId(null)}>
-                <X size={15} /> Fermer
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn btn-ghost" disabled={reinitialisant} onClick={() => reinitialiserMotDePasse(agentDetail)}>
+                  <KeyRound size={15} /> {reinitialisant ? "…" : "Réinitialiser le mot de passe"}
+                </button>
+                <button className="btn btn-ghost" onClick={() => setDetailId(null)}>
+                  <X size={15} /> Fermer
+                </button>
+              </div>
             }
           >
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 24 }}>

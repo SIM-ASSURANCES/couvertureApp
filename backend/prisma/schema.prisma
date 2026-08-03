@@ -202,6 +202,12 @@ model AgentDistribution {
   partenaire          Partenaire             @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
   nom                 String
   telephone           String
+  localisation        String?
+  // Accès à l'espace agent (connexion par téléphone + mot de passe) — mot de
+  // passe généré à la création, communiqué en clair une seule fois au
+  // partenaire (jamais stocké ni renvoyé en clair ensuite), modifiable par
+  // l'agent depuis son espace.
+  passwordHash        String?
   statut              StatutPartenaire       @default(actif)
   qrIncendie1000Token String?                @unique
   qrIncendie2000Token String?                @unique

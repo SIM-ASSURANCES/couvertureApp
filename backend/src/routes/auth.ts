@@ -195,6 +195,40 @@ authRouter.post(
   })
 );
 
+/**
+ * Connexion de l'espace agent de distribution (Incendie/Accident) —
+ * téléphone + mot de passe communiqué par le partenaire à la création.
+ */
+authRouter.post(
+  "/agent-distribution/login",
+  asyncHandler(async (req, res) => {
+    const { telephone, motDePasse } = req.body ?? {};
+    if (!telephone || !motDePasse) {
+      return res.status(400).json({ error: "Téléphone et mot de passe requis" });
+    }
+    const a = await prisma.agentDistribution.findFirst({
+      where: { telephone, statut: "actif", partenaire: { statut: "actif" } },
+      include: { partenaire: { select: { nomCommerce: true, produitIncendie: true, produitAccident: true } } },
+    });
+    if (!a || !a.passwordHash || !(await bcrypt.compare(motDePasse, a.passwordHash))) {
+      return res.status(401).json({ error: "Identifiants invalides" });
+    }
+    const produit = a.partenaire.produitIncendie ? "incendie" : "accident";
+    const token = signToken({ sub: a.id, type: "agent_distribution", nom: a.nom });
+    res.json({
+      token,
+      user: {
+        id: a.id,
+        nom: a.nom,
+        telephone: a.telephone,
+        type: "agent_distribution",
+        produit,
+        partenaireNom: a.partenaire.nomCommerce,
+      },
+    });
+  })
+);
+
 authRouter.post(
   "/partenaire/login",
   asyncHandler(async (req, res) => {
