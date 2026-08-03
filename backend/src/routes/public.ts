@@ -23,6 +23,45 @@ function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
   return (PRODUITS_RELAX as readonly string[]).includes(p);
 }
 
+type QrChamp = "qrIncendie1000Token" | "qrIncendie2000Token" | "qrAccidentToken";
+
+/**
+ * Résout un token QR Incendie/Accident, qu'il appartienne au partenaire
+ * lui-même ou à l'un de ses agents de distribution — les deux partagent le
+ * même espace de tokens (les trois colonnes qrXxxToken). Une souscription
+ * scannée via le QR d'un agent reste rattachée au partenaire (facturation
+ * inchangée) mais porte en plus `agentDistributionId` pour le suivi par agent.
+ * Un agent désactivé (ou son partenaire) ne résout plus.
+ */
+async function resoudrePartenaireOuAgent(
+  token: string
+): Promise<{ partenaireId: string; agentDistributionId: string | null; qrChamp: QrChamp } | null> {
+  const p = await prisma.partenaire.findFirst({
+    where: {
+      statut: "actif",
+      OR: [{ qrIncendie1000Token: token }, { qrIncendie2000Token: token }, { qrAccidentToken: token }],
+    },
+  });
+  if (p) {
+    const qrChamp: QrChamp =
+      p.qrIncendie1000Token === token ? "qrIncendie1000Token" : p.qrIncendie2000Token === token ? "qrIncendie2000Token" : "qrAccidentToken";
+    return { partenaireId: p.id, agentDistributionId: null, qrChamp };
+  }
+  const a = await prisma.agentDistribution.findFirst({
+    where: {
+      statut: "actif",
+      partenaire: { statut: "actif" },
+      OR: [{ qrIncendie1000Token: token }, { qrIncendie2000Token: token }, { qrAccidentToken: token }],
+    },
+  });
+  if (a) {
+    const qrChamp: QrChamp =
+      a.qrIncendie1000Token === token ? "qrIncendie1000Token" : a.qrIncendie2000Token === token ? "qrIncendie2000Token" : "qrAccidentToken";
+    return { partenaireId: a.partenaireId, agentDistributionId: a.id, qrChamp };
+  }
+  return null;
+}
+
 export const publicRouter = Router();
 
 /** Tarifications accident disponibles */
@@ -41,27 +80,21 @@ publicRouter.get(
   "/qr/:token",
   asyncHandler(async (req, res) => {
     const token = req.params.token;
-    const p = await prisma.partenaire.findFirst({
-      where: {
-        statut: "actif",
-        OR: [
-          { qrIncendie1000Token: token },
-          { qrIncendie2000Token: token },
-          { qrAccidentToken: token },
-        ],
-      },
-    });
+    const resolu = await resoudrePartenaireOuAgent(token);
 
-    if (p) {
+    if (resolu) {
+      const p = await prisma.partenaire.findUnique({ where: { id: resolu.partenaireId } });
+      if (!p) return res.status(404).json({ error: "QR invalide ou inactif" });
+
       let produit: "incendie" | "accident";
       let montantPrime: number | null = null;
       let capitalGaranti: number | null = null;
 
-      if (p.qrIncendie1000Token === token) {
+      if (resolu.qrChamp === "qrIncendie1000Token") {
         produit = "incendie";
         montantPrime = 1000;
         capitalGaranti = 500000;
-      } else if (p.qrIncendie2000Token === token) {
+      } else if (resolu.qrChamp === "qrIncendie2000Token") {
         produit = "incendie";
         montantPrime = 2000;
         capitalGaranti = 1000000;
@@ -129,25 +162,20 @@ publicRouter.post(
   "/souscriptions/incendie",
   asyncHandler(async (req, res) => {
     const data = incSchema.parse(req.body);
-    const p = await prisma.partenaire.findFirst({
-      where: {
-        statut: "actif",
-        OR: [
-          { qrIncendie1000Token: data.qrToken },
-          { qrIncendie2000Token: data.qrToken },
-        ],
-      },
-    });
-    if (!p) return res.status(404).json({ error: "QR Incendie invalide" });
+    const resolu = await resoudrePartenaireOuAgent(data.qrToken);
+    if (!resolu || resolu.qrChamp === "qrAccidentToken") {
+      return res.status(404).json({ error: "QR Incendie invalide" });
+    }
 
-    const montantPrime = p.qrIncendie1000Token === data.qrToken ? 1000 : 2000;
+    const montantPrime = resolu.qrChamp === "qrIncendie1000Token" ? 1000 : 2000;
     const capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
 
     const token = newFormulaireToken();
 
     const s = await prisma.souscriptionIncendie.create({
       data: {
-        partenaireId: p.id,
+        partenaireId: resolu.partenaireId,
+        agentDistributionId: resolu.agentDistributionId,
         telephone: data.telephone,
         nom: data.nom || null,
         prenom: data.prenom || null,
@@ -166,7 +194,7 @@ publicRouter.post(
       messageIncendie(s.prenom, lienFormulaire("incendie", token))
     );
     await notifyPartenaire(
-      p.id,
+      resolu.partenaireId,
       "souscription",
       "Nouvelle souscription Incendie",
       `Nouveau client incendie (${montantPrime} FCFA) via votre QR code.`,
@@ -279,10 +307,10 @@ publicRouter.post(
   "/souscriptions/accident/initiate",
   asyncHandler(async (req, res) => {
     const data = accSchema.parse(req.body);
-    const p = await prisma.partenaire.findFirst({
-      where: { qrAccidentToken: data.qrToken, statut: "actif" },
-    });
-    if (!p) return res.status(404).json({ error: "QR Accident invalide" });
+    const resolu = await resoudrePartenaireOuAgent(data.qrToken);
+    if (!resolu || resolu.qrChamp !== "qrAccidentToken") {
+      return res.status(404).json({ error: "QR Accident invalide" });
+    }
 
     let montant = 500;
     let capitalGaranti = 100000;
@@ -309,7 +337,8 @@ publicRouter.post(
 
     const s = await prisma.souscriptionAccident.create({
       data: {
-        partenaireId: p.id,
+        partenaireId: resolu.partenaireId,
+        agentDistributionId: resolu.agentDistributionId,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -361,7 +390,7 @@ publicRouter.post(
     }
 
     await notifyPartenaire(
-      p.id,
+      resolu.partenaireId,
       "souscription",
       "Nouvelle souscription Accident",
       `Nouveau client accident (${montant} FCFA) via votre QR code.`,

@@ -1,0 +1,255 @@
+import { useState } from "react";
+import { Plus, Power, Download, X, Flame, ShieldCheck } from "lucide-react";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
+import { useFetch } from "../../useFetch";
+import { api } from "../../api";
+import { useAuth } from "../../auth";
+
+interface AgentDistribution {
+  id: string;
+  nom: string;
+  telephone: string;
+  statut: "actif" | "inactif";
+  createdAt: string;
+  nombreSouscriptions: number;
+  commissionTotale: number;
+}
+
+interface Qr {
+  produit: string;
+  token: string;
+  dataUrl: string;
+}
+
+interface SouscriptionAgent {
+  id: string;
+  produit: "incendie" | "accident";
+  nom: string | null;
+  prenom: string | null;
+  telephone: string;
+  montantPrime: number;
+  statut: string;
+  createdAt: string;
+}
+
+function statutBadge(s: string) {
+  if (s === "complet" || s === "confirme") return <Badge kind="success">{s === "complet" ? "Complet" : "Confirmé"}</Badge>;
+  if (s === "echoue") return <Badge kind="danger">Échoué</Badge>;
+  return <Badge kind="warning">En cours</Badge>;
+}
+
+function QrMini({ agentId, produit, label }: { agentId: string; produit: "incendie1000" | "incendie2000" | "accident"; label: string }) {
+  const { data, loading } = useFetch<Qr>(`/me/agents/${agentId}/qr/${produit}`);
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{label}</div>
+      {loading && <Loader label="Génération…" />}
+      {data && (
+        <>
+          <img src={data.dataUrl} alt={label} style={{ width: 150, height: 150, border: "1px solid var(--border)", borderRadius: 10, padding: 6, background: "#fff" }} />
+          <a className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} href={data.dataUrl} download={`qr-agent-${produit}.png`}>
+            <Download size={13} /> Télécharger
+          </a>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function PartenaireAgents() {
+  const { user } = useAuth();
+  const produit = user?.produit ?? "accident";
+  const { data, loading, error, reload } = useFetch<AgentDistribution[]>("/me/agents");
+  const [nom, setNom] = useState("");
+  const [telephone, setTelephone] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const { data: souscriptions, loading: loadingSouscriptions } = useFetch<{ incendie: SouscriptionAgent[]; accident: SouscriptionAgent[] }>(
+    detailId ? `/me/agents/${detailId}/souscriptions` : null
+  );
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function creer(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await api.post("/me/agents", { nom, telephone });
+      setNom("");
+      setTelephone("");
+      notify("Agent créé ✓");
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleStatut(a: AgentDistribution) {
+    try {
+      await api.patch(`/me/agents/${a.id}`, { statut: a.statut === "actif" ? "inactif" : "actif" });
+      notify(a.statut === "actif" ? "Agent désactivé" : "Agent réactivé");
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    }
+  }
+
+  const agentDetail = data?.find((a) => a.id === detailId) ?? null;
+  const souscriptionsAgent = souscriptions
+    ? [...souscriptions.incendie, ...souscriptions.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : [];
+
+  return (
+    <>
+      <PageHeader
+        title="Mes agents"
+        subtitle="Créez des agents de distribution avec leur propre QR code et suivez leur activité."
+      />
+
+      <div className="grid-2" style={{ marginTop: 24 }}>
+        <Card title={data ? `${data.length} agent(s)` : "Agents"} noBody>
+          {loading && <Loader />}
+          {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
+          {data && (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Nom</th>
+                    <th>Téléphone</th>
+                    <th>Souscriptions</th>
+                    <th>Commission totale</th>
+                    <th>Statut</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((a) => (
+                    <tr key={a.id}>
+                      <td><strong>{a.nom}</strong></td>
+                      <td className="muted">{a.telephone}</td>
+                      <td>{a.nombreSouscriptions}</td>
+                      <td>{fcfa(a.commissionTotale)}</td>
+                      <td>
+                        <Badge kind={a.statut === "actif" ? "success" : "neutral"}>
+                          {a.statut === "actif" ? "Actif" : "Inactif"}
+                        </Badge>
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => setDetailId(a.id)}>
+                            Détails
+                          </button>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            title={a.statut === "actif" ? "Désactiver" : "Activer"}
+                            onClick={() => toggleStatut(a)}
+                          >
+                            <Power size={15} color={a.statut === "actif" ? "var(--danger)" : "var(--success)"} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {data.length === 0 && (
+                    <tr><td colSpan={6}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Ajouter un agent">
+          <form onSubmit={creer}>
+            <div className="field">
+              <label className="label">Nom <span className="req">*</span></label>
+              <input className="input" required value={nom} onChange={(e) => setNom(e.target.value)} />
+            </div>
+            <div className="field">
+              <label className="label">Téléphone <span className="req">*</span></label>
+              <input className="input" required value={telephone} onChange={(e) => setTelephone(e.target.value)} />
+            </div>
+            <button className="btn btn-primary btn-block" disabled={saving || !nom.trim() || !telephone.trim()}>
+              <Plus size={17} /> {saving ? "Création…" : "Créer l'agent"}
+            </button>
+          </form>
+        </Card>
+      </div>
+
+      {detailId && agentDetail && (
+        <div style={{ marginTop: 24 }}>
+          <Card
+            title={`Détails — ${agentDetail.nom}`}
+            extra={
+              <button className="btn btn-ghost" onClick={() => setDetailId(null)}>
+                <X size={15} /> Fermer
+              </button>
+            }
+          >
+            <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 24 }}>
+              {produit === "incendie" ? (
+                <>
+                  <QrMini agentId={agentDetail.id} produit="incendie1000" label="QR — jusqu'à 250 000 FCFA" />
+                  <QrMini agentId={agentDetail.id} produit="incendie2000" label="QR — au-dessus de 250 000 FCFA" />
+                </>
+              ) : (
+                <QrMini agentId={agentDetail.id} produit="accident" label="QR Accident" />
+              )}
+            </div>
+
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Souscriptions de cet agent</div>
+            {loadingSouscriptions && <Loader />}
+            {souscriptions && (
+              <div className="table-wrap">
+                <table className="tbl">
+                  <thead>
+                    <tr>
+                      <th>Client</th>
+                      <th>Produit</th>
+                      <th>Prime</th>
+                      <th>Statut</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {souscriptionsAgent.map((s) => (
+                      <tr key={s.id}>
+                        <td>
+                          <strong>{s.prenom ?? ""} {s.nom ?? ""}</strong>
+                          <div className="muted" style={{ fontSize: 12 }}>{s.telephone}</div>
+                        </td>
+                        <td>
+                          {s.produit === "incendie" ? (
+                            <Badge kind="warning"><Flame size={12} style={{ verticalAlign: -2 }} /> Incendie</Badge>
+                          ) : (
+                            <Badge kind="info"><ShieldCheck size={12} style={{ verticalAlign: -2 }} /> Accident</Badge>
+                          )}
+                        </td>
+                        <td>{fcfa(s.montantPrime)}</td>
+                        <td>{statutBadge(s.statut)}</td>
+                        <td className="muted">{fmtDate(s.createdAt)}</td>
+                      </tr>
+                    ))}
+                    {souscriptionsAgent.length === 0 && (
+                      <tr><td colSpan={5}><div className="empty">Aucune souscription pour cet agent.</div></td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {toast && <div className="toast">{toast}</div>}
+    </>
+  );
+}

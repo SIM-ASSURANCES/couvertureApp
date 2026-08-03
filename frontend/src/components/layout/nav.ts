@@ -216,6 +216,11 @@ export const partenaireNav: NavGroup[] = [
         label: "Mes commissions",
         icon: Wallet,
       },
+      {
+        to: "/partenaire/agents",
+        label: "Mes agents",
+        icon: Users,
+      },
     ],
   },
   {

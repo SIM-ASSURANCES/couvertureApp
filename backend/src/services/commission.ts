@@ -36,6 +36,42 @@ export async function commissionTotalePartenaire(
   return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc);
 }
 
+/**
+ * Commission totale générée par un agent de distribution précis (sous-ensemble
+ * des souscriptions du partenaire, filtrées par agentDistributionId) — vue
+ * purement informative pour le partenaire, jamais encaissée/demandée
+ * séparément (le versement reste global au partenaire).
+ */
+export async function commissionTotaleAgent(agentDistributionId: string): Promise<number> {
+  const [incGroups, accGroups, tarifsInc, tarifsAcc] = await Promise.all([
+    prisma.souscriptionIncendie.groupBy({
+      by: ["montantPrime"],
+      where: { agentDistributionId },
+      _count: { _all: true },
+    }),
+    prisma.souscriptionAccident.groupBy({
+      by: ["montantPrime"],
+      where: { agentDistributionId, waveStatut: "confirme" },
+      _count: { _all: true },
+    }),
+    prisma.tarifIncendie.findMany(),
+    prisma.tarifAccident.findMany(),
+  ]);
+
+  const sum = (
+    groups: { montantPrime: number; _count: { _all: number } }[],
+    tarifs: { prime: number; commission: number }[]
+  ) => {
+    const map = new Map(tarifs.map((t) => [t.prime, t]));
+    return groups.reduce(
+      (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * g._count._all,
+      0
+    );
+  };
+
+  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc);
+}
+
 /** Commission encaissée = somme des demandes validées (optionnellement filtrée par date de traitement). */
 export async function commissionEncaisseePartenaire(
   partenaireId: string,

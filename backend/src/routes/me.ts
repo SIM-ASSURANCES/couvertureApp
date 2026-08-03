@@ -4,8 +4,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
-import { qrDataUrl } from "../services/qr.js";
-import { commissionStatsPartenaire } from "../services/commission.js";
+import { qrDataUrl, newQrToken } from "../services/qr.js";
+import { commissionStatsPartenaire, commissionTotaleAgent } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
 
 export const meRouter = Router();
@@ -255,5 +255,146 @@ meRouter.patch(
       localisation: updated.localisation,
       email: updated.email,
     });
+  })
+);
+
+/* ── Agents de distribution (Incendie/Accident) : créés par le partenaire
+ * lui-même, mêmes QR codes que lui (selon ses produits), suivi individuel des
+ * souscriptions et de la commission générée (informatif — le versement de
+ * commission reste global au partenaire, voir /me/commission). ── */
+
+const agentSchema = z.object({
+  nom: z.string().min(1),
+  telephone: z.string().min(1),
+});
+
+meRouter.get(
+  "/agents",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agents = await prisma.agentDistribution.findMany({
+      where: { partenaireId: req.user!.sub },
+      orderBy: { createdAt: "desc" },
+    });
+    const rows = await Promise.all(
+      agents.map(async (a) => {
+        const [nbIncendie, nbAccident, commissionTotale] = await Promise.all([
+          prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
+          prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
+          commissionTotaleAgent(a.id),
+        ]);
+        return {
+          id: a.id,
+          nom: a.nom,
+          telephone: a.telephone,
+          statut: a.statut,
+          createdAt: a.createdAt,
+          nombreSouscriptions: nbIncendie + nbAccident,
+          commissionTotale: Math.round(commissionTotale),
+        };
+      })
+    );
+    res.json(rows);
+  })
+);
+
+meRouter.post(
+  "/agents",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = agentSchema.parse(req.body);
+    const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+
+    const created = await prisma.agentDistribution.create({
+      data: {
+        partenaireId: p.id,
+        nom: data.nom,
+        telephone: data.telephone,
+        // L'agent hérite des produits du partenaire — mêmes QR codes que lui.
+        qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
+        qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
+        qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
+      },
+    });
+    res.status(201).json(created);
+  })
+);
+
+const agentPatchSchema = z.object({
+  nom: z.string().min(1).optional(),
+  telephone: z.string().min(1).optional(),
+  statut: z.enum(["actif", "inactif"]).optional(),
+});
+
+meRouter.patch(
+  "/agents/:id",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.id } });
+    if (!agent || agent.partenaireId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    const data = agentPatchSchema.parse(req.body);
+    const updated = await prisma.agentDistribution.update({ where: { id: agent.id }, data });
+    res.json(updated);
+  })
+);
+
+meRouter.get(
+  "/agents/:id/souscriptions",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.id } });
+    if (!agent || agent.partenaireId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    const [incendie, accident] = await Promise.all([
+      prisma.souscriptionIncendie.findMany({
+        where: { agentDistributionId: agent.id },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.souscriptionAccident.findMany({
+        where: { agentDistributionId: agent.id },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    res.json({
+      incendie: incendie.map((s) => ({
+        id: s.id,
+        produit: "incendie" as const,
+        nom: s.nom,
+        prenom: s.prenom,
+        telephone: s.telephone,
+        montantPrime: s.montantPrime,
+        statut: s.statut,
+        createdAt: s.createdAt,
+      })),
+      accident: accident.map((s) => ({
+        id: s.id,
+        produit: "accident" as const,
+        nom: s.nom,
+        prenom: s.prenom,
+        telephone: s.telephone,
+        montantPrime: s.montantPrime,
+        statut: s.waveStatut,
+        createdAt: s.createdAt,
+      })),
+    });
+  })
+);
+
+meRouter.get(
+  "/agents/:id/qr/:produit",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.id } });
+    if (!agent || agent.partenaireId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const token =
+      produit === "incendie1000" ? agent.qrIncendie1000Token
+      : produit === "incendie2000" ? agent.qrIncendie2000Token
+      : agent.qrAccidentToken;
+    if (!token) return res.status(404).json({ error: "QR non disponible" });
+
+    const qrProduit: "incendie" | "accident" = produit === "accident" ? "accident" : "incendie";
+    res.json({ produit, token, dataUrl: await qrDataUrl(qrProduit, token) });
   })
 );

@@ -183,12 +183,43 @@ model Partenaire {
   branche          Branche?
   qrCodes          QrCode[]
   souscriptionsGen Souscription[]
+
+  // Agents de distribution (Incendie/Accident) créés par le partenaire lui-même.
+  agents AgentDistribution[]
+}
+
+/**
+ * Agent de distribution créé par un partenaire (Incendie/Accident) depuis son
+ * propre espace — mêmes QR codes qu'un partenaire (1000/2000 pour Incendie,
+ * unique pour Accident), générés selon les produits du partenaire parent. Une
+ * souscription scannée via le QR d'un agent reste rattachée au partenaire
+ * (facturation/commission inchangées) mais porte en plus agentDistributionId
+ * pour permettre le suivi par agent.
+ */
+model AgentDistribution {
+  id                  String                 @id @default(uuid())
+  partenaireId        String
+  partenaire          Partenaire             @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  nom                 String
+  telephone           String
+  statut              StatutPartenaire       @default(actif)
+  qrIncendie1000Token String?                @unique
+  qrIncendie2000Token String?                @unique
+  qrAccidentToken     String?                @unique
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  incendie            SouscriptionIncendie[]
+  accident            SouscriptionAccident[]
 }
 
 model SouscriptionIncendie {
   id                  String         @id @default(uuid())
   partenaireId        String
   partenaire          Partenaire     @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si la souscription vient du QR d'un agent de
+  // distribution (plutôt que du QR du partenaire lui-même).
+  agentDistributionId String?
+  agentDistribution   AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
   telephone           String
   nom                 String?
   prenom              String?
@@ -214,6 +245,10 @@ model SouscriptionAccident {
   id                   String        @id @default(uuid())
   partenaireId         String
   partenaire           Partenaire    @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si la souscription vient du QR d'un agent de
+  // distribution (plutôt que du QR du partenaire lui-même).
+  agentDistributionId  String?
+  agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
   telephone            String
   nom                  String
   prenom               String

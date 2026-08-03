@@ -46,6 +46,7 @@ import PartenaireSouscriptions from "./pages/partenaire/Souscriptions";
 import PartenaireCommissions from "./pages/partenaire/Commissions";
 import PartenaireQr from "./pages/partenaire/QrCode";
 import PartenaireProfil from "./pages/partenaire/Profil";
+import PartenaireAgents from "./pages/partenaire/Agents";
 
 import AgentImfLayout from "./components/layout/AgentImfLayout";
 import AgentImfDashboard from "./pages/agent-imf/Dashboard";
@@ -115,6 +116,7 @@ export default function App() {
             <Route path="souscriptions" element={<PartenaireSouscriptions />} />
             <Route path="commissions" element={<PartenaireCommissions />} />
             <Route path="qr" element={<PartenaireQr />} />
+            <Route path="agents" element={<PartenaireAgents />} />
             <Route path="profil" element={<PartenaireProfil />} />
           </Route>
 
