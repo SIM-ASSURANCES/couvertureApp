@@ -89,13 +89,17 @@ const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
  */
 export function calculerCoupsdursHorsLigne(
   deces: boolean,
-  incapacite: "plafond_500000" | "plafond_1000000" | null
+  incapacite: "plafond_500000" | "plafond_1000000" | null,
+  dureeMois: number = 12
 ): { lignes: { garantie: string; capital: number; prime: number }[]; primeTTC: number } | null {
   const variantes = ["maladie", ...(deces ? ["deces"] : []), ...(incapacite ? [incapacite] : [])];
   const lignes = variantes.map((v) => {
     const t = tarifCatalogueHorsLigne("coupsdurs", v);
     if (!t) return null;
-    return { garantie: LABEL_GARANTIE_COUPSDURS[v] ?? v, capital: t.capitalGaranti, prime: t.prime };
+    // Prorata linéaire sur la durée choisie (1-12 mois) — miroir exact du
+    // calcul serveur (calculerDevisImf).
+    const prime = Math.round((t.prime * dureeMois) / 12);
+    return { garantie: LABEL_GARANTIE_COUPSDURS[v] ?? v, capital: t.capitalGaranti, prime };
   });
   if (lignes.some((l) => l === null)) return null;
   const bonnes = lignes as { garantie: string; capital: number; prime: number }[];

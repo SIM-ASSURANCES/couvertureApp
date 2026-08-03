@@ -322,7 +322,8 @@ export interface BordereauImfDetail extends BordereauImf {
 
 export interface SimulationImf {
   id: string;
-  agentId: string;
+  agentId?: string | null;
+  adminId?: string | null;
   produitCode: string;
   entrees: Record<string, unknown>;
   resultat: Record<string, unknown>;

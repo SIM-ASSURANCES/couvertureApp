@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { FileCheck, Download, Plus, X, WifiOff } from "lucide-react";
-import { PageHeader, Card, Badge, fcfa } from "../../components/ui";
+import { FileCheck, Download, Plus, X, WifiOff, Save, RotateCcw, Trash2 } from "lucide-react";
+import { PageHeader, Card, Badge, fcfa, fmtDate } from "../../components/ui";
 import { api } from "../../api";
 import { genererContratImf, contratImfDisponible } from "../../contract";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -9,7 +9,14 @@ import { useBaremeCache } from "../../offline/useBaremes";
 import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
 import { calculerCoupsdursHorsLigne, calculerSecurecolteHorsLigne } from "../../offline/catalogue";
 import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
-import type { SouscriptionImf } from "../../types";
+import type { SouscriptionImf, SimulationImf } from "../../types";
+
+const PRODUIT_LABEL: Record<string, string> = {
+  securpro: "SECURPRO",
+  securstock: "SECURSTOCK",
+  coupsdurs: "Coups Durs",
+  securecolte: "SECURECOLTE",
+};
 
 type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte";
 
@@ -163,6 +170,102 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   // du client. Le devis lui-même est déjà calculé en direct avant ça.
   const [pretASouscrire, setPretASouscrire] = useState(false);
 
+  // Brouillons de simulation : permet d'enregistrer un devis en cours sans le
+  // convertir immédiatement en souscription, pour le reprendre plus tard sans
+  // tout ressaisir (voir enregistrerBrouillon/reprendreBrouillon).
+  const [brouillons, setBrouillons] = useState<SimulationImf[]>([]);
+  const [enregistrement, setEnregistrement] = useState(false);
+  const [toast, setToast] = useState("");
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function chargerBrouillons() {
+    try {
+      const rows = await api.get<SimulationImf[]>(`${apiBase}/simulations`);
+      setBrouillons(rows);
+    } catch {
+      /* liste non bloquante */
+    }
+  }
+
+  useEffect(() => {
+    chargerBrouillons();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiBase]);
+
+  async function enregistrerBrouillon() {
+    if (!entreesCourantes) return;
+    setEnregistrement(true);
+    try {
+      await api.post(`${apiBase}/simulations`, { produitCode, entrees: entreesCourantes });
+      notify("Brouillon enregistré ✓");
+      chargerBrouillons();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setEnregistrement(false);
+    }
+  }
+
+  async function supprimerBrouillon(id: string) {
+    try {
+      await api.del(`${apiBase}/simulations/${id}`);
+      setBrouillons((b) => b.filter((x) => x.id !== id));
+    } catch (err) {
+      notify((err as Error).message);
+    }
+  }
+
+  /** Réinjecte les paramètres d'un brouillon dans le formulaire — le devis se recalcule ensuite en direct. */
+  function reprendreBrouillon(b: SimulationImf) {
+    const e = b.entrees as Record<string, unknown>;
+    setProduitCode(b.produitCode as ProduitCode);
+    if (b.produitCode === "securpro") {
+      setSp((s) => ({
+        ...s,
+        classe: (e.classe as number) ?? s.classe,
+        statutOccupation: (e.statutOccupation as typeof s.statutOccupation) ?? s.statutOccupation,
+        valeurBatiment: (e.valeurBatiment as number) ?? 0,
+        loyerMensuel: (e.loyerMensuel as number) ?? 0,
+        dansMarche: (e.dansMarche as boolean) ?? null,
+        materielExploitation: (e.materielExploitation as number) ?? 0,
+        mobilierMaterielBureau: (e.mobilierMaterielBureau as number) ?? 0,
+        amenagement: (e.amenagement as number) ?? 0,
+        materielInformatique: (e.materielInformatique as number) ?? 0,
+        stocksMarchandises: (e.stocksMarchandises as number) ?? 0,
+        gardien: !!e.gardien,
+        extincteur: !!e.extincteur,
+        volContenu: !!e.volContenu,
+        majorationVolContenu: !!e.majorationVolContenu,
+        volCaisseCapital: (e.volCaisseCapital as number) ?? 0,
+        majorationVolCaisse: !!e.majorationVolCaisse,
+        ddeCapital: (e.ddeCapital as number) ?? 0,
+        deCapital: (e.deCapital as number) ?? 0,
+        bdgCapital: (e.bdgCapital as number) ?? 0,
+      }));
+    } else if (b.produitCode === "securstock") {
+      setSs((s) => ({ ...s, ...(e as typeof s) }));
+    } else if (b.produitCode === "coupsdurs") {
+      setCd({
+        deces: !!e.deces,
+        incapacite: (e.incapacite as null | "plafond_500000" | "plafond_1000000") ?? null,
+        dureeMois: (e.dureeMois as number) ?? 12,
+      });
+      setSante((s) => ({ ...s, ...(e.sante as object) }));
+      setBeneficiaires((e.beneficiaires as Beneficiaire[]) ?? []);
+    } else if (b.produitCode === "securecolte") {
+      setVariante((e.libelleVariante as string) ?? "pack");
+      setSecol({
+        valeurPackage: (e.valeurPackage as number) ?? 0,
+        superficieHa: (e.superficieHa as number) ?? 0,
+      });
+    }
+    notify("Brouillon repris — vérifiez le devis avant de souscrire.");
+  }
+
   // SECURPRO
   const [sp, setSp] = useState({
     classe: 1, statutOccupation: "proprietaire" as "proprietaire" | "locataire",
@@ -221,7 +324,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
   // socle, non désactivable), Décès est une case à cocher facultative,
   // Incapacité temporaire est un plafond optionnel (500 000 OU 1 000 000,
   // jamais les deux) — voir calculerCoupsdursHorsLigne().
-  const [cd, setCd] = useState({ deces: false, incapacite: null as null | "plafond_500000" | "plafond_1000000" });
+  const [cd, setCd] = useState({ deces: false, incapacite: null as null | "plafond_500000" | "plafond_1000000", dureeMois: 12 });
   const estCoupsdurs = produitCode === "coupsdurs";
   const necessiteBeneficiaires = estCoupsdurs && cd.deces;
 
@@ -330,13 +433,14 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
         }
       }
     } else if (produitCode === "coupsdurs") {
-      const r = calculerCoupsdursHorsLigne(cd.deces, cd.incapacite);
+      const r = calculerCoupsdursHorsLigne(cd.deces, cd.incapacite, cd.dureeMois);
       if (r) {
         nextEntrees = {
           deces: cd.deces,
           incapacite: cd.incapacite,
           sante,
           beneficiaires: cd.deces ? beneficiaires : undefined,
+          dureeMois: cd.dureeMois,
         };
         nextResultat = r;
         nextPrimeTTC = r.primeTTC;
@@ -379,7 +483,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
     setSante(defaultSante());
     setBeneficiaires([]);
     setSecol({ valeurPackage: 0, superficieHa: 0 });
-    setCd({ deces: false, incapacite: null });
+    setCd({ deces: false, incapacite: null, dureeMois: 12 });
   }
 
   async function souscrire(e: React.FormEvent) {
@@ -458,6 +562,42 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           <WifiOff size={16} />
           Mode hors-ligne : le devis est calculé localement à titre indicatif (barèmes mis en cache) et la souscription sera mise en file d'attente jusqu'à la reconnexion — le montant définitif sera confirmé par le serveur à la synchronisation.
         </div>
+      )}
+
+      {brouillons.length > 0 && (
+        <Card title={`Mes brouillons (${brouillons.length})`} style={{ marginTop: 24 }} noBody>
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th>Prime TTC</th>
+                  <th>Enregistré le</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {brouillons.map((b) => (
+                  <tr key={b.id}>
+                    <td>{PRODUIT_LABEL[b.produitCode] ?? b.produitCode}</td>
+                    <td>{fcfa(b.primeTTC)}</td>
+                    <td className="muted">{fmtDate(b.createdAt)}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button type="button" className="btn btn-ghost" style={{ padding: "6px 10px", fontSize: 12 }} onClick={() => reprendreBrouillon(b)}>
+                          <RotateCcw size={14} /> Reprendre
+                        </button>
+                        <button type="button" className="btn btn-ghost" style={{ padding: 8 }} onClick={() => supprimerBrouillon(b.id)}>
+                          <Trash2 size={14} color="var(--danger)" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <div className="grid-2" style={{ marginTop: 24 }}>
@@ -714,6 +854,24 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 </div>
 
                 <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  <label className="label">
+                    Durée de la couverture — {cd.dureeMois} mois{cd.dureeMois === 12 ? " (1 an)" : ""}
+                  </label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={12}
+                    step={1}
+                    value={cd.dureeMois}
+                    onChange={(e) => setCd({ ...cd, dureeMois: Number(e.target.value) })}
+                    style={{ width: "100%", marginTop: 8 }}
+                  />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Couverture intermédiaire possible (moins d'un an) — la prime catalogue (annuelle) est proratisée sur la durée choisie.
+                  </div>
+                </div>
+
+                <div className="field" style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <label className="label">Option 2 — Incapacité temporaire</label>
                   <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, opacity: cd.deces ? 1 : 0.5 }}>
                     <input
@@ -866,14 +1024,37 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                     </button>
                   </div>
                 ))}
-                <button type="button" className="btn btn-ghost" onClick={ajouterBeneficiaire} style={{ marginTop: 4 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={ajouterBeneficiaire}
+                  disabled={Math.round(totalBeneficiaires) >= 100}
+                  style={{ marginTop: 4 }}
+                >
                   <Plus size={15} /> Ajouter un bénéficiaire
                 </button>
+                {Math.round(totalBeneficiaires) >= 100 && (
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    100 % de l'indemnité est déjà réparti — retirez ou ajustez un bénéficiaire pour en ajouter un autre.
+                  </div>
+                )}
                 <div className="muted" style={{ fontSize: 12, marginTop: 8, color: Math.round(totalBeneficiaires) === 100 ? undefined : "var(--danger)" }}>
                   Total : {totalBeneficiaires}% {Math.round(totalBeneficiaires) === 100 ? "✓" : "(doit être égal à 100 %)"}
                 </div>
               </div>
             )}
+
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={!entreesCourantes || enregistrement}
+                onClick={enregistrerBrouillon}
+                title="Enregistrer ce devis pour le reprendre plus tard, sans le convertir tout de suite"
+              >
+                <Save size={16} /> {enregistrement ? "Enregistrement…" : "Enregistrer le brouillon"}
+              </button>
+            </div>
 
             <button
               type="button"
@@ -883,7 +1064,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 (necessiteBeneficiaires && Math.round(totalBeneficiaires) !== 100) ||
                 (estSecurecolte && (!secol.valeurPackage || !secol.superficieHa))
               }
-              style={{ marginTop: 16 }}
+              style={{ marginTop: 10 }}
               onClick={() => setPretASouscrire(true)}
             >
               <FileCheck size={17} /> Je souscris
@@ -1088,6 +1269,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
           </Card>
         </div>
       )}
+      {toast && <div className="toast">{toast}</div>}
     </>
   );
 }

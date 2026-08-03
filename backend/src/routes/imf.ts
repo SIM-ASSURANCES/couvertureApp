@@ -718,14 +718,27 @@ export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
 
 /**
- * Le finance comptable et le chef de zone (CHEF_ZONE) n'ont accès qu'au
- * tableau de bord et aux souscriptions/contrats (et, pour le chef de zone, à
- * son réseau multi-zones) — jamais à la création de devis/souscriptions ni à
- * la déclaration de sinistres. Le RESPONSABLE_ZONE (une seule zone), lui,
- * garde l'accès complet — seul le CHEF_ZONE est restreint à la supervision
- * pure. Retourne true (et répond 403) si l'accès doit être bloqué.
+ * Le finance comptable n'a accès qu'au tableau de bord et aux
+ * souscriptions/contrats — jamais à la création de devis/souscriptions ni à
+ * la déclaration de sinistres. Le chef de zone (CHEF_ZONE) a lui accès au
+ * simulateur (voir bloquerSinistres pour la restriction qui lui reste
+ * propre). Retourne true (et répond 403) si l'accès doit être bloqué.
  */
 function bloquerFinanceComptable(req: AuthedRequest, res: Response): boolean {
+  if (req.user!.roleImf === "FINANCE_COMPTABLE") {
+    res.status(403).json({ error: "Action non disponible pour ce rôle." });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Le finance comptable et le chef de zone (CHEF_ZONE) n'ont jamais accès à la
+ * déclaration/consultation de sinistres — le chef de zone supervise la
+ * production de son réseau, il ne traite pas les sinistres individuellement.
+ * Retourne true (et répond 403) si l'accès doit être bloqué.
+ */
+function bloquerSinistres(req: AuthedRequest, res: Response): boolean {
   if (req.user!.roleImf === "FINANCE_COMPTABLE" || req.user!.roleImf === "CHEF_ZONE") {
     res.status(403).json({ error: "Action non disponible pour ce rôle." });
     return true;
@@ -872,6 +885,9 @@ const coupsdursCombineSchema = z
     incapacite: z.enum(["plafond_500000", "plafond_1000000"]).nullable().optional(),
     sante: santeSchema,
     beneficiaires: z.array(beneficiaireSchema).optional(),
+    // Couverture intermédiaire de moins d'un an (curseur 1-12 mois côté
+    // agent) : la prime catalogue (annuelle) est proratisée linéairement.
+    dureeMois: z.number().int().min(1).max(12).default(12),
   })
   .refine(
     (d) =>
@@ -946,10 +962,13 @@ async function calculerDevisImf(
     }
     const lignes = variantes.map((v) => {
       const t = tarifsCoupsdurs.find((t) => t.libelleVariante === v)!;
-      return { garantie: LABEL_GARANTIE_COUPSDURS[v] ?? v, capital: t.capitalGaranti, prime: t.prime };
+      // Prorata linéaire sur la durée choisie — le tarif catalogue est la
+      // prime annuelle de référence (12 mois).
+      const prime = Math.round((t.prime * input.dureeMois) / 12);
+      return { garantie: LABEL_GARANTIE_COUPSDURS[v] ?? v, capital: t.capitalGaranti, prime };
     });
     const primeTTC = lignes.reduce((s, l) => s + l.prime, 0);
-    return { ok: true, resultat: { lignes, primeTTC }, primeTTC };
+    return { ok: true, resultat: { lignes, primeTTC, dureeMois: input.dureeMois }, primeTTC };
   }
   // Catalogue restant : SECURECOLTE — modèle actuariel ARC, prime calculée
   // à partir de la valeur du package (1 hectare = 1 pack).
@@ -1003,14 +1022,34 @@ agentImfRouter.post(
   })
 );
 
+/** Brouillons enregistrés par l'agent : simulations non encore converties en souscription. */
 agentImfRouter.get(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.simulationImf.findMany({
-      where: { agentId: req.user!.sub },
+      where: { agentId: req.user!.sub, souscription: null },
       orderBy: { createdAt: "desc" },
     });
     res.json(rows);
+  })
+);
+
+/** Suppression d'un brouillon par son auteur — jamais si déjà converti en souscription. */
+agentImfRouter.delete(
+  "/simulations/:id",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: req.params.id },
+      include: { souscription: { select: { id: true } } },
+    });
+    if (!simulation || simulation.agentId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    if (simulation.souscription) {
+      return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    }
+    await prisma.simulationImf.delete({ where: { id: req.params.id } });
+    res.status(204).end();
   })
 );
 
@@ -1331,6 +1370,36 @@ imfRouter.post(
   })
 );
 
+/** Brouillons enregistrés par l'admin : simulations non encore converties en souscription. */
+imfRouter.get(
+  "/simulations",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const rows = await prisma.simulationImf.findMany({
+      where: { adminId: req.user!.sub, souscription: null },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(rows);
+  })
+);
+
+imfRouter.delete(
+  "/simulations/:id",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: req.params.id },
+      include: { souscription: { select: { id: true } } },
+    });
+    if (!simulation || simulation.adminId !== req.user!.sub) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    if (simulation.souscription) {
+      return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    }
+    await prisma.simulationImf.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  })
+);
+
 imfRouter.post(
   "/souscriptions",
   asyncHandler(async (req: AuthedRequest, res) => {
@@ -1613,7 +1682,7 @@ const declarationSchema = z.object({
 agentImfRouter.post(
   "/sinistres",
   asyncHandler(async (req: AuthedRequest, res) => {
-    if (bloquerFinanceComptable(req, res)) return;
+    if (bloquerSinistres(req, res)) return;
     const data = declarationSchema.parse(req.body);
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,
@@ -1665,7 +1734,7 @@ agentImfRouter.post(
 agentImfRouter.get(
   "/sinistres",
   asyncHandler(async (req: AuthedRequest, res) => {
-    if (bloquerFinanceComptable(req, res)) return;
+    if (bloquerSinistres(req, res)) return;
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,
       roleImf: req.user!.roleImf!,
@@ -1689,7 +1758,7 @@ const piecesPatchSchema = z.object({
 agentImfRouter.patch(
   "/sinistres/:id/pieces",
   asyncHandler(async (req: AuthedRequest, res) => {
-    if (bloquerFinanceComptable(req, res)) return;
+    if (bloquerSinistres(req, res)) return;
     const data = piecesPatchSchema.parse(req.body);
     const scope = await agentIdsDuReseau({
       id: req.user!.sub,

@@ -182,24 +182,11 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
       ? [{ to: "/agent-imf/reseau-agence", label: "Mon agence", icon: Building2 }]
       : [];
 
-  // Le chef de zone (CHEF_ZONE) supervise uniquement la production de son
-  // réseau (plusieurs zones) : ni simulateur, ni sinistres (voir
-  // bloquerFinanceComptable côté backend, qui applique la même restriction).
-  // Le responsable de zone (RESPONSABLE_ZONE, une seule zone) garde lui
-  // l'accès complet, comme un agent classique.
-  if (roleImf === "CHEF_ZONE") {
-    return [
-      {
-        section: "Mon activité",
-        items: [
-          { to: "/agent-imf", label: "Tableau de bord", icon: LayoutDashboard },
-          ...reseau,
-          { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
-        ],
-      },
-    ];
-  }
-
+  // Le chef de zone (CHEF_ZONE) supervise la production de son réseau
+  // (plusieurs zones) et établit des devis, mais ne traite jamais les
+  // sinistres individuellement (voir bloquerSinistres côté backend, qui
+  // applique la même restriction). Le responsable de zone (RESPONSABLE_ZONE,
+  // une seule zone) garde lui l'accès complet, comme un agent classique.
   return [
     {
       section: "Mon activité",
@@ -208,7 +195,7 @@ export function agentImfNav(roleImf?: RoleImfNav): NavGroup[] {
         { to: "/agent-imf/simulateur", label: "Simulateur", icon: Calculator },
         ...reseau,
         { to: "/agent-imf/contrats", label: "Contrats", icon: IdCard },
-        { to: "/agent-imf/sinistres", label: "Sinistres", icon: LifeBuoy },
+        ...(roleImf === "CHEF_ZONE" ? [] : [{ to: "/agent-imf/sinistres", label: "Sinistres", icon: LifeBuoy }]),
       ],
     },
   ];
