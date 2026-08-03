@@ -5,6 +5,10 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl } from "../services/qr.js";
+import { commissionStatsAgent } from "../services/commission.js";
+import { notifyAdmins } from "../services/notifications.js";
+
+const JOURS_CYCLE = 14;
 
 /** Espace agent de distribution (Incendie/Accident) : lecture seule de son activité + QR + mot de passe. */
 export const agentDistributionRouter = Router();
@@ -26,6 +30,7 @@ agentDistributionRouter.get(
       statut: a.statut,
       partenaireNom: a.partenaire.nomCommerce,
       produit: a.partenaire.produitIncendie ? "incendie" : "accident",
+      forcerChangementMotDePasse: a.forcerChangementMotDePasse,
     });
   })
 );
@@ -100,8 +105,89 @@ agentDistributionRouter.patch(
     }
     await prisma.agentDistribution.update({
       where: { id: a.id },
-      data: { passwordHash: await bcrypt.hash(data.nouveauMotDePasse, 10) },
+      data: {
+        passwordHash: await bcrypt.hash(data.nouveauMotDePasse, 10),
+        forcerChangementMotDePasse: false,
+      },
     });
     res.json({ ok: true });
+  })
+);
+
+/* ── Commission : stats + cycle de demande (14 jours), validées par l'admin ── */
+
+function prochaineDate(derniere: Date): Date {
+  const d = new Date(derniere);
+  d.setDate(d.getDate() + JOURS_CYCLE);
+  return d;
+}
+
+agentDistributionRouter.get(
+  "/commission",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const id = req.user!.sub;
+    const [stats, demandes] = await Promise.all([
+      commissionStatsAgent(id),
+      prisma.demandeCommission.findMany({
+        where: { agentDistributionId: id },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    const enAttente = demandes.some((d) => d.statut === "en_attente");
+    const derniere = demandes[0];
+    const prochaine = derniere ? prochaineDate(derniere.createdAt) : null;
+    const cycleAtteint = !prochaine || prochaine <= new Date();
+    const canRequest = stats.due > 0 && !enAttente && cycleAtteint;
+
+    res.json({
+      ...stats,
+      canRequest,
+      enAttente,
+      prochaineDate: prochaine,
+      demandes,
+    });
+  })
+);
+
+agentDistributionRouter.post(
+  "/commission/demande",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const id = req.user!.sub;
+    const stats = await commissionStatsAgent(id);
+    if (stats.due <= 0)
+      return res.status(400).json({ error: "Aucune commission due actuellement." });
+
+    const demandes = await prisma.demandeCommission.findMany({
+      where: { agentDistributionId: id },
+      orderBy: { createdAt: "desc" },
+    });
+    if (demandes.some((d) => d.statut === "en_attente"))
+      return res.status(409).json({ error: "Une demande est déjà en attente de validation." });
+    const derniere = demandes[0];
+    if (derniere) {
+      const prochaine = prochaineDate(derniere.createdAt);
+      if (prochaine > new Date())
+        return res.status(429).json({
+          error: `Prochaine demande possible le ${prochaine.toLocaleDateString("fr-FR")}.`,
+        });
+    }
+
+    const a = await prisma.agentDistribution.findUnique({
+      where: { id },
+      include: { partenaire: { select: { nomCommerce: true, branche: true } } },
+    });
+    if (!a) return res.status(404).json({ error: "Introuvable" });
+
+    const demande = await prisma.demandeCommission.create({
+      data: { partenaireId: a.partenaireId, agentDistributionId: id, montant: stats.due },
+    });
+    await notifyAdmins(
+      a.partenaire.branche ?? "INCENDIE_ACCIDENT",
+      "commission_demande",
+      "Nouvelle demande de commission (agent)",
+      `${a.nom}, agent de ${a.partenaire.nomCommerce}, demande le versement de ${stats.due} FCFA.`,
+      "/admin/performance"
+    );
+    res.status(201).json(demande);
   })
 );

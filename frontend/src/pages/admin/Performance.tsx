@@ -32,6 +32,8 @@ interface Demande {
   id: string;
   partenaireNom: string;
   responsable: string;
+  agentNom: string | null;
+  agentTelephone: string | null;
   montant: number;
   statut: "en_attente" | "validee" | "rejetee";
   createdAt: string;
@@ -277,7 +279,9 @@ export default function Performance() {
                 <tr key={d.id}>
                   <td>
                     <strong>{d.partenaireNom}</strong>
-                    <div className="muted" style={{ fontSize: 12 }}>{d.responsable}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {d.agentNom ? `Agent : ${d.agentNom} (${d.agentTelephone})` : d.responsable}
+                    </div>
                   </td>
                   <td><strong style={{ color: "var(--sim-primary)" }}>{fcfa(d.montant)}</strong></td>
                   <td className="muted">{fmtDate(d.createdAt)}</td>

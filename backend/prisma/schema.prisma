@@ -208,6 +208,10 @@ model AgentDistribution {
   // partenaire (jamais stocké ni renvoyé en clair ensuite), modifiable par
   // l'agent depuis son espace.
   passwordHash        String?
+  // true à la création et après toute réinitialisation par le partenaire —
+  // force l'agent à choisir son propre mot de passe avant d'accéder au reste
+  // de son espace ; repassé à false dès qu'il change son mot de passe.
+  forcerChangementMotDePasse Boolean @default(true)
   statut              StatutPartenaire       @default(actif)
   qrIncendie1000Token String?                @unique
   qrIncendie2000Token String?                @unique
@@ -216,6 +220,7 @@ model AgentDistribution {
   updatedAt           DateTime               @updatedAt
   incendie            SouscriptionIncendie[]
   accident            SouscriptionAccident[]
+  demandes            DemandeCommission[]
 }
 
 model SouscriptionIncendie {
@@ -294,6 +299,13 @@ model DemandeCommission {
   id           String        @id @default(uuid())
   partenaireId String
   partenaire   Partenaire    @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si la demande vient d'un agent de distribution (et
+  // non du partenaire lui-même) : validée par l'admin comme les demandes
+  // partenaire, mais porte sur la commission de l'agent — les souscriptions
+  // qu'il a apportées sont exclues du calcul de commission due du partenaire
+  // (paiement direct à l'agent, pas de double comptage).
+  agentDistributionId String?
+  agentDistribution   AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: Cascade)
   montant      Float
   statut       StatutDemande @default(en_attente)
   periodeDebut DateTime?

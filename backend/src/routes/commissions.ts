@@ -17,6 +17,7 @@ commissionsRouter.get(
       where: { statut: statut ? (statut as never) : undefined },
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+        agentDistribution: { select: { nom: true, telephone: true } },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -26,6 +27,8 @@ commissionsRouter.get(
         partenaireId: r.partenaireId,
         partenaireNom: r.partenaire.nomCommerce,
         responsable: r.partenaire.nomResponsable,
+        agentNom: r.agentDistribution?.nom ?? null,
+        agentTelephone: r.agentDistribution?.telephone ?? null,
         montant: r.montant,
         statut: r.statut,
         createdAt: r.createdAt,
@@ -51,11 +54,16 @@ commissionsRouter.post(
       where: { id: d.id },
       data: { statut: "validee", traiteePar: req.user!.sub, traiteeAt: new Date() },
     });
+    const agent = d.agentDistributionId
+      ? await prisma.agentDistribution.findUnique({ where: { id: d.agentDistributionId }, select: { nom: true } })
+      : null;
     await notifyPartenaire(
       d.partenaireId,
       "commission_validee",
       "Commission validée",
-      `Votre demande de commission de ${Math.round(d.montant)} FCFA a été validée.`,
+      agent
+        ? `La demande de commission de ${Math.round(d.montant)} FCFA de votre agent ${agent.nom} a été validée.`
+        : `Votre demande de commission de ${Math.round(d.montant)} FCFA a été validée.`,
       "/partenaire/commissions"
     );
     await logAction({
@@ -90,11 +98,16 @@ commissionsRouter.post(
         motifRejet: motif || null,
       },
     });
+    const agent = d.agentDistributionId
+      ? await prisma.agentDistribution.findUnique({ where: { id: d.agentDistributionId }, select: { nom: true } })
+      : null;
     await notifyPartenaire(
       d.partenaireId,
       "commission_rejetee",
       "Demande de commission rejetée",
-      `Votre demande de commission a été rejetée.${motif ? " Motif : " + motif : ""}`,
+      agent
+        ? `La demande de commission de votre agent ${agent.nom} a été rejetée.${motif ? " Motif : " + motif : ""}`
+        : `Votre demande de commission a été rejetée.${motif ? " Motif : " + motif : ""}`,
       "/partenaire/commissions"
     );
     await logAction({

@@ -2,7 +2,12 @@ import { prisma } from "../db.js";
 
 type DateWhere = { createdAt?: { gte?: Date; lte?: Date } };
 
-/** Commission totale générée par un partenaire, depuis les barèmes (colonne commission). */
+/**
+ * Commission totale générée par un partenaire, depuis les barèmes (colonne
+ * commission) — exclut les souscriptions apportées par un agent de
+ * distribution (payées directement à l'agent, voir commissionTotaleAgent),
+ * pour éviter tout double comptage.
+ */
 export async function commissionTotalePartenaire(
   partenaireId: string,
   dateWhere: DateWhere = {}
@@ -10,12 +15,12 @@ export async function commissionTotalePartenaire(
   const [incGroups, accGroups, tarifsInc, tarifsAcc] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
-      where: { partenaireId, ...dateWhere },
+      where: { partenaireId, agentDistributionId: null, ...dateWhere },
       _count: { _all: true },
     }),
     prisma.souscriptionAccident.groupBy({
       by: ["montantPrime"],
-      where: { partenaireId, ...dateWhere, waveStatut: "confirme" },
+      where: { partenaireId, agentDistributionId: null, ...dateWhere, waveStatut: "confirme" },
       _count: { _all: true },
     }),
     prisma.tarifIncendie.findMany(),
@@ -38,9 +43,10 @@ export async function commissionTotalePartenaire(
 
 /**
  * Commission totale générée par un agent de distribution précis (sous-ensemble
- * des souscriptions du partenaire, filtrées par agentDistributionId) — vue
- * purement informative pour le partenaire, jamais encaissée/demandée
- * séparément (le versement reste global au partenaire).
+ * des souscriptions du partenaire, filtrées par agentDistributionId) — payée
+ * directement à l'agent via ses propres demandes de commission (voir
+ * commissionStatsAgent), donc exclue du calcul de commission due du
+ * partenaire (commissionTotalePartenaire).
  */
 export async function commissionTotaleAgent(agentDistributionId: string): Promise<number> {
   const [incGroups, accGroups, tarifsInc, tarifsAcc] = await Promise.all([
@@ -72,7 +78,11 @@ export async function commissionTotaleAgent(agentDistributionId: string): Promis
   return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc);
 }
 
-/** Commission encaissée = somme des demandes validées (optionnellement filtrée par date de traitement). */
+/**
+ * Commission encaissée par un partenaire = somme de ses PROPRES demandes
+ * validées (hors demandes d'agents, comptées séparément dans
+ * commissionEncaisseeAgent), optionnellement filtrée par date de traitement.
+ */
 export async function commissionEncaisseePartenaire(
   partenaireId: string,
   traiteeRange?: { gte?: Date; lte?: Date }
@@ -81,6 +91,7 @@ export async function commissionEncaisseePartenaire(
     _sum: { montant: true },
     where: {
       partenaireId,
+      agentDistributionId: null,
       statut: "validee",
       ...(traiteeRange ? { traiteeAt: traiteeRange } : {}),
     },
@@ -93,6 +104,35 @@ export async function commissionStatsPartenaire(partenaireId: string) {
   const [totale, encaissee] = await Promise.all([
     commissionTotalePartenaire(partenaireId),
     commissionEncaisseePartenaire(partenaireId),
+  ]);
+  return {
+    totale: Math.round(totale),
+    encaissee: Math.round(encaissee),
+    due: Math.round(totale - encaissee),
+  };
+}
+
+/** Commission encaissée par un agent de distribution = somme de ses demandes validées. */
+export async function commissionEncaisseeAgent(
+  agentDistributionId: string,
+  traiteeRange?: { gte?: Date; lte?: Date }
+): Promise<number> {
+  const agg = await prisma.demandeCommission.aggregate({
+    _sum: { montant: true },
+    where: {
+      agentDistributionId,
+      statut: "validee",
+      ...(traiteeRange ? { traiteeAt: traiteeRange } : {}),
+    },
+  });
+  return agg._sum.montant ?? 0;
+}
+
+/** Totale (all-time) / encaissée / due pour un agent de distribution. */
+export async function commissionStatsAgent(agentDistributionId: string) {
+  const [totale, encaissee] = await Promise.all([
+    commissionTotaleAgent(agentDistributionId),
+    commissionEncaisseeAgent(agentDistributionId),
   ]);
   return {
     totale: Math.round(totale),
