@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireSuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
@@ -12,6 +12,7 @@ import {
   commissionMensuellePartenaire,
 } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
+import { commissionTotaleAgent } from "../services/commission.js";
 
 export const partenairesRouter = Router();
 partenairesRouter.use(requireAuth("admin"));
@@ -337,8 +338,13 @@ partenairesRouter.post(
 
 partenairesRouter.delete(
   "/:id",
-  requireSuperAdmin,
+  requireAnySuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!estSuperAdminBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Réservé au Super Administrateur de cette branche" });
+    }
     const counts = await withCounts(req.params.id);
     if (counts.clientsIncendie + counts.clientsAccident + counts.clientsRelax > 0) {
       return res
@@ -353,6 +359,61 @@ partenairesRouter.delete(
       objetId: req.params.id,
     });
     res.json({ ok: true });
+  })
+);
+
+/**
+ * Agents de distribution d'un partenaire (Incendie/Accident) — vue et
+ * suppression réservées au Super Administrateur de la branche, pour lui
+ * donner un contrôle total sur les agents créés par ses partenaires.
+ */
+partenairesRouter.get(
+  "/:id/agents",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req, res) => {
+    const agents = await prisma.agentDistribution.findMany({
+      where: { partenaireId: req.params.id },
+      orderBy: { createdAt: "desc" },
+    });
+    const rows = await Promise.all(
+      agents.map(async (a) => {
+        const [nbIncendie, nbAccident, commissionTotale] = await Promise.all([
+          prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
+          prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
+          commissionTotaleAgent(a.id),
+        ]);
+        return {
+          id: a.id,
+          nom: a.nom,
+          telephone: a.telephone,
+          localisation: a.localisation,
+          statut: a.statut,
+          createdAt: a.createdAt,
+          nombreSouscriptions: nbIncendie + nbAccident,
+          commissionTotale: Math.round(commissionTotale),
+        };
+      })
+    );
+    res.json(rows);
+  })
+);
+
+partenairesRouter.delete(
+  "/:partenaireId/agents/:agentId",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.agentId } });
+    if (!agent || agent.partenaireId !== req.params.partenaireId) {
+      return res.status(404).json({ error: "Introuvable" });
+    }
+    await prisma.agentDistribution.delete({ where: { id: agent.id } });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "suppression",
+      objetType: "agent_distribution",
+      objetId: agent.id,
+    });
+    res.status(204).end();
   })
 );
 

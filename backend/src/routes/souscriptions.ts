@@ -411,15 +411,16 @@ souscriptionsRouter.delete(
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionIncendie.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
-    if (s.statut === "complet") {
-      return res.status(409).json({ error: "Impossible de supprimer un contrat émis." });
-    }
+    // Le Super Administrateur de la branche peut supprimer un contrat même
+    // déjà émis/payé — conservé dans le journal (valeurAvant) puisqu'il n'en
+    // restera sinon plus aucune trace après suppression.
     await prisma.souscriptionIncendie.delete({ where: { id: req.params.id } });
     await logAction({
       adminId: req.user!.sub,
       typeAction: "suppression",
       objetType: "souscription_incendie",
       objetId: req.params.id,
+      valeurAvant: s,
     });
     res.status(204).end();
   })
@@ -431,15 +432,16 @@ souscriptionsRouter.delete(
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
-    if (s.waveStatut === "confirme") {
-      return res.status(409).json({ error: "Impossible de supprimer un contrat émis." });
-    }
+    // Le Super Administrateur de la branche peut supprimer un contrat même
+    // déjà émis/payé — conservé dans le journal (valeurAvant) puisqu'il n'en
+    // restera sinon plus aucune trace après suppression.
     await prisma.souscriptionAccident.delete({ where: { id: req.params.id } });
     await logAction({
       adminId: req.user!.sub,
       typeAction: "suppression",
       objetType: "souscription_accident",
       objetId: req.params.id,
+      valeurAvant: s,
     });
     res.status(204).end();
   })

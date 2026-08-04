@@ -25,11 +25,27 @@ interface PartenaireDetails {
   };
 }
 
+interface AgentDistributionAdmin {
+  id: string;
+  nom: string;
+  telephone: string;
+  localisation: string | null;
+  statut: "actif" | "inactif";
+  createdAt: string;
+  nombreSouscriptions: number;
+  commissionTotale: number;
+}
+
 function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose: () => void }) {
+  const { user } = useAuth();
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [data, setData] = useState<PartenaireDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const { data: agents, reload: reloadAgents } = useFetch<AgentDistributionAdmin[]>(
+    isSuper ? `/partenaires/${partenaireId}/agents` : null
+  );
 
   const load = useCallback(() => {
     const params = new URLSearchParams();
@@ -201,6 +217,57 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                 </tbody>
               </table>
             </div>
+
+            {isSuper && (
+              <>
+                <div style={{ fontWeight: 700, margin: "20px 0 8px" }}>
+                  Agents de distribution ({agents?.length ?? 0})
+                </div>
+                <div className="table-wrap">
+                  <table className="tbl">
+                    <thead>
+                      <tr>
+                        <th>Nom</th><th>Téléphone</th><th>Localisation</th><th>Statut</th>
+                        <th>Souscriptions</th><th>Commission</th><th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(agents ?? []).map((a) => (
+                        <tr key={a.id}>
+                          <td>{a.nom}</td>
+                          <td>{a.telephone}</td>
+                          <td>{a.localisation ?? <span className="muted">—</span>}</td>
+                          <td>{a.statut === "actif" ? <Badge kind="success">Actif</Badge> : <Badge kind="danger">Inactif</Badge>}</td>
+                          <td>{a.nombreSouscriptions}</td>
+                          <td>{fcfa(a.commissionTotale)}</td>
+                          <td>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 6 }}
+                              title="Supprimer cet agent"
+                              onClick={async () => {
+                                if (!confirm(`Supprimer l'agent ${a.nom} ?`)) return;
+                                try {
+                                  await api.del(`/partenaires/${partenaireId}/agents/${a.id}`);
+                                  reloadAgents();
+                                } catch (err) {
+                                  alert((err as Error).message);
+                                }
+                              }}
+                            >
+                              <Trash2 size={14} color="var(--danger)" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {(agents ?? []).length === 0 && (
+                        <tr><td colSpan={7}><div className="empty">Aucun agent de distribution.</div></td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
@@ -326,6 +393,7 @@ const empty = {
 
 export default function Partenaires() {
   const { user } = useAuth();
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [q, setQ] = useState("");
   const [statut, setStatut] = useState("");
   const params = new URLSearchParams();
@@ -594,7 +662,7 @@ export default function Partenaires() {
                           >
                             <Power size={15} />
                           </button>
-                          {user?.role === "SUPER_ADMIN" && (
+                          {isSuper && (
                             <button
                               className="btn btn-ghost"
                               style={{ padding: 8 }}

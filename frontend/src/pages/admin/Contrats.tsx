@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet } from "lucide-react";
+import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet, Trash2 } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -10,6 +10,8 @@ import {
   fmtDate,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
+import { api } from "../../api";
+import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import { genererContratIncendie, genererContratAccident } from "../../contract";
 
@@ -84,6 +86,8 @@ function genererContrat(c: Contrat) {
 }
 
 export default function Contrats() {
+  const { user } = useAuth();
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [type, setType] = useState("");
   const [q, setQ] = useState("");
   const [detail, setDetail] = useState<Contrat | null>(null);
@@ -91,9 +95,25 @@ export default function Contrats() {
   if (type) params.set("type", type);
   if (q) params.set("q", q);
 
-  const { data, loading, error } = useFetch<Contrat[]>(
+  const { data, loading, error, reload } = useFetch<Contrat[]>(
     `/souscriptions/contrats?${params.toString()}`
   );
+
+  async function supprimer(c: Contrat) {
+    if (
+      !confirm(
+        `Supprimer définitivement le contrat ${c.numeroPolice} (${c.prenom} ${c.nom}) ? Cette action est irréversible, même si la prime a été payée.`
+      )
+    )
+      return;
+    try {
+      await api.del(`/souscriptions/${c.type}/${c.id}`);
+      setDetail(null);
+      reload();
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
 
   function exportXlsx() {
     exportExcel(
@@ -231,6 +251,16 @@ export default function Contrats() {
                         >
                           <Download size={15} /> PDF
                         </button>
+                        {isSuper && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Supprimer le contrat"
+                            onClick={() => supprimer(c)}
+                          >
+                            <Trash2 size={15} color="var(--danger)" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -402,6 +432,15 @@ export default function Contrats() {
               >
                 <Download size={16} /> Télécharger le contrat
               </button>
+              {isSuper && (
+                <button
+                  className="btn btn-danger-soft btn-block"
+                  style={{ marginTop: 10 }}
+                  onClick={() => supprimer(detail)}
+                >
+                  <Trash2 size={16} /> Supprimer le contrat
+                </button>
+              )}
             </div>
           </div>
         </div>
