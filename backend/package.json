@@ -20,6 +20,7 @@
     "express-rate-limit": "^7.4.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "puppeteer-core": "^25.4.0",
     "qrcode": "^1.5.4",
     "zod": "^3.24.1"
   },

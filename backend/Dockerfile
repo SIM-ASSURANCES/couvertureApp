@@ -16,6 +16,11 @@ FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Chromium système pour puppeteer-core (génération PDF des contrats, texte
+# réel plutôt qu'une image) — puppeteer-core n'embarque pas son propre binaire.
+RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 COPY package*.json ./
 COPY prisma ./prisma
 RUN npm ci --omit=dev && npx prisma generate

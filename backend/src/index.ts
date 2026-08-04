@@ -20,6 +20,7 @@ import { relaxRouter } from "./routes/relax.js";
 import { imfRouter, agentImfRouter } from "./routes/imf.js";
 import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
+import { contratsRouter } from "./routes/contrats.js";
 import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
 import { requireAuth, requireBranche } from "./auth.js";
@@ -105,6 +106,10 @@ app.use(
 app.use("/api/agent-imf", agentImfRouter);
 app.use("/api/client", clientRouter);
 app.use("/api/agent-distribution", agentDistributionRouter);
+// Accessible sans authentification : utilisé aussi bien juste après une
+// souscription publique (avant tout compte) que depuis les espaces admin/agent
+// (mêmes données déjà visibles à l'écran, seul le rendu PDF est ici serveur).
+app.use("/api/contrats", publicLimiter, contratsRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ZodError) {
