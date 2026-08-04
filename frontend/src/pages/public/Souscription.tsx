@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 
 import { API_BASE } from "../../api";
 import { genererContratAccident } from "../../contract";
+import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
 const BASE = API_BASE;
@@ -207,7 +208,19 @@ export default function Souscription() {
     telephone?: string;
     partenaire?: string;
     signature?: string | null;
+    pieceIdentiteUrl?: string | null;
+    selfieUrl?: string | null;
   } | null>(null);
+
+  // Carte virtuelle de prise en charge — collecte pièce d'identité + selfie
+  // après confirmation du paiement (accident), ou téléchargement direct
+  // (relax : ces photos sont déjà capturées avant paiement).
+  const [cartePieceUrl, setCartePieceUrl] = useState<string | null>(null);
+  const [carteSelfieUrl, setCarteSelfieUrl] = useState<string | null>(null);
+  const [cartePhotosEnvoyees, setCartePhotosEnvoyees] = useState(false);
+  const [cartePhotosBusy, setCartePhotosBusy] = useState(false);
+  const [carteBusy, setCarteBusy] = useState(false);
+  const [carteErreur, setCarteErreur] = useState("");
 
   useEffect(() => {
     // Retour depuis Wave après paiement réussi
@@ -269,7 +282,10 @@ export default function Souscription() {
             telephone: data.telephone,
             partenaire: data.partenaire,
             signature: data.signature,
+            pieceIdentiteUrl: data.pieceIdentiteUrl ?? null,
+            selfieUrl: data.selfieUrl ?? null,
           });
+          setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
           setStep("success");
         } catch {
           setErrorMsg("Erreur lors de la récupération du contrat.");
@@ -448,6 +464,40 @@ export default function Souscription() {
       capitalGaranti: result.capitalGaranti ?? 0,
       signature: result.signature ?? null,
     });
+  }
+
+  async function envoyerPhotosCarteAccident() {
+    if (!paidId || !cartePieceUrl || !carteSelfieUrl) return;
+    setCartePhotosBusy(true);
+    setCarteErreur("");
+    try {
+      const res = await fetch(`${BASE}/public/souscriptions/accident/${paidId}/carte-photos`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pieceIdentiteUrl: cartePieceUrl, selfieUrl: carteSelfieUrl }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Erreur lors de l'envoi des photos");
+      setCartePhotosEnvoyees(true);
+    } catch (e) {
+      setCarteErreur(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setCartePhotosBusy(false);
+    }
+  }
+
+  async function telechargerCarteVirtuelle() {
+    if (!paidId || !qrInfo) return;
+    setCarteBusy(true);
+    setCarteErreur("");
+    try {
+      const type = isRelax(qrInfo.produit) ? qrInfo.produit : "accident";
+      await telechargerCarte(type, paidId);
+    } catch (e) {
+      setCarteErreur(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setCarteBusy(false);
+    }
   }
 
   return (
@@ -924,6 +974,75 @@ export default function Souscription() {
                   >
                     ⬇ Télécharger mon contrat
                   </button>
+
+                  {cartePhotosEnvoyees ? (
+                    <>
+                      <button
+                        onClick={telechargerCarteVirtuelle}
+                        disabled={carteBusy}
+                        style={{
+                          width: "100%",
+                          padding: "13px 0",
+                          background: "#fff",
+                          color: "#004b9c",
+                          border: "1.5px solid #004b9c",
+                          borderRadius: 12,
+                          fontWeight: 700,
+                          fontSize: 15,
+                          cursor: carteBusy ? "default" : "pointer",
+                          marginTop: 12,
+                          opacity: carteBusy ? 0.6 : 1,
+                        }}
+                      >
+                        {carteBusy ? "Génération…" : "⬇ Télécharger ma carte de prise en charge"}
+                      </button>
+                      {carteErreur && (
+                        <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ textAlign: "left", marginTop: 22 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
+                        Carte virtuelle de prise en charge
+                      </div>
+                      <div style={{ color: "#5b6b80", fontSize: 12.5, marginBottom: 12 }}>
+                        Ajoutez une photo de votre pièce d'identité et un selfie pour obtenir votre carte.
+                      </div>
+                      <PhotoCapture
+                        label="Photo de votre pièce d'identité (CNI/Permis)"
+                        value={cartePieceUrl}
+                        onChange={setCartePieceUrl}
+                        capture="environment"
+                      />
+                      <PhotoCapture
+                        label="Selfie (photo de votre visage)"
+                        value={carteSelfieUrl}
+                        onChange={setCarteSelfieUrl}
+                        capture="user"
+                      />
+                      <button
+                        onClick={envoyerPhotosCarteAccident}
+                        disabled={cartePhotosBusy || !cartePieceUrl || !carteSelfieUrl}
+                        style={{
+                          width: "100%",
+                          padding: "13px 0",
+                          background: "#fff",
+                          color: "#004b9c",
+                          border: "1.5px solid #004b9c",
+                          borderRadius: 12,
+                          fontWeight: 700,
+                          fontSize: 15,
+                          cursor: "pointer",
+                          opacity: cartePhotosBusy || !cartePieceUrl || !carteSelfieUrl ? 0.5 : 1,
+                        }}
+                      >
+                        {cartePhotosBusy ? "Envoi…" : "Obtenir ma carte de prise en charge"}
+                      </button>
+                      {carteErreur && (
+                        <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                      )}
+                    </div>
+                  )}
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
                 <>
@@ -969,6 +1088,29 @@ export default function Souscription() {
                     votre espace client — vous pourrez y renouveler votre
                     contrat et déclarer un sinistre.
                   </div>
+
+                  <button
+                    onClick={telechargerCarteVirtuelle}
+                    disabled={carteBusy}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#fff",
+                      color: "#004b9c",
+                      border: "1.5px solid #004b9c",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: carteBusy ? "default" : "pointer",
+                      marginTop: 12,
+                      opacity: carteBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {carteBusy ? "Génération…" : "⬇ Télécharger ma carte de prise en charge"}
+                  </button>
+                  {carteErreur && (
+                    <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                  )}
                 </>
               ) : (
                 <>

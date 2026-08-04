@@ -43,3 +43,17 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
     await page.close();
   }
 }
+
+/** Rend un document HTML autonome en image PNG, aux dimensions exactes de la fenêtre (ex : carte virtuelle). */
+export async function htmlToPng(html: string, width: number, height: number): Promise<Buffer> {
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width, height, deviceScaleFactor: 2 });
+    await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+    const png = await page.screenshot({ type: "png", omitBackground: false });
+    return Buffer.from(png);
+  } finally {
+    await page.close();
+  }
+}

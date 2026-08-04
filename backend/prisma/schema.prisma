@@ -240,6 +240,10 @@ model SouscriptionIncendie {
   quartier            String?
   numeroMaison        String?
   pieceIdentiteUrl    String?
+  dateNaissance       DateTime?
+  // data URL PNG (selfie) — capturée avec pieceIdentiteUrl pour établir la
+  // carte virtuelle de prise en charge, à la complétion du formulaire.
+  selfieUrl           String?
   montantPrime        Int            @default(1000)
   capitalGaranti      Int            @default(250000)
   commissionCalculee  Float?
@@ -264,6 +268,10 @@ model SouscriptionAccident {
   nom                  String
   prenom               String
   dateNaissance        DateTime?
+  // Photo pièce d'identité (CNI/Permis) + selfie (data URL PNG/JPEG) — pour
+  // établir la carte virtuelle de prise en charge, après confirmation du paiement.
+  pieceIdentiteUrl     String?
+  selfieUrl            String?
   montantPrime         Int
   capitalGaranti       Int           @default(100000)
   commissionCalculee   Float?

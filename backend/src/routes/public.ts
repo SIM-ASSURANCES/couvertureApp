@@ -227,6 +227,9 @@ publicRouter.get(
       quartier: s.quartier,
       numeroMaison: s.numeroMaison,
       signature: s.signature,
+      dateNaissance: s.dateNaissance,
+      pieceIdentiteUrl: s.pieceIdentiteUrl,
+      selfieUrl: s.selfieUrl,
       montant: s.montantPrime,
       capitalGaranti: s.capitalGaranti,
       statut: s.statut,
@@ -246,8 +249,10 @@ publicRouter.patch(
       where: { lienFormulaireToken: req.params.token },
     });
     if (!s) return res.status(404).json({ error: "Lien invalide" });
-    const { nom, prenom, email, refFacture, commune, quartier, numeroMaison, signature } =
-      req.body ?? {};
+    const {
+      nom, prenom, email, refFacture, commune, quartier, numeroMaison, signature,
+      dateNaissance, pieceIdentiteUrl, selfieUrl,
+    } = req.body ?? {};
 
     const tenteCompletion = !!(refFacture || commune || quartier || numeroMaison);
     if (tenteCompletion) {
@@ -284,11 +289,20 @@ publicRouter.patch(
         quartier: quartier ?? s.quartier,
         numeroMaison: numeroMaison ?? s.numeroMaison,
         signature: signature ?? s.signature,
+        dateNaissance: dateNaissance ? new Date(dateNaissance) : s.dateNaissance,
+        pieceIdentiteUrl: pieceIdentiteUrl ?? s.pieceIdentiteUrl,
+        selfieUrl: selfieUrl ?? s.selfieUrl,
         statut: tenteCompletion ? "complet" : s.statut,
         commissionCalculee,
       },
     });
-    res.json({ id: updated.id, statut: updated.statut, signature: updated.signature });
+    res.json({
+      id: updated.id,
+      statut: updated.statut,
+      signature: updated.signature,
+      pieceIdentiteUrl: updated.pieceIdentiteUrl,
+      selfieUrl: updated.selfieUrl,
+    });
   })
 );
 
@@ -569,7 +583,35 @@ publicRouter.get(
       telephone: s.telephone,
       partenaire: s.partenaire.nomCommerce,
       signature: s.signature,
+      pieceIdentiteUrl: s.pieceIdentiteUrl,
+      selfieUrl: s.selfieUrl,
     });
+  })
+);
+
+/**
+ * Dépôt de la pièce d'identité + du selfie pour établir la carte virtuelle de
+ * prise en charge — uniquement après confirmation du paiement (le formulaire
+ * de collecte n'apparaît côté client qu'à ce moment-là).
+ */
+const cartePhotosSchema = z.object({
+  pieceIdentiteUrl: z.string().min(1),
+  selfieUrl: z.string().min(1),
+});
+
+publicRouter.patch(
+  "/souscriptions/accident/:id/carte-photos",
+  asyncHandler(async (req, res) => {
+    const data = cartePhotosSchema.parse(req.body);
+    const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
+    if (!s || s.waveStatut !== "confirme") {
+      return res.status(404).json({ error: "Souscription non disponible" });
+    }
+    const updated = await prisma.souscriptionAccident.update({
+      where: { id: s.id },
+      data: { pieceIdentiteUrl: data.pieceIdentiteUrl, selfieUrl: data.selfieUrl },
+    });
+    res.json({ id: updated.id, pieceIdentiteUrl: updated.pieceIdentiteUrl, selfieUrl: updated.selfieUrl });
   })
 );
 

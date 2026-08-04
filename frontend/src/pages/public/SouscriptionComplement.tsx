@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { API_BASE } from "../../api";
 import { genererContratIncendie } from "../../contract";
+import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
+import PhotoCapture from "../../components/PhotoCapture";
 
 const BASE = API_BASE;
 
@@ -28,6 +30,9 @@ interface Souscription {
   dateDebut: string;
   dateFin: string;
   signature?: string | null;
+  dateNaissance?: string | null;
+  pieceIdentiteUrl?: string | null;
+  selfieUrl?: string | null;
 }
 
 type Step = "loading" | "form" | "success" | "error";
@@ -70,7 +75,12 @@ export default function SouscriptionComplement() {
   const [commune, setCommune] = useState("");
   const [quartier, setQuartier] = useState("");
   const [numeroMaison, setNumeroMaison] = useState("");
+  const [dateNaissance, setDateNaissance] = useState("");
+  const [pieceIdentiteUrl, setPieceIdentiteUrl] = useState<string | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [carteBusy, setCarteBusy] = useState(false);
+  const [carteErreur, setCarteErreur] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
 
   useEffect(() => {
@@ -94,6 +104,9 @@ export default function SouscriptionComplement() {
         setCommune(d.commune ?? "");
         setQuartier(d.quartier ?? "");
         setNumeroMaison(d.numeroMaison ?? "");
+        setDateNaissance(d.dateNaissance ? String(d.dateNaissance).slice(0, 10) : "");
+        setPieceIdentiteUrl(d.pieceIdentiteUrl ?? null);
+        setSelfieUrl(d.selfieUrl ?? null);
         // Déjà complété → directement la page de contrat
         setStep(d.statut === "complet" && d.refFacture ? "success" : "form");
       })
@@ -125,6 +138,9 @@ export default function SouscriptionComplement() {
           quartier: quartier.trim(),
           numeroMaison: numeroMaison.trim(),
           signature,
+          dateNaissance: dateNaissance || undefined,
+          pieceIdentiteUrl: pieceIdentiteUrl || undefined,
+          selfieUrl: selfieUrl || undefined,
         }),
       });
       const d = await res.json();
@@ -141,6 +157,9 @@ export default function SouscriptionComplement() {
               numeroMaison: numeroMaison.trim(),
               statut: "complet",
               signature,
+              dateNaissance: dateNaissance || prev.dateNaissance,
+              pieceIdentiteUrl: d.pieceIdentiteUrl ?? prev.pieceIdentiteUrl,
+              selfieUrl: d.selfieUrl ?? prev.selfieUrl,
             }
           : prev
       );
@@ -149,6 +168,19 @@ export default function SouscriptionComplement() {
       setErrorMsg(e instanceof Error ? e.message : "Erreur inattendue");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleTelechargerCarte() {
+    if (!data) return;
+    setCarteErreur("");
+    setCarteBusy(true);
+    try {
+      await telechargerCarte("incendie", data.id);
+    } catch (e) {
+      setCarteErreur(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setCarteBusy(false);
     }
   }
 
@@ -286,6 +318,34 @@ export default function SouscriptionComplement() {
 
               <SignaturePad ref={sigRef} label="Signature (facultative)" />
 
+              <div style={{ fontWeight: 800, fontSize: 16, marginTop: 22, marginBottom: 4 }}>
+                Carte virtuelle de prise en charge
+              </div>
+              <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 16 }}>
+                Optionnel : renseignez ces informations pour obtenir votre carte de prise en charge personnalisée.
+              </div>
+
+              <FieldRow label="Date de naissance">
+                <input
+                  value={dateNaissance}
+                  onChange={(e) => setDateNaissance(e.target.value)}
+                  type="date"
+                  style={inputStyle}
+                />
+              </FieldRow>
+              <PhotoCapture
+                label="Photo de votre pièce d'identité (CNI/Permis)"
+                value={pieceIdentiteUrl}
+                onChange={setPieceIdentiteUrl}
+                capture="environment"
+              />
+              <PhotoCapture
+                label="Selfie (photo de votre visage)"
+                value={selfieUrl}
+                onChange={setSelfieUrl}
+                capture="user"
+              />
+
               {errorMsg && (
                 <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>
                   {errorMsg}
@@ -359,6 +419,38 @@ export default function SouscriptionComplement() {
               >
                 Télécharger mon contrat
               </button>
+
+              {data.pieceIdentiteUrl && data.selfieUrl ? (
+                <>
+                  <button
+                    onClick={handleTelechargerCarte}
+                    disabled={carteBusy}
+                    style={{
+                      width: "100%",
+                      padding: "14px",
+                      borderRadius: 12,
+                      border: "1.5px solid #004b9c",
+                      background: "#fff",
+                      color: "#004b9c",
+                      fontWeight: 800,
+                      fontSize: 15,
+                      cursor: carteBusy ? "default" : "pointer",
+                      marginTop: 12,
+                      opacity: carteBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {carteBusy ? "Génération…" : "Télécharger ma carte de prise en charge"}
+                  </button>
+                  {carteErreur && (
+                    <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ color: "#5b6b80", fontSize: 12.5, marginTop: 14 }}>
+                  Ajoutez votre date de naissance, une photo de votre pièce d'identité et un selfie
+                  ci-dessus (formulaire précédent) pour obtenir votre carte de prise en charge.
+                </div>
+              )}
             </div>
           )}
         </div>
