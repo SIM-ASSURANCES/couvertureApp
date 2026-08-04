@@ -48,7 +48,10 @@ const CSS = `
     display:block;color:#fff;font-weight:800;font-size:26px;letter-spacing:6px;
     transform:rotate(-90deg);white-space:nowrap;
   }
-  .contenu{position:absolute;left:56px;top:0;right:0;bottom:0;padding:26px 34px 20px;}
+  .contenu{
+    position:absolute;left:56px;top:0;right:0;bottom:0;padding:24px 40px 22px;
+    display:flex;flex-direction:column;
+  }
   .entete{display:flex;justify-content:space-between;align-items:flex-start;}
   .mci{display:flex;flex-direction:column;gap:4px;}
   .mci img{height:56px;display:block;}
@@ -56,32 +59,32 @@ const CSS = `
   .atlantique{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
   .atlantique img{height:48px;display:block;}
   .atlantique span{font-size:14px;font-weight:800;letter-spacing:0.5px;color:#c07b2c;}
-  .separateur{height:3px;background:#12508c;margin:14px 0 18px;border-radius:2px;}
-  .corps{display:flex;gap:26px;}
+  .separateur{height:3px;background:#12508c;margin:16px 0 0;border-radius:2px;}
+  .corps{display:flex;gap:48px;align-items:center;flex:1;}
   .photo{
-    width:168px;height:210px;flex:none;
-    border-radius:8px;overflow:hidden;
-    border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,0.18);
+    width:280px;height:350px;flex:none;
+    border-radius:12px;overflow:hidden;
+    border:4px solid #fff;box-shadow:0 4px 16px rgba(0,0,0,0.2);
     background:#e3e9f1;
   }
   .photo img{width:100%;height:100%;object-fit:cover;display:block;}
-  .infos{flex:1;display:flex;flex-direction:column;gap:14px;}
+  .infos{flex:1;display:flex;flex-direction:column;justify-content:center;gap:40px;}
   .bloc h3{
-    font-size:16px;color:#c81e2c;text-decoration:underline;text-underline-offset:3px;
-    margin-bottom:8px;display:flex;gap:10px;align-items:baseline;
+    font-size:26px;color:#c81e2c;text-decoration:underline;text-underline-offset:4px;
+    margin-bottom:16px;display:flex;gap:14px;align-items:baseline;
   }
-  .bloc h3 .num{font-size:15px;color:#0f1b2d;text-decoration:none;font-weight:700;}
-  .ligne{display:flex;font-size:15px;margin-bottom:4px;}
-  .ligne .k{width:110px;flex:none;color:#334155;font-weight:600;}
+  .bloc h3 .num{font-size:23px;color:#0f1b2d;text-decoration:none;font-weight:700;}
+  .ligne{display:flex;font-size:22px;margin-bottom:11px;}
+  .ligne .k{width:170px;flex:none;color:#334155;font-weight:600;}
   .ligne .v{color:#0f1b2d;font-weight:700;}
-  .pied{position:absolute;left:56px;right:0;bottom:16px;padding:0 34px;display:flex;justify-content:space-between;align-items:center;}
+  .pied{position:absolute;left:56px;right:0;bottom:18px;padding:0 40px;display:flex;justify-content:space-between;align-items:center;}
   .croix{
-    width:36px;height:36px;background:#c81e2c;border-radius:8px;
+    width:42px;height:42px;background:#c81e2c;border-radius:10px;
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 1px 4px rgba(0,0,0,0.25);
   }
-  .croix::before{content:"+";color:#fff;font-size:26px;font-weight:800;line-height:1;}
-  .sigle{font-size:17px;font-weight:800;color:#0f1b2d;letter-spacing:0.3px;}
+  .croix::before{content:"+";color:#fff;font-size:30px;font-weight:800;line-height:1;}
+  .sigle{font-size:20px;font-weight:800;color:#0f1b2d;letter-spacing:0.3px;}
 `;
 
 export function renderCarteHtml(c: CarteData): string {
