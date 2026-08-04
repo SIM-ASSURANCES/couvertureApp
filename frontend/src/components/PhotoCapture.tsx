@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 interface Props {
   label: string;
@@ -9,21 +9,61 @@ interface Props {
   required?: boolean;
 }
 
+const MAX_DIMENSION = 1280;
+const JPEG_QUALITY = 0.82;
+
+/** Redimensionne/compresse l'image (photo de téléphone non compressée = plusieurs Mo, dépasse vite la taille max des requêtes). */
+async function compresser(file: File): Promise<string> {
+  let bitmap: ImageBitmap | HTMLImageElement;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    bitmap = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  const w = bitmap.width;
+  const h = bitmap.height;
+  const scale = Math.min(1, MAX_DIMENSION / Math.max(w, h));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(w * scale);
+  canvas.height = Math.round(h * scale);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Contexte canvas indisponible");
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  if ("close" in bitmap) bitmap.close();
+  return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+}
+
 /**
  * Capture une photo depuis l'appareil du souscripteur (caméra arrière pour
- * une pièce d'identité, avant pour un selfie) et la convertit en data URL —
- * même approche que SignaturePad : pas de service de stockage de fichiers,
- * la photo voyage et se stocke comme chaîne base64.
+ * une pièce d'identité, avant pour un selfie), la compresse (une photo de
+ * téléphone non compressée peut faire plusieurs Mo — trop lourd une fois
+ * encodée en base64) puis la convertit en data URL — même approche que
+ * SignaturePad : pas de service de stockage de fichiers, la photo voyage et
+ * se stocke comme chaîne base64.
  */
 export default function PhotoCapture({ label, value, onChange, capture = "environment", required }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [traitement, setTraitement] = useState(false);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => onChange(typeof reader.result === "string" ? reader.result : null);
-    reader.readAsDataURL(file);
+    setTraitement(true);
+    try {
+      onChange(await compresser(file));
+    } catch {
+      // Repli : envoie l'image telle quelle si la compression échoue.
+      const reader = new FileReader();
+      reader.onload = () => onChange(typeof reader.result === "string" ? reader.result : null);
+      reader.readAsDataURL(file);
+    } finally {
+      setTraitement(false);
+    }
   }
 
   return (
@@ -56,10 +96,11 @@ export default function PhotoCapture({ label, value, onChange, capture = "enviro
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
+          disabled={traitement}
           className="btn btn-ghost"
-          style={{ width: "100%", justifyContent: "center", padding: "18px 0", border: "1.5px dashed var(--border, #e5e7eb)" }}
+          style={{ width: "100%", justifyContent: "center", padding: "18px 0", border: "1.5px dashed var(--border, #e5e7eb)", opacity: traitement ? 0.6 : 1 }}
         >
-          📷 Prendre une photo
+          {traitement ? "Traitement…" : "📷 Prendre une photo"}
         </button>
       )}
       <input

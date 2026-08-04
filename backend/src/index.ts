@@ -49,7 +49,9 @@ app.use(
 // Conserve le corps brut des requêtes pour vérifier la signature du webhook Wave
 app.use(
   express.json({
-    limit: "5mb",
+    // Deux photos (pièce d'identité + selfie) en base64 dans une même requête
+    // peuvent dépasser 5mb avec une photo de téléphone non compressée.
+    limit: "15mb",
     verify: (req, _res, buf) => {
       (req as { rawBody?: Buffer }).rawBody = buf;
     },
@@ -117,6 +119,9 @@ app.use("/api/cartes", publicLimiter, cartesRouter);
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ZodError) {
     return res.status(400).json({ error: "Données invalides", details: err.errors });
+  }
+  if (err instanceof Error && err.name === "PayloadTooLargeError") {
+    return res.status(413).json({ error: "Fichier(s) trop volumineux. Réessayez avec des photos plus légères." });
   }
   console.error(err);
   res.status(500).json({ error: "Erreur serveur" });
