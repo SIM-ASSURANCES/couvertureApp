@@ -350,34 +350,6 @@ export default function AgentDistributionDashboard() {
                     </div>
                   )}
                 </div>
-
-                <div style={card}>
-                  <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Changer mon mot de passe</div>
-                  <form onSubmit={changerMotDePasse}>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-                        Mot de passe actuel
-                      </label>
-                      <input type="password" value={ancienMotDePasse} onChange={(e) => setAncienMotDePasse(e.target.value)} style={inputStyle} />
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-                        Nouveau mot de passe (6 caractères minimum)
-                      </label>
-                      <input type="password" value={nouveauMotDePasse} onChange={(e) => setNouveauMotDePasse(e.target.value)} style={inputStyle} />
-                    </div>
-                    <button
-                      disabled={changement || !ancienMotDePasse || nouveauMotDePasse.length < 6}
-                      style={{
-                        width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
-                        border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                        opacity: changement || !ancienMotDePasse || nouveauMotDePasse.length < 6 ? 0.5 : 1,
-                      }}
-                    >
-                      {changement ? "Modification…" : "Modifier le mot de passe"}
-                    </button>
-                  </form>
-                </div>
               </>
             )}
 
