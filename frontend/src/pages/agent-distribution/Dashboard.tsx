@@ -210,11 +210,11 @@ export default function AgentDistributionDashboard() {
       <div style={{ background: "linear-gradient(135deg, #004b9c 0%, #16215e 100%)", padding: "24px 20px", color: "#fff" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 560, margin: "0 auto" }}>
           <div>
-            <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 36, display: "block", marginBottom: 10 }} />
+            <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 24, display: "block", marginBottom: 8 }} />
             <div style={{ fontSize: 15, fontWeight: 700 }}>Bonjour {moi?.nom ?? ""}</div>
             {moi && <div style={{ fontSize: 12, opacity: 0.8 }}>Agent de {moi.partenaireNom}</div>}
           </div>
-          <button onClick={deconnexion} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", padding: "8px 14px", borderRadius: 10, fontSize: 13, cursor: "pointer" }}>
+          <button onClick={deconnexion} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", padding: "5px 10px", borderRadius: 8, fontSize: 11, cursor: "pointer" }}>
             Déconnexion
           </button>
         </div>
