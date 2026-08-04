@@ -424,31 +424,32 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
   };
 }
 
+// Sélecteurs scopés sous .contrat-doc : ce CSS est injecté dans le document
+// principal (conteneur hors-écran servant au rendu PDF, voir telechargerPdf)
+// et ne doit surtout pas déborder sur le reste de l'application.
 const CSS = `
-  @page{size:A4 portrait;margin:15mm;}
-  *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
-  body{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;text-align:justify;}
-  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:20px;}
-  .brand{display:flex;align-items:center;gap:16px;}
-  .brand img.logo-sim{height:88px;display:block;}
-  .brand img.logo-rcmec{height:50px;display:block;}
-  .pol{text-align:right;font-size:12px;color:#5b6b80;}
-  .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
-  h1{font-size:18px;margin:0 0 4px;color:#004b9c;}
-  h2{font-size:14px;margin:16px 0 6px;color:#004b9c;border-bottom:1px solid #e3e9f1;padding-bottom:3px;}
-  .sub{color:#5b6b80;font-size:12px;margin-bottom:14px;}
-  table{width:100%;border-collapse:collapse;margin-bottom:10px;page-break-inside:avoid;}
-  td{padding:5px 9px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
-  td.k{background:#f5f8fc;font-weight:600;width:34%;color:#5b6b80;}
-  .cg h3{font-size:13px;margin:14px 0 4px;color:#0f1b2d;}
-  .cg p{margin:4px 0;font-size:11.5px;color:#25324a;}
-  .cg ul{margin:4px 0 8px 18px;padding:0;}
-  .cg li{font-size:11.5px;margin:2px 0;}
-  .cg .cg-tbl td{font-size:11px;}
-  .note{font-size:11px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:10px;margin-top:12px;}
-  .sign{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#5b6b80;page-break-inside:avoid;}
-  .pagebreak{page-break-before:always;}
-  @media print{body{padding:18px;}}
+  .contrat-doc, .contrat-doc *{box-sizing:border-box;font-family:'Segoe UI',Arial,sans-serif;}
+  .contrat-doc{margin:0;color:#0f1b2d;padding:40px;font-size:13px;line-height:1.5;text-align:justify;background:#fff;}
+  .contrat-doc .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #004b9c;padding-bottom:16px;margin-bottom:20px;}
+  .contrat-doc .brand{display:flex;align-items:center;gap:16px;}
+  .contrat-doc .brand img.logo-sim{height:88px;display:block;}
+  .contrat-doc .brand img.logo-rcmec{height:50px;display:block;}
+  .contrat-doc .pol{text-align:right;font-size:12px;color:#5b6b80;}
+  .contrat-doc .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
+  .contrat-doc h1{font-size:18px;margin:0 0 4px;color:#004b9c;}
+  .contrat-doc h2{font-size:14px;margin:16px 0 6px;color:#004b9c;border-bottom:1px solid #e3e9f1;padding-bottom:3px;}
+  .contrat-doc .sub{color:#5b6b80;font-size:12px;margin-bottom:14px;}
+  .contrat-doc table{width:100%;border-collapse:collapse;margin-bottom:10px;page-break-inside:avoid;}
+  .contrat-doc td{padding:5px 9px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
+  .contrat-doc td.k{background:#f5f8fc;font-weight:600;width:34%;color:#5b6b80;}
+  .contrat-doc .cg h3{font-size:13px;margin:14px 0 4px;color:#0f1b2d;}
+  .contrat-doc .cg p{margin:4px 0;font-size:11.5px;color:#25324a;}
+  .contrat-doc .cg ul{margin:4px 0 8px 18px;padding:0;}
+  .contrat-doc .cg li{font-size:11.5px;margin:2px 0;}
+  .contrat-doc .cg .cg-tbl td{font-size:11px;}
+  .contrat-doc .note{font-size:11px;color:#5b6b80;border-top:1px solid #e3e9f1;padding-top:10px;margin-top:12px;}
+  .contrat-doc .sign{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;color:#5b6b80;page-break-inside:avoid;}
+  .contrat-doc .pagebreak{page-break-before:always;}
 `;
 
 // Le logo RCMEC-CI n'est affiché que sur les contrats de la branche IMF
@@ -488,35 +489,74 @@ async function loadCG(file: string): Promise<string> {
   return "<p>Conditions Générales momentanément indisponibles.</p>";
 }
 
-// La fenêtre doit être ouverte SYNCHRONIQUEMENT au clic (sinon bloquée par le
-// navigateur). On l'ouvre d'abord, puis on y écrit après le fetch des CG.
-function openWindow(): Window | null {
-  const w = window.open("", "_blank");
-  if (w) {
-    w.document.write(
-      "<!doctype html><meta charset='utf-8'><title>Contrat…</title>" +
-        "<p style='font-family:Arial;padding:40px;color:#5b6b80'>Génération du contrat…</p>"
-    );
-  }
-  return w;
+const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
+
+/** Attend le chargement (ou l'échec) de toutes les images avant capture, sinon elles peuvent apparaître vides sur le PDF. */
+function attendreImages(container: HTMLElement): Promise<void> {
+  const imgs = Array.from(container.querySelectorAll("img"));
+  return Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete) return resolve();
+          img.addEventListener("load", () => resolve());
+          img.addEventListener("error", () => resolve());
+          setTimeout(resolve, 4000);
+        })
+    )
+  ).then(() => undefined);
 }
 
-function writeDoc(w: Window | null, title: string, inner: string) {
-  if (!w) {
-    alert("Veuillez autoriser les fenêtres popup pour télécharger le contrat.");
-    return;
+/**
+ * Génère un vrai fichier PDF côté client et déclenche son téléchargement —
+ * pas de fenêtre ouverte, pas de dialogue d'impression (contrairement à
+ * l'ancien mécanisme window.open()+window.print()).
+ */
+async function telechargerPdf(numeroPolice: string, inner: string) {
+  const html2pdf = (await import("html2pdf.js")).default;
+
+  // html2pdf.js calcule mal la hauteur (0px) d'un conteneur qu'on positionne
+  // soi-même en position:fixed/absolute hors-écran. Le conteneur capturé
+  // reste donc en position statique (flux normal) — c'est un wrapper ANCÊTRE
+  // fixed+overflow:hidden+0×0 qui le rend invisible et sans impact sur le
+  // scroll de la page, tandis qu'une grande marge négative le sort du cadre.
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "fixed";
+  wrapper.style.top = "0";
+  wrapper.style.left = "0";
+  wrapper.style.width = "0";
+  wrapper.style.height = "0";
+  wrapper.style.overflow = "hidden";
+
+  const container = document.createElement("div");
+  container.className = "contrat-doc";
+  container.style.width = "210mm";
+  container.style.marginLeft = "-99999px";
+  container.innerHTML = `<style>${CSS}</style>${inner}`;
+
+  wrapper.appendChild(container);
+  document.body.appendChild(wrapper);
+  try {
+    await attendreImages(container);
+    // `pagebreak` (mode css/legacy, respecte nos page-break-*) existe bien à
+    // l'exécution mais n'est pas listé dans les types officiels du paquet —
+    // passer par une variable non littérale évite la vérification stricte
+    // des propriétés excédentaires sur ce seul champ.
+    const options = {
+      margin: 0,
+      filename: `contrat-${sanitizeFilename(numeroPolice)}.pdf`,
+      image: { type: "jpeg" as const, quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" as const },
+      pagebreak: { mode: ["css", "legacy"] },
+    };
+    await html2pdf().from(container).set(options).save();
+  } finally {
+    document.body.removeChild(wrapper);
   }
-  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title}</title>
-<style>${CSS}</style></head><body>${inner}
-<script>window.onload=function(){setTimeout(function(){window.print();},300);}</script>
-</body></html>`;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
 }
 
 export async function genererContratIncendie(c: ContratIncendie) {
-  const w = openWindow();
   const adresse = [c.numeroMaison, c.quartier, c.commune].filter(Boolean).join(", ");
   const cp = `
   ${header(c.numeroPolice)}
@@ -551,11 +591,10 @@ export async function genererContratIncendie(c: ContratIncendie) {
 
   const cg = await loadCG("cg-incendie.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECURDOMMAGE</h2><div class="cg">${cg}</div>`;
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
 
 export async function genererContratAccident(c: ContratAccident) {
-  const w = openWindow();
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
@@ -587,11 +626,10 @@ export async function genererContratAccident(c: ContratAccident) {
 
   const cg = await loadCG("cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
 
 export async function genererContratSecurpro(c: ContratSecurpro) {
-  const w = openWindow();
   const cp = `
   ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURPRO</h1>
@@ -643,11 +681,10 @@ export async function genererContratSecurpro(c: ContratSecurpro) {
   </div>
   ${RECLAMATION}
   <div class="cg">${cg}</div>`;
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
 
 export async function genererContratSecurecolte(c: ContratSecurecolte) {
-  const w = openWindow();
   const cp = `
   ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURECOLTE</h1>
@@ -698,11 +735,10 @@ export async function genererContratSecurecolte(c: ContratSecurecolte) {
   </div>
   ${RECLAMATION}`;
 
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
 
 export async function genererContratSecurstock(c: ContratSecurstock) {
-  const w = openWindow();
   const cp = `
   ${header(c.numeroPolice, true)}
   <h1>Conditions Particulières — SECURSTOCK</h1>
@@ -757,11 +793,10 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
   </div>
   ${RECLAMATION}
   <div class="cg">${cg}</div>`;
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
 
 export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
-  const w = openWindow();
   const s = c.sante;
 
   const santeSection = s
@@ -843,5 +878,5 @@ export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
   </div>
   ${RECLAMATION}`;
 
-  writeDoc(w, `Contrat ${c.numeroPolice}`, cp + cgSection);
+  await telechargerPdf(c.numeroPolice, cp + cgSection);
 }
