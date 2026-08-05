@@ -44,7 +44,7 @@ const baseSchema = z.object({
   // Facultatifs : ne concernent pas la branche Relax.
   localisation: z.string().min(1).optional(),
   typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]).optional(),
-  produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto"]),
+  produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux"]),
   email: z.string().min(1, "Email requis").email("Email invalide"),
 });
 
@@ -52,6 +52,24 @@ const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 type ProduitRelax = (typeof PRODUITS_RELAX)[number];
 function isProduitRelax(p: string): p is ProduitRelax {
   return (PRODUITS_RELAX as readonly string[]).includes(p);
+}
+
+// Sous-branche "Assurances Accidents" (refonte Incendie/Accident) : reste
+// rattachée à Branche.INCENDIE_ACCIDENT (permissions super-admin inchangées),
+// mais utilise le modèle générique QrCode/Souscription comme Relax, pas les
+// colonnes qrAccidentToken/produitAccident historiques.
+const PRODUITS_ACCIDENTS_GENERIQUE = ["relaxaccidents_fraismedicaux"] as const;
+type ProduitAccidentsGenerique = (typeof PRODUITS_ACCIDENTS_GENERIQUE)[number];
+function isProduitAccidentsGenerique(p: string): p is ProduitAccidentsGenerique {
+  return (PRODUITS_ACCIDENTS_GENERIQUE as readonly string[]).includes(p);
+}
+function isProduitGenerique(p: string): p is ProduitRelax | ProduitAccidentsGenerique {
+  return isProduitRelax(p) || isProduitAccidentsGenerique(p);
+}
+function prefixeQr(produit: string): string {
+  if (produit === "relaxmoto") return "rmo";
+  if (produit === "relaxauto") return "rau";
+  return "raf"; // relaxaccidents_fraismedicaux
 }
 
 const createSchema = baseSchema;
@@ -74,11 +92,15 @@ async function withCounts(id: string) {
 partenairesRouter.get(
   "/",
   asyncHandler(async (req, res) => {
-    const { q, statut, branche } = req.query as { q?: string; statut?: string; branche?: string };
+    const { q, statut, branche, produit } = req.query as { q?: string; statut?: string; branche?: string; produit?: string };
     const list = await prisma.partenaire.findMany({
       where: {
         statut: statut === "actif" || statut === "inactif" ? statut : undefined,
         branche: branche === "INCENDIE_ACCIDENT" || branche === "RELAX" ? branche : undefined,
+        // Filtre par produit générique précis (ex. "relaxaccidents_fraismedicaux")
+        // — nécessaire quand plusieurs produits génériques partagent la même
+        // branche (Assurances Accidents reste rattachée à INCENDIE_ACCIDENT).
+        qrCodes: produit ? { some: { produit: { code: produit } } } : undefined,
         OR: q
           ? [
               { nomCommerce: { contains: q, mode: "insensitive" } },
@@ -176,7 +198,9 @@ partenairesRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = createSchema.parse(req.body);
     const relax = isProduitRelax(data.produit);
+    const generique = isProduitGenerique(data.produit);
     const isIncendie = data.produit === "incendie";
+    const isAccident = data.produit === "accident";
 
     const motDePasseProvisoire = data.email ? genMotDePasseProvisoire() : null;
 
@@ -189,26 +213,26 @@ partenairesRouter.post(
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
         branche: relax ? "RELAX" : "INCENDIE_ACCIDENT",
-        produitIncendie: !relax && isIncendie,
-        produitAccident: !relax && !isIncendie,
+        produitIncendie: isIncendie,
+        produitAccident: isAccident,
         email: data.email || null,
         passwordHash: motDePasseProvisoire
           ? await bcrypt.hash(motDePasseProvisoire, 10)
           : null,
-        qrIncendie1000Token: !relax && isIncendie ? newQrToken("i1k") : null,
-        qrIncendie2000Token: !relax && isIncendie ? newQrToken("i2k") : null,
-        qrAccidentToken: !relax && !isIncendie ? newQrToken("acc") : null,
+        qrIncendie1000Token: isIncendie ? newQrToken("i1k") : null,
+        qrIncendie2000Token: isIncendie ? newQrToken("i2k") : null,
+        qrAccidentToken: isAccident ? newQrToken("acc") : null,
       },
     });
 
-    if (relax) {
+    if (generique) {
       const produit = await prisma.produit.findUnique({ where: { code: data.produit } });
       if (produit) {
         await prisma.qrCode.create({
           data: {
             partenaireId: created.id,
             produitId: produit.id,
-            token: newQrToken(data.produit === "relaxmoto" ? "rmo" : "rau"),
+            token: newQrToken(prefixeQr(data.produit)),
           },
         });
       }
@@ -245,10 +269,14 @@ partenairesRouter.patch(
     if (!before) return res.status(404).json({ error: "Introuvable" });
     const data = patchSchema.parse(req.body);
     const relax = data.produit != null ? isProduitRelax(data.produit) : before.branche === "RELAX";
+    const generique = data.produit != null ? isProduitGenerique(data.produit) : false;
 
     const isIncendie = data.produit != null
       ? data.produit === "incendie"
       : before.produitIncendie;
+    const isAccident = data.produit != null
+      ? data.produit === "accident"
+      : before.produitAccident;
 
     const updated = await prisma.partenaire.update({
       where: { id: req.params.id },
@@ -259,19 +287,19 @@ partenairesRouter.patch(
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
         branche: data.produit != null ? (relax ? "RELAX" : "INCENDIE_ACCIDENT") : undefined,
-        produitIncendie: data.produit != null ? !relax && isIncendie : undefined,
-        produitAccident: data.produit != null ? !relax && !isIncendie : undefined,
+        produitIncendie: data.produit != null ? isIncendie : undefined,
+        produitAccident: data.produit != null ? isAccident : undefined,
         email: data.email,
         qrIncendie1000Token:
-          data.produit != null && !relax && isIncendie && !before.qrIncendie1000Token
+          data.produit != null && isIncendie && !before.qrIncendie1000Token
             ? newQrToken("i1k")
             : undefined,
         qrIncendie2000Token:
-          data.produit != null && !relax && isIncendie && !before.qrIncendie2000Token
+          data.produit != null && isIncendie && !before.qrIncendie2000Token
             ? newQrToken("i2k")
             : undefined,
         qrAccidentToken:
-          data.produit != null && !relax && !isIncendie && !before.qrAccidentToken
+          data.produit != null && isAccident && !before.qrAccidentToken
             ? newQrToken("acc")
             : undefined,
         passwordHash: data.motDePasse
@@ -280,7 +308,7 @@ partenairesRouter.patch(
       },
     });
 
-    if (data.produit != null && relax) {
+    if (data.produit != null && generique) {
       const produit = await prisma.produit.findUnique({ where: { code: data.produit } });
       if (produit) {
         const existing = await prisma.qrCode.findFirst({
@@ -291,7 +319,7 @@ partenairesRouter.patch(
             data: {
               partenaireId: updated.id,
               produitId: produit.id,
-              token: newQrToken(data.produit === "relaxmoto" ? "rmo" : "rau"),
+              token: newQrToken(prefixeQr(data.produit)),
             },
           });
         }
@@ -420,9 +448,9 @@ partenairesRouter.delete(
 partenairesRouter.get(
   "/:id/qr/:produit",
   asyncHandler(async (req, res) => {
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident" | ProduitRelax;
+    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident" | ProduitRelax | ProduitAccidentsGenerique;
 
-    if (isProduitRelax(produit)) {
+    if (isProduitGenerique(produit)) {
       const prod = await prisma.produit.findUnique({ where: { code: produit } });
       if (!prod) return res.status(404).json({ error: "Produit inconnu" });
       const qr = await prisma.qrCode.findFirst({

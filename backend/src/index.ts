@@ -17,6 +17,7 @@ import { publicRouter } from "./routes/public.js";
 import { commissionsRouter } from "./routes/commissions.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
+import { assurancesAccidentsRouter } from "./routes/assurancesAccidents.js";
 import { imfRouter, agentImfRouter } from "./routes/imf.js";
 import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
@@ -99,6 +100,14 @@ app.use(
   requireAuth("admin"),
   requireBranche("RELAX"),
   relaxRouter
+);
+// Sous-branche "Assurances Accidents" (refonte Incendie/Accident) — rattachée
+// à Branche.INCENDIE_ACCIDENT, même accès que souscriptions/stats ci-dessus.
+app.use(
+  "/api/assurances-accidents",
+  requireAuth("admin"),
+  requireBranche("INCENDIE_ACCIDENT"),
+  assurancesAccidentsRouter
 );
 app.use(
   "/api/imf",

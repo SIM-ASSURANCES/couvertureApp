@@ -5,10 +5,15 @@ import { genererCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
 /**
- * Confirme le paiement d'une échéance d'abonnement (RelaxMoto/RelaxAuto).
- * Si c'est la 1ère échéance, active l'abonnement : police, dates de couverture
- * (1 an), commission de référence. Un paiement de renouvellement (depuis
- * l'espace client) prolonge simplement dateFin d'un an. Idempotent.
+ * Confirme le paiement d'une échéance. Deux cas selon le produit (distingués
+ * par `cycleFacturation`, renseigné uniquement pour un abonnement) :
+ * - Abonnement (RelaxMoto/RelaxAuto) : 1ère échéance → police, couverture 1 an,
+ *   espace client (identifiant/mot de passe envoyés par SMS) ; renouvellement
+ *   → prolonge dateFin d'un an.
+ * - Formule à paiement unique (ex. RelaxAccidents Frais Médicaux) : pas
+ *   d'abonnement ni d'espace client, couverture 3 mois (comme l'ancien
+ *   produit Accident qu'elle remplace).
+ * Idempotent dans tous les cas.
  */
 export async function confirmerEcheance(p: Paiement): Promise<void> {
   if (p.statut === "paye") return;
@@ -33,12 +38,31 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
 
   if (p.numeroEcheance === 1) {
     const s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId } });
-    if (!s || s.statutAbonnement) return; // déjà activé (idempotence)
+    if (!s || s.statutAbonnement || s.waveStatut === "confirme") return; // déjà activé (idempotence)
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: s.produitId, prime: s.montantPrime },
     });
     const dateDebut = new Date();
+
+    if (!s.cycleFacturation) {
+      const dateFin = new Date(dateDebut);
+      dateFin.setMonth(dateFin.getMonth() + 3);
+      await prisma.souscription.update({
+        where: { id: s.id },
+        data: {
+          waveStatut: "confirme",
+          numeroPolice: newNumeroPolice(),
+          dateDebut,
+          dateFin,
+          statut: "complet",
+          commissionCalculee: tarif?.commission ?? null,
+        },
+      });
+      await genererCarte(s.id);
+      return;
+    }
+
     const dateFin = new Date(dateDebut);
     dateFin.setFullYear(dateFin.getFullYear() + 1);
 

@@ -221,6 +221,8 @@ model AgentDistribution {
   incendie            SouscriptionIncendie[]
   accident            SouscriptionAccident[]
   demandes            DemandeCommission[]
+  qrCodesGeneriques   QrCode[]
+  souscriptionsGeneriques Souscription[]
 }
 
 model SouscriptionIncendie {
@@ -389,6 +391,11 @@ model Produit {
   code          String         @unique // "incendie" | "accident" | "relaxmoto" | "relaxauto"
   libelle       String
   branche       Branche
+  // Regroupement purement présentationnel (nav/catalogue) au sein d'une
+  // branche pouvant contenir plusieurs produits hétérogènes — ex.
+  // "ASSURANCES_ACCIDENTS" / "ASSURANCES_DOMMAGES" au sein de INCENDIE_ACCIDENT.
+  // Ne remplace pas `branche`, qui reste la frontière de permissions.
+  sousBranche   String?
   typePaiement  TypePaiement
   couleurQr     String         @default("#004b9c")
   actif         Boolean        @default(true)
@@ -424,6 +431,11 @@ model QrCode {
   id              String     @id @default(uuid())
   partenaireId    String
   partenaire      Partenaire @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si ce QR appartient à un agent de distribution du
+  // partenaire (plutôt qu'au partenaire lui-même) — même principe que
+  // AgentDistribution.qrIncendie1000Token pour le modèle historique.
+  agentDistributionId String?
+  agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: Cascade)
   produitId       String
   produit         Produit    @relation(fields: [produitId], references: [id])
   libelleVariante String? // distingue plusieurs QR pour un même produit (ex incendie 1000/2000)
@@ -431,7 +443,11 @@ model QrCode {
   actif           Boolean    @default(true)
   createdAt       DateTime   @default(now())
 
-  @@unique([partenaireId, produitId, libelleVariante])
+  // NULL et une valeur donnée sont considérés distincts par Postgres pour un
+  // index unique — deux lignes agentDistributionId=NULL (partenaire) et
+  // agentDistributionId=X (agent) peuvent donc coexister sur le même
+  // (partenaireId, produitId, libelleVariante) sans collision.
+  @@unique([partenaireId, agentDistributionId, produitId, libelleVariante])
 }
 
 model Souscription {
@@ -440,6 +456,11 @@ model Souscription {
   produit              Produit            @relation(fields: [produitId], references: [id])
   partenaireId         String
   partenaire           Partenaire         @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si la souscription vient du QR d'un agent de
+  // distribution (plutôt que du QR du partenaire lui-même) — même principe
+  // que SouscriptionIncendie/SouscriptionAccident.agentDistributionId.
+  agentDistributionId  String?
+  agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
   telephone            String
   nom                  String?
   prenom               String?
@@ -462,6 +483,11 @@ model Souscription {
   statut               StatutSouscription @default(en_cours)
   lienFormulaireToken  String?            @unique
   formulaireComplement Json?
+  // Champs propres à un produit donné, hors colonnes fixes ci-dessus (ex.
+  // Profession, Compagnie, Lieu de départ/arrivée, Numéro Ticket...) —
+  // validés par un schéma zod dédié à `produit.code`, sur le modèle de
+  // SouscriptionImf.entrees côté IMF.
+  donneesSpecifiques   Json?
   whatsappEnvoyeAt     DateTime?
   relanceCount         Int                @default(0)
   createdAt            DateTime           @default(now())

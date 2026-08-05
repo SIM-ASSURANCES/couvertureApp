@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import { API_BASE } from "../../api";
-import { genererContratAccident } from "../../contract";
+import { genererContratAccident, genererContratRelaxAccidentsFraisMedicaux } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
@@ -12,8 +12,15 @@ function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
   return p === "relaxmoto" || p === "relaxauto";
 }
 
+// RelaxAccidents Frais Médicaux (nouveau produit, refonte Assurances
+// Accidents/Dommages) reprend exactement le même formulaire qu'Accident
+// (dont il remplace les souscriptions) — mêmes champs, mêmes deux formules.
+function isAccidentLike(p?: string): p is "accident" | "relaxaccidents_fraismedicaux" {
+  return p === "accident" || p === "relaxaccidents_fraismedicaux";
+}
+
 interface QrInfo {
-  produit: "incendie" | "accident" | "relaxmoto" | "relaxauto";
+  produit: "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -29,6 +36,13 @@ interface TarifAccident {
 interface TarifRelax {
   id: number;
   libelleVariante: "annuel" | "mensuel";
+  prime: number;
+  capitalGaranti: number;
+}
+
+interface TarifFormule {
+  id: number;
+  libelleVariante: string | null;
   prime: number;
   capitalGaranti: number;
 }
@@ -164,6 +178,8 @@ export default function Souscription() {
   const [qrInfo, setQrInfo] = useState<QrInfo | null>(null);
   const [tarifsAcc, setTarifsAcc] = useState<TarifAccident[]>([]);
   const [selectedTarifId, setSelectedTarifId] = useState<number | null>(null);
+  const [tarifsFormule, setTarifsFormule] = useState<TarifFormule[]>([]);
+  const [selectedFormule, setSelectedFormule] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -226,11 +242,15 @@ export default function Souscription() {
     // Retour depuis Wave après paiement réussi
     if (paidId) {
       const finaliser = async () => {
-        const relax = isRelax(produitEffectif);
-        const urlVerify = relax
+        // Les produits sur le modèle générique (RelaxMoto/RelaxAuto, et
+        // désormais RelaxAccidents Frais Médicaux) partagent les mêmes routes
+        // "echeances/:id/verify" + ":id/contrat" — seul l'ancien Accident
+        // garde ses routes dédiées.
+        const generique = isRelax(produitEffectif) || produitEffectif === "relaxaccidents_fraismedicaux";
+        const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
-        const urlContrat = relax
+        const urlContrat = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/${paidId}/contrat`
           : `${BASE}/public/souscriptions/accident/${paidId}/contrat`;
 
@@ -267,7 +287,7 @@ export default function Souscription() {
             return;
           }
           setQrInfo({
-            produit: relax ? produitEffectif : "accident",
+            produit: (generique ? produitEffectif : "accident") as QrInfo["produit"],
             partenaire: { id: "", nomCommerce: data.partenaire ?? "" },
           });
           setResult({
@@ -347,6 +367,13 @@ export default function Souscription() {
           );
           setTarifsAcc(accTriee);
           if (accTriee.length > 0) setSelectedTarifId(accTriee[0].id);
+        } else if (qr.produit === "relaxaccidents_fraismedicaux") {
+          const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/relaxaccidents_fraismedicaux`).then((r) => r.json());
+          const formulesTriees = [...formules].sort(
+            (a, b) => (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime)
+          );
+          setTarifsFormule(formulesTriees);
+          if (formulesTriees.length > 0) setSelectedFormule(formulesTriees[0].libelleVariante);
         } else if (isRelax(qr.produit)) {
           const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${qr.produit}`).then((r) => r.json());
           setTarifsRelax(tarifs);
@@ -363,9 +390,10 @@ export default function Souscription() {
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
+    if (qrInfo.produit === "relaxaccidents_fraismedicaux" && !selectedFormule) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue sans.
     const signature =
-      qrInfo.produit === "accident" ? sigRef.current?.toDataURL() ?? undefined : undefined;
+      isAccidentLike(qrInfo.produit) ? sigRef.current?.toDataURL() ?? undefined : undefined;
     setSubmitting(true);
     try {
       if (qrInfo.produit === "accident") {
@@ -391,6 +419,30 @@ export default function Souscription() {
           capitalGaranti: data.capitalGaranti,
         });
         // Redirection immédiate vers Wave (ou stub = success URL directe)
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (qrInfo.produit === "relaxaccidents_fraismedicaux") {
+        const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents_fraismedicaux/initiate-formule`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            telephone,
+            dateNaissance,
+            formule: selectedFormule,
+            signature,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          capitalGaranti: data.capitalGaranti,
+        });
         window.location.href = data.checkoutUrl;
         return;
       } else if (isRelax(qrInfo.produit)) {
@@ -449,7 +501,7 @@ export default function Souscription() {
 
   function telechargerContrat() {
     if (!result || !qrInfo) return;
-    genererContratAccident({
+    const contrat = {
       numeroPolice: result.numeroPolice ?? "",
       partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
       dateDebut: result.dateDebut ?? new Date().toISOString(),
@@ -463,21 +515,45 @@ export default function Souscription() {
       montant: result.montant ?? 0,
       capitalGaranti: result.capitalGaranti ?? 0,
       signature: result.signature ?? null,
-    });
+    };
+    if (qrInfo.produit === "relaxaccidents_fraismedicaux") {
+      genererContratRelaxAccidentsFraisMedicaux(contrat);
+    } else {
+      genererContratAccident(contrat);
+    }
   }
 
+  // RelaxAccidents Frais Médicaux (modèle générique) : les photos sont
+  // déposées via les mêmes routes /documents que RelaxMoto/RelaxAuto — pas
+  // de colonnes pieceIdentiteUrl/selfieUrl dédiées comme sur l'ancien Accident.
   async function envoyerPhotosCarteAccident() {
-    if (!paidId || !cartePieceUrl || !carteSelfieUrl) return;
+    if (!paidId || !cartePieceUrl || !carteSelfieUrl || !qrInfo) return;
     setCartePhotosBusy(true);
     setCarteErreur("");
     try {
-      const res = await fetch(`${BASE}/public/souscriptions/accident/${paidId}/carte-photos`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pieceIdentiteUrl: cartePieceUrl, selfieUrl: carteSelfieUrl }),
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Erreur lors de l'envoi des photos");
+      if (qrInfo.produit === "relaxaccidents_fraismedicaux") {
+        const results = await Promise.all(
+          [
+            { type: "CNI" as const, url: cartePieceUrl },
+            { type: "Selfie" as const, url: carteSelfieUrl },
+          ].map((doc) =>
+            fetch(`${BASE}/public/souscriptions/relaxaccidents_fraismedicaux/${paidId}/documents`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(doc),
+            })
+          )
+        );
+        if (results.some((r) => !r.ok)) throw new Error("Erreur lors de l'envoi des photos");
+      } else {
+        const res = await fetch(`${BASE}/public/souscriptions/accident/${paidId}/carte-photos`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pieceIdentiteUrl: cartePieceUrl, selfieUrl: carteSelfieUrl }),
+        });
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || "Erreur lors de l'envoi des photos");
+      }
       setCartePhotosEnvoyees(true);
     } catch (e) {
       setCarteErreur(e instanceof Error ? e.message : "Erreur");
@@ -491,7 +567,9 @@ export default function Souscription() {
     setCarteBusy(true);
     setCarteErreur("");
     try {
-      const type = isRelax(qrInfo.produit) ? qrInfo.produit : "accident";
+      const type = isRelax(qrInfo.produit) || qrInfo.produit === "relaxaccidents_fraismedicaux"
+        ? qrInfo.produit
+        : "accident";
       await telechargerCarte(type, paidId);
     } catch (e) {
       setCarteErreur(e instanceof Error ? e.message : "Erreur");
@@ -540,8 +618,8 @@ export default function Souscription() {
               <div style={{ fontSize: 18, fontWeight: 800 }}>
                 {qrInfo.produit === "incendie"
                   ? "Assurance Incendie"
-                  : qrInfo.produit === "accident"
-                  ? "Assurance Accidents"
+                  : isAccidentLike(qrInfo.produit)
+                  ? "RelaxAccidents Frais Médicaux"
                   : qrInfo.produit === "relaxmoto"
                   ? "RelaxMoto"
                   : "RelaxAuto"}
@@ -592,7 +670,7 @@ export default function Souscription() {
           {/* ── FORMULAIRE ── */}
           {step === "infos" && (
             <div>
-              {/* Sélecteur de tarif pour l'accident */}
+              {/* Sélecteur de tarif pour l'accident (ancien modèle, en transition) */}
               {qrInfo?.produit === "accident" && (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
@@ -606,6 +684,26 @@ export default function Souscription() {
                         capitalGaranti={t.capitalGaranti}
                         selected={selectedTarifId === t.id}
                         onSelect={() => setSelectedTarifId(t.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sélecteur de formule pour RelaxAccidents Frais Médicaux */}
+              {qrInfo?.produit === "relaxaccidents_fraismedicaux" && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
+                    Choisissez votre formule
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {tarifsFormule.map((t) => (
+                      <TarifCard
+                        key={t.id}
+                        prime={t.prime}
+                        capitalGaranti={t.capitalGaranti}
+                        selected={selectedFormule === t.libelleVariante}
+                        onSelect={() => setSelectedFormule(t.libelleVariante)}
                       />
                     ))}
                   </div>
@@ -673,7 +771,7 @@ export default function Souscription() {
                 Vos informations
               </div>
 
-              {qrInfo?.produit === "accident" ? (
+              {isAccidentLike(qrInfo?.produit) ? (
                 <>
                   <FieldRow label="Prénom *">
                     <input
@@ -795,8 +893,12 @@ export default function Souscription() {
               {(() => {
                 const bloque =
                   submitting ||
-                  (qrInfo?.produit === "accident"
-                    ? !nom || !prenom || !phoneLocalPart(telephone) || !dateNaissance || !selectedTarifId
+                  (isAccidentLike(qrInfo?.produit)
+                    ? !nom ||
+                      !prenom ||
+                      !phoneLocalPart(telephone) ||
+                      !dateNaissance ||
+                      (qrInfo?.produit === "accident" ? !selectedTarifId : !selectedFormule)
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !piecePhotoRx || !selfiePhotoRx
                     : !phoneLocalPart(telephoneInc));
@@ -820,7 +922,7 @@ export default function Souscription() {
                   >
                     {submitting
                       ? "Traitement…"
-                      : qrInfo?.produit === "accident" || (qrInfo && isRelax(qrInfo.produit))
+                      : isAccidentLike(qrInfo?.produit) || (qrInfo && isRelax(qrInfo.produit))
                       ? "Passer au paiement →"
                       : "Confirmer la souscription →"}
                   </button>
@@ -924,7 +1026,7 @@ export default function Souscription() {
                 </svg>
               </div>
 
-              {qrInfo?.produit === "accident" ? (
+              {isAccidentLike(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Félicitations !

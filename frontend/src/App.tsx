@@ -23,6 +23,10 @@ import Administrateurs from "./pages/admin/Administrateurs";
 import Parametres from "./pages/admin/Parametres";
 import AdminProfil from "./pages/admin/Profil";
 
+import AssurancesAccidentsDashboard from "./pages/admin/accidents/Dashboard";
+import AssurancesAccidentsPartenaires from "./pages/admin/accidents/Partenaires";
+import AssurancesAccidentsClients from "./pages/admin/accidents/Clients";
+import AssurancesAccidentsTarifs from "./pages/admin/accidents/Tarifs";
 import RelaxDashboard from "./pages/admin/relax/Dashboard";
 import RelaxPartenaires from "./pages/admin/relax/Partenaires";
 import ClientsRelaxMoto from "./pages/admin/relax/ClientsRelaxMoto";
@@ -85,6 +89,11 @@ export default function App() {
             <Route path="administrateurs" element={<Administrateurs />} />
             <Route path="parametres" element={<Parametres />} />
             <Route path="profil" element={<AdminProfil />} />
+
+            <Route path="assurances-accidents" element={<AssurancesAccidentsDashboard />} />
+            <Route path="assurances-accidents/partenaires" element={<AssurancesAccidentsPartenaires />} />
+            <Route path="assurances-accidents/clients" element={<AssurancesAccidentsClients />} />
+            <Route path="assurances-accidents/tarifs" element={<AssurancesAccidentsTarifs />} />
 
             <Route path="relax" element={<RelaxDashboard />} />
             <Route path="relax/partenaires" element={<RelaxPartenaires />} />

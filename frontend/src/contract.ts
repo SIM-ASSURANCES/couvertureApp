@@ -401,7 +401,14 @@ export function souscriptionImfToContratSecurpro(s: SouscriptionImf): ContratSec
   };
 }
 
-type ContratType = "incendie" | "accident" | "securpro" | "securstock" | "securecolte" | "coupsdurs";
+type ContratType =
+  | "incendie"
+  | "accident"
+  | "relaxaccidents_fraismedicaux"
+  | "securpro"
+  | "securstock"
+  | "securecolte"
+  | "coupsdurs";
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
@@ -439,6 +446,12 @@ export async function genererContratIncendie(c: ContratIncendie) {
 
 export async function genererContratAccident(c: ContratAccident) {
   await telechargerContratPdf("accident", c.numeroPolice, c);
+}
+
+// RelaxAccidents Frais Médicaux reprend exactement le même contrat qu'Accident
+// (dont il remplace les souscriptions) — mêmes champs (voir ContratAccident).
+export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident) {
+  await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c);
 }
 
 export async function genererContratSecurpro(c: ContratSecurpro) {

@@ -12,7 +12,7 @@ export async function commissionTotalePartenaire(
   partenaireId: string,
   dateWhere: DateWhere = {}
 ): Promise<number> {
-  const [incGroups, accGroups, tarifsInc, tarifsAcc] = await Promise.all([
+  const [incGroups, accGroups, tarifsInc, tarifsAcc, generique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
       where: { partenaireId, agentDistributionId: null, ...dateWhere },
@@ -25,6 +25,7 @@ export async function commissionTotalePartenaire(
     }),
     prisma.tarifIncendie.findMany(),
     prisma.tarifAccident.findMany(),
+    commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId: null, ...dateWhere }),
   ]);
 
   const sum = (
@@ -38,7 +39,36 @@ export async function commissionTotalePartenaire(
     );
   };
 
-  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc);
+  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc) + generique;
+}
+
+/**
+ * Commission générée sur le modèle générique `Souscription` (RelaxMoto/
+ * RelaxAuto, et désormais les produits issus de la refonte Assurances
+ * Accidents/Dommages comme RelaxAccidents Frais Médicaux) — la commission
+ * est jointe par (produitId, prime), pas seulement par prime, puisque
+ * plusieurs produits différents peuvent partager un même montant.
+ */
+async function commissionSouscriptionsGeneriques(where: {
+  partenaireId?: string;
+  agentDistributionId?: string | null;
+  createdAt?: { gte?: Date; lte?: Date };
+}): Promise<number> {
+  const groups = await prisma.souscription.groupBy({
+    by: ["produitId", "montantPrime"],
+    where: { ...where, waveStatut: "confirme" },
+    _count: { _all: true },
+  });
+  if (groups.length === 0) return 0;
+
+  const tarifs = await prisma.tarifProduit.findMany({
+    where: { produitId: { in: [...new Set(groups.map((g) => g.produitId))] } },
+  });
+  const map = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  return groups.reduce(
+    (s, g) => s + (map.get(`${g.produitId}:${g.montantPrime}`)?.commission ?? 0) * g._count._all,
+    0
+  );
 }
 
 /**
@@ -49,7 +79,7 @@ export async function commissionTotalePartenaire(
  * partenaire (commissionTotalePartenaire).
  */
 export async function commissionTotaleAgent(agentDistributionId: string): Promise<number> {
-  const [incGroups, accGroups, tarifsInc, tarifsAcc] = await Promise.all([
+  const [incGroups, accGroups, tarifsInc, tarifsAcc, generique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
       where: { agentDistributionId },
@@ -62,6 +92,7 @@ export async function commissionTotaleAgent(agentDistributionId: string): Promis
     }),
     prisma.tarifIncendie.findMany(),
     prisma.tarifAccident.findMany(),
+    commissionSouscriptionsGeneriques({ agentDistributionId }),
   ]);
 
   const sum = (
@@ -75,7 +106,7 @@ export async function commissionTotaleAgent(agentDistributionId: string): Promis
     );
   };
 
-  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc);
+  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc) + generique;
 }
 
 /**

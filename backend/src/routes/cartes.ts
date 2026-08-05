@@ -8,7 +8,7 @@ import { renderCarteHtml, CARTE_WIDTH, CARTE_HEIGHT, type CarteData } from "../s
 export const cartesRouter = Router();
 
 const bodySchema = z.object({
-  type: z.enum(["incendie", "accident", "relaxmoto", "relaxauto"]),
+  type: z.enum(["incendie", "accident", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux"]),
   souscriptionId: z.string().min(10).max(60),
 });
 

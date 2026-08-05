@@ -64,6 +64,26 @@ const accidentSchema = z.object({
   }),
 });
 
+// RelaxAccidents Frais Médicaux — mêmes champs qu'Accident (dont il reprend
+// les données lors de la refonte Assurances Accidents/Dommages), le contrat
+// affiche déjà "RELAXACCIDENTS" : on réutilise renderContratAccident tel quel.
+const relaxaccidentsFraisMedicauxSchema = z.object({
+  type: z.literal("relaxaccidents_fraismedicaux"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    dateNaissance: texteOpt(40),
+    montant,
+    capitalGaranti: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
 const securproSchema = z.object({
   type: z.literal("securpro"),
   data: z.object({
@@ -209,6 +229,7 @@ const coupsdursSchema = z.object({
 const bodySchema = z.discriminatedUnion("type", [
   incendieSchema,
   accidentSchema,
+  relaxaccidentsFraisMedicauxSchema,
   securproSchema,
   securstockSchema,
   securecolteSchema,
@@ -227,6 +248,9 @@ contratsRouter.post(
         html = await renderContratIncendie(body.data);
         break;
       case "accident":
+        html = await renderContratAccident(body.data);
+        break;
+      case "relaxaccidents_fraismedicaux":
         html = await renderContratAccident(body.data);
         break;
       case "securpro":

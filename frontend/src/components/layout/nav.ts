@@ -22,6 +22,7 @@ import {
   Calculator,
   LifeBuoy,
   Banknote,
+  HeartPulse,
   type LucideIcon,
 } from "lucide-react";
 
@@ -75,6 +76,33 @@ export const adminNav: AdminNavEntry[] = [
         section: "Pilotage",
         items: [
           { to: "/admin/performance", label: "Performance & Commissions", icon: TrendingUp },
+        ],
+      },
+    ],
+  },
+  {
+    id: "assurances-accidents",
+    label: "Assurances Accidents",
+    icon: HeartPulse,
+    homeTo: "/admin/assurances-accidents",
+    groups: [
+      {
+        section: "Gestion",
+        items: [
+          { to: "/admin/assurances-accidents", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/admin/assurances-accidents/partenaires", label: "Partenaires", icon: Store },
+        ],
+      },
+      {
+        section: "Souscriptions",
+        items: [
+          { to: "/admin/assurances-accidents/clients", label: "Clients & Contrats", icon: FileText },
+        ],
+      },
+      {
+        section: "Pilotage",
+        items: [
+          { to: "/admin/assurances-accidents/tarifs", label: "Tarifs", icon: Percent },
         ],
       },
     ],
