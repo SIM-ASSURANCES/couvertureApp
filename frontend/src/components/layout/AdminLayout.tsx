@@ -6,6 +6,9 @@ import { useAuth, type BrancheAcces } from "../../auth";
 /** Correspondance entre l'id de navigation (nav.ts) et la valeur de l'enum Branche (backend). */
 const NAV_ID_TO_BRANCHE: Record<string, BrancheAcces> = {
   "incendie-accident": "INCENDIE_ACCIDENT",
+  // Sous-branche "Assurances Accidents" (refonte) : reste rattachée à
+  // Branche.INCENDIE_ACCIDENT, mêmes permissions que l'Incendie/Accident historique.
+  "assurances-accidents": "INCENDIE_ACCIDENT",
   relax: "RELAX",
   imf: "IMF",
 };
