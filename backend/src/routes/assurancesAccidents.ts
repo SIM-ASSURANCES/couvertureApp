@@ -173,9 +173,17 @@ assurancesAccidentsRouter.get(
   })
 );
 
-const tarifPatchSchema = z.object({
+const tarifChampsSchema = {
+  libelleVariante: z.string().min(1).max(60).nullish(),
+  prime: z.number().finite().min(0),
+  primeHT: z.number().finite().min(0).nullish(),
+  fg: z.number().finite().min(0).nullish(),
+  taxes: z.number().finite().min(0).nullish(),
+  capitalGaranti: z.number().finite().min(0),
   commission: z.number().finite().min(0),
-});
+};
+
+const tarifPatchSchema = z.object(tarifChampsSchema).partial();
 
 assurancesAccidentsRouter.patch(
   "/tarifs/:id",
@@ -190,7 +198,7 @@ assurancesAccidentsRouter.patch(
     }
     const updated = await prisma.tarifProduit.update({
       where: { id: tarif.id },
-      data: { commission: data.commission },
+      data,
     });
     await logAction({
       adminId: req.user!.sub,
@@ -200,5 +208,32 @@ assurancesAccidentsRouter.patch(
       valeurApres: updated,
     });
     res.json(updated);
+  })
+);
+
+const tarifCreateSchema = z.object(tarifChampsSchema);
+
+/** Ajoute une nouvelle formule (ligne TarifProduit) à un produit de la sous-branche. */
+assurancesAccidentsRouter.post(
+  "/produits/:code/tarifs",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const produitId = await resolveProduitId(req.params.code);
+    if (!produitId) return res.status(404).json({ error: "Produit inconnu" });
+    const data = tarifCreateSchema.parse(req.body);
+    const existante = await prisma.tarifProduit.findFirst({
+      where: { produitId, libelleVariante: data.libelleVariante ?? null },
+    });
+    if (existante) return res.status(409).json({ error: "Une formule avec ce libellé existe déjà pour ce produit." });
+    const created = await prisma.tarifProduit.create({
+      data: { produitId, ...data },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "tarif_produit",
+      objetId: String(created.id),
+      valeurApres: created,
+    });
+    res.status(201).json(created);
   })
 );
