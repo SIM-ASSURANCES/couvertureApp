@@ -127,6 +127,29 @@ function PhoneInput({
   );
 }
 
+function SexeField({
+  value,
+  onChange,
+}: {
+  value: "masculin" | "feminin" | "";
+  onChange: (v: "masculin" | "feminin") => void;
+}) {
+  return (
+    <FieldRow label="Sexe *">
+      <div style={{ display: "flex", gap: 16 }}>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+          <input type="radio" checked={value === "masculin"} onChange={() => onChange("masculin")} />
+          Masculin
+        </label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+          <input type="radio" checked={value === "feminin"} onChange={() => onChange("feminin")} />
+          Féminin
+        </label>
+      </div>
+    </FieldRow>
+  );
+}
+
 function TarifCard({
   prime,
   capitalGaranti,
@@ -214,6 +237,9 @@ export default function Souscription() {
   const [prenom, setPrenom] = useState("");
   const [telephone, setTelephone] = useState(PHONE_PREFIX);
   const [dateNaissance, setDateNaissance] = useState("");
+  // Affiché sur la carte de prise en charge (refonte Novelia) — partagé par
+  // les branches accident-like, RelaxVoyage et RelaxMoto/RelaxAuto.
+  const [sexe, setSexe] = useState<"masculin" | "feminin" | "">("");
   const sigRef = useRef<SignaturePadHandle>(null);
   const [retrySignature, setRetrySignature] = useState<string | null>(null);
 
@@ -494,6 +520,7 @@ export default function Souscription() {
             prenom,
             telephone,
             dateNaissance,
+            sexe: sexe || undefined,
             formule: selectedFormule,
             signature,
             compagnie,
@@ -549,6 +576,7 @@ export default function Souscription() {
             prenom,
             telephone,
             dateNaissance,
+            sexe: sexe || undefined,
             formule: selectedFormule,
             signature,
           }),
@@ -568,7 +596,14 @@ export default function Souscription() {
         const res = await fetch(`${BASE}/public/souscriptions/${produit}/initiate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qrToken: token, nom: nomRx, prenom: prenomRx, telephone: telephoneRx, cycle }),
+          body: JSON.stringify({
+            qrToken: token,
+            nom: nomRx,
+            prenom: prenomRx,
+            telephone: telephoneRx,
+            sexe: sexe || undefined,
+            cycle,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
@@ -982,6 +1017,7 @@ export default function Souscription() {
                   <FieldRow label="Date de naissance *">
                     <input value={dateNaissance} onChange={(e) => setDateNaissance(e.target.value)} type="date" style={inputStyle} />
                   </FieldRow>
+                  <SexeField value={sexe} onChange={setSexe} />
                   <FieldRow label="Compagnie de transport *">
                     <input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} placeholder="Ex. UTB" style={inputStyle} />
                   </FieldRow>
@@ -1031,6 +1067,7 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
+                  <SexeField value={sexe} onChange={setSexe} />
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
@@ -1054,6 +1091,7 @@ export default function Souscription() {
                   <FieldRow label="Téléphone * (pour recevoir vos accès par SMS)">
                     <PhoneInput value={telephoneRx} onChange={setTelephoneRx} />
                   </FieldRow>
+                  <SexeField value={sexe} onChange={setSexe} />
                   <FieldRow label="Pièce d'identité *">
                     <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
                       <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
@@ -1129,6 +1167,7 @@ export default function Souscription() {
                       !prenom ||
                       !phoneLocalPart(telephone) ||
                       !dateNaissance ||
+                      !sexe ||
                       !selectedFormule ||
                       !compagnie ||
                       !lieuDepart ||
@@ -1141,9 +1180,9 @@ export default function Souscription() {
                       !prenom ||
                       !phoneLocalPart(telephone) ||
                       !dateNaissance ||
-                      (qrInfo?.produit === "accident" ? !selectedTarifId : !selectedFormule)
+                      (qrInfo?.produit === "accident" ? !selectedTarifId : !selectedFormule || !sexe)
                     : qrInfo && isRelax(qrInfo.produit)
-                    ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !piecePhotoRx || !selfiePhotoRx
+                    ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : !phoneLocalPart(telephoneInc));
                 return (
                   <button

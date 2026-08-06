@@ -14,6 +14,22 @@ const bodySchema = z.object({
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
+const SEXE_LABELS: Record<string, string> = { masculin: "Masculin", feminin: "Féminin" };
+
+/**
+ * Libellé + montant de la garantie affichée dans la bannière de la carte
+ * (refonte Novelia) — adapté par produit : "FMP" (Frais Médicaux et
+ * Pharmaceutiques) pour RelaxAccidents Frais Médicaux, "DÉCÈS/IPT" pour
+ * RelaxVoyage (capitalGaranti y porte ce montant, voir seed.ts), "CAPITAL
+ * GARANTI" en générique pour les autres produits (RelaxMoto/Auto, Incendie,
+ * ancien Accident).
+ */
+function garantieAffichee(produitCode: string, capitalGaranti: number): { label: string; montant: number } {
+  if (produitCode === "relaxaccidents_fraismedicaux") return { label: "FMP", montant: capitalGaranti };
+  if (produitCode === "relaxvoyage") return { label: "DÉCÈS/IPT", montant: capitalGaranti };
+  return { label: "CAPITAL GARANTI", montant: capitalGaranti };
+}
+
 /** Génère la carte virtuelle de prise en charge (PNG) — texte réel + photo du souscripteur. */
 cartesRouter.post(
   "/png",
@@ -29,11 +45,16 @@ cartesRouter.post(
         return res.status(400).json({ error: "Complétez d'abord vos photos (pièce d'identité + selfie)." });
       }
       const debut = s.createdAt;
+      const { label, montant } = garantieAffichee("incendie", s.capitalGaranti);
       carte = {
         matricule: `POL-INC-${debut.getFullYear()}-${s.id.slice(0, 8).toUpperCase()}`,
         nom: s.nom ?? "",
         prenom: s.prenom ?? "",
         dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateDebut: debut.toISOString(),
+        sexeLabel: null,
+        garantieLabel: label,
+        garantieMontant: montant,
         photoDataUrl: s.selfieUrl,
       };
     } else if (body.type === "accident") {
@@ -42,17 +63,22 @@ cartesRouter.post(
       if (!s.pieceIdentiteUrl || !s.selfieUrl) {
         return res.status(400).json({ error: "Complétez d'abord vos photos (pièce d'identité + selfie)." });
       }
+      const { label, montant } = garantieAffichee("accident", s.capitalGaranti);
       carte = {
         matricule: s.numeroPolice ?? "",
         nom: s.nom,
         prenom: s.prenom,
         dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateDebut: s.dateDebut ? s.dateDebut.toISOString() : null,
+        sexeLabel: null,
+        garantieLabel: label,
+        garantieMontant: montant,
         photoDataUrl: s.selfieUrl,
       };
     } else {
       const s = await prisma.souscription.findUnique({
         where: { id: body.souscriptionId },
-        include: { documents: true },
+        include: { documents: true, produit: { select: { code: true } } },
       });
       if (!s || s.waveStatut !== "confirme") return res.status(404).json({ error: "Souscription non disponible" });
       const selfie = s.documents
@@ -61,11 +87,16 @@ cartesRouter.post(
       if (!selfie) {
         return res.status(400).json({ error: "Photo selfie introuvable pour cette souscription." });
       }
+      const { label, montant } = garantieAffichee(s.produit.code, s.capitalGaranti);
       carte = {
         matricule: s.numeroPolice ?? "",
         nom: s.nom ?? "",
         prenom: s.prenom ?? "",
         dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateDebut: s.dateDebut ? s.dateDebut.toISOString() : null,
+        sexeLabel: s.sexe ? SEXE_LABELS[s.sexe] ?? null : null,
+        garantieLabel: label,
+        garantieMontant: montant,
         photoDataUrl: selfie.url,
       };
     }

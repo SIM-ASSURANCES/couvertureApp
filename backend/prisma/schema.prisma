@@ -478,6 +478,10 @@ model Souscription {
   prenom               String?
   email                String?
   dateNaissance        DateTime?
+  // Affiché sur la carte de prise en charge (refonte Novelia) — collecté
+  // uniquement pour les produits qui génèrent cette carte (Frais Médicaux,
+  // RelaxMoto/Auto, RelaxVoyage), pas pour Incendie.
+  sexe                 Sexe?
   commune              String?
   quartier             String?
   numeroMaison         String?
@@ -742,6 +746,11 @@ enum StatutSouscriptionImf {
   en_cours
   active
   annulee
+}
+
+enum Sexe {
+  masculin
+  feminin
 }
 
 enum TypePieceIdentite {

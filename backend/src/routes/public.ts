@@ -683,6 +683,8 @@ const relaxSchema = z.object({
   prenom: z.string().min(1),
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date().optional(),
+  // Affiché sur la carte de prise en charge (refonte Novelia).
+  sexe: z.enum(["masculin", "feminin"]).optional(),
   cycle: z.enum(["mensuel", "annuel"]),
   // Photo CNI/Permis + selfie (data URL), capturées depuis le téléphone du
   // souscripteur — voir documentSchema pour le dépôt effectif après création
@@ -737,6 +739,7 @@ publicRouter.post(
         prenom: data.prenom,
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
+        sexe: data.sexe ?? null,
         montantPrime: tarif.prime,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
@@ -809,6 +812,8 @@ const formuleSchema = z.object({
   prenom: z.string().min(1),
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date().optional(),
+  // Affiché sur la carte de prise en charge (refonte Novelia).
+  sexe: z.enum(["masculin", "feminin"]).optional(),
   formule: z.string().min(1),
   signature: z.string().min(1).optional(),
   // RelaxVoyage uniquement — voir isProduitFormule ci-dessus.
@@ -881,6 +886,7 @@ publicRouter.post(
         prenom: data.prenom,
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
+        sexe: data.sexe ?? null,
         montantPrime: tarif.prime,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
