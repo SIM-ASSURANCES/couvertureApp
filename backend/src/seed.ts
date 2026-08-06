@@ -359,9 +359,28 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     create: { code: "incendie", libelle: "Incendie", branche: "INCENDIE_ACCIDENT", sousBranche: "ASSURANCES_DOMMAGES", typePaiement: "FACTURE" },
   });
 
+  // RelaxAccidents générale (police collective, devis calculé dynamiquement,
+  // voir services/relaxAccidentsGenerale.ts) — activée au sélecteur.
+  // `update: { actif: true, ... }` (et non `update: {}`) car ce produit avait
+  // été seedé comme placeholder `actif: false` en Phase 2 : sans ça, les
+  // bases déjà seedées ne seraient jamais corrigées au redémarrage.
+  await prisma.produit.upsert({
+    where: { code: "relaxaccidents" },
+    update: { actif: true, libelle: "RelaxAccidents" },
+    create: {
+      code: "relaxaccidents",
+      libelle: "RelaxAccidents",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_ACCIDENTS",
+      typePaiement: "WAVE",
+      couleurQr: "#004b9c",
+      ordre: 3,
+      actif: true,
+    },
+  });
+
   // Produits "Bientôt disponible" (pas de mécanisme de prime fourni).
   const placeholders = [
-    { code: "relaxaccidents", libelle: "RelaxAccidents", sousBranche: "ASSURANCES_ACCIDENTS" },
     { code: "securhome_dommages", libelle: "SecurHome", sousBranche: "ASSURANCES_DOMMAGES" },
     { code: "securpro_dommages", libelle: "SecurPro", sousBranche: "ASSURANCES_DOMMAGES" },
   ];

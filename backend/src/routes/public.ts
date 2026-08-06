@@ -17,6 +17,7 @@ import { confirmerAccident, verifierPaiementAccident } from "../services/acciden
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { genererEcheancier } from "../services/echeancier.js";
+import { calculerRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -31,10 +32,17 @@ function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
 }
 
+// Produits à devis calculé dynamiquement (pas de TarifProduit) — RelaxAccidents
+// générale (police collective), voir POST /souscriptions/relaxaccidents/initiate.
+const PRODUITS_CALCUL_DYNAMIQUE = ["relaxaccidents"] as const;
+function isProduitCalculDynamique(p: string): p is (typeof PRODUITS_CALCUL_DYNAMIQUE)[number] {
+  return (PRODUITS_CALCUL_DYNAMIQUE as readonly string[]).includes(p);
+}
+
 // Routes génériques partagées (dépôt de documents, infos, contrat) — accessibles
-// aussi bien aux produits récurrents (Relax) qu'aux produits à formule unique.
+// aux produits récurrents (Relax), à formule unique, et à devis calculé.
 function isProduitGenerique(p: string): boolean {
-  return isProduitRelax(p) || isProduitFormule(p);
+  return isProduitRelax(p) || isProduitFormule(p) || isProduitCalculDynamique(p);
 }
 
 type QrChamp = "qrIncendie1000Token" | "qrIncendie2000Token" | "qrAccidentToken";
@@ -691,6 +699,146 @@ const relaxSchema = z.object({
   // de la souscription (id requis).
 });
 
+/**
+ * RelaxAccidents générale — police collective à devis calculé dynamiquement
+ * (classe de risque, effectif, montants choisis par garantie), pas de
+ * TarifProduit. Le montant payé est toujours recalculé ici, jamais confiance
+ * dans les totaux envoyés par le client (voir services/relaxAccidentsGenerale.ts).
+ * Enregistrée AVANT la route générique `/souscriptions/:produit/initiate`
+ * ci-dessous : sinon celle-ci (destinée à RelaxMoto/RelaxAuto) intercepterait
+ * en premier tout POST vers ce chemin littéral, Express matchant les routes
+ * dans l'ordre d'enregistrement.
+ */
+const relaxAccidentsGeneraleSchema = z.object({
+  qrToken: z.string(),
+  raisonSociale: z.string().min(1).max(200),
+  profession: z.string().min(1).max(200),
+  telephone: z.string().min(6),
+  signature: z.string().min(1).optional(),
+  classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  typeCouverture: z.enum(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"]),
+  effectif: z.number().int().min(1),
+  montantIJ: z.number().finite(),
+  montantFraisMedicaux: z.number().finite(),
+  montantIPT: z.number().finite(),
+  montantDecesAccidentel: z.number().finite(),
+});
+
+publicRouter.post(
+  "/souscriptions/relaxaccidents/initiate",
+  asyncHandler(async (req, res) => {
+    const data = relaxAccidentsGeneraleSchema.parse(req.body);
+
+    const prod = await prisma.produit.findUnique({ where: { code: "relaxaccidents" } });
+    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
+
+    const qr = await prisma.qrCode.findFirst({
+      where: {
+        token: data.qrToken,
+        actif: true,
+        partenaire: { statut: "actif" },
+        OR: [
+          { produitId: prod.id },
+          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
+        ],
+      },
+      include: { partenaire: true },
+    });
+    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    if (qr.agentDistributionId) {
+      const agent = await prisma.agentDistribution.findUnique({ where: { id: qr.agentDistributionId } });
+      if (!agent || agent.statut !== "actif") {
+        return res.status(404).json({ error: "QR invalide (agent inactif)" });
+      }
+    }
+
+    let resultat;
+    try {
+      resultat = calculerRelaxAccidentsGenerale({
+        classe: data.classe,
+        typeCouverture: data.typeCouverture,
+        effectif: data.effectif,
+        montantIJ: data.montantIJ,
+        montantFraisMedicaux: data.montantFraisMedicaux,
+        montantIPT: data.montantIPT,
+        montantDecesAccidentel: data.montantDecesAccidentel,
+      });
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
+    }
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: qr.partenaireId,
+        agentDistributionId: qr.agentDistributionId,
+        nom: data.raisonSociale,
+        telephone: data.telephone,
+        montantPrime: resultat.primeTTC,
+        capitalGaranti: data.montantDecesAccidentel,
+        waveStatut: "en_attente",
+        nombreEcheances: 1,
+        donneesSpecifiques: {
+          signature: data.signature ?? null,
+          raisonSociale: data.raisonSociale,
+          profession: data.profession,
+          classe: data.classe,
+          typeCouverture: data.typeCouverture,
+          effectif: data.effectif,
+          montantIJ: data.montantIJ,
+          montantFraisMedicaux: data.montantFraisMedicaux,
+          montantIPT: data.montantIPT,
+          montantDecesAccidentel: data.montantDecesAccidentel,
+        },
+        resultat: JSON.parse(JSON.stringify(resultat)),
+        paiements: {
+          create: { numeroEcheance: 1, montant: resultat.primeTTC, dateEcheance: new Date() },
+        },
+      },
+    });
+
+    const echeance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/relaxaccidents/${data.qrToken}?paid=${echeance.id}`;
+    const errorUrl = `${appUrl}/s/relaxaccidents/${data.qrToken}?paiement=echec`;
+
+    let checkoutUrl: string;
+    let transactionId: string;
+
+    if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      qr.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA, ${data.effectif} pers.) via votre QR code.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: echeance.id,
+      montant: resultat.primeTTC,
+      resultat,
+      checkoutUrl,
+      transactionId,
+    });
+  })
+);
+
 publicRouter.post(
   "/souscriptions/:produit/initiate",
   asyncHandler(async (req, res) => {
@@ -1015,15 +1163,22 @@ publicRouter.get(
   })
 );
 
-/** RelaxMoto/RelaxAuto : contrat après paiement confirmé */
+/**
+ * RelaxMoto/RelaxAuto (et désormais RelaxAccidents Frais Médicaux/RelaxVoyage/
+ * RelaxAccidents générale) : contrat après paiement confirmé. `:id` est
+ * l'identifiant d'ÉCHÉANCE (paiement), pas de souscription — c'est la valeur
+ * du paramètre `paid` transmis par Wave/le stub dans successUrl, la même
+ * utilisée par la route /echeances/:echeanceId/verify juste au-dessus.
+ */
 publicRouter.get(
   "/souscriptions/:produit/:id/contrat",
   asyncHandler(async (req, res) => {
     if (!isProduitGenerique(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
-    const s = await prisma.souscription.findUnique({
+    const echeance = await prisma.paiement.findUnique({
       where: { id: req.params.id },
-      include: { partenaire: { select: { nomCommerce: true } } },
+      include: { souscription: { include: { partenaire: { select: { nomCommerce: true } } } } },
     });
+    const s = echeance?.souscription;
     if (!s || s.waveStatut !== "confirme") {
       return res.status(404).json({ error: "Contrat non disponible" });
     }
@@ -1036,6 +1191,11 @@ publicRouter.get(
       numeroTicket?: string;
       dateDepart?: string;
       numeroPersonneContact?: string;
+      raisonSociale?: string;
+      profession?: string;
+      classe?: number;
+      typeCouverture?: string;
+      effectif?: number;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -1067,6 +1227,12 @@ publicRouter.get(
       numeroPersonneContact: donneesSpecifiques?.numeroPersonneContact ?? null,
       fraisSante,
       bagages,
+      raisonSociale: donneesSpecifiques?.raisonSociale ?? null,
+      profession: donneesSpecifiques?.profession ?? null,
+      classe: donneesSpecifiques?.classe ?? null,
+      typeCouverture: donneesSpecifiques?.typeCouverture ?? null,
+      effectif: donneesSpecifiques?.effectif ?? null,
+      resultat: s.resultat ?? null,
     });
   })
 );

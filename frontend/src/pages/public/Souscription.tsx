@@ -2,10 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 
 import { API_BASE } from "../../api";
-import { genererContratAccident, genererContratRelaxAccidentsFraisMedicaux, genererContratRelaxVoyage } from "../../contract";
+import {
+  genererContratAccident,
+  genererContratRelaxAccidentsFraisMedicaux,
+  genererContratRelaxVoyage,
+  genererContratRelaxAccidentsGenerale,
+} from "../../contract";
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
+import {
+  calculerRelaxAccidentsGenerale,
+  MONTANTS_IJ,
+  MONTANTS_FRAIS_MEDICAUX,
+  MONTANT_IPT_MAX,
+  MONTANT_DECES_ACCIDENTEL_MAX,
+  CLASSE_LABELS,
+  TYPE_COUVERTURE_LABELS,
+  type Classe,
+  type TypeCouverture,
+  type ResultatRelaxAccidentsGenerale,
+} from "../../relaxAccidentsGenerale";
 const BASE = API_BASE;
 
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
@@ -23,8 +40,21 @@ function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
 
+// RelaxAccidents générale (police collective, devis calculé dynamiquement) —
+// distincte de RelaxAccidents Frais Médicaux (formule fixe au catalogue).
+function isRelaxAccidentsGenerale(p?: string): p is "relaxaccidents" {
+  return p === "relaxaccidents";
+}
+
 interface QrInfo {
-  produit: "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
+  produit:
+    | "incendie"
+    | "accident"
+    | "relaxmoto"
+    | "relaxauto"
+    | "relaxaccidents_fraismedicaux"
+    | "relaxvoyage"
+    | "relaxaccidents";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -210,6 +240,223 @@ function TarifCard({
   );
 }
 
+// RelaxAccidents générale : formulaire d'entreprise (police collective) +
+// aperçu du devis recalculé en direct à chaque changement de champ (même
+// formule que le service backend, voir ../../relaxAccidentsGenerale — jamais
+// envoyé tel quel au serveur, qui recalcule systématiquement à la soumission).
+function RelaxAccidentsGeneraleForm({
+  raisonSociale,
+  setRaisonSociale,
+  profession,
+  setProfession,
+  classe,
+  setClasse,
+  typeCouverture,
+  setTypeCouverture,
+  effectif,
+  setEffectif,
+  montantIJ,
+  setMontantIJ,
+  montantFraisMedicaux,
+  setMontantFraisMedicaux,
+  montantIPT,
+  setMontantIPT,
+  montantDecesAccidentel,
+  setMontantDecesAccidentel,
+  telephone,
+  setTelephone,
+  sigRef,
+}: {
+  raisonSociale: string;
+  setRaisonSociale: (v: string) => void;
+  profession: string;
+  setProfession: (v: string) => void;
+  classe: Classe | "";
+  setClasse: (v: Classe | "") => void;
+  typeCouverture: TypeCouverture | "";
+  setTypeCouverture: (v: TypeCouverture | "") => void;
+  effectif: string;
+  setEffectif: (v: string) => void;
+  montantIJ: string;
+  setMontantIJ: (v: string) => void;
+  montantFraisMedicaux: string;
+  setMontantFraisMedicaux: (v: string) => void;
+  montantIPT: string;
+  setMontantIPT: (v: string) => void;
+  montantDecesAccidentel: string;
+  setMontantDecesAccidentel: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  let resultat: ResultatRelaxAccidentsGenerale | null = null;
+  let erreur = "";
+  if (classe && typeCouverture && effectif) {
+    try {
+      resultat = calculerRelaxAccidentsGenerale({
+        classe,
+        typeCouverture,
+        effectif: Number(effectif),
+        montantIJ: Number(montantIJ),
+        montantFraisMedicaux: Number(montantFraisMedicaux),
+        montantIPT: Number(montantIPT),
+        montantDecesAccidentel: Number(montantDecesAccidentel),
+      });
+    } catch (e) {
+      erreur = e instanceof Error ? e.message : "Entrées invalides.";
+    }
+  }
+
+  return (
+    <>
+      <FieldRow label="Raison sociale / Nom de l'entreprise *">
+        <input
+          value={raisonSociale}
+          onChange={(e) => setRaisonSociale(e.target.value)}
+          placeholder="Ex. BANESSERE CASA"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Profession / Type d'activité *">
+        <input
+          value={profession}
+          onChange={(e) => setProfession(e.target.value)}
+          placeholder="Ex. Construction bâtiment"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Classe de risque *">
+        <select
+          value={classe}
+          onChange={(e) => setClasse(e.target.value ? (Number(e.target.value) as Classe) : "")}
+          style={inputStyle}
+        >
+          <option value="">Sélectionnez...</option>
+          {([1, 2, 3, 4] as Classe[]).map((c) => (
+            <option key={c} value={c}>
+              {CLASSE_LABELS[c]}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Effectif à assurer *">
+        <input
+          value={effectif}
+          onChange={(e) => setEffectif(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          placeholder="Ex. 10"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Type de couverture *">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"] as TypeCouverture[]).map((t) => (
+            <label key={t} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+              <input type="radio" checked={typeCouverture === t} onChange={() => setTypeCouverture(t)} />
+              {TYPE_COUVERTURE_LABELS[t]}
+            </label>
+          ))}
+        </div>
+      </FieldRow>
+      <FieldRow label="Indemnité Journalière *">
+        <select value={montantIJ} onChange={(e) => setMontantIJ(e.target.value)} style={inputStyle}>
+          {MONTANTS_IJ.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Frais médicaux *">
+        <select value={montantFraisMedicaux} onChange={(e) => setMontantFraisMedicaux(e.target.value)} style={inputStyle}>
+          {MONTANTS_FRAIS_MEDICAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label={`Invalidité Permanente Totale (max ${fcfa(MONTANT_IPT_MAX)}) *`}>
+        <input
+          value={montantIPT}
+          onChange={(e) => setMontantIPT(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label={`Décès Accidentel (max ${fcfa(MONTANT_DECES_ACCIDENTEL_MAX)}) *`}>
+        <input
+          value={montantDecesAccidentel}
+          onChange={(e) => setMontantDecesAccidentel(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+
+      <div
+        style={{
+          background: "var(--sim-primary-50, #e6f1fb)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          margin: "18px 0",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>
+          Aperçu du devis
+        </div>
+        {resultat ? (
+          <>
+            {resultat.lignes.map((l) => (
+              <div
+                key={l.garantie}
+                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
+              >
+                <span>{l.garantie}</span>
+                <span>{fcfa(l.prime)}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Prime nette HT ({resultat.effectif} pers.)</span>
+              <span>{fcfa(resultat.primeNetteHT1)}</span>
+            </div>
+            {resultat.reductionPct > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+                <span>Réduction com. effectif (-{Math.round(resultat.reductionPct * 100)}%)</span>
+                <span>-{fcfa(resultat.primeNetteHT1 - resultat.primeNetteHT2)}</span>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Accessoires</span>
+              <span>{fcfa(resultat.accessoires)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
+              <span>Taxes</span>
+              <span>{fcfa(resultat.taxes)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
+              <span>PRIME TTC</span>
+              <span>{fcfa(resultat.primeTTC)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
+            {erreur || "Renseignez les champs ci-dessus pour voir le montant de votre prime."}
+          </div>
+        )}
+      </div>
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
 export default function Souscription() {
   const { token, produit: produitParam } = useParams<{ token: string; produit?: string }>();
   const navigate = useNavigate();
@@ -259,6 +506,19 @@ export default function Souscription() {
   const [dateDepart, setDateDepart] = useState("");
   const [numeroPersonneContact, setNumeroPersonneContact] = useState(PHONE_PREFIX);
 
+  // Champs RelaxAccidents générale (police collective, devis calculé
+  // dynamiquement — pas de tarif au catalogue). `telephone`/`sigRef` sont
+  // partagés avec la branche isAccidentLike/isRelaxVoyage ci-dessus.
+  const [raisonSociale, setRaisonSociale] = useState("");
+  const [profession, setProfession] = useState("");
+  const [classe, setClasse] = useState<Classe | "">("");
+  const [typeCouverture, setTypeCouverture] = useState<TypeCouverture | "">("");
+  const [effectif, setEffectif] = useState("1");
+  const [montantIJ, setMontantIJ] = useState<string>(String(MONTANTS_IJ[0]));
+  const [montantFraisMedicaux, setMontantFraisMedicaux] = useState<string>(String(MONTANTS_FRAIS_MEDICAUX[0]));
+  const [montantIPT, setMontantIPT] = useState("0");
+  const [montantDecesAccidentel, setMontantDecesAccidentel] = useState("0");
+
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
   const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
@@ -295,6 +555,12 @@ export default function Souscription() {
     numeroPersonneContact?: string | null;
     fraisSante?: number | null;
     bagages?: string | null;
+    raisonSociale?: string | null;
+    profession?: string | null;
+    classe?: number | null;
+    typeCouverture?: string | null;
+    effectif?: number | null;
+    resultat?: ResultatRelaxAccidentsGenerale | null;
   } | null>(null);
 
   // Carte virtuelle de prise en charge — collecte pièce d'identité + selfie
@@ -318,7 +584,8 @@ export default function Souscription() {
         const generique =
           isRelax(produitEffectif) ||
           produitEffectif === "relaxaccidents_fraismedicaux" ||
-          produitEffectif === "relaxvoyage";
+          produitEffectif === "relaxvoyage" ||
+          produitEffectif === "relaxaccidents";
         const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
@@ -384,6 +651,12 @@ export default function Souscription() {
             numeroPersonneContact: data.numeroPersonneContact ?? null,
             fraisSante: data.fraisSante ?? null,
             bagages: data.bagages ?? null,
+            raisonSociale: data.raisonSociale ?? null,
+            profession: data.profession ?? null,
+            classe: data.classe ?? null,
+            typeCouverture: data.typeCouverture ?? null,
+            effectif: data.effectif ?? null,
+            resultat: data.resultat ?? null,
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
           setStep("success");
@@ -505,12 +778,41 @@ export default function Souscription() {
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue sans.
     const signature =
-      isAccidentLike(qrInfo.produit) || isRelaxVoyage(qrInfo.produit)
+      isAccidentLike(qrInfo.produit) || isRelaxVoyage(qrInfo.produit) || isRelaxAccidentsGenerale(qrInfo.produit)
         ? sigRef.current?.toDataURL() ?? undefined
         : undefined;
     setSubmitting(true);
     try {
-      if (qrInfo.produit === "relaxvoyage") {
+      if (qrInfo.produit === "relaxaccidents") {
+        const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            raisonSociale,
+            profession,
+            telephone,
+            signature,
+            classe,
+            typeCouverture,
+            effectif: Number(effectif),
+            montantIJ: Number(montantIJ),
+            montantFraisMedicaux: Number(montantFraisMedicaux),
+            montantIPT: Number(montantIPT),
+            montantDecesAccidentel: Number(montantDecesAccidentel),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          resultat: data.resultat,
+        });
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (qrInfo.produit === "relaxvoyage") {
         const res = await fetch(`${BASE}/public/souscriptions/relaxvoyage/initiate-formule`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -654,6 +956,36 @@ export default function Souscription() {
 
   function telechargerContrat() {
     if (!result || !qrInfo) return;
+    if (qrInfo.produit === "relaxaccidents") {
+      const resultat = result.resultat;
+      if (!resultat) return;
+      genererContratRelaxAccidentsGenerale({
+        numeroPolice: result.numeroPolice ?? "",
+        partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+        dateDebut: result.dateDebut ?? new Date().toISOString(),
+        dateFin:
+          result.dateFin ??
+          new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        telephone: result.telephone ?? telephone,
+        raisonSociale: result.raisonSociale ?? raisonSociale,
+        profession: result.profession ?? profession,
+        classe: result.classe ?? (classe as number),
+        typeCouverture: (result.typeCouverture ?? typeCouverture) as
+          | "vie_privee"
+          | "vie_professionnelle"
+          | "vie_privee_professionnelle",
+        effectif: result.effectif ?? Number(effectif),
+        lignes: resultat.lignes.map((l) => ({ garantie: l.garantie, capital: l.montant, prime: l.prime })),
+        primeNetteHT1: resultat.primeNetteHT1,
+        reductionPct: resultat.reductionPct,
+        primeNetteHT2: resultat.primeNetteHT2,
+        accessoires: resultat.accessoires,
+        taxes: resultat.taxes,
+        primeTTC: resultat.primeTTC,
+        signature: result.signature ?? null,
+      });
+      return;
+    }
     const contrat = {
       numeroPolice: result.numeroPolice ?? "",
       partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
@@ -786,6 +1118,8 @@ export default function Souscription() {
                   ? "Assurance Incendie"
                   : isAccidentLike(qrInfo.produit)
                   ? "RelaxAccidents Frais Médicaux"
+                  : qrInfo.produit === "relaxaccidents"
+                  ? "RelaxAccidents (entreprise)"
                   : qrInfo.produit === "relaxvoyage"
                   ? "RelaxVoyage"
                   : qrInfo.produit === "relaxmoto"
@@ -1003,7 +1337,31 @@ export default function Souscription() {
                 Vos informations
               </div>
 
-              {isRelaxVoyage(qrInfo?.produit) ? (
+              {isRelaxAccidentsGenerale(qrInfo?.produit) ? (
+                <RelaxAccidentsGeneraleForm
+                  raisonSociale={raisonSociale}
+                  setRaisonSociale={setRaisonSociale}
+                  profession={profession}
+                  setProfession={setProfession}
+                  classe={classe}
+                  setClasse={setClasse}
+                  typeCouverture={typeCouverture}
+                  setTypeCouverture={setTypeCouverture}
+                  effectif={effectif}
+                  setEffectif={setEffectif}
+                  montantIJ={montantIJ}
+                  setMontantIJ={setMontantIJ}
+                  montantFraisMedicaux={montantFraisMedicaux}
+                  setMontantFraisMedicaux={setMontantFraisMedicaux}
+                  montantIPT={montantIPT}
+                  setMontantIPT={setMontantIPT}
+                  montantDecesAccidentel={montantDecesAccidentel}
+                  setMontantDecesAccidentel={setMontantDecesAccidentel}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  sigRef={sigRef}
+                />
+              ) : isRelaxVoyage(qrInfo?.produit) ? (
                 <>
                   <FieldRow label="Prénom *">
                     <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
@@ -1162,7 +1520,31 @@ export default function Souscription() {
               {(() => {
                 const bloque =
                   submitting ||
-                  (isRelaxVoyage(qrInfo?.produit)
+                  (isRelaxAccidentsGenerale(qrInfo?.produit)
+                    ? !raisonSociale ||
+                      !profession ||
+                      !classe ||
+                      !typeCouverture ||
+                      !Number.isInteger(Number(effectif)) ||
+                      Number(effectif) < 1 ||
+                      !phoneLocalPart(telephone) ||
+                      (() => {
+                        try {
+                          calculerRelaxAccidentsGenerale({
+                            classe: classe as Classe,
+                            typeCouverture: typeCouverture as TypeCouverture,
+                            effectif: Number(effectif),
+                            montantIJ: Number(montantIJ),
+                            montantFraisMedicaux: Number(montantFraisMedicaux),
+                            montantIPT: Number(montantIPT),
+                            montantDecesAccidentel: Number(montantDecesAccidentel),
+                          });
+                          return false;
+                        } catch {
+                          return true;
+                        }
+                      })()
+                    : isRelaxVoyage(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
                       !phoneLocalPart(telephone) ||
@@ -1204,7 +1586,10 @@ export default function Souscription() {
                   >
                     {submitting
                       ? "Traitement…"
-                      : isAccidentLike(qrInfo?.produit) || isRelaxVoyage(qrInfo?.produit) || (qrInfo && isRelax(qrInfo.produit))
+                      : isAccidentLike(qrInfo?.produit) ||
+                        isRelaxVoyage(qrInfo?.produit) ||
+                        isRelaxAccidentsGenerale(qrInfo?.produit) ||
+                        (qrInfo && isRelax(qrInfo.produit))
                       ? "Passer au paiement →"
                       : "Confirmer la souscription →"}
                   </button>
@@ -1308,7 +1693,61 @@ export default function Souscription() {
                 </svg>
               </div>
 
-              {isAccidentLike(qrInfo?.produit) || isRelaxVoyage(qrInfo?.produit) ? (
+              {isRelaxAccidentsGenerale(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    L'assurance RelaxAccidents de <strong>{result?.raisonSociale ?? raisonSociale}</strong> est activée
+                    pour <strong>{result?.effectif ?? effectif} personne(s)</strong>.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.resultat && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isAccidentLike(qrInfo?.produit) || isRelaxVoyage(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Félicitations !

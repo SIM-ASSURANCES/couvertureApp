@@ -67,6 +67,27 @@ export interface ContratRelaxVoyage {
   signature?: string | null;
 }
 
+export interface ContratRelaxAccidentsGenerale {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  telephone: string;
+  raisonSociale?: string | null;
+  profession?: string | null;
+  classe: number;
+  typeCouverture: "vie_privee" | "vie_professionnelle" | "vie_privee_professionnelle";
+  effectif: number;
+  lignes: LigneGarantie[];
+  primeNetteHT1: number;
+  reductionPct: number;
+  primeNetteHT2: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -428,6 +449,7 @@ type ContratType =
   | "accident"
   | "relaxaccidents_fraismedicaux"
   | "relaxvoyage"
+  | "relaxaccidents_generale"
   | "securpro"
   | "securstock"
   | "securecolte"
@@ -479,6 +501,10 @@ export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccide
 
 export async function genererContratRelaxVoyage(c: ContratRelaxVoyage) {
   await telechargerContratPdf("relaxvoyage", c.numeroPolice, c);
+}
+
+export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale) {
+  await telechargerContratPdf("relaxaccidents_generale", c.numeroPolice, c);
 }
 
 export async function genererContratSecurpro(c: ContratSecurpro) {

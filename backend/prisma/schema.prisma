@@ -504,6 +504,11 @@ model Souscription {
   // validés par un schéma zod dédié à `produit.code`, sur le modèle de
   // SouscriptionImf.entrees côté IMF.
   donneesSpecifiques   Json?
+  // Détail du devis calculé (lignes par garantie + totaux), pour un produit à
+  // calcul dynamique (ex. RelaxAccidents générale) — évite de recalculer pour
+  // le réaffichage sur le contrat. Même répartition entrées/résultat que
+  // SimulationImf.entrees/resultat côté IMF.
+  resultat             Json?
   whatsappEnvoyeAt     DateTime?
   relanceCount         Int                @default(0)
   createdAt            DateTime           @default(now())

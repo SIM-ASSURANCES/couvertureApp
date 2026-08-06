@@ -66,6 +66,27 @@ export interface ContratRelaxVoyage {
   signature?: string | null;
 }
 
+export interface ContratRelaxAccidentsGenerale {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  telephone: string;
+  raisonSociale?: string | null;
+  profession?: string | null;
+  classe: number;
+  typeCouverture: "vie_privee" | "vie_professionnelle" | "vie_privee_professionnelle";
+  effectif: number;
+  lignes: LigneGarantie[];
+  primeNetteHT1: number;
+  reductionPct: number;
+  primeNetteHT2: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -429,6 +450,59 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
 
   const cg = await loadCG("cg-relaxvoyage.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXVOYAGE</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+const TYPE_COUVERTURE_LABELS: Record<ContratRelaxAccidentsGenerale["typeCouverture"], string> = {
+  vie_privee: "Vie privée uniquement",
+  vie_professionnelle: "Vie professionnelle uniquement",
+  vie_privee_professionnelle: "Vie privée & Vie professionnelle",
+};
+
+export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale): Promise<string> {
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
+  <div class="sub">Assurance Accident (police collective) · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td><td class="k">Bénéficiaire</td><td>Les Assurés</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Souscripteur / Raison sociale</td><td>${val(c.raisonSociale)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Type d'activité / Profession</td><td>${val(c.profession)}</td><td class="k">Classe de risque</td><td>Classe ${val(c.classe)}</td></tr>
+    <tr><td class="k">Type de couverture</td><td>${val(TYPE_COUVERTURE_LABELS[c.typeCouverture])}</td><td class="k">Effectif assuré</td><td>${val(c.effectif)} personne(s)</td></tr>
+  </table>
+
+  <h2>Garanties souscrites (par personne assurée)</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Montant</td><td class="k">Prime</td></tr>
+    ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
+  </table>
+
+  <table>
+    <tr><td class="k">Prime nette HT (avant réduction)</td><td>${fcfa(c.primeNetteHT1)}</td><td class="k">Réduction com. effectif</td><td>${(c.reductionPct * 100).toLocaleString("fr-FR")} %</td></tr>
+    <tr><td class="k">Prime nette HT (après réduction)</td><td>${fcfa(c.primeNetteHT2)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales police RELAXACCIDENTS (MFB/DGTCP/DA/N° 01507 du 19 JUIN 2025) et les présentes Conditions Particulières.
+    <br/><br/>
+    <b>En cas de sinistre :</b> le déclarer à SIM ASSURANCES (e-mail info@simassurances.com, 08 BP M4141 ABIDJAN 08,
+    ou tél/WhatsApp 07 99 44 57 57), muni de la CNI de l'assuré concerné, des ordonnances et factures médicales et du numéro Wave.
+    Le souscripteur reconnaît avoir pris connaissance des Conditions Générales RELAXACCIDENTS.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-accident.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 

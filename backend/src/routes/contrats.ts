@@ -6,6 +6,7 @@ import {
   renderContratIncendie,
   renderContratAccident,
   renderContratRelaxVoyage,
+  renderContratRelaxAccidentsGenerale,
   renderContratSecurpro,
   renderContratSecurecolte,
   renderContratSecurstock,
@@ -106,6 +107,30 @@ const relaxvoyageSchema = z.object({
     capitalGaranti: montant,
     fraisSante: montant.nullish(),
     bagages: texteOpt(120),
+    signature: dataUrlSignature,
+  }),
+});
+
+const relaxaccidentsGeneraleSchema = z.object({
+  type: z.literal("relaxaccidents_generale"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    telephone: texte(40),
+    raisonSociale: texteOpt(200),
+    profession: texteOpt(200),
+    classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+    typeCouverture: z.enum(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"]),
+    effectif: z.number().int().min(1).max(1_000_000),
+    lignes: z.array(ligneGarantieSchema).max(10),
+    primeNetteHT1: montant,
+    reductionPct: z.number().finite().min(0).max(1),
+    primeNetteHT2: montant,
+    accessoires: montant,
+    taxes: montant,
+    primeTTC: montant,
     signature: dataUrlSignature,
   }),
 });
@@ -257,6 +282,7 @@ const bodySchema = z.discriminatedUnion("type", [
   accidentSchema,
   relaxaccidentsFraisMedicauxSchema,
   relaxvoyageSchema,
+  relaxaccidentsGeneraleSchema,
   securproSchema,
   securstockSchema,
   securecolteSchema,
@@ -282,6 +308,9 @@ contratsRouter.post(
         break;
       case "relaxvoyage":
         html = await renderContratRelaxVoyage(body.data);
+        break;
+      case "relaxaccidents_generale":
+        html = await renderContratRelaxAccidentsGenerale(body.data);
         break;
       case "securpro":
         html = await renderContratSecurpro(body.data);
