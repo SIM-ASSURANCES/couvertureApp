@@ -8,8 +8,15 @@ interface TarifProduit {
   id: number;
   libelleVariante: string | null;
   prime: number;
+  primeHT: number | null;
+  fg: number | null;
+  taxes: number | null;
   capitalGaranti: number;
   commission: number;
+}
+
+function fcfaOuTiret(n: number | null) {
+  return n != null ? fcfa(n) : "—";
 }
 
 function TarifRow({
@@ -26,6 +33,9 @@ function TarifRow({
     <tr>
       <td><strong>{tarif.libelleVariante ?? "—"}</strong></td>
       <td>{fcfa(tarif.prime)}</td>
+      <td>{fcfaOuTiret(tarif.primeHT)}</td>
+      <td>{fcfaOuTiret(tarif.fg)}</td>
+      <td>{fcfaOuTiret(tarif.taxes)}</td>
       <td>{fcfa(tarif.capitalGaranti)}</td>
       <td>
         <input
@@ -79,6 +89,9 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
             <tr>
               <th>Formule</th>
               <th>Prime</th>
+              <th>Prime HT (FCFA)</th>
+              <th>FG (FCFA)</th>
+              <th>Taxes (FCFA)</th>
               <th>Capital garanti</th>
               <th>Commission (FCFA)</th>
               <th></th>
@@ -89,7 +102,7 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
               <TarifRow key={t.id} tarif={t} saving={saving === t.id} onSave={(c) => save(t.id, c)} />
             ))}
             {data?.length === 0 && (
-              <tr><td colSpan={5}><div className="empty">Aucune formule pour ce produit.</div></td></tr>
+              <tr><td colSpan={8}><div className="empty">Aucune formule pour ce produit.</div></td></tr>
             )}
           </tbody>
         </table>
