@@ -237,3 +237,27 @@ assurancesAccidentsRouter.post(
     res.status(201).json(created);
   })
 );
+
+/** Supprime une formule (ligne TarifProduit) — réservé au Super Administrateur de la branche. */
+assurancesAccidentsRouter.delete(
+  "/tarifs/:id",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const tarif = await prisma.tarifProduit.findUnique({
+      where: { id: Number(req.params.id) },
+      include: { produit: true },
+    });
+    if (!tarif || tarif.produit.sousBranche !== SOUS_BRANCHE) {
+      return res.status(404).json({ error: "Tarif introuvable" });
+    }
+    await prisma.tarifProduit.delete({ where: { id: tarif.id } });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "suppression",
+      objetType: "tarif_produit",
+      objetId: String(tarif.id),
+      valeurAvant: tarif,
+    });
+    res.status(204).end();
+  })
+);

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Save, Plus } from "lucide-react";
+import { Save, Plus, Trash2 } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
@@ -68,11 +68,15 @@ const cellInputStyle: React.CSSProperties = { width: 110 };
 function TarifRow({
   tarif,
   saving,
+  deleting,
   onSave,
+  onDelete,
 }: {
   tarif: TarifProduit;
   saving: boolean;
+  deleting: boolean;
   onSave: (payload: ReturnType<typeof versPayload>) => void;
+  onDelete: () => void;
 }) {
   const [form, setForm] = useState<TarifFormValues>(versFormValues(tarif));
   const set = (champ: keyof TarifFormValues) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -88,9 +92,14 @@ function TarifRow({
       <td><input className="input" style={cellInputStyle} type="number" min={0} value={form.capitalGaranti} onChange={set("capitalGaranti")} /></td>
       <td><input className="input" style={cellInputStyle} type="number" min={0} value={form.commission} onChange={set("commission")} /></td>
       <td>
-        <button className="btn btn-ghost" style={{ padding: "7px 10px" }} disabled={saving} onClick={() => onSave(versPayload(form))}>
-          <Save size={15} />
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button className="btn btn-ghost" style={{ padding: "7px 10px" }} disabled={saving || deleting} onClick={() => onSave(versPayload(form))} title="Enregistrer">
+            <Save size={15} />
+          </button>
+          <button className="btn btn-ghost" style={{ padding: "7px 10px" }} disabled={saving || deleting} onClick={onDelete} title="Supprimer cette formule">
+            <Trash2 size={15} color="var(--danger)" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -132,6 +141,7 @@ function AjouterFormuleRow({ adding, onAdd }: { adding: boolean; onAdd: (payload
 function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }) {
   const { data, loading, error, reload } = useFetch<TarifProduit[]>(`/assurances-accidents/produits/${code}/tarifs`);
   const [saving, setSaving] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
 
@@ -150,6 +160,20 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
       notify((err as Error).message);
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function supprimer(tarif: TarifProduit) {
+    if (!confirm(`Supprimer la formule "${tarif.libelleVariante ?? tarif.id}" ?`)) return;
+    setDeleting(tarif.id);
+    try {
+      await api.del(`/assurances-accidents/tarifs/${tarif.id}`);
+      notify("Formule supprimée");
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -187,7 +211,14 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
           </thead>
           <tbody>
             {data?.map((t) => (
-              <TarifRow key={t.id} tarif={t} saving={saving === t.id} onSave={(payload) => save(t.id, payload)} />
+              <TarifRow
+                key={t.id}
+                tarif={t}
+                saving={saving === t.id}
+                deleting={deleting === t.id}
+                onSave={(payload) => save(t.id, payload)}
+                onDelete={() => supprimer(t)}
+              />
             ))}
             {data?.length === 0 && (
               <tr><td colSpan={8}><div className="empty">Aucune formule pour ce produit.</div></td></tr>
