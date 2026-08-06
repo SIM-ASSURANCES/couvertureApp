@@ -80,6 +80,12 @@ authRouter.post(
     const p = await prisma.partenaire.findUnique({ where: { email } });
     if (p && p.passwordHash && (await bcrypt.compare(password, p.passwordHash))) {
       const token = signToken({ sub: p.id, type: "partenaire", nom: p.nomResponsable });
+      // QR "sélecteur" (refonte Assurances Accidents/Dommages) — au plus un
+      // par partenaire, voir contrainte d'unicité sur QrCode.
+      const qrSelecteur = await prisma.qrCode.findFirst({
+        where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+        select: { sousBranche: true },
+      });
       return res.json({
         token,
         user: {
@@ -89,6 +95,7 @@ authRouter.post(
           email: p.email,
           type: "partenaire",
           produit: p.produitIncendie ? "incendie" : "accident",
+          sousBranche: qrSelecteur?.sousBranche ?? null,
         },
       });
     }
@@ -246,6 +253,10 @@ authRouter.post(
       type: "partenaire",
       nom: p.nomResponsable,
     });
+    const qrSelecteur = await prisma.qrCode.findFirst({
+      where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+      select: { sousBranche: true },
+    });
     res.json({
       token,
       user: {
@@ -255,6 +266,7 @@ authRouter.post(
         email: p.email,
         type: "partenaire",
         produit: p.produitIncendie ? "incendie" : "accident",
+        sousBranche: qrSelecteur?.sousBranche ?? null,
       },
     });
   })

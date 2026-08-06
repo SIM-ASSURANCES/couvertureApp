@@ -22,6 +22,11 @@ agentDistributionRouter.get(
       include: { partenaire: { select: { nomCommerce: true, produitIncendie: true, produitAccident: true } } },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
+    // QR "sélecteur" (refonte Assurances Accidents/Dommages) de l'agent lui-même.
+    const qrSelecteur = await prisma.qrCode.findFirst({
+      where: { agentDistributionId: a.id, sousBranche: { not: null } },
+      select: { sousBranche: true },
+    });
     res.json({
       id: a.id,
       nom: a.nom,
@@ -30,6 +35,7 @@ agentDistributionRouter.get(
       statut: a.statut,
       partenaireNom: a.partenaire.nomCommerce,
       produit: a.partenaire.produitIncendie ? "incendie" : "accident",
+      sousBranche: qrSelecteur?.sousBranche ?? null,
       forcerChangementMotDePasse: a.forcerChangementMotDePasse,
     });
   })

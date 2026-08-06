@@ -1,4 +1,4 @@
-import { Download, Flame, ShieldCheck } from "lucide-react";
+import { Download, Flame, ShieldCheck, HeartPulse } from "lucide-react";
 import { PageHeader, Card, Loader } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
@@ -17,7 +17,7 @@ function QrCard({
   label,
   sublabel,
 }: {
-  produit: "incendie1000" | "incendie2000" | "accident";
+  produit: "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
   icon: React.ReactNode;
   color: string;
   bg: string;
@@ -57,19 +57,31 @@ function QrCard({
 export default function PartenaireQr() {
   const { user } = useAuth();
   const produit = user?.produit ?? "accident";
+  const sousBranche = user?.sousBranche;
 
   return (
     <>
       <PageHeader
         title="Mes QR codes"
         subtitle={
-          produit === "incendie"
+          sousBranche
+            ? "Présentez ce QR code à vos clients : ils choisiront leur produit après l'avoir scanné."
+            : produit === "incendie"
             ? "Deux QR codes selon le montant des achats du client."
             : "Présentez ce QR code à vos clients pour la souscription."
         }
       />
       <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 24, maxWidth: 440 }}>
-        {produit === "incendie" ? (
+        {sousBranche ? (
+          <QrCard
+            produit={sousBranche}
+            icon={<HeartPulse size={20} />}
+            color={sousBranche === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309"}
+            bg={sousBranche === "ASSURANCES_ACCIDENTS" ? "#e8f6ec" : "#fdf3e3"}
+            label={sousBranche === "ASSURANCES_ACCIDENTS" ? "QR Assurances Accidents" : "QR Assurances Dommages"}
+            sublabel="Le client choisit son produit après le scan"
+          />
+        ) : produit === "incendie" ? (
           <>
             <QrCard
               produit="incendie1000"

@@ -254,9 +254,132 @@ async function seedTarificationRelax() {
   }
 }
 
+/**
+ * Catalogue de la refonte Assurances Accidents/Dommages (sélecteur de
+ * produit après scan d'un QR "sous-branche") : produits réellement tarifés
+ * (RelaxAccidents Frais Médicaux, RelaxVoyage), rattachement de RelaxMoto à
+ * la sous-branche Accidents, et lignes présentationnelles pour les produits
+ * "Bientôt disponible" (Incendie — ponté vers le modèle historique —,
+ * RelaxAccidents générique, SecurHome, SecurPro). Idempotent (upsert) :
+ * tourne à chaque démarrage du conteneur, pas besoin de script manuel.
+ */
+async function seedCatalogueAssurancesAccidentsDommages() {
+  // RelaxAccidents Frais Médicaux (remplace l'ancien produit Accident) —
+  // capitaux garantis repris des lignes TarifAccident historiques si
+  // présentes, pour ne jamais inventer une valeur.
+  const raf = await prisma.produit.upsert({
+    where: { code: "relaxaccidents_fraismedicaux" },
+    update: {},
+    create: {
+      code: "relaxaccidents_fraismedicaux",
+      libelle: "RelaxAccidents Frais Médicaux",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_ACCIDENTS",
+      typePaiement: "WAVE",
+      couleurQr: "#004b9c",
+      ordre: 1,
+    },
+  });
+  const tarifsAccidentHistoriques = await prisma.tarifAccident.findMany();
+  for (const t of tarifsAccidentHistoriques) {
+    await prisma.tarifProduit.upsert({
+      where: { produitId_libelleVariante: { produitId: raf.id, libelleVariante: String(t.prime) } },
+      update: {},
+      create: {
+        produitId: raf.id,
+        libelleVariante: String(t.prime),
+        prime: t.prime,
+        primeHT: t.primeHT,
+        fg: t.fg,
+        taxes: t.taxes,
+        capitalGaranti: t.capitalGaranti,
+        commission: 0,
+      },
+    });
+  }
+  // Filet de sécurité si aucune ligne TarifAccident n'existe (base neuve) :
+  // valeurs connues du catalogue (1000/500 FCFA).
+  if (tarifsAccidentHistoriques.length === 0) {
+    const filet = [
+      { prime: 1000, capitalGaranti: 500_000 },
+      { prime: 500, capitalGaranti: 250_000 },
+    ];
+    for (const f of filet) {
+      await prisma.tarifProduit.upsert({
+        where: { produitId_libelleVariante: { produitId: raf.id, libelleVariante: String(f.prime) } },
+        update: {},
+        create: { produitId: raf.id, libelleVariante: String(f.prime), prime: f.prime, capitalGaranti: f.capitalGaranti, commission: 0 },
+      });
+    }
+  }
+
+  // RelaxVoyage — 4 formules (Décès/IPT en capitalGaranti, Frais de Santé +
+  // Bagages en donneesSpecifiques).
+  const voyage = await prisma.produit.upsert({
+    where: { code: "relaxvoyage" },
+    update: {},
+    create: {
+      code: "relaxvoyage",
+      libelle: "RelaxVoyage",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_ACCIDENTS",
+      typePaiement: "WAVE",
+      couleurQr: "#004b9c",
+      ordre: 2,
+    },
+  });
+  const formulesVoyage = [
+    { prime: 250, decesIpt: 100_000, fraisSante: 50_000, bagages: "Pas de garantie" },
+    { prime: 400, decesIpt: 250_000, fraisSante: 100_000, bagages: "Pas de garantie" },
+    { prime: 600, decesIpt: 500_000, fraisSante: 150_000, bagages: "Pas de garantie" },
+    { prime: 1000, decesIpt: 1_000_000, fraisSante: 250_000, bagages: "2 500 FCFA / Kg" },
+  ];
+  for (const f of formulesVoyage) {
+    await prisma.tarifProduit.upsert({
+      where: { produitId_libelleVariante: { produitId: voyage.id, libelleVariante: String(f.prime) } },
+      update: {},
+      create: {
+        produitId: voyage.id,
+        libelleVariante: String(f.prime),
+        prime: f.prime,
+        capitalGaranti: f.decesIpt,
+        commission: 0,
+        donneesSpecifiques: { fraisSante: f.fraisSante, bagages: f.bagages },
+      },
+    });
+  }
+
+  // RelaxMoto rejoint le sélecteur Accidents (branche RELAX inchangée).
+  await prisma.produit.update({ where: { code: "relaxmoto" }, data: { sousBranche: "ASSURANCES_ACCIDENTS" } });
+
+  // Incendie : ligne présentationnelle uniquement (flux réel = SouscriptionIncendie).
+  await prisma.produit.upsert({
+    where: { code: "incendie" },
+    update: {},
+    create: { code: "incendie", libelle: "Incendie", branche: "INCENDIE_ACCIDENT", sousBranche: "ASSURANCES_DOMMAGES", typePaiement: "FACTURE" },
+  });
+
+  // Produits "Bientôt disponible" (pas de mécanisme de prime fourni).
+  const placeholders = [
+    { code: "relaxaccidents", libelle: "RelaxAccidents", sousBranche: "ASSURANCES_ACCIDENTS" },
+    { code: "securhome_dommages", libelle: "SecurHome", sousBranche: "ASSURANCES_DOMMAGES" },
+    { code: "securpro_dommages", libelle: "SecurPro", sousBranche: "ASSURANCES_DOMMAGES" },
+  ];
+  for (const p of placeholders) {
+    await prisma.produit.upsert({
+      where: { code: p.code },
+      update: {},
+      create: { code: p.code, libelle: p.libelle, branche: "INCENDIE_ACCIDENT", sousBranche: p.sousBranche, typePaiement: "WAVE", actif: false },
+    });
+  }
+
+  console.log("[seed] Catalogue Assurances Accidents/Dommages synchronisé.");
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
+  await seedCatalogueAssurancesAccidentsDommages();
   await corrigerCapitalGarantiIncendie();
   await seedTarificationImf();
   await corrigerCommissionsImf();

@@ -119,9 +119,22 @@ meRouter.get(
 meRouter.get(
   "/qr/:produit",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const produit = req.params.produit as
+      | "incendie1000"
+      | "incendie2000"
+      | "accident"
+      | "ASSURANCES_ACCIDENTS"
+      | "ASSURANCES_DOMMAGES";
     const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
+
+    // QR "sélecteur" (refonte Assurances Accidents/Dommages).
+    if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
+      const qr = await prisma.qrCode.findFirst({ where: { partenaireId: p.id, sousBranche: produit } });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
+      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
 
     const token =
       produit === "incendie1000" ? p.qrIncendie1000Token
@@ -431,7 +444,20 @@ meRouter.get(
     if (!agent || agent.partenaireId !== req.user!.sub) {
       return res.status(404).json({ error: "Introuvable" });
     }
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const produit = req.params.produit as
+      | "incendie1000"
+      | "incendie2000"
+      | "accident"
+      | "ASSURANCES_ACCIDENTS"
+      | "ASSURANCES_DOMMAGES";
+
+    if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
+      const qr = await prisma.qrCode.findFirst({ where: { agentDistributionId: agent.id, sousBranche: produit } });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
+      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
+
     const token =
       produit === "incendie1000" ? agent.qrIncendie1000Token
       : produit === "incendie2000" ? agent.qrIncendie2000Token

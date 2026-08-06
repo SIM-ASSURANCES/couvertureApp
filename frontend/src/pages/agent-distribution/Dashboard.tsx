@@ -18,6 +18,9 @@ interface Moi {
   statut: "actif" | "inactif";
   partenaireNom: string;
   produit: "incendie" | "accident";
+  // QR "sélecteur" (refonte Assurances Accidents/Dommages), remplace produit
+  // si renseigné.
+  sousBranche?: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null;
   forcerChangementMotDePasse: boolean;
 }
 
@@ -99,6 +102,7 @@ export default function AgentDistributionDashboard() {
   const [qrIncendie1000, setQrIncendie1000] = useState<Qr | null>(null);
   const [qrIncendie2000, setQrIncendie2000] = useState<Qr | null>(null);
   const [qrAccident, setQrAccident] = useState<Qr | null>(null);
+  const [qrSelecteur, setQrSelecteur] = useState<Qr | null>(null);
   const [souscriptions, setSouscriptions] = useState<Souscription[]>([]);
   const [commission, setCommission] = useState<Commission | null>(null);
   const [demandeEnCours, setDemandeEnCours] = useState(false);
@@ -131,7 +135,9 @@ export default function AgentDistributionDashboard() {
         if (m.forcerChangementMotDePasse) return;
         const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
         setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-        if (m.produit === "incendie") {
+        if (m.sousBranche) {
+          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${m.sousBranche}`));
+        } else if (m.produit === "incendie") {
           const [q1, q2] = await Promise.all([
             agentDistApi.get<Qr>("/qr/incendie1000"),
             agentDistApi.get<Qr>("/qr/incendie2000"),
@@ -163,7 +169,9 @@ export default function AgentDistributionDashboard() {
         setMoi({ ...moi, forcerChangementMotDePasse: false });
         const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
         setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-        if (moi.produit === "incendie") {
+        if (moi.sousBranche) {
+          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${moi.sousBranche}`));
+        } else if (moi.produit === "incendie") {
           const [q1, q2] = await Promise.all([
             agentDistApi.get<Qr>("/qr/incendie1000"),
             agentDistApi.get<Qr>("/qr/incendie2000"),
@@ -291,7 +299,16 @@ export default function AgentDistributionDashboard() {
                 <div style={card}>
                   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Mon/mes QR code(s)</div>
                   <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center" }}>
-                    {moi.produit === "incendie" ? (
+                    {moi.sousBranche ? (
+                      qrSelecteur && (
+                        <div style={{ textAlign: "center" }}>
+                          <img src={qrSelecteur.dataUrl} alt="QR" style={{ width: 170, height: 170, border: "1px solid #eee", borderRadius: 10, padding: 6 }} />
+                          <a className="btn" style={{ display: "block", marginTop: 8, fontSize: 12 }} href={qrSelecteur.dataUrl} download="qr-assurance.png">
+                            <Download size={13} style={{ verticalAlign: -2 }} /> Télécharger
+                          </a>
+                        </div>
+                      )
+                    ) : moi.produit === "incendie" ? (
                       <>
                         {qrIncendie1000 && (
                           <div style={{ textAlign: "center" }}>

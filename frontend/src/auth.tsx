@@ -18,6 +18,9 @@ export interface SessionUser {
   role?: Role;
   branches?: BrancheAcces[];
   produit?: "incendie" | "accident";
+  // QR "sélecteur" (refonte Assurances Accidents/Dommages) — remplace produit
+  // pour un partenaire assigné à une Assurance entière plutôt qu'un produit précis.
+  sousBranche?: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null;
   // Agent IMF (type === "agent_imf")
   roleImf?: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
   agenceNom?: string | null;
