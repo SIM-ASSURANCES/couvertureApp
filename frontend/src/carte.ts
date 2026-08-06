@@ -4,7 +4,7 @@
 
 import { API_BASE } from "./api";
 
-export type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux";
+export type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 

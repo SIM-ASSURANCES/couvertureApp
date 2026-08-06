@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank } from "lucide-react";
+import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank, HeartPulse } from "lucide-react";
 import {
   PageHeader,
   StatCard,
@@ -13,6 +13,11 @@ import {
   nb,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
+
+interface AccidentsOverview {
+  partenaires: number;
+  produits: { produit: string; libelle: string; confirmes: number; enAttente: number }[];
+}
 
 interface Overview {
   partenairesTotal: number;
@@ -55,6 +60,10 @@ export default function AdminDashboard() {
   const { data, loading, error } = useFetch<Overview>(
     `/stats/overview${qs ? `?${qs}` : ""}`
   );
+  // Produits de la sous-branche "Assurances Accidents" (refonte, modèle
+  // générique) — comptés séparément de data.accidentTotal (ancien modèle).
+  const { data: accidents } = useFetch<AccidentsOverview>("/assurances-accidents/overview");
+  const accidentsConfirmes = (accidents?.produits ?? []).reduce((s, p) => s + p.confirmes, 0);
 
   const periodeLabel =
     from || to
@@ -150,12 +159,34 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<ShieldCheck size={20} />}
-              label="Souscr. Accident"
+              label="Souscr. Accident (historique)"
               value={nb(data.accidentTotal)}
               color="#15803d"
               bg="#e8f6ec"
             />
           </div>
+
+          {accidents && (
+            <>
+              <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
+                <StatCard
+                  icon={<Store size={20} />}
+                  label="Partenaires Assurances Accidents"
+                  value={nb(accidents.partenaires)}
+                />
+                <StatCard
+                  icon={<HeartPulse size={20} />}
+                  label="Souscriptions confirmées"
+                  value={nb(accidentsConfirmes)}
+                  color="#15803d"
+                  bg="#e8f6ec"
+                />
+              </div>
+              <Link className="muted" to="/admin/clients-accidents" style={{ fontSize: 12, display: "inline-block", marginTop: 6 }}>
+                Voir le détail par produit <ArrowUpRight size={12} style={{ verticalAlign: -2 }} />
+              </Link>
+            </>
+          )}
 
           <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
             <StatCard
@@ -178,7 +209,7 @@ export default function AdminDashboard() {
 
           <div className="grid-2" style={{ marginTop: 24 }}>
             <Card
-              title="Dernières souscriptions Accident"
+              title="Dernières souscriptions Accident (historique)"
               extra={
                 <Link className="muted" to="/admin/accident" style={{ fontSize: 13 }}>
                   Tout voir{" "}

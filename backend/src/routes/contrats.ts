@@ -5,6 +5,7 @@ import { htmlToPdf } from "../services/pdf.js";
 import {
   renderContratIncendie,
   renderContratAccident,
+  renderContratRelaxVoyage,
   renderContratSecurpro,
   renderContratSecurecolte,
   renderContratSecurstock,
@@ -80,6 +81,31 @@ const relaxaccidentsFraisMedicauxSchema = z.object({
     dateNaissance: texteOpt(40),
     montant,
     capitalGaranti: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
+const relaxvoyageSchema = z.object({
+  type: z.literal("relaxvoyage"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    dateNaissance: texteOpt(40),
+    compagnie: texteOpt(120),
+    lieuDepart: texteOpt(120),
+    lieuArrivee: texteOpt(120),
+    numeroTicket: texteOpt(60),
+    dateDepart: texteOpt(40),
+    numeroPersonneContact: texteOpt(40),
+    montant,
+    capitalGaranti: montant,
+    fraisSante: montant.nullish(),
+    bagages: texteOpt(120),
     signature: dataUrlSignature,
   }),
 });
@@ -230,6 +256,7 @@ const bodySchema = z.discriminatedUnion("type", [
   incendieSchema,
   accidentSchema,
   relaxaccidentsFraisMedicauxSchema,
+  relaxvoyageSchema,
   securproSchema,
   securstockSchema,
   securecolteSchema,
@@ -252,6 +279,9 @@ contratsRouter.post(
         break;
       case "relaxaccidents_fraismedicaux":
         html = await renderContratAccident(body.data);
+        break;
+      case "relaxvoyage":
+        html = await renderContratRelaxVoyage(body.data);
         break;
       case "securpro":
         html = await renderContratSecurpro(body.data);

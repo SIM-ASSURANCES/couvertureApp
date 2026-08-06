@@ -40,7 +40,17 @@ agentDistributionRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.agentDistribution.findUnique({ where: { id: req.user!.sub } });
     if (!a) return res.status(404).json({ error: "Introuvable" });
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident";
+    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+
+    if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
+      const qr = await prisma.qrCode.findFirst({
+        where: { agentDistributionId: a.id, sousBranche: produit },
+      });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
+      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
+
     const token =
       produit === "incendie1000" ? a.qrIncendie1000Token
       : produit === "incendie2000" ? a.qrIncendie2000Token

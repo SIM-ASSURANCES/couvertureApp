@@ -44,6 +44,28 @@ export interface ContratAccident {
   signature?: string | null;
 }
 
+export interface ContratRelaxVoyage {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  dateNaissance?: string | null;
+  compagnie?: string | null;
+  lieuDepart?: string | null;
+  lieuArrivee?: string | null;
+  numeroTicket?: string | null;
+  dateDepart?: string | null;
+  numeroPersonneContact?: string | null;
+  montant: number;
+  capitalGaranti: number;
+  fraisSante?: number | null;
+  bagages?: string | null;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -364,6 +386,49 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
 
   const cg = await loadCG("cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<string> {
+  const trajet = [c.lieuDepart, c.lieuArrivee].filter(Boolean).join(" → ");
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — RELAXVOYAGE</h1>
+  <div class="sub">Assurance Voyage · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Personne à contacter</td><td>${val(c.numeroPersonneContact)}</td></tr>
+    <tr><td class="k">Compagnie de transport</td><td>${val(c.compagnie)}</td><td class="k">N° Ticket</td><td>${val(c.numeroTicket)}</td></tr>
+    <tr><td class="k">Trajet</td><td>${val(trajet)}</td><td class="k">Date de départ</td><td>${dfr(c.dateDepart)}</td></tr>
+  </table>
+
+  <h2>Garanties</h2>
+  <table>
+    <tr><td class="k">Décès / IPT</td><td>${fcfa(c.capitalGaranti)}</td><td class="k">Frais de Santé</td><td>${c.fraisSante != null ? fcfa(c.fraisSante) : "—"}</td></tr>
+    <tr><td class="k">Bagages</td><td colspan="3">${val(c.bagages)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales police RELAXVOYAGE et les présentes Conditions Particulières.
+    <br/><br/>
+    <b>En cas de sinistre :</b> le déclarer à SIM ASSURANCES (e-mail info@simassurances.com, 08 BP M4141 ABIDJAN 08,
+    ou tél/WhatsApp 07 99 44 57 57), muni de la CNI, du ticket de voyage et des pièces justificatives.
+    Le souscripteur reconnaît avoir pris connaissance des Conditions Générales RELAXVOYAGE.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-relaxvoyage.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXVOYAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 

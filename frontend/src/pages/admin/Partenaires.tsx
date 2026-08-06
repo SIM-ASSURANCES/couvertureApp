@@ -387,7 +387,7 @@ const empty = {
   telephone: "",
   localisation: "",
   typeCommerce: "Electronique",
-  produit: "incendie" as "incendie" | "accident",
+  assurance: "ASSURANCES_ACCIDENTS" as "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES",
   email: "",
 };
 
@@ -435,7 +435,7 @@ export default function Partenaires() {
         telephone: form.telephone,
         localisation: form.localisation,
         typeCommerce: form.typeCommerce,
-        produit: form.produit,
+        sousBranche: form.assurance,
         email: form.email || undefined,
       });
       setForm(empty);
@@ -483,7 +483,10 @@ export default function Partenaires() {
     }
   }
 
-  async function showQr(p: Partenaire, produit: "incendie1000" | "incendie2000" | "accident") {
+  async function showQr(
+    p: Partenaire,
+    produit: "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES"
+  ) {
     try {
       const r = await api.get<{ dataUrl: string }>(
         `/partenaires/${p.id}/qr/${produit}`
@@ -491,7 +494,9 @@ export default function Partenaires() {
       const label =
         produit === "incendie1000" ? "Incendie 1 000 FCFA"
         : produit === "incendie2000" ? "Incendie 2 000 FCFA"
-        : "Accident";
+        : produit === "accident" ? "Accident"
+        : produit === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents"
+        : "Assurances Dommages";
       setQr({ url: r.dataUrl, label });
     } catch (err) {
       notify((err as Error).message);
@@ -506,7 +511,9 @@ export default function Partenaires() {
         "Téléphone": p.telephone,
         "Localisation": p.localisation,
         "Type de commerce": p.typeCommerce,
-        "Produit": p.produitIncendie ? "Incendie" : "Accident",
+        "Produit": p.sousBranche
+          ? p.sousBranche === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"
+          : p.produitIncendie ? "Incendie (historique)" : "Accident (historique)",
         "Statut": p.statut,
         "Clients Incendie": p.clientsIncendie,
         "Clients Accident": p.clientsAccident,
@@ -588,11 +595,17 @@ export default function Partenaires() {
                       <td>{p.localisation}</td>
                       <td>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          {p.produitIncendie && (
-                            <Badge kind="warning">Incendie</Badge>
+                          {p.sousBranche === "ASSURANCES_ACCIDENTS" && (
+                            <Badge kind="success">Assurances Accidents</Badge>
                           )}
-                          {p.produitAccident && (
-                            <Badge kind="success">Accident</Badge>
+                          {p.sousBranche === "ASSURANCES_DOMMAGES" && (
+                            <Badge kind="warning">Assurances Dommages</Badge>
+                          )}
+                          {!p.sousBranche && p.produitIncendie && (
+                            <Badge kind="warning">Incendie (historique)</Badge>
+                          )}
+                          {!p.sousBranche && p.produitAccident && (
+                            <Badge kind="success">Accident (historique)</Badge>
                           )}
                         </div>
                       </td>
@@ -624,7 +637,17 @@ export default function Partenaires() {
                           >
                             <Pencil size={15} />
                           </button>
-                          {p.produitIncendie && (
+                          {p.sousBranche && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 8 }}
+                              title={`QR ${p.sousBranche === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"}`}
+                              onClick={() => showQr(p, p.sousBranche!)}
+                            >
+                              <QrCode size={15} color={p.sousBranche === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309"} />
+                            </button>
+                          )}
+                          {!p.sousBranche && p.produitIncendie && (
                             <>
                               <button
                                 className="btn btn-ghost"
@@ -644,7 +667,7 @@ export default function Partenaires() {
                               </button>
                             </>
                           )}
-                          {p.produitAccident && (
+                          {!p.sousBranche && p.produitAccident && (
                             <button
                               className="btn btn-ghost"
                               style={{ padding: 8 }}
@@ -741,34 +764,35 @@ export default function Partenaires() {
               </select>
             </div>
             <div className="field">
-              <label className="label">Produit <span className="req">*</span></label>
+              <label className="label">Assurance <span className="req">*</span></label>
               <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
                 <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
                   <input
                     type="radio"
-                    name="produit"
-                    value="incendie"
-                    checked={form.produit === "incendie"}
-                    onChange={() => setForm({ ...form, produit: "incendie" })}
+                    name="assurance"
+                    value="ASSURANCES_ACCIDENTS"
+                    checked={form.assurance === "ASSURANCES_ACCIDENTS"}
+                    onChange={() => setForm({ ...form, assurance: "ASSURANCES_ACCIDENTS" })}
                   />
-                  <span>Incendie</span>
+                  <span>Accidents</span>
                 </label>
                 <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
                   <input
                     type="radio"
-                    name="produit"
-                    value="accident"
-                    checked={form.produit === "accident"}
-                    onChange={() => setForm({ ...form, produit: "accident" })}
+                    name="assurance"
+                    value="ASSURANCES_DOMMAGES"
+                    checked={form.assurance === "ASSURANCES_DOMMAGES"}
+                    onChange={() => setForm({ ...form, assurance: "ASSURANCES_DOMMAGES" })}
                   />
-                  <span>Accident</span>
+                  <span>Dommages</span>
                 </label>
               </div>
-              {form.produit === "incendie" && (
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
-                  Deux QR codes seront générés automatiquement : 1 000 FCFA et 2 000 FCFA.
-                </div>
-              )}
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Un seul QR code sera généré : le client choisira son produit
+                {form.assurance === "ASSURANCES_ACCIDENTS"
+                  ? " (RelaxAccidents Frais Médicaux, RelaxMoto, RelaxVoyage…) après l'avoir scanné."
+                  : " (Incendie, SecurHome, SecurPro…) après l'avoir scanné."}
+              </div>
             </div>
             <div className="field">
               <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>

@@ -45,6 +45,28 @@ export interface ContratAccident {
   signature?: string | null;
 }
 
+export interface ContratRelaxVoyage {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  dateNaissance?: string | null;
+  compagnie?: string | null;
+  lieuDepart?: string | null;
+  lieuArrivee?: string | null;
+  numeroTicket?: string | null;
+  dateDepart?: string | null;
+  numeroPersonneContact?: string | null;
+  montant: number;
+  capitalGaranti: number;
+  fraisSante?: number | null;
+  bagages?: string | null;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -405,6 +427,7 @@ type ContratType =
   | "incendie"
   | "accident"
   | "relaxaccidents_fraismedicaux"
+  | "relaxvoyage"
   | "securpro"
   | "securstock"
   | "securecolte"
@@ -452,6 +475,10 @@ export async function genererContratAccident(c: ContratAccident) {
 // (dont il remplace les souscriptions) — mêmes champs (voir ContratAccident).
 export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident) {
   await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c);
+}
+
+export async function genererContratRelaxVoyage(c: ContratRelaxVoyage) {
+  await telechargerContratPdf("relaxvoyage", c.numeroPolice, c);
 }
 
 export async function genererContratSecurpro(c: ContratSecurpro) {

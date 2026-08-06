@@ -26,7 +26,7 @@ function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
 // refonte Assurances Accidents/Dommages (voir routes /initiate-formule ci-dessous).
-const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux"] as const;
+const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage"] as const;
 function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
 }
@@ -101,15 +101,51 @@ publicRouter.get(
     // partenaires n'aient à réimprimer leur QR physique.
     const qr = await prisma.qrCode.findFirst({
       where: { token, actif: true, partenaire: { statut: "actif" } },
-      include: { produit: true, partenaire: { select: { id: true, nomCommerce: true } } },
+      include: { produit: true, partenaire: { select: { id: true, nomCommerce: true, qrIncendie1000Token: true } } },
     });
     if (qr) {
+      // QR "sélecteur" (un par partenaire/Assurance) : pas de produit précis,
+      // renvoie la liste des produits de la sous-branche pour que le
+      // prospect en choisisse un (refonte Assurances Accidents/Dommages).
+      if (!qr.produitId && qr.sousBranche) {
+        const produits = await prisma.produit.findMany({
+          where: { sousBranche: qr.sousBranche },
+          orderBy: { ordre: "asc" },
+        });
+        const items = await Promise.all(
+          produits.map(async (p) => {
+            const tarifDefaut = await prisma.tarifProduit.findFirst({
+              where: { produitId: p.id },
+              orderBy: { prime: "asc" },
+            });
+            // Pont Incendie : ce produit reste sur le modèle historique
+            // (SouscriptionIncendie) — le sélecteur pointe vers le token
+            // Incendie dédié du partenaire, pas vers celui du sélecteur.
+            const tokenDedie = p.code === "incendie" ? qr.partenaire.qrIncendie1000Token ?? undefined : undefined;
+            return {
+              code: p.code,
+              libelle: p.libelle,
+              disponible: p.actif && (p.code === "incendie" ? !!tokenDedie : true),
+              montantPrime: tarifDefaut?.prime ?? null,
+              capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
+              token: tokenDedie,
+            };
+          })
+        );
+        return res.json({
+          type: "chooser",
+          sousBranche: qr.sousBranche,
+          partenaire: { id: qr.partenaire.id, nomCommerce: qr.partenaire.nomCommerce },
+          produits: items,
+        });
+      }
+
       const tarifDefaut = await prisma.tarifProduit.findFirst({
-        where: { produitId: qr.produitId },
+        where: { produitId: qr.produitId! },
         orderBy: { prime: "asc" },
       });
       return res.json({
-        produit: qr.produit.code,
+        produit: qr.produit!.code,
         montantPrime: tarifDefaut?.prime ?? null,
         capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
         partenaire: { id: qr.partenaire.id, nomCommerce: qr.partenaire.nomCommerce },
@@ -663,8 +699,22 @@ publicRouter.post(
     const prod = await prisma.produit.findUnique({ where: { code } });
     if (!prod) return res.status(404).json({ error: "Produit inconnu" });
 
+    // Le QR peut pointer précisément sur ce produit (comportement historique)
+    // ou être un QR "sélecteur" de sa sous-branche (refonte Assurances
+    // Accidents/Dommages — un seul QR par partenaire, produit choisi côté
+    // client). Un produit sans sousBranche ne peut être atteint que par un QR
+    // précis (sinon un QR sélecteur "orphelin" — impossible en pratique,
+    // aucun n'est créé sans sousBranche — matcherait n'importe quel produit).
     const qr = await prisma.qrCode.findFirst({
-      where: { token: data.qrToken, produitId: prod.id, actif: true, partenaire: { statut: "actif" } },
+      where: {
+        token: data.qrToken,
+        actif: true,
+        partenaire: { statut: "actif" },
+        OR: [
+          { produitId: prod.id },
+          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
+        ],
+      },
       include: { partenaire: true },
     });
     if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -761,7 +811,24 @@ const formuleSchema = z.object({
   dateNaissance: z.coerce.date().optional(),
   formule: z.string().min(1),
   signature: z.string().min(1).optional(),
+  // RelaxVoyage uniquement — voir isProduitFormule ci-dessus.
+  typePiece: z.enum(["CNI", "Permis"]).optional(),
+  compagnie: z.string().min(1).max(120).optional(),
+  lieuDepart: z.string().min(1).max(120).optional(),
+  lieuArrivee: z.string().min(1).max(120).optional(),
+  numeroTicket: z.string().min(1).max(60).optional(),
+  dateDepart: z.coerce.date().optional(),
+  numeroPersonneContact: z.string().min(6).max(40).optional(),
 });
+
+const RELAXVOYAGE_CHAMPS_REQUIS = [
+  "compagnie",
+  "lieuDepart",
+  "lieuArrivee",
+  "numeroTicket",
+  "dateDepart",
+  "numeroPersonneContact",
+] as const;
 
 publicRouter.post(
   "/souscriptions/:produit/initiate-formule",
@@ -770,14 +837,27 @@ publicRouter.post(
     if (!isProduitFormule(code)) return res.status(404).json({ error: "Produit inconnu" });
     const data = formuleSchema.parse(req.body);
 
+    if (code === "relaxvoyage" && RELAXVOYAGE_CHAMPS_REQUIS.some((champ) => !data[champ])) {
+      return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
+    }
+
     const prod = await prisma.produit.findUnique({ where: { code } });
     if (!prod) return res.status(404).json({ error: "Produit inconnu" });
 
     // Résout le QR — accepte aussi bien un partenaire qu'un de ses agents de
     // distribution (comme resoudrePartenaireOuAgent pour Incendie/Accident,
-    // mais sur le modèle générique QrCode).
+    // mais sur le modèle générique QrCode) — précis (produitId) ou sélecteur
+    // (sousBranche, voir /initiate ci-dessus pour le détail du raisonnement).
     const qr = await prisma.qrCode.findFirst({
-      where: { token: data.qrToken, produitId: prod.id, actif: true, partenaire: { statut: "actif" } },
+      where: {
+        token: data.qrToken,
+        actif: true,
+        partenaire: { statut: "actif" },
+        OR: [
+          { produitId: prod.id },
+          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
+        ],
+      },
     });
     if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
     if (qr.agentDistributionId) {
@@ -805,7 +885,21 @@ publicRouter.post(
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
         nombreEcheances: 1,
-        donneesSpecifiques: data.signature ? { signature: data.signature } : undefined,
+        donneesSpecifiques:
+          code === "relaxvoyage"
+            ? {
+                signature: data.signature ?? null,
+                typePiece: data.typePiece ?? null,
+                compagnie: data.compagnie,
+                lieuDepart: data.lieuDepart,
+                lieuArrivee: data.lieuArrivee,
+                numeroTicket: data.numeroTicket,
+                dateDepart: data.dateDepart,
+                numeroPersonneContact: data.numeroPersonneContact,
+              }
+            : data.signature
+            ? { signature: data.signature }
+            : undefined,
         paiements: {
           create: { numeroEcheance: 1, montant: tarif.prime, dateEcheance: new Date() },
         },
@@ -927,7 +1021,26 @@ publicRouter.get(
     if (!s || s.waveStatut !== "confirme") {
       return res.status(404).json({ error: "Contrat non disponible" });
     }
-    const donneesSpecifiques = s.donneesSpecifiques as { signature?: string } | null;
+    const donneesSpecifiques = s.donneesSpecifiques as {
+      signature?: string;
+      typePiece?: string | null;
+      compagnie?: string;
+      lieuDepart?: string;
+      lieuArrivee?: string;
+      numeroTicket?: string;
+      dateDepart?: string;
+      numeroPersonneContact?: string;
+    } | null;
+    let fraisSante: number | null = null;
+    let bagages: string | null = null;
+    if (req.params.produit === "relaxvoyage") {
+      const tarif = await prisma.tarifProduit.findFirst({
+        where: { produitId: s.produitId, prime: s.montantPrime },
+      });
+      const infos = tarif?.donneesSpecifiques as { fraisSante?: number; bagages?: string } | null;
+      fraisSante = infos?.fraisSante ?? null;
+      bagages = infos?.bagages ?? null;
+    }
     res.json({
       numeroPolice: s.numeroPolice,
       montant: s.montantPrime,
@@ -940,6 +1053,14 @@ publicRouter.get(
       telephone: s.telephone,
       partenaire: s.partenaire.nomCommerce,
       signature: donneesSpecifiques?.signature ?? null,
+      compagnie: donneesSpecifiques?.compagnie ?? null,
+      lieuDepart: donneesSpecifiques?.lieuDepart ?? null,
+      lieuArrivee: donneesSpecifiques?.lieuArrivee ?? null,
+      numeroTicket: donneesSpecifiques?.numeroTicket ?? null,
+      dateDepart: donneesSpecifiques?.dateDepart ?? null,
+      numeroPersonneContact: donneesSpecifiques?.numeroPersonneContact ?? null,
+      fraisSante,
+      bagages,
     });
   })
 );

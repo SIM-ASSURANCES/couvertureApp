@@ -418,6 +418,10 @@ model TarifProduit {
   capitalGaranti          Int
   commission              Float
   tauxCommissionMensuelle Float?
+  // Garanties additionnelles propres à une formule, en plus de capitalGaranti
+  // (ex. RelaxVoyage : { fraisSante, bagages } — capitalGaranti porte le
+  // montant Décès/IPT, seule valeur déjà affichée partout ailleurs).
+  donneesSpecifiques      Json?
   createdAt               DateTime @default(now())
 
   // Identité d'une variante = (produit, libellé), pas (produit, prime) : deux
@@ -436,8 +440,14 @@ model QrCode {
   // AgentDistribution.qrIncendie1000Token pour le modèle historique.
   agentDistributionId String?
   agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: Cascade)
-  produitId       String
-  produit         Produit    @relation(fields: [produitId], references: [id])
+  // Un QR pointe SOIT sur un produit précis (produitId, comportement
+  // historique : le prospect arrive directement sur son formulaire), SOIT sur
+  // une sous-branche entière (sousBranche, "QR sélecteur" — un seul QR par
+  // partenaire/Assurance, le prospect choisit son produit après le scan).
+  // Exactement un des deux est renseigné (contrainte applicative, pas SQL).
+  produitId       String?
+  produit         Produit?   @relation(fields: [produitId], references: [id])
+  sousBranche     String?
   libelleVariante String? // distingue plusieurs QR pour un même produit (ex incendie 1000/2000)
   token           String     @unique
   actif           Boolean    @default(true)
@@ -446,7 +456,9 @@ model QrCode {
   // NULL et une valeur donnée sont considérés distincts par Postgres pour un
   // index unique — deux lignes agentDistributionId=NULL (partenaire) et
   // agentDistributionId=X (agent) peuvent donc coexister sur le même
-  // (partenaireId, produitId, libelleVariante) sans collision.
+  // (partenaireId, produitId, libelleVariante) sans collision. Un QR sélecteur
+  // (produitId=NULL) n'est pas couvert par cet index (produitId toujours NULL
+  // pour toutes ces lignes) : l'unicité pratique vient de `token` (@unique).
   @@unique([partenaireId, agentDistributionId, produitId, libelleVariante])
 }
 

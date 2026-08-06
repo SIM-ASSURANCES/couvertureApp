@@ -20,6 +20,9 @@ export interface Partenaire {
   clientsIncendie: number;
   clientsAccident: number;
   clientsRelax?: number;
+  // Assurance assignée (refonte Assurances Accidents/Dommages, QR "sélecteur") —
+  // null pour un partenaire encore sur l'ancien modèle (produitIncendie/produitAccident).
+  sousBranche?: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null;
 }
 
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---

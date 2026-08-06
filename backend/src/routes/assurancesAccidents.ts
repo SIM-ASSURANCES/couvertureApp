@@ -40,8 +40,15 @@ assurancesAccidentsRouter.get(
         enAttente: await prisma.souscription.count({ where: { produitId: p.id, waveStatut: { in: ["en_attente", "echoue"] } } }),
       }))
     );
+    // Compte les partenaires ayant soit un QR précis pour l'un de ces
+    // produits (comportement historique), soit un QR "sélecteur" de cette
+    // sous-branche (refonte — un partenaire assigné à l'Assurance entière).
     const partenaires = await prisma.partenaire.count({
-      where: { qrCodes: { some: { produitId: { in: produits.map((p) => p.id) } } } },
+      where: {
+        qrCodes: {
+          some: { OR: [{ produitId: { in: produits.map((p) => p.id) } }, { sousBranche: SOUS_BRANCHE }] },
+        },
+      },
     });
     const derniers = await prisma.souscription.findMany({
       where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },

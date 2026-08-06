@@ -11,8 +11,6 @@ import {
   Wallet,
   FileText,
   Clock,
-  Bike,
-  Car,
   IdCard,
   Landmark,
   MapPin,
@@ -52,8 +50,8 @@ export function isNavBranch(entry: AdminNavEntry): entry is NavBranch {
 export const adminNav: AdminNavEntry[] = [
   {
     id: "incendie-accident",
-    label: "Assurances Accident et Incendie",
-    icon: Flame,
+    label: "Assurances Accidents et Dommages",
+    icon: HeartPulse,
     homeTo: "/admin",
     groups: [
       {
@@ -67,7 +65,8 @@ export const adminNav: AdminNavEntry[] = [
         section: "Souscriptions",
         items: [
           { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
-          { to: "/admin/accident", label: "Clients Accident", icon: ShieldCheck },
+          { to: "/admin/clients-accidents", label: "Clients Accidents", icon: FileText },
+          { to: "/admin/accident", label: "Clients Accident (historique)", icon: ShieldCheck },
           { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
           { to: "/admin/contrats", label: "Contrats", icon: FileText },
         ],
@@ -75,64 +74,8 @@ export const adminNav: AdminNavEntry[] = [
       {
         section: "Pilotage",
         items: [
+          { to: "/admin/tarifs-accidents", label: "Tarifs", icon: Percent },
           { to: "/admin/performance", label: "Performance & Commissions", icon: TrendingUp },
-        ],
-      },
-    ],
-  },
-  {
-    id: "assurances-accidents",
-    label: "Assurances Accidents",
-    icon: HeartPulse,
-    homeTo: "/admin/assurances-accidents",
-    groups: [
-      {
-        section: "Gestion",
-        items: [
-          { to: "/admin/assurances-accidents", label: "Tableau de bord", icon: LayoutDashboard },
-          { to: "/admin/assurances-accidents/partenaires", label: "Partenaires", icon: Store },
-        ],
-      },
-      {
-        section: "Souscriptions",
-        items: [
-          { to: "/admin/assurances-accidents/clients", label: "Clients & Contrats", icon: FileText },
-        ],
-      },
-      {
-        section: "Pilotage",
-        items: [
-          { to: "/admin/assurances-accidents/tarifs", label: "Tarifs", icon: Percent },
-        ],
-      },
-    ],
-  },
-  {
-    id: "relax",
-    label: "Assurances RelaxMoto et RelaxAuto",
-    icon: Bike,
-    homeTo: "/admin/relax",
-    groups: [
-      {
-        section: "Gestion",
-        items: [
-          { to: "/admin/relax", label: "Tableau de bord", icon: LayoutDashboard },
-          { to: "/admin/relax/partenaires", label: "Partenaires", icon: Store },
-        ],
-      },
-      {
-        section: "Souscriptions",
-        items: [
-          { to: "/admin/relax/moto", label: "Clients RelaxMoto", icon: Bike },
-          { to: "/admin/relax/auto", label: "Clients RelaxAuto", icon: Car },
-          { to: "/admin/relax/paiements-en-attente", label: "Paiement en attente", icon: Clock },
-          { to: "/admin/relax/contrats", label: "Contrats & Cartes", icon: IdCard },
-        ],
-      },
-      {
-        section: "Pilotage",
-        items: [
-          { to: "/admin/relax/performance", label: "Performance & Commissions", icon: TrendingUp },
         ],
       },
     ],

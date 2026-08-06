@@ -307,6 +307,13 @@ meRouter.post(
     const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
 
+    // L'agent hérite de(s) Assurance(s)/produit(s) du partenaire — mêmes QR
+    // codes que lui (refonte Assurances Accidents/Dommages : QR "sélecteur"
+    // générique en plus des colonnes historiques).
+    const qrSelecteurPartenaire = await prisma.qrCode.findFirst({
+      where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+    });
+
     const motDePasse = genererMotDePasseClient();
     const created = await prisma.agentDistribution.create({
       data: {
@@ -315,12 +322,23 @@ meRouter.post(
         telephone: data.telephone,
         localisation: data.localisation,
         passwordHash: await bcrypt.hash(motDePasse, 10),
-        // L'agent hérite des produits du partenaire — mêmes QR codes que lui.
-        qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
+        qrIncendie1000Token: p.produitIncendie || qrSelecteurPartenaire?.sousBranche === "ASSURANCES_DOMMAGES" ? newQrToken("i1k") : null,
         qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
         qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
       },
     });
+
+    if (qrSelecteurPartenaire?.sousBranche) {
+      await prisma.qrCode.create({
+        data: {
+          partenaireId: p.id,
+          agentDistributionId: created.id,
+          sousBranche: qrSelecteurPartenaire.sousBranche,
+          token: newQrToken(qrSelecteurPartenaire.sousBranche === "ASSURANCES_ACCIDENTS" ? "acc" : "dom"),
+        },
+      });
+    }
+
     // Le mot de passe en clair n'est renvoyé qu'ici, une seule fois — jamais
     // stocké ni récupérable ensuite (seul son hash est conservé).
     res.status(201).json({ ...created, motDePasseProvisoire: motDePasse });
