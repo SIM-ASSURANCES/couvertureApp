@@ -166,9 +166,9 @@ export default function AdminDashboard() {
             />
           </div>
 
-          {accidents && (
-            <>
-              <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
+          <div className="stat-grid stat-grid-compact" style={{ marginTop: 16 }}>
+            {accidents && (
+              <>
                 <StatCard
                   icon={<Store size={20} />}
                   label="Partenaires Assurances Accidents & Dommages"
@@ -181,14 +181,8 @@ export default function AdminDashboard() {
                   color="#15803d"
                   bg="#e8f6ec"
                 />
-              </div>
-              <Link className="muted" to="/admin/clients-accidents" style={{ fontSize: 12, display: "inline-block", marginTop: 6 }}>
-                Voir le détail par produit <ArrowUpRight size={12} style={{ verticalAlign: -2 }} />
-              </Link>
-            </>
-          )}
-
-          <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
+              </>
+            )}
             <StatCard
               icon={<Coins size={20} />}
               label="FG totale"
@@ -213,6 +207,11 @@ export default function AdminDashboard() {
               bg="#e8f6ec"
             />
           </div>
+          {accidents && (
+            <Link className="muted" to="/admin/clients-accidents" style={{ fontSize: 12, display: "inline-block", marginTop: 6 }}>
+              Voir le détail par produit <ArrowUpRight size={12} style={{ verticalAlign: -2 }} />
+            </Link>
+          )}
 
           <div className="grid-2" style={{ marginTop: 24 }}>
             <Card
