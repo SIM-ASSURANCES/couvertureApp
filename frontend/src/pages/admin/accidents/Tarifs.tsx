@@ -242,6 +242,7 @@ export default function AssurancesAccidentsTarifs() {
       <div style={{ marginTop: 24 }}>
         <ProduitTarifsTable code="relaxaccidents_fraismedicaux" libelle="RelaxAccidents Frais Médicaux" />
         <ProduitTarifsTable code="relaxmoto" libelle="RelaxMoto" />
+        <ProduitTarifsTable code="relaxauto" libelle="RelaxAuto" />
         <ProduitTarifsTable code="relaxvoyage" libelle="RelaxVoyage" />
       </div>
     </>

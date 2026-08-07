@@ -772,6 +772,13 @@ export default function Souscription() {
     setStep("infos");
   }
 
+  /** Retour à l'écran sélecteur (uniquement possible si on y est arrivé via un QR "sélecteur"). */
+  function retourListeProduits() {
+    if (!chooserInfo) return;
+    setQrInfo(null);
+    setStep("choose-produit");
+  }
+
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
@@ -1236,6 +1243,28 @@ export default function Souscription() {
           {/* ── FORMULAIRE ── */}
           {step === "infos" && (
             <div>
+              {chooserInfo && (
+                <button
+                  type="button"
+                  onClick={retourListeProduits}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    marginBottom: 18,
+                    color: "#004b9c",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Retour à la liste des produits
+                </button>
+              )}
+
               {/* Sélecteur de tarif pour l'accident (ancien modèle, en transition) */}
               {qrInfo?.produit === "accident" && (
                 <div style={{ marginBottom: 24 }}>

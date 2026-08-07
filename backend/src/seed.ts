@@ -349,8 +349,14 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     });
   }
 
-  // RelaxMoto rejoint le sélecteur Accidents (branche RELAX inchangée).
+  // RelaxMoto/RelaxAuto rejoignent le sélecteur Accidents (branche RELAX
+  // inchangée). `ordre` fixé explicitement pour RelaxAuto (contrairement à
+  // RelaxMoto qui garde son défaut 0) car un `update` ne rattrape pas la
+  // valeur `ordre` fixée à la création par seedTarificationRelax() sur les
+  // bases déjà seedées — sans ça son rang dans le sélecteur serait indéfini
+  // vis-à-vis des autres produits.
   await prisma.produit.update({ where: { code: "relaxmoto" }, data: { sousBranche: "ASSURANCES_ACCIDENTS" } });
+  await prisma.produit.update({ where: { code: "relaxauto" }, data: { sousBranche: "ASSURANCES_ACCIDENTS", ordre: 4 } });
 
   // Incendie : ligne présentationnelle uniquement (flux réel = SouscriptionIncendie).
   await prisma.produit.upsert({
