@@ -23,6 +23,7 @@ export interface ContratIncendie {
   prenom?: string | null;
   telephone: string;
   refFacture?: string | null;
+  ville?: string | null;
   commune?: string | null;
   quartier?: string | null;
   numeroMaison?: string | null;
@@ -88,6 +89,29 @@ export interface ContratRelaxAccidentsGenerale {
   signature?: string | null;
 }
 
+export interface ContratSecurhome {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  referenceCIE?: string | null;
+  nombrePieces?: number | null;
+  statutOccupation: "proprietaire" | "locataire";
+  valeurBatimentOuLoyer: number;
+  contenu: number;
+  lignes: LigneGarantie[];
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -99,6 +123,8 @@ export interface ContratSecurpro {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  nomCommercial?: string | null;
+  referenceCIE?: string | null;
   ville?: string | null;
   communeQuartier?: string | null;
   classeLabel: string;
@@ -451,6 +477,8 @@ type ContratType =
   | "relaxvoyage"
   | "relaxaccidents_generale"
   | "securpro"
+  | "securpro_dommages"
+  | "securhome_dommages"
   | "securstock"
   | "securecolte"
   | "coupsdurs";
@@ -509,6 +537,17 @@ export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccide
 
 export async function genererContratSecurpro(c: ContratSecurpro) {
   await telechargerContratPdf("securpro", c.numeroPolice, c);
+}
+
+// SecurPro (Assurances Dommages, distribué via QR partenaire) réutilise le
+// même contrat que le SecurPro IMF (même moteur de calcul), sous un type
+// distinct pour ne pas mélanger les deux canaux de distribution.
+export async function genererContratSecurproDommages(c: ContratSecurpro) {
+  await telechargerContratPdf("securpro_dommages", c.numeroPolice, c);
+}
+
+export async function genererContratSecurhome(c: ContratSecurhome) {
+  await telechargerContratPdf("securhome_dommages", c.numeroPolice, c);
 }
 
 export async function genererContratSecurecolte(c: ContratSecurecolte) {

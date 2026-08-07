@@ -238,9 +238,15 @@ model SouscriptionIncendie {
   prenom              String?
   email               String?
   refFacture          String?        @map("numeroFacture")
+  ville               String?
   commune             String?
   quartier            String?
   numeroMaison        String?
+  // Montant de l'achat déclaré par le client (traçabilité) — a déterminé la
+  // formule (1000/2000) côté serveur lors de la souscription via le QR
+  // sélecteur (seuil 250 000 FCFA). Non renseigné pour les souscriptions via
+  // un ancien QR dédié à une formule précise.
+  montantAchat        Int?
   pieceIdentiteUrl    String?
   dateNaissance       DateTime?
   // data URL PNG (selfie) — capturée avec pieceIdentiteUrl pour établir la

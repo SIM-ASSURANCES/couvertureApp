@@ -19,6 +19,7 @@ interface Souscription {
   telephone: string;
   email: string | null;
   refFacture: string | null;
+  ville: string | null;
   commune: string | null;
   quartier: string | null;
   numeroMaison: string | null;
@@ -283,22 +284,39 @@ export default function SouscriptionComplement() {
                   style={inputStyle}
                 />
               </FieldRow>
-              <FieldRow label="Réf. facture *">
-                <input
-                  value={refFacture}
-                  onChange={(e) => setRefFacture(e.target.value)}
-                  placeholder="Ex. FAC-2026-0001"
-                  style={inputStyle}
-                />
-              </FieldRow>
-              <FieldRow label="Commune *">
-                <input
-                  value={commune}
-                  onChange={(e) => setCommune(e.target.value)}
-                  placeholder="Ex. Cocody"
-                  style={inputStyle}
-                />
-              </FieldRow>
+              {/* Référence CIE et Commune sont désormais saisies dès la souscription
+                  (nouveau scénario QR sélecteur) — déjà renseignées ici, on les
+                  affiche en lecture seule plutôt que de les redemander. Pour les
+                  souscriptions historiques (avant ce changement), elles sont
+                  encore vides à ce stade et restent éditables. */}
+              {data.refFacture ? (
+                <FieldRow label="Référence CIE">
+                  <div style={{ ...inputStyle, background: "#f5f8fc", color: "#5b6b80" }}>{data.refFacture}</div>
+                </FieldRow>
+              ) : (
+                <FieldRow label="Référence CIE *">
+                  <input
+                    value={refFacture}
+                    onChange={(e) => setRefFacture(e.target.value)}
+                    placeholder="N° de votre facture CIE"
+                    style={inputStyle}
+                  />
+                </FieldRow>
+              )}
+              {data.commune ? (
+                <FieldRow label="Commune">
+                  <div style={{ ...inputStyle, background: "#f5f8fc", color: "#5b6b80" }}>{data.commune}</div>
+                </FieldRow>
+              ) : (
+                <FieldRow label="Commune *">
+                  <input
+                    value={commune}
+                    onChange={(e) => setCommune(e.target.value)}
+                    placeholder="Ex. Cocody"
+                    style={inputStyle}
+                  />
+                </FieldRow>
+              )}
               <FieldRow label="Quartier *">
                 <input
                   value={quartier}

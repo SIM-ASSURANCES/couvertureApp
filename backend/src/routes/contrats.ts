@@ -8,6 +8,7 @@ import {
   renderContratRelaxVoyage,
   renderContratRelaxAccidentsGenerale,
   renderContratSecurpro,
+  renderContratSecurhome,
   renderContratSecurecolte,
   renderContratSecurstock,
   renderContratCoupsdurs,
@@ -40,6 +41,7 @@ const incendieSchema = z.object({
     prenom: texteOpt(120),
     telephone: texte(40),
     refFacture: texteOpt(120),
+    ville: texteOpt(120),
     commune: texteOpt(120),
     quartier: texteOpt(120),
     numeroMaison: texteOpt(60),
@@ -155,6 +157,66 @@ const securproSchema = z.object({
     valeurBatimentOuLoyer: montant,
     contenu: montant,
     dansMarche: z.boolean(),
+    lignes: z.array(ligneGarantieSchema).max(30),
+    primeNetteHT: montant,
+    accessoires: montant,
+    taxes: montant,
+    primeTTC: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
+// SecurPro (Assurances Dommages) réutilise exactement le même contrat que le
+// SecurPro IMF (même moteur de calcul, voir routes/public.ts), avec deux
+// champs en plus propres à la distribution QR partenaire.
+const securproDommagesSchema = z.object({
+  type: z.literal("securpro_dommages"),
+  data: z.object({
+    numeroPolice: texte(60),
+    intermediaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    dateSouscription: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    nomCommercial: texteOpt(200),
+    referenceCIE: texteOpt(120),
+    telephone: texte(40),
+    typePiece: texteOpt(40),
+    numeroPiece: texteOpt(60),
+    ville: texteOpt(120),
+    communeQuartier: texteOpt(120),
+    classeLabel: texte(300),
+    statutOccupation: z.enum(["proprietaire", "locataire"]),
+    valeurBatimentOuLoyer: montant,
+    contenu: montant,
+    dansMarche: z.boolean(),
+    lignes: z.array(ligneGarantieSchema).max(30),
+    primeNetteHT: montant,
+    accessoires: montant,
+    taxes: montant,
+    primeTTC: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
+const securhomeDommagesSchema = z.object({
+  type: z.literal("securhome_dommages"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    ville: texteOpt(120),
+    communeQuartier: texteOpt(120),
+    referenceCIE: texteOpt(120),
+    nombrePieces: z.number().int().min(0).nullish(),
+    statutOccupation: z.enum(["proprietaire", "locataire"]),
+    valeurBatimentOuLoyer: montant,
+    contenu: montant,
     lignes: z.array(ligneGarantieSchema).max(30),
     primeNetteHT: montant,
     accessoires: montant,
@@ -284,6 +346,8 @@ const bodySchema = z.discriminatedUnion("type", [
   relaxvoyageSchema,
   relaxaccidentsGeneraleSchema,
   securproSchema,
+  securproDommagesSchema,
+  securhomeDommagesSchema,
   securstockSchema,
   securecolteSchema,
   coupsdursSchema,
@@ -314,6 +378,12 @@ contratsRouter.post(
         break;
       case "securpro":
         html = await renderContratSecurpro(body.data);
+        break;
+      case "securpro_dommages":
+        html = await renderContratSecurpro(body.data);
+        break;
+      case "securhome_dommages":
+        html = await renderContratSecurhome(body.data);
         break;
       case "securstock":
         html = await renderContratSecurstock(body.data);

@@ -18,6 +18,9 @@ import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incend
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { genererEcheancier } from "../services/echeancier.js";
 import { calculerRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
+import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
+import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
+import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -33,8 +36,8 @@ function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
 }
 
 // Produits à devis calculé dynamiquement (pas de TarifProduit) — RelaxAccidents
-// générale (police collective), voir POST /souscriptions/relaxaccidents/initiate.
-const PRODUITS_CALCUL_DYNAMIQUE = ["relaxaccidents"] as const;
+// générale (police collective), SecurHome+ et SecurPro (Assurances Dommages).
+const PRODUITS_CALCUL_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
 function isProduitCalculDynamique(p: string): p is (typeof PRODUITS_CALCUL_DYNAMIQUE)[number] {
   return (PRODUITS_CALCUL_DYNAMIQUE as readonly string[]).includes(p);
 }
@@ -84,6 +87,35 @@ async function resoudrePartenaireOuAgent(
   return null;
 }
 
+/**
+ * Résout un QR sur le modèle générique QrCode (précis ou sélecteur de
+ * sousBranche) pour un produit donné — pattern partagé par tous les produits
+ * à devis calculé dynamiquement (RelaxAccidents générale, SecurHome,
+ * SecurPro Dommages, et désormais le repli du QR sélecteur pour Incendie).
+ */
+async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
+  const produit = await prisma.produit.findUnique({ where: { code: codeProduit } });
+  if (!produit) return null;
+  const qr = await prisma.qrCode.findFirst({
+    where: {
+      token,
+      actif: true,
+      partenaire: { statut: "actif" },
+      OR: [
+        { produitId: produit.id },
+        ...(produit.sousBranche ? [{ produitId: null, sousBranche: produit.sousBranche }] : []),
+      ],
+    },
+    include: { partenaire: true },
+  });
+  if (!qr) return null;
+  if (qr.agentDistributionId) {
+    const agent = await prisma.agentDistribution.findUnique({ where: { id: qr.agentDistributionId } });
+    if (!agent || agent.statut !== "actif") return null;
+  }
+  return { produit, qr };
+}
+
 export const publicRouter = Router();
 
 /** Tarifications accident disponibles */
@@ -126,17 +158,17 @@ publicRouter.get(
               where: { produitId: p.id },
               orderBy: { prime: "asc" },
             });
-            // Pont Incendie : ce produit reste sur le modèle historique
-            // (SouscriptionIncendie) — le sélecteur pointe vers le token
-            // Incendie dédié du partenaire, pas vers celui du sélecteur.
-            const tokenDedie = p.code === "incendie" ? qr.partenaire.qrIncendie1000Token ?? undefined : undefined;
+            // Incendie reste persisté sur le modèle historique
+            // (SouscriptionIncendie), mais n'a plus de QR dédié par formule :
+            // il continue avec le token du sélecteur comme tout autre produit
+            // (voir POST /souscriptions/incendie, résolution via
+            // resoudreQrCodeGenerique + montant d'achat → formule).
             return {
               code: p.code,
               libelle: p.libelle,
-              disponible: p.actif && (p.code === "incendie" ? !!tokenDedie : true),
+              disponible: p.actif,
               montantPrime: tarifDefaut?.prime ?? null,
               capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
-              token: tokenDedie,
             };
           })
         );
@@ -210,41 +242,94 @@ publicRouter.get(
   })
 );
 
-/** Incendie : enregistrement dès la saisie du téléphone */
+/**
+ * Barème SECURPRO (classe de risque → taux Incendie/plafond) — lecture seule,
+ * non authentifiée. Réutilise la même table que l'admin IMF
+ * (GET /api/imf/baremes/securpro, protégée admin+IMF) : une seule source de
+ * vérité pour les taux, que la vente passe par un agent IMF ou par le QR
+ * self-service SecurPro (Assurances Dommages).
+ */
+publicRouter.get(
+  "/baremes/securpro",
+  asyncHandler(async (_req, res) => {
+    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
+/**
+ * Incendie : enregistrement dès la saisie du téléphone.
+ *
+ * Deux chemins de résolution du QR coexistent :
+ *  - QR précis historique (qrIncendie1000Token/qrIncendie2000Token, déjà
+ *    imprimés) — la formule reste fixée par le token scanné, `montantAchat`
+ *    est ignoré (rétro-compatibilité, comportement inchangé).
+ *  - QR sélecteur "Assurances Dommages" (nouveau scénario) — plus de token
+ *    dédié par formule : le client saisit le montant de son achat et la
+ *    formule est déterminée ici, jamais confiance dans un montant/formule
+ *    envoyé par le client (seuil 250 000 FCFA).
+ */
+const SEUIL_INCENDIE_FORMULE = 250_000;
 const incSchema = z.object({
   qrToken: z.string(),
   telephone: z.string().min(6),
   nom: z.string().optional(),
   prenom: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  ville: z.string().min(1).optional(),
   commune: z.string().optional(),
   quartier: z.string().optional(),
+  refFacture: z.string().min(1).optional(),
+  montantAchat: z.number().int().min(0).optional(),
 });
 
 publicRouter.post(
   "/souscriptions/incendie",
   asyncHandler(async (req, res) => {
     const data = incSchema.parse(req.body);
-    const resolu = await resoudrePartenaireOuAgent(data.qrToken);
-    if (!resolu || resolu.qrChamp === "qrAccidentToken") {
-      return res.status(404).json({ error: "QR Incendie invalide" });
+
+    let partenaireId: string;
+    let agentDistributionId: string | null;
+    let montantPrime: number;
+    let capitalGaranti: number;
+
+    const resoluLegacy = await resoudrePartenaireOuAgent(data.qrToken);
+    if (resoluLegacy && resoluLegacy.qrChamp !== "qrAccidentToken") {
+      partenaireId = resoluLegacy.partenaireId;
+      agentDistributionId = resoluLegacy.agentDistributionId;
+      montantPrime = resoluLegacy.qrChamp === "qrIncendie1000Token" ? 1000 : 2000;
+      capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
+    } else {
+      const resoluSelecteur = await resoudreQrCodeGenerique("incendie", data.qrToken);
+      if (!resoluSelecteur) return res.status(404).json({ error: "QR Incendie invalide" });
+      if (data.montantAchat == null) {
+        return res.status(400).json({ error: "Montant de l'achat manquant." });
+      }
+      partenaireId = resoluSelecteur.qr.partenaireId;
+      agentDistributionId = resoluSelecteur.qr.agentDistributionId;
+      montantPrime = data.montantAchat < SEUIL_INCENDIE_FORMULE ? 1000 : 2000;
+      capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
     }
 
-    const montantPrime = resolu.qrChamp === "qrIncendie1000Token" ? 1000 : 2000;
-    const capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
-
+    // Champs désormais requis dès cette étape pour le nouveau scénario
+    // (formulaire.tsx les rend obligatoires) — repli optionnel côté schéma
+    // pour ne pas casser un éventuel appel via un ancien QR précis qui ne les
+    // enverrait pas encore.
     const token = newFormulaireToken();
 
     const s = await prisma.souscriptionIncendie.create({
       data: {
-        partenaireId: resolu.partenaireId,
-        agentDistributionId: resolu.agentDistributionId,
+        partenaireId,
+        agentDistributionId,
         telephone: data.telephone,
         nom: data.nom || null,
         prenom: data.prenom || null,
         email: data.email || null,
+        ville: data.ville || null,
         commune: data.commune || null,
         quartier: data.quartier || null,
+        refFacture: data.refFacture || null,
+        montantAchat: data.montantAchat ?? null,
         montantPrime,
         capitalGaranti,
         statut: "en_cours",
@@ -257,7 +342,7 @@ publicRouter.post(
       messageIncendie(s.prenom, lienFormulaire("incendie", token))
     );
     await notifyPartenaire(
-      resolu.partenaireId,
+      partenaireId,
       "souscription",
       "Nouvelle souscription Incendie",
       `Nouveau client incendie (${montantPrime} FCFA) via votre QR code.`,
@@ -286,6 +371,7 @@ publicRouter.get(
       email: s.email,
       telephone: s.telephone,
       refFacture: s.refFacture,
+      ville: s.ville,
       commune: s.commune,
       quartier: s.quartier,
       numeroMaison: s.numeroMaison,
@@ -317,14 +403,22 @@ publicRouter.patch(
       dateNaissance, pieceIdentiteUrl, selfieUrl,
     } = req.body ?? {};
 
+    // Nouveau scénario : refFacture (Référence CIE) et commune sont désormais
+    // saisis dès la souscription (voir POST /souscriptions/incendie) — on
+    // retombe sur les valeurs déjà en base si le formulaire de complétion ne
+    // les renvoie pas. Rétro-compatible avec les souscriptions historiques où
+    // elles sont encore vides à ce stade (le client les saisit alors ici).
+    const refFactureFinale = refFacture || s.refFacture;
+    const communeFinale = commune || s.commune;
+
     const tenteCompletion = !!(refFacture || commune || quartier || numeroMaison);
     if (tenteCompletion) {
-      if (!refFacture || !commune || !quartier) {
+      if (!refFactureFinale || !communeFinale || !quartier) {
         return res.status(400).json({
           error: "Réf.facture, commune et quartier sont obligatoires.",
         });
       }
-      if (!(await refFactureDisponible(refFacture, s.id))) {
+      if (!(await refFactureDisponible(refFactureFinale, s.id))) {
         return res.status(409).json({
           error: `Cette référence facture a déjà été utilisée ${MAX_USAGES_REF_FACTURE} fois.`,
         });
@@ -347,8 +441,8 @@ publicRouter.patch(
         nom: nom ?? s.nom,
         prenom: prenom ?? s.prenom,
         email: email ?? s.email,
-        refFacture: refFacture ?? s.refFacture,
-        commune: commune ?? s.commune,
+        refFacture: refFactureFinale,
+        commune: communeFinale,
         quartier: quartier ?? s.quartier,
         numeroMaison: numeroMaison ?? s.numeroMaison,
         signature: signature ?? s.signature,
@@ -729,28 +823,9 @@ publicRouter.post(
   asyncHandler(async (req, res) => {
     const data = relaxAccidentsGeneraleSchema.parse(req.body);
 
-    const prod = await prisma.produit.findUnique({ where: { code: "relaxaccidents" } });
-    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
-
-    const qr = await prisma.qrCode.findFirst({
-      where: {
-        token: data.qrToken,
-        actif: true,
-        partenaire: { statut: "actif" },
-        OR: [
-          { produitId: prod.id },
-          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
-        ],
-      },
-      include: { partenaire: true },
-    });
-    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
-    if (qr.agentDistributionId) {
-      const agent = await prisma.agentDistribution.findUnique({ where: { id: qr.agentDistributionId } });
-      if (!agent || agent.statut !== "actif") {
-        return res.status(404).json({ error: "QR invalide (agent inactif)" });
-      }
-    }
+    const resolu = await resoudreQrCodeGenerique("relaxaccidents", data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
 
     let resultat;
     try {
@@ -825,6 +900,333 @@ publicRouter.post(
       "souscription",
       `Nouvelle souscription ${prod.libelle}`,
       `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA, ${data.effectif} pers.) via votre QR code.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: echeance.id,
+      montant: resultat.primeTTC,
+      resultat,
+      checkoutUrl,
+      transactionId,
+    });
+  })
+);
+
+/**
+ * SecurPro (Assurances Dommages) — réutilise TEL QUEL le moteur de calcul déjà
+ * implémenté côté IMF (calculerSecurpro/BaremeSecurpro), vérifié conforme au
+ * document TARIF SECURHOME+_SECURPRO.docx. Seul le canal de distribution
+ * change (QR self-service plutôt qu'agent IMF) — mêmes taux, même barème
+ * (GET /public/baremes/securpro ci-dessus), même rendu de contrat
+ * (ContratSecurpro/renderContratSecurpro, étendu de nomCommercial/referenceCIE).
+ * Enregistrée AVANT la route générique `/souscriptions/:produit/initiate`
+ * ci-dessous (même piège d'ordre de routage Express que RelaxAccidents générale).
+ */
+const securproDommagesSchema = z.object({
+  qrToken: z.string(),
+  nom: z.string().min(1).max(120),
+  prenom: z.string().min(1).max(120),
+  nomCommercial: z.string().max(200).optional(),
+  ville: z.string().min(1).max(120),
+  communeQuartier: z.string().min(1).max(120),
+  refFacture: z.string().min(1).max(120),
+  telephone: z.string().min(6),
+  signature: z.string().min(1).optional(),
+  classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  statutOccupation: z.enum(["proprietaire", "locataire"]),
+  valeurBatiment: z.number().finite().min(0).optional(),
+  loyerMensuel: z.number().finite().min(0).optional(),
+  contenu: z.number().finite().min(0),
+  dansMarche: z.boolean(),
+  gardien: z.boolean(),
+  extincteur: z.boolean(),
+  volContenu: z.boolean(),
+  majorationVolContenu: z.boolean().optional(),
+  volCaisseCapital: z.number().finite().optional(),
+  majorationVolCaisse: z.boolean().optional(),
+  ddeCapital: z.number().finite().optional(),
+  deCapital: z.number().finite().optional(),
+  bdgCapital: z.number().finite().optional(),
+});
+
+publicRouter.post(
+  "/souscriptions/securpro_dommages/initiate",
+  asyncHandler(async (req, res) => {
+    const data = securproDommagesSchema.parse(req.body);
+
+    if (data.statutOccupation === "proprietaire" && data.valeurBatiment == null) {
+      return res.status(400).json({ error: "Valeur du bâtiment manquante." });
+    }
+    if (data.statutOccupation === "locataire" && data.loyerMensuel == null) {
+      return res.status(400).json({ error: "Loyer mensuel manquant." });
+    }
+    if (
+      !capitalDansListe(data.volCaisseCapital, VOL_CAISSE_CAPITAUX) ||
+      !capitalDansListe(data.ddeCapital, DDE_CAPITAUX) ||
+      !capitalDansListe(data.deCapital, DE_CAPITAUX) ||
+      !capitalDansListe(data.bdgCapital, BDG_CAPITAUX)
+    ) {
+      return res.status(400).json({ error: "Capital choisi invalide pour une garantie." });
+    }
+
+    const resolu = await resoudreQrCodeGenerique("securpro_dommages", data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
+
+    const baremeRow = await prisma.baremeSecurpro.findUnique({ where: { classe: data.classe } });
+    if (!baremeRow) return res.status(400).json({ error: "Barème SECURPRO introuvable pour cette classe." });
+
+    const input: SecurproInput = {
+      classe: data.classe,
+      statutOccupation: data.statutOccupation,
+      valeurBatiment: data.valeurBatiment,
+      loyerMensuel: data.loyerMensuel,
+      contenu: data.contenu,
+      dansMarche: data.dansMarche,
+      gardien: data.gardien,
+      extincteur: data.extincteur,
+      volContenu: data.volContenu,
+      majorationVolContenu: data.majorationVolContenu,
+      volCaisseCapital: data.volCaisseCapital,
+      majorationVolCaisse: data.majorationVolCaisse,
+      ddeCapital: data.ddeCapital,
+      deCapital: data.deCapital,
+      bdgCapital: data.bdgCapital,
+    };
+    const resultat = calculerSecurpro(input, {
+      classe: data.classe,
+      limiteCapital: baremeRow.limiteCapital,
+      tauxIncendie: baremeRow.tauxIncendie,
+    });
+
+    if (resultat.depassementPlafond) {
+      return res.status(400).json({
+        error:
+          "Les capitaux totaux dépassent le plafond assurable automatiquement pour cette classe de risque. Contactez SIM Assurances pour une étude particulière.",
+      });
+    }
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: qr.partenaireId,
+        agentDistributionId: qr.agentDistributionId,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        montantPrime: resultat.primeTTC,
+        capitalGaranti: Math.round(resultat.capitauxTotaux),
+        waveStatut: "en_attente",
+        nombreEcheances: 1,
+        donneesSpecifiques: {
+          signature: data.signature ?? null,
+          nom: data.nom,
+          prenom: data.prenom,
+          nomCommercial: data.nomCommercial ?? null,
+          ville: data.ville,
+          communeQuartier: data.communeQuartier,
+          refFacture: data.refFacture,
+          classe: data.classe,
+          statutOccupation: data.statutOccupation,
+          valeurBatiment: data.valeurBatiment ?? null,
+          loyerMensuel: data.loyerMensuel ?? null,
+          contenu: data.contenu,
+          dansMarche: data.dansMarche,
+          gardien: data.gardien,
+          extincteur: data.extincteur,
+          volContenu: data.volContenu,
+          majorationVolContenu: data.majorationVolContenu ?? null,
+          volCaisseCapital: data.volCaisseCapital ?? null,
+          majorationVolCaisse: data.majorationVolCaisse ?? null,
+          ddeCapital: data.ddeCapital ?? null,
+          deCapital: data.deCapital ?? null,
+          bdgCapital: data.bdgCapital ?? null,
+        },
+        resultat: JSON.parse(JSON.stringify(resultat)),
+        paiements: {
+          create: { numeroEcheance: 1, montant: resultat.primeTTC, dateEcheance: new Date() },
+        },
+      },
+    });
+
+    const echeance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paid=${echeance.id}`;
+    const errorUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paiement=echec`;
+
+    let checkoutUrl: string;
+    let transactionId: string;
+
+    if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      qr.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA) via votre QR code.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: echeance.id,
+      montant: resultat.primeTTC,
+      resultat,
+      checkoutUrl,
+      transactionId,
+    });
+  })
+);
+
+/**
+ * SecurHome+ (Assurances Dommages) — moteur de calcul propre (aucun équivalent
+ * IMF existant, contrairement à SecurPro), voir services/securhomeDommages.ts.
+ * Enregistrée AVANT la route générique `/souscriptions/:produit/initiate`
+ * ci-dessous (même piège d'ordre de routage Express que RelaxAccidents générale).
+ */
+const securhomeDommagesSchema = z.object({
+  qrToken: z.string(),
+  nom: z.string().min(1).max(120),
+  prenom: z.string().min(1).max(120),
+  ville: z.string().min(1).max(120),
+  communeQuartier: z.string().min(1).max(120),
+  refFacture: z.string().min(1).max(120),
+  // Informatif uniquement — n'entre pas dans le calcul de la prime (confirmé
+  // avec l'utilisateur).
+  nombrePieces: z.number().int().min(0).optional(),
+  telephone: z.string().min(6),
+  signature: z.string().min(1).optional(),
+  statutOccupation: z.enum(["proprietaire", "locataire"]),
+  valeurBatiment: z.number().finite().min(0).optional(),
+  loyerMensuel: z.number().finite().min(0).optional(),
+  contenu: z.number().finite().min(0),
+  gardien: z.boolean(),
+  extincteur: z.boolean(),
+  camera: z.boolean(),
+  volContenu: z.boolean(),
+  ddeCapital: z.number().finite().optional(),
+  deCapital: z.number().finite().optional(),
+  bdgCapital: z.number().finite().optional(),
+});
+
+publicRouter.post(
+  "/souscriptions/securhome_dommages/initiate",
+  asyncHandler(async (req, res) => {
+    const data = securhomeDommagesSchema.parse(req.body);
+
+    if (data.statutOccupation === "proprietaire" && data.valeurBatiment == null) {
+      return res.status(400).json({ error: "Valeur du bâtiment manquante." });
+    }
+    if (data.statutOccupation === "locataire" && data.loyerMensuel == null) {
+      return res.status(400).json({ error: "Loyer mensuel manquant." });
+    }
+
+    const resolu = await resoudreQrCodeGenerique("securhome_dommages", data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
+
+    const input: SecurhomeInput = {
+      statutOccupation: data.statutOccupation,
+      valeurBatiment: data.valeurBatiment,
+      loyerMensuel: data.loyerMensuel,
+      contenu: data.contenu,
+      gardien: data.gardien,
+      extincteur: data.extincteur,
+      camera: data.camera,
+      volContenu: data.volContenu,
+      ddeCapital: data.ddeCapital,
+      deCapital: data.deCapital,
+      bdgCapital: data.bdgCapital,
+    };
+    let resultat;
+    try {
+      resultat = calculerSecurhome(input);
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
+    }
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: qr.partenaireId,
+        agentDistributionId: qr.agentDistributionId,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        montantPrime: resultat.primeTTC,
+        capitalGaranti: resultat.capitauxTotaux,
+        waveStatut: "en_attente",
+        nombreEcheances: 1,
+        donneesSpecifiques: {
+          signature: data.signature ?? null,
+          nom: data.nom,
+          prenom: data.prenom,
+          ville: data.ville,
+          communeQuartier: data.communeQuartier,
+          refFacture: data.refFacture,
+          nombrePieces: data.nombrePieces ?? null,
+          statutOccupation: data.statutOccupation,
+          valeurBatiment: data.valeurBatiment ?? null,
+          loyerMensuel: data.loyerMensuel ?? null,
+          contenu: data.contenu,
+          gardien: data.gardien,
+          extincteur: data.extincteur,
+          camera: data.camera,
+          volContenu: data.volContenu,
+          ddeCapital: data.ddeCapital ?? null,
+          deCapital: data.deCapital ?? null,
+          bdgCapital: data.bdgCapital ?? null,
+        },
+        resultat: JSON.parse(JSON.stringify(resultat)),
+        paiements: {
+          create: { numeroEcheance: 1, montant: resultat.primeTTC, dateEcheance: new Date() },
+        },
+      },
+    });
+
+    const echeance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paid=${echeance.id}`;
+    const errorUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paiement=echec`;
+
+    let checkoutUrl: string;
+    let transactionId: string;
+
+    if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      qr.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA) via votre QR code.`,
       "/partenaire/souscriptions"
     );
 
@@ -1196,6 +1598,28 @@ publicRouter.get(
       classe?: number;
       typeCouverture?: string;
       effectif?: number;
+      nom?: string;
+      prenom?: string;
+      nomCommercial?: string | null;
+      ville?: string;
+      communeQuartier?: string;
+      refFacture?: string;
+      statutOccupation?: "proprietaire" | "locataire";
+      valeurBatiment?: number | null;
+      loyerMensuel?: number | null;
+      contenu?: number;
+      dansMarche?: boolean;
+      gardien?: boolean;
+      extincteur?: boolean;
+      camera?: boolean;
+      volContenu?: boolean;
+      majorationVolContenu?: boolean | null;
+      volCaisseCapital?: number | null;
+      majorationVolCaisse?: boolean | null;
+      ddeCapital?: number | null;
+      deCapital?: number | null;
+      bdgCapital?: number | null;
+      nombrePieces?: number | null;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -1232,6 +1656,21 @@ publicRouter.get(
       classe: donneesSpecifiques?.classe ?? null,
       typeCouverture: donneesSpecifiques?.typeCouverture ?? null,
       effectif: donneesSpecifiques?.effectif ?? null,
+      // SecurHome+/SecurPro (Assurances Dommages)
+      nomCommercial: donneesSpecifiques?.nomCommercial ?? null,
+      ville: donneesSpecifiques?.ville ?? null,
+      communeQuartier: donneesSpecifiques?.communeQuartier ?? null,
+      refFacture: donneesSpecifiques?.refFacture ?? null,
+      statutOccupation: donneesSpecifiques?.statutOccupation ?? null,
+      valeurBatiment: donneesSpecifiques?.valeurBatiment ?? null,
+      loyerMensuel: donneesSpecifiques?.loyerMensuel ?? null,
+      contenu: donneesSpecifiques?.contenu ?? null,
+      dansMarche: donneesSpecifiques?.dansMarche ?? null,
+      gardien: donneesSpecifiques?.gardien ?? null,
+      extincteur: donneesSpecifiques?.extincteur ?? null,
+      camera: donneesSpecifiques?.camera ?? null,
+      volContenu: donneesSpecifiques?.volContenu ?? null,
+      nombrePieces: donneesSpecifiques?.nombrePieces ?? null,
       resultat: s.resultat ?? null,
     });
   })

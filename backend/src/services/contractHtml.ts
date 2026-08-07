@@ -22,6 +22,7 @@ export interface ContratIncendie {
   prenom?: string | null;
   telephone: string;
   refFacture?: string | null;
+  ville?: string | null;
   commune?: string | null;
   quartier?: string | null;
   numeroMaison?: string | null;
@@ -87,6 +88,29 @@ export interface ContratRelaxAccidentsGenerale {
   signature?: string | null;
 }
 
+export interface ContratSecurhome {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  referenceCIE?: string | null;
+  nombrePieces?: number | null;
+  statutOccupation: "proprietaire" | "locataire";
+  valeurBatimentOuLoyer: number;
+  contenu: number;
+  lignes: LigneGarantie[];
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -98,6 +122,10 @@ export interface ContratSecurpro {
   telephone: string;
   typePiece?: string | null;
   numeroPiece?: string | null;
+  // SecurPro (Assurances Dommages, distribué via QR partenaire plutôt qu'agent
+  // IMF) — absents des contrats IMF existants, affichés seulement s'ils sont fournis.
+  nomCommercial?: string | null;
+  referenceCIE?: string | null;
   ville?: string | null;
   communeQuartier?: string | null;
   classeLabel: string;
@@ -338,7 +366,7 @@ function document_(title: string, inner: string): string {
 }
 
 export async function renderContratIncendie(c: ContratIncendie): Promise<string> {
-  const adresse = [c.numeroMaison, c.quartier, c.commune].filter(Boolean).join(", ");
+  const adresse = [c.numeroMaison, c.quartier, c.commune, c.ville].filter(Boolean).join(", ");
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — SECURDOMMAGE</h1>
@@ -354,7 +382,7 @@ export async function renderContratIncendie(c: ContratIncendie): Promise<string>
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Référence CIE</td><td>${val(c.refFacture)}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
-    <tr><td class="k">Commune</td><td>${val(c.commune)}</td><td class="k">Quartier</td><td>${val(c.quartier)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune</td><td>${val(c.commune)}</td></tr>
     <tr><td class="k">N° de maison</td><td>${val(c.numeroMaison)}</td><td class="k">Adresse</td><td>${val(adresse)}</td></tr>
   </table>
 
@@ -524,6 +552,11 @@ export async function renderContratSecurpro(c: ContratSecurpro): Promise<string>
     <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${val(c.numeroPiece)}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Marché ou abords de marché</td><td>${c.dansMarche ? "Oui" : "Non"}</td></tr>
+    ${
+      c.nomCommercial || c.referenceCIE
+        ? `<tr><td class="k">Nom commercial</td><td>${val(c.nomCommercial)}</td><td class="k">Référence CIE</td><td>${val(c.referenceCIE)}</td></tr>`
+        : ""
+    }
   </table>
 
   <h2>Garanties souscrites</h2>
@@ -558,6 +591,50 @@ export async function renderContratSecurpro(c: ContratSecurpro): Promise<string>
   </div>
   ${RECLAMATION}
   <div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function renderContratSecurhome(c: ContratSecurhome): Promise<string> {
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — SECURHOME+</h1>
+  <div class="sub">Assurance Multirisque Habitation · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">${c.statutOccupation === "locataire" ? "Loyer mensuel" : "Valeur du bâtiment"}</td><td>${fcfa(c.valeurBatimentOuLoyer)}</td><td class="k">Contenu</td><td>${fcfa(c.contenu)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Téléphone</td><td>${val(c.telephone)}</td><td class="k">Référence CIE</td><td>${val(c.referenceCIE)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune</td><td>${val(c.communeQuartier)}</td></tr>
+    <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Nombre de pièces</td><td>${val(c.nombrePieces)}</td></tr>
+  </table>
+
+  <h2>Garanties souscrites</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital</td><td class="k">Prime</td></tr>
+    ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
+  </table>
+
+  <table>
+    <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
+    lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-incendie.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 

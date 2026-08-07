@@ -358,11 +358,28 @@ async function seedCatalogueAssurancesAccidentsDommages() {
   await prisma.produit.update({ where: { code: "relaxmoto" }, data: { sousBranche: "ASSURANCES_ACCIDENTS" } });
   await prisma.produit.update({ where: { code: "relaxauto" }, data: { sousBranche: "ASSURANCES_ACCIDENTS", ordre: 4 } });
 
-  // Incendie : ligne présentationnelle uniquement (flux réel = SouscriptionIncendie).
-  await prisma.produit.upsert({
+  // Incendie : ligne présentationnelle uniquement (flux réel = SouscriptionIncendie,
+  // voir POST /public/souscriptions/incendie). `update` renomme le libellé
+  // même sur une base déjà seedée (nouveau scénario : plus de QR dédié par
+  // formule, le sélecteur suffit — voir resoudreQrCodeGenerique).
+  const incendieProduit = await prisma.produit.upsert({
     where: { code: "incendie" },
+    update: { libelle: "Incendie Habitation en Inclusion" },
+    create: {
+      code: "incendie",
+      libelle: "Incendie Habitation en Inclusion",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_DOMMAGES",
+      typePaiement: "FACTURE",
+    },
+  });
+  // Ligne de présentation uniquement (affichage "à partir de 1000 FCFA" dans
+  // le sélecteur) — la vraie formule (1000/2000) est déterminée dynamiquement
+  // côté serveur à partir du montant d'achat, pas de cette table.
+  await prisma.tarifProduit.upsert({
+    where: { produitId_libelleVariante: { produitId: incendieProduit.id, libelleVariante: "1000" } },
     update: {},
-    create: { code: "incendie", libelle: "Incendie", branche: "INCENDIE_ACCIDENT", sousBranche: "ASSURANCES_DOMMAGES", typePaiement: "FACTURE" },
+    create: { produitId: incendieProduit.id, libelleVariante: "1000", prime: 1000, capitalGaranti: 500_000, commission: 0 },
   });
 
   // RelaxAccidents générale (police collective, devis calculé dynamiquement,
@@ -385,16 +402,28 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     },
   });
 
-  // Produits "Bientôt disponible" (pas de mécanisme de prime fourni).
-  const placeholders = [
-    { code: "securhome_dommages", libelle: "SecurHome", sousBranche: "ASSURANCES_DOMMAGES" },
-    { code: "securpro_dommages", libelle: "SecurPro", sousBranche: "ASSURANCES_DOMMAGES" },
+  // SecurHome+ et SecurPro (Assurances Dommages) — mécanisme de prime livré
+  // (services/securhomeDommages.ts, et routes/public.ts qui réutilise
+  // calculerSecurpro déjà utilisé côté IMF). `update: { actif: true, ... }`
+  // (et non `update: {}`) pour corriger les bases déjà seedées avec ces
+  // produits encore en placeholder `actif:false`, comme fait pour relaxaccidents.
+  const produitsDommagesActives = [
+    { code: "securhome_dommages", libelle: "SecurHome+", ordre: 1 },
+    { code: "securpro_dommages", libelle: "SecurPro", ordre: 2 },
   ];
-  for (const p of placeholders) {
+  for (const p of produitsDommagesActives) {
     await prisma.produit.upsert({
       where: { code: p.code },
-      update: {},
-      create: { code: p.code, libelle: p.libelle, branche: "INCENDIE_ACCIDENT", sousBranche: p.sousBranche, typePaiement: "WAVE", actif: false },
+      update: { actif: true, libelle: p.libelle, ordre: p.ordre },
+      create: {
+        code: p.code,
+        libelle: p.libelle,
+        branche: "INCENDIE_ACCIDENT",
+        sousBranche: "ASSURANCES_DOMMAGES",
+        typePaiement: "WAVE",
+        ordre: p.ordre,
+        actif: true,
+      },
     });
   }
 

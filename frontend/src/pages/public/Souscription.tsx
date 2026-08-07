@@ -7,6 +7,8 @@ import {
   genererContratRelaxAccidentsFraisMedicaux,
   genererContratRelaxVoyage,
   genererContratRelaxAccidentsGenerale,
+  genererContratSecurproDommages,
+  genererContratSecurhome,
 } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -23,6 +25,8 @@ import {
   type TypeCouverture,
   type ResultatRelaxAccidentsGenerale,
 } from "../../relaxAccidentsGenerale";
+import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
+import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
 const BASE = API_BASE;
 
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
@@ -46,6 +50,35 @@ function isRelaxAccidentsGenerale(p?: string): p is "relaxaccidents" {
   return p === "relaxaccidents";
 }
 
+// SecurPro (Assurances Dommages) — réutilise le moteur de calcul déjà utilisé
+// côté IMF (frontend/src/offline/tarification.ts), seul le canal de
+// distribution (QR partenaire) change.
+function isSecurproDommages(p?: string): p is "securpro_dommages" {
+  return p === "securpro_dommages";
+}
+
+// SecurHome+ (Assurances Dommages) — moteur de calcul propre, voir
+// frontend/src/securhomeDommages.ts (miroir de backend/src/services/securhomeDommages.ts).
+function isSecurhomeDommages(p?: string): p is "securhome_dommages" {
+  return p === "securhome_dommages";
+}
+
+// Reprend la nomenclature du document TARIF SECURHOME+_SECURPRO.docx
+// (identique à SECURPRO_CLASSE_LABELS déjà utilisé côté backend/contractHtml.ts).
+const SECURPRO_CLASSE_LABELS: Record<1 | 2 | 3 | 4, string> = {
+  1: "Classe 1 — Bureau",
+  2: "Classe 2 — Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
+  3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
+  4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
+};
+
+// Listes de capitaux "1er risque" (garanties optionnelles SecurHome+/SecurPro)
+// — identiques à backend/src/services/capitauxDommages.ts.
+const DDE_CAPITAUX = [1_000_000, 2_000_000] as const;
+const DE_CAPITAUX = [100_000, 250_000, 500_000, 1_000_000, 1_500_000, 2_000_000] as const;
+const BDG_CAPITAUX = [250_000, 500_000, 1_000_000, 1_500_000, 2_000_000] as const;
+const VOL_CAISSE_CAPITAUX = [25_000, 50_000, 100_000, 250_000, 500_000] as const;
+
 interface QrInfo {
   produit:
     | "incendie"
@@ -54,7 +87,9 @@ interface QrInfo {
     | "relaxauto"
     | "relaxaccidents_fraismedicaux"
     | "relaxvoyage"
-    | "relaxaccidents";
+    | "relaxaccidents"
+    | "securpro_dommages"
+    | "securhome_dommages";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -457,6 +492,643 @@ function RelaxAccidentsGeneraleForm({
   );
 }
 
+// SecurPro (Assurances Dommages) — réutilise calculerSecurpro déjà utilisé
+// côté IMF (frontend/src/offline/tarification.ts) pour l'aperçu en direct ;
+// le serveur recalcule systématiquement à la soumission avec le même moteur.
+function SecurproDommagesForm({
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
+  nomCommercial,
+  setNomCommercial,
+  ville,
+  setVille,
+  commune,
+  setCommune,
+  refFacture,
+  setRefFacture,
+  telephone,
+  setTelephone,
+  classe,
+  setClasse,
+  statutOccupation,
+  setStatutOccupation,
+  valeurBatiment,
+  setValeurBatiment,
+  loyerMensuel,
+  setLoyerMensuel,
+  contenu,
+  setContenu,
+  dansMarche,
+  setDansMarche,
+  gardien,
+  setGardien,
+  extincteur,
+  setExtincteur,
+  volContenu,
+  setVolContenu,
+  majorationVolContenu,
+  setMajorationVolContenu,
+  volCaisseCapital,
+  setVolCaisseCapital,
+  majorationVolCaisse,
+  setMajorationVolCaisse,
+  ddeCapital,
+  setDdeCapital,
+  deCapital,
+  setDeCapital,
+  bdgCapital,
+  setBdgCapital,
+  bareme,
+  sigRef,
+}: {
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
+  nomCommercial: string;
+  setNomCommercial: (v: string) => void;
+  ville: string;
+  setVille: (v: string) => void;
+  commune: string;
+  setCommune: (v: string) => void;
+  refFacture: string;
+  setRefFacture: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  classe: 1 | 2 | 3 | 4 | "";
+  setClasse: (v: 1 | 2 | 3 | 4 | "") => void;
+  statutOccupation: "proprietaire" | "locataire";
+  setStatutOccupation: (v: "proprietaire" | "locataire") => void;
+  valeurBatiment: string;
+  setValeurBatiment: (v: string) => void;
+  loyerMensuel: string;
+  setLoyerMensuel: (v: string) => void;
+  contenu: string;
+  setContenu: (v: string) => void;
+  dansMarche: boolean;
+  setDansMarche: (v: boolean) => void;
+  gardien: boolean;
+  setGardien: (v: boolean) => void;
+  extincteur: boolean;
+  setExtincteur: (v: boolean) => void;
+  volContenu: boolean;
+  setVolContenu: (v: boolean) => void;
+  majorationVolContenu: boolean;
+  setMajorationVolContenu: (v: boolean) => void;
+  volCaisseCapital: string;
+  setVolCaisseCapital: (v: string) => void;
+  majorationVolCaisse: boolean;
+  setMajorationVolCaisse: (v: boolean) => void;
+  ddeCapital: string;
+  setDdeCapital: (v: string) => void;
+  deCapital: string;
+  setDeCapital: (v: string) => void;
+  bdgCapital: string;
+  setBdgCapital: (v: string) => void;
+  bareme: BaremeClasseSecurpro[] | null;
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  const baremeClasse = classe ? bareme?.find((b) => b.classe === classe) : undefined;
+  let resultat: ResultatTarifImf | null = null;
+  if (classe && baremeClasse) {
+    resultat = calculerSecurpro(
+      {
+        classe,
+        statutOccupation,
+        valeurBatiment: statutOccupation === "proprietaire" ? Number(valeurBatiment || 0) : undefined,
+        loyerMensuel: statutOccupation === "locataire" ? Number(loyerMensuel || 0) : undefined,
+        contenu: Number(contenu || 0),
+        dansMarche,
+        gardien,
+        extincteur,
+        volContenu,
+        majorationVolContenu: volContenu ? majorationVolContenu : undefined,
+        volCaisseCapital: volCaisseCapital ? Number(volCaisseCapital) : undefined,
+        majorationVolCaisse: volCaisseCapital ? majorationVolCaisse : undefined,
+        ddeCapital: ddeCapital ? Number(ddeCapital) : undefined,
+        deCapital: deCapital ? Number(deCapital) : undefined,
+        bdgCapital: bdgCapital ? Number(bdgCapital) : undefined,
+      },
+      baremeClasse
+    );
+  }
+
+  return (
+    <>
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom commercial (facultatif)">
+        <input
+          value={nomCommercial}
+          onChange={(e) => setNomCommercial(e.target.value)}
+          placeholder="Ex. Ets Banessere"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Ville *">
+        <input value={ville} onChange={(e) => setVille(e.target.value)} placeholder="Ex. Abidjan" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Commune *">
+        <input value={commune} onChange={(e) => setCommune(e.target.value)} placeholder="Ex. Cocody" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Référence CIE *">
+        <input
+          value={refFacture}
+          onChange={(e) => setRefFacture(e.target.value)}
+          placeholder="N° de votre facture CIE"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Activité *">
+        <select
+          value={classe}
+          onChange={(e) => setClasse(e.target.value ? (Number(e.target.value) as 1 | 2 | 3 | 4) : "")}
+          style={inputStyle}
+        >
+          <option value="">Sélectionnez...</option>
+          {([1, 2, 3, 4] as const).map((c) => (
+            <option key={c} value={c}>
+              {SECURPRO_CLASSE_LABELS[c]}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Statut *">
+        <div style={{ display: "flex", gap: 16 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "proprietaire"} onChange={() => setStatutOccupation("proprietaire")} />
+            Propriétaire
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "locataire"} onChange={() => setStatutOccupation("locataire")} />
+            Locataire
+          </label>
+        </div>
+      </FieldRow>
+      {statutOccupation === "proprietaire" ? (
+        <FieldRow label="Valeur du bâtiment (FCFA) *">
+          <input
+            value={valeurBatiment}
+            onChange={(e) => setValeurBatiment(e.target.value.replace(/\D/g, ""))}
+            type="text"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+        </FieldRow>
+      ) : (
+        <FieldRow label="Loyer mensuel (FCFA) *">
+          <input
+            value={loyerMensuel}
+            onChange={(e) => setLoyerMensuel(e.target.value.replace(/\D/g, ""))}
+            type="text"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+        </FieldRow>
+      )}
+      <FieldRow label="Contenu (matériel, mobilier et stock) (FCFA) *">
+        <input
+          value={contenu}
+          onChange={(e) => setContenu(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Local dans un marché ou ses abords ?">
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={dansMarche} onChange={(e) => setDansMarche(e.target.checked)} />
+          Oui
+        </label>
+      </FieldRow>
+      <FieldRow label="Prévention">
+        <div style={{ display: "flex", gap: 16 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={gardien} onChange={(e) => setGardien(e.target.checked)} />
+            Gardien
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={extincteur} onChange={(e) => setExtincteur(e.target.checked)} />
+            Extincteurs
+          </label>
+        </div>
+      </FieldRow>
+
+      <div style={{ fontWeight: 800, fontSize: 15, margin: "18px 0 10px" }}>Garanties optionnelles</div>
+      <FieldRow label="Vol contenu">
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer", marginBottom: 8 }}>
+          <input type="checkbox" checked={volContenu} onChange={(e) => setVolContenu(e.target.checked)} />
+          Souscrire (capital 1er risque calculé automatiquement depuis le contenu)
+        </label>
+        {volContenu && (
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: "#5b6b80", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={majorationVolContenu}
+              onChange={(e) => setMajorationVolContenu(e.target.checked)}
+            />
+            Majoration ×1,2 (commerce de mèches & accessoires de coiffure ou d'électronique)
+          </label>
+        )}
+      </FieldRow>
+      <FieldRow label="Vol caisse">
+        <select value={volCaisseCapital} onChange={(e) => setVolCaisseCapital(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }}>
+          <option value="">Aucune</option>
+          {VOL_CAISSE_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+        {volCaisseCapital && (
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12.5, color: "#5b6b80", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={majorationVolCaisse}
+              onChange={(e) => setMajorationVolCaisse(e.target.checked)}
+            />
+            Majoration ×1,25 (supérette/boutique, quincaillerie, électronique, tissus/habillement/pagnes)
+          </label>
+        )}
+      </FieldRow>
+      <FieldRow label="Dégât des eaux (DDE)">
+        <select value={ddeCapital} onChange={(e) => setDdeCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {DDE_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Dommages électriques (DE)">
+        <select value={deCapital} onChange={(e) => setDeCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {DE_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Bris de glace (BDG)">
+        <select value={bdgCapital} onChange={(e) => setBdgCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {BDG_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+
+      <div
+        style={{
+          background: "var(--sim-primary-50, #e6f1fb)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          margin: "18px 0",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Aperçu du devis</div>
+        {!classe ? (
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez une activité pour voir le montant de votre prime.</div>
+        ) : resultat?.depassementPlafond ? (
+          <div style={{ fontSize: 12.5, color: "#dc2626" }}>
+            Les capitaux totaux ({fcfa(Math.round(resultat.capitauxTotaux))}) dépassent le plafond assurable
+            automatiquement pour cette classe ({fcfa(resultat.limiteApplicable)}). Contactez SIM Assurances pour une
+            étude particulière.
+          </div>
+        ) : resultat ? (
+          <>
+            {resultat.lignes.map((l) => (
+              <div
+                key={l.garantie}
+                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
+              >
+                <span>{l.garantie}</span>
+                <span>{fcfa(l.prime)}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Prime nette HT</span>
+              <span>{fcfa(resultat.primeNetteHT)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Accessoires</span>
+              <span>{fcfa(resultat.accessoires)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
+              <span>Taxes</span>
+              <span>{fcfa(resultat.taxes)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
+              <span>PRIME TTC</span>
+              <span>{fcfa(resultat.primeTTC)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Chargement du barème…</div>
+        )}
+      </div>
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
+// SecurHome+ (Assurances Dommages) — moteur de calcul propre (aucun barème
+// admin, taux en dur comme RelaxAccidents générale), voir
+// frontend/src/securhomeDommages.ts.
+function SecurhomeDommagesForm({
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
+  ville,
+  setVille,
+  commune,
+  setCommune,
+  refFacture,
+  setRefFacture,
+  nombrePieces,
+  setNombrePieces,
+  telephone,
+  setTelephone,
+  statutOccupation,
+  setStatutOccupation,
+  valeurBatiment,
+  setValeurBatiment,
+  loyerMensuel,
+  setLoyerMensuel,
+  contenu,
+  setContenu,
+  gardien,
+  setGardien,
+  extincteur,
+  setExtincteur,
+  camera,
+  setCamera,
+  volContenu,
+  setVolContenu,
+  ddeCapital,
+  setDdeCapital,
+  deCapital,
+  setDeCapital,
+  bdgCapital,
+  setBdgCapital,
+  sigRef,
+}: {
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
+  ville: string;
+  setVille: (v: string) => void;
+  commune: string;
+  setCommune: (v: string) => void;
+  refFacture: string;
+  setRefFacture: (v: string) => void;
+  nombrePieces: string;
+  setNombrePieces: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  statutOccupation: "proprietaire" | "locataire";
+  setStatutOccupation: (v: "proprietaire" | "locataire") => void;
+  valeurBatiment: string;
+  setValeurBatiment: (v: string) => void;
+  loyerMensuel: string;
+  setLoyerMensuel: (v: string) => void;
+  contenu: string;
+  setContenu: (v: string) => void;
+  gardien: boolean;
+  setGardien: (v: boolean) => void;
+  extincteur: boolean;
+  setExtincteur: (v: boolean) => void;
+  camera: boolean;
+  setCamera: (v: boolean) => void;
+  volContenu: boolean;
+  setVolContenu: (v: boolean) => void;
+  ddeCapital: string;
+  setDdeCapital: (v: string) => void;
+  deCapital: string;
+  setDeCapital: (v: string) => void;
+  bdgCapital: string;
+  setBdgCapital: (v: string) => void;
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  let resultat: ResultatSecurhome | null = null;
+  let erreur = "";
+  try {
+    resultat = calculerSecurhome({
+      statutOccupation,
+      valeurBatiment: statutOccupation === "proprietaire" ? Number(valeurBatiment || 0) : undefined,
+      loyerMensuel: statutOccupation === "locataire" ? Number(loyerMensuel || 0) : undefined,
+      contenu: Number(contenu || 0),
+      gardien,
+      extincteur,
+      camera,
+      volContenu,
+      ddeCapital: ddeCapital ? Number(ddeCapital) : undefined,
+      deCapital: deCapital ? Number(deCapital) : undefined,
+      bdgCapital: bdgCapital ? Number(bdgCapital) : undefined,
+    });
+  } catch (e) {
+    erreur = e instanceof Error ? e.message : "Entrées invalides.";
+  }
+
+  return (
+    <>
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Ville *">
+        <input value={ville} onChange={(e) => setVille(e.target.value)} placeholder="Ex. Abidjan" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Commune *">
+        <input value={commune} onChange={(e) => setCommune(e.target.value)} placeholder="Ex. Cocody" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nombre de pièces">
+        <input
+          value={nombrePieces}
+          onChange={(e) => setNombrePieces(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          placeholder="Ex. 4"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Référence CIE *">
+        <input
+          value={refFacture}
+          onChange={(e) => setRefFacture(e.target.value)}
+          placeholder="N° de votre facture CIE"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Statut *">
+        <div style={{ display: "flex", gap: 16 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "proprietaire"} onChange={() => setStatutOccupation("proprietaire")} />
+            Propriétaire
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "locataire"} onChange={() => setStatutOccupation("locataire")} />
+            Locataire
+          </label>
+        </div>
+      </FieldRow>
+      {statutOccupation === "proprietaire" ? (
+        <FieldRow label="Valeur du bâtiment (FCFA) *">
+          <input
+            value={valeurBatiment}
+            onChange={(e) => setValeurBatiment(e.target.value.replace(/\D/g, ""))}
+            type="text"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+        </FieldRow>
+      ) : (
+        <FieldRow label="Loyer mensuel (FCFA) *">
+          <input
+            value={loyerMensuel}
+            onChange={(e) => setLoyerMensuel(e.target.value.replace(/\D/g, ""))}
+            type="text"
+            inputMode="numeric"
+            style={inputStyle}
+          />
+        </FieldRow>
+      )}
+      <FieldRow label="Contenu (mobilier et effets personnels) (FCFA) *">
+        <input
+          value={contenu}
+          onChange={(e) => setContenu(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Prévention">
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={gardien} onChange={(e) => setGardien(e.target.checked)} />
+            Gardien
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={extincteur} onChange={(e) => setExtincteur(e.target.checked)} />
+            Extincteurs
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={camera} onChange={(e) => setCamera(e.target.checked)} />
+            Caméra
+          </label>
+        </div>
+      </FieldRow>
+
+      <div style={{ fontWeight: 800, fontSize: 15, margin: "18px 0 10px" }}>Garanties optionnelles</div>
+      <FieldRow label="Vol contenu">
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={volContenu} onChange={(e) => setVolContenu(e.target.checked)} />
+          Souscrire (capital 1er risque calculé automatiquement depuis le contenu)
+        </label>
+      </FieldRow>
+      <FieldRow label="Dégât des eaux (DDE)">
+        <select value={ddeCapital} onChange={(e) => setDdeCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {DDE_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Dommages électriques (DE)">
+        <select value={deCapital} onChange={(e) => setDeCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {DE_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Bris de glace (BDG)">
+        <select value={bdgCapital} onChange={(e) => setBdgCapital(e.target.value)} style={inputStyle}>
+          <option value="">Aucune</option>
+          {BDG_CAPITAUX.map((m) => (
+            <option key={m} value={m}>
+              {fcfa(m)}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+
+      <div
+        style={{
+          background: "var(--sim-primary-50, #e6f1fb)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          margin: "18px 0",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Aperçu du devis</div>
+        {resultat ? (
+          <>
+            {resultat.lignes.map((l) => (
+              <div
+                key={l.garantie}
+                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
+              >
+                <span>{l.garantie}</span>
+                <span>{fcfa(l.prime)}</span>
+              </div>
+            ))}
+            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Prime nette HT</span>
+              <span>{fcfa(resultat.primeNetteHT)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Accessoires</span>
+              <span>{fcfa(resultat.accessoires)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
+              <span>Taxes</span>
+              <span>{fcfa(resultat.taxes)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
+              <span>PRIME TTC</span>
+              <span>{fcfa(resultat.primeTTC)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
+            {erreur || "Renseignez les champs ci-dessus pour voir le montant de votre prime."}
+          </div>
+        )}
+      </div>
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
 export default function Souscription() {
   const { token, produit: produitParam } = useParams<{ token: string; produit?: string }>();
   const navigate = useNavigate();
@@ -494,8 +1166,16 @@ export default function Souscription() {
   const [telephoneInc, setTelephoneInc] = useState(PHONE_PREFIX);
   const [prenomInc, setPrenomInc] = useState("");
   const [nomInc, setNomInc] = useState("");
+  const [villeInc, setVilleInc] = useState("");
   const [communeInc, setCommuneInc] = useState("");
-  const [quartierInc, setQuartierInc] = useState("");
+  const [refFactureInc, setRefFactureInc] = useState("");
+  // Nouveau scénario (QR sélecteur, plus de QR dédié par formule) : le
+  // montant de l'achat détermine la formule (seuil 250 000 FCFA) — saisi
+  // avant le reste du formulaire. Vide/non numérique = étape pas encore
+  // franchie. Non pertinent pour un ancien QR précis déjà imprimé (voir
+  // POST /public/souscriptions/incendie, qui l'ignore dans ce cas).
+  const [montantAchatInc, setMontantAchatInc] = useState("");
+  const [montantAchatIncConfirme, setMontantAchatIncConfirme] = useState(false);
 
   // Champs RelaxVoyage (en plus de nom/prenom/telephone/dateNaissance,
   // partagés avec la branche isAccidentLike ci-dessus)
@@ -518,6 +1198,49 @@ export default function Souscription() {
   const [montantFraisMedicaux, setMontantFraisMedicaux] = useState<string>(String(MONTANTS_FRAIS_MEDICAUX[0]));
   const [montantIPT, setMontantIPT] = useState("0");
   const [montantDecesAccidentel, setMontantDecesAccidentel] = useState("0");
+
+  // Champs SecurPro (Assurances Dommages) — réutilise calculerSecurpro déjà
+  // utilisé côté IMF (offline/tarification.ts). `nom`/`prenom`/`telephone`/
+  // `sigRef` partagés avec les branches ci-dessus.
+  const [nomCommercialSp, setNomCommercialSp] = useState("");
+  const [villeSp, setVilleSp] = useState("");
+  const [communeSp, setCommuneSp] = useState("");
+  const [refFactureSp, setRefFactureSp] = useState("");
+  const [classeSp, setClasseSp] = useState<1 | 2 | 3 | 4 | "">("");
+  const [statutOccupationSp, setStatutOccupationSp] = useState<"proprietaire" | "locataire">("proprietaire");
+  const [valeurBatimentSp, setValeurBatimentSp] = useState("");
+  const [loyerMensuelSp, setLoyerMensuelSp] = useState("");
+  const [contenuSp, setContenuSp] = useState("0");
+  const [dansMarcheSp, setDansMarcheSp] = useState(false);
+  const [gardienSp, setGardienSp] = useState(false);
+  const [extincteurSp, setExtincteurSp] = useState(false);
+  const [volContenuSp, setVolContenuSp] = useState(false);
+  const [majorationVolContenuSp, setMajorationVolContenuSp] = useState(false);
+  const [volCaisseCapitalSp, setVolCaisseCapitalSp] = useState("");
+  const [majorationVolCaisseSp, setMajorationVolCaisseSp] = useState(false);
+  const [ddeCapitalSp, setDdeCapitalSp] = useState("");
+  const [deCapitalSp, setDeCapitalSp] = useState("");
+  const [bdgCapitalSp, setBdgCapitalSp] = useState("");
+  const [baremeSecurpro, setBaremeSecurpro] = useState<BaremeClasseSecurpro[] | null>(null);
+
+  // Champs SecurHome+ (Assurances Dommages) — moteur en dur (pas de barème
+  // admin), voir frontend/src/securhomeDommages.ts. `nom`/`prenom`/`telephone`/
+  // `sigRef` partagés avec les branches ci-dessus.
+  const [villeSh, setVilleSh] = useState("");
+  const [communeSh, setCommuneSh] = useState("");
+  const [refFactureSh, setRefFactureSh] = useState("");
+  const [nombrePiecesSh, setNombrePiecesSh] = useState("");
+  const [statutOccupationSh, setStatutOccupationSh] = useState<"proprietaire" | "locataire">("proprietaire");
+  const [valeurBatimentSh, setValeurBatimentSh] = useState("");
+  const [loyerMensuelSh, setLoyerMensuelSh] = useState("");
+  const [contenuSh, setContenuSh] = useState("0");
+  const [gardienSh, setGardienSh] = useState(false);
+  const [extincteurSh, setExtincteurSh] = useState(false);
+  const [cameraSh, setCameraSh] = useState(false);
+  const [volContenuSh, setVolContenuSh] = useState(false);
+  const [ddeCapitalSh, setDdeCapitalSh] = useState("");
+  const [deCapitalSh, setDeCapitalSh] = useState("");
+  const [bdgCapitalSh, setBdgCapitalSh] = useState("");
 
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
@@ -560,7 +1283,18 @@ export default function Souscription() {
     classe?: number | null;
     typeCouverture?: string | null;
     effectif?: number | null;
-    resultat?: ResultatRelaxAccidentsGenerale | null;
+    // SecurPro (Assurances Dommages)
+    nomCommercial?: string | null;
+    ville?: string | null;
+    communeQuartier?: string | null;
+    refFacture?: string | null;
+    statutOccupation?: "proprietaire" | "locataire" | null;
+    valeurBatiment?: number | null;
+    loyerMensuel?: number | null;
+    contenu?: number | null;
+    dansMarche?: boolean | null;
+    nombrePieces?: number | null;
+    resultat?: ResultatRelaxAccidentsGenerale | ResultatTarifImf | ResultatSecurhome | null;
   } | null>(null);
 
   // Carte virtuelle de prise en charge — collecte pièce d'identité + selfie
@@ -585,7 +1319,9 @@ export default function Souscription() {
           isRelax(produitEffectif) ||
           produitEffectif === "relaxaccidents_fraismedicaux" ||
           produitEffectif === "relaxvoyage" ||
-          produitEffectif === "relaxaccidents";
+          produitEffectif === "relaxaccidents" ||
+          produitEffectif === "securpro_dommages" ||
+          produitEffectif === "securhome_dommages";
         const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
@@ -656,6 +1392,16 @@ export default function Souscription() {
             classe: data.classe ?? null,
             typeCouverture: data.typeCouverture ?? null,
             effectif: data.effectif ?? null,
+            nomCommercial: data.nomCommercial ?? null,
+            ville: data.ville ?? null,
+            communeQuartier: data.communeQuartier ?? null,
+            refFacture: data.refFacture ?? null,
+            statutOccupation: data.statutOccupation ?? null,
+            valeurBatiment: data.valeurBatiment ?? null,
+            loyerMensuel: data.loyerMensuel ?? null,
+            contenu: data.contenu ?? null,
+            dansMarche: data.dansMarche ?? null,
+            nombrePieces: data.nombrePieces ?? null,
             resultat: data.resultat ?? null,
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
@@ -753,6 +1499,9 @@ export default function Souscription() {
       const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       setTarifsRelax(tarifs);
       setCycle("annuel");
+    } else if (isSecurproDommages(produit)) {
+      const bareme: BaremeClasseSecurpro[] = await fetch(`${BASE}/public/baremes/securpro`).then((r) => r.json());
+      setBaremeSecurpro(bareme);
     }
   }
 
@@ -785,7 +1534,11 @@ export default function Souscription() {
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue sans.
     const signature =
-      isAccidentLike(qrInfo.produit) || isRelaxVoyage(qrInfo.produit) || isRelaxAccidentsGenerale(qrInfo.produit)
+      isAccidentLike(qrInfo.produit) ||
+      isRelaxVoyage(qrInfo.produit) ||
+      isRelaxAccidentsGenerale(qrInfo.produit) ||
+      isSecurproDommages(qrInfo.produit) ||
+      isSecurhomeDommages(qrInfo.produit)
         ? sigRef.current?.toDataURL() ?? undefined
         : undefined;
     setSubmitting(true);
@@ -807,6 +1560,84 @@ export default function Souscription() {
             montantFraisMedicaux: Number(montantFraisMedicaux),
             montantIPT: Number(montantIPT),
             montantDecesAccidentel: Number(montantDecesAccidentel),
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          resultat: data.resultat,
+        });
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (qrInfo.produit === "securpro_dommages") {
+        const res = await fetch(`${BASE}/public/souscriptions/securpro_dommages/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            nomCommercial: nomCommercialSp || undefined,
+            ville: villeSp,
+            communeQuartier: communeSp,
+            refFacture: refFactureSp,
+            telephone,
+            signature,
+            classe: classeSp,
+            statutOccupation: statutOccupationSp,
+            valeurBatiment: statutOccupationSp === "proprietaire" ? Number(valeurBatimentSp || 0) : undefined,
+            loyerMensuel: statutOccupationSp === "locataire" ? Number(loyerMensuelSp || 0) : undefined,
+            contenu: Number(contenuSp || 0),
+            dansMarche: dansMarcheSp,
+            gardien: gardienSp,
+            extincteur: extincteurSp,
+            volContenu: volContenuSp,
+            majorationVolContenu: volContenuSp ? majorationVolContenuSp : undefined,
+            volCaisseCapital: volCaisseCapitalSp ? Number(volCaisseCapitalSp) : undefined,
+            majorationVolCaisse: volCaisseCapitalSp ? majorationVolCaisseSp : undefined,
+            ddeCapital: ddeCapitalSp ? Number(ddeCapitalSp) : undefined,
+            deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
+            bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          resultat: data.resultat,
+        });
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (qrInfo.produit === "securhome_dommages") {
+        const res = await fetch(`${BASE}/public/souscriptions/securhome_dommages/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            ville: villeSh,
+            communeQuartier: communeSh,
+            refFacture: refFactureSh,
+            nombrePieces: nombrePiecesSh ? Number(nombrePiecesSh) : undefined,
+            telephone,
+            signature,
+            statutOccupation: statutOccupationSh,
+            valeurBatiment: statutOccupationSh === "proprietaire" ? Number(valeurBatimentSh || 0) : undefined,
+            loyerMensuel: statutOccupationSh === "locataire" ? Number(loyerMensuelSh || 0) : undefined,
+            contenu: Number(contenuSh || 0),
+            gardien: gardienSh,
+            extincteur: extincteurSh,
+            camera: cameraSh,
+            volContenu: volContenuSh,
+            ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
+            deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
+            bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
           }),
         });
         const data = await res.json();
@@ -944,8 +1775,10 @@ export default function Souscription() {
             telephone: telephoneInc,
             nom: nomInc,
             prenom: prenomInc,
+            ville: villeInc,
             commune: communeInc,
-            quartier: quartierInc,
+            refFacture: refFactureInc,
+            montantAchat: montantAchatInc ? Number(montantAchatInc) : undefined,
           }),
         });
         const data = await res.json();
@@ -964,7 +1797,7 @@ export default function Souscription() {
   function telechargerContrat() {
     if (!result || !qrInfo) return;
     if (qrInfo.produit === "relaxaccidents") {
-      const resultat = result.resultat;
+      const resultat = result.resultat as ResultatRelaxAccidentsGenerale | undefined;
       if (!resultat) return;
       genererContratRelaxAccidentsGenerale({
         numeroPolice: result.numeroPolice ?? "",
@@ -986,6 +1819,76 @@ export default function Souscription() {
         primeNetteHT1: resultat.primeNetteHT1,
         reductionPct: resultat.reductionPct,
         primeNetteHT2: resultat.primeNetteHT2,
+        accessoires: resultat.accessoires,
+        taxes: resultat.taxes,
+        primeTTC: resultat.primeTTC,
+        signature: result.signature ?? null,
+      });
+      return;
+    }
+    if (qrInfo.produit === "securpro_dommages") {
+      const resultat = result.resultat as ResultatTarifImf | undefined;
+      if (!resultat) return;
+      const classeFinale = (result.classe ?? classeSp) as 1 | 2 | 3 | 4;
+      const statutFinal = (result.statutOccupation ?? statutOccupationSp) as "proprietaire" | "locataire";
+      genererContratSecurproDommages({
+        numeroPolice: result.numeroPolice ?? "",
+        intermediaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+        dateDebut: result.dateDebut ?? new Date().toISOString(),
+        dateFin:
+          result.dateFin ??
+          new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        dateSouscription: new Date().toISOString(),
+        nom: result.nom ?? nom,
+        prenom: result.prenom ?? prenom,
+        nomCommercial: result.nomCommercial ?? nomCommercialSp,
+        referenceCIE: result.refFacture ?? refFactureSp,
+        telephone: result.telephone ?? telephone,
+        ville: result.ville ?? villeSp,
+        communeQuartier: result.communeQuartier ?? communeSp,
+        classeLabel: SECURPRO_CLASSE_LABELS[classeFinale],
+        statutOccupation: statutFinal,
+        valeurBatimentOuLoyer:
+          statutFinal === "locataire"
+            ? result.loyerMensuel ?? Number(loyerMensuelSp || 0)
+            : result.valeurBatiment ?? Number(valeurBatimentSp || 0),
+        contenu: result.contenu ?? Number(contenuSp || 0),
+        dansMarche: result.dansMarche ?? dansMarcheSp,
+        lignes: resultat.lignes,
+        primeNetteHT: resultat.primeNetteHT,
+        accessoires: resultat.accessoires,
+        taxes: resultat.taxes,
+        primeTTC: resultat.primeTTC,
+        signature: result.signature ?? null,
+      });
+      return;
+    }
+    if (qrInfo.produit === "securhome_dommages") {
+      const resultat = result.resultat as ResultatSecurhome | undefined;
+      if (!resultat) return;
+      const statutFinal = (result.statutOccupation ?? statutOccupationSh) as "proprietaire" | "locataire";
+      genererContratSecurhome({
+        numeroPolice: result.numeroPolice ?? "",
+        partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+        dateDebut: result.dateDebut ?? new Date().toISOString(),
+        dateFin:
+          result.dateFin ??
+          new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        nom: result.nom ?? nom,
+        prenom: result.prenom ?? prenom,
+        telephone: result.telephone ?? telephone,
+        ville: result.ville ?? villeSh,
+        communeQuartier: result.communeQuartier ?? communeSh,
+        referenceCIE: result.refFacture ?? refFactureSh,
+        nombrePieces: result.nombrePieces ?? (nombrePiecesSh ? Number(nombrePiecesSh) : null),
+        statutOccupation: statutFinal,
+        valeurBatimentOuLoyer:
+          statutFinal === "locataire"
+            ? result.loyerMensuel ?? Number(loyerMensuelSh || 0)
+            : result.valeurBatiment ?? Number(valeurBatimentSh || 0),
+        contenu: result.contenu ?? Number(contenuSh || 0),
+        lignes: resultat.lignes,
+        primeNetteHT: resultat.primeNetteHT,
         accessoires: resultat.accessoires,
         taxes: resultat.taxes,
         primeTTC: resultat.primeTTC,
@@ -1129,6 +2032,10 @@ export default function Souscription() {
                   ? "RelaxAccidents (entreprise)"
                   : qrInfo.produit === "relaxvoyage"
                   ? "RelaxVoyage"
+                  : qrInfo.produit === "securpro_dommages"
+                  ? "SecurPro"
+                  : qrInfo.produit === "securhome_dommages"
+                  ? "SecurHome+"
                   : qrInfo.produit === "relaxmoto"
                   ? "RelaxMoto"
                   : "RelaxAuto"}
@@ -1366,7 +2273,96 @@ export default function Souscription() {
                 Vos informations
               </div>
 
-              {isRelaxAccidentsGenerale(qrInfo?.produit) ? (
+              {isSecurhomeDommages(qrInfo?.produit) ? (
+                <SecurhomeDommagesForm
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
+                  ville={villeSh}
+                  setVille={setVilleSh}
+                  commune={communeSh}
+                  setCommune={setCommuneSh}
+                  refFacture={refFactureSh}
+                  setRefFacture={setRefFactureSh}
+                  nombrePieces={nombrePiecesSh}
+                  setNombrePieces={setNombrePiecesSh}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  statutOccupation={statutOccupationSh}
+                  setStatutOccupation={setStatutOccupationSh}
+                  valeurBatiment={valeurBatimentSh}
+                  setValeurBatiment={setValeurBatimentSh}
+                  loyerMensuel={loyerMensuelSh}
+                  setLoyerMensuel={setLoyerMensuelSh}
+                  contenu={contenuSh}
+                  setContenu={setContenuSh}
+                  gardien={gardienSh}
+                  setGardien={setGardienSh}
+                  extincteur={extincteurSh}
+                  setExtincteur={setExtincteurSh}
+                  camera={cameraSh}
+                  setCamera={setCameraSh}
+                  volContenu={volContenuSh}
+                  setVolContenu={setVolContenuSh}
+                  ddeCapital={ddeCapitalSh}
+                  setDdeCapital={setDdeCapitalSh}
+                  deCapital={deCapitalSh}
+                  setDeCapital={setDeCapitalSh}
+                  bdgCapital={bdgCapitalSh}
+                  setBdgCapital={setBdgCapitalSh}
+                  sigRef={sigRef}
+                />
+              ) : isSecurproDommages(qrInfo?.produit) ? (
+                <SecurproDommagesForm
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
+                  nomCommercial={nomCommercialSp}
+                  setNomCommercial={setNomCommercialSp}
+                  ville={villeSp}
+                  setVille={setVilleSp}
+                  commune={communeSp}
+                  setCommune={setCommuneSp}
+                  refFacture={refFactureSp}
+                  setRefFacture={setRefFactureSp}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  classe={classeSp}
+                  setClasse={setClasseSp}
+                  statutOccupation={statutOccupationSp}
+                  setStatutOccupation={setStatutOccupationSp}
+                  valeurBatiment={valeurBatimentSp}
+                  setValeurBatiment={setValeurBatimentSp}
+                  loyerMensuel={loyerMensuelSp}
+                  setLoyerMensuel={setLoyerMensuelSp}
+                  contenu={contenuSp}
+                  setContenu={setContenuSp}
+                  dansMarche={dansMarcheSp}
+                  setDansMarche={setDansMarcheSp}
+                  gardien={gardienSp}
+                  setGardien={setGardienSp}
+                  extincteur={extincteurSp}
+                  setExtincteur={setExtincteurSp}
+                  volContenu={volContenuSp}
+                  setVolContenu={setVolContenuSp}
+                  majorationVolContenu={majorationVolContenuSp}
+                  setMajorationVolContenu={setMajorationVolContenuSp}
+                  volCaisseCapital={volCaisseCapitalSp}
+                  setVolCaisseCapital={setVolCaisseCapitalSp}
+                  majorationVolCaisse={majorationVolCaisseSp}
+                  setMajorationVolCaisse={setMajorationVolCaisseSp}
+                  ddeCapital={ddeCapitalSp}
+                  setDdeCapital={setDdeCapitalSp}
+                  deCapital={deCapitalSp}
+                  setDeCapital={setDeCapitalSp}
+                  bdgCapital={bdgCapitalSp}
+                  setBdgCapital={setBdgCapitalSp}
+                  bareme={baremeSecurpro}
+                  sigRef={sigRef}
+                />
+              ) : isRelaxAccidentsGenerale(qrInfo?.produit) ? (
                 <RelaxAccidentsGeneraleForm
                   raisonSociale={raisonSociale}
                   setRaisonSociale={setRaisonSociale}
@@ -1506,8 +2502,43 @@ export default function Souscription() {
                     required
                   />
                 </>
+              ) : chooserInfo && !montantAchatIncConfirme ? (
+                <FieldRow label="Montant de votre achat (FCFA) *">
+                  <input
+                    value={montantAchatInc}
+                    onChange={(e) => setMontantAchatInc(e.target.value.replace(/\D/g, ""))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ex. 150000"
+                    style={inputStyle}
+                  />
+                  <div style={{ fontSize: 12, color: "#5b6b80", marginTop: 6 }}>
+                    La prime est incluse dans le prix de votre achat — moins de 250 000 FCFA : formule 1 000 FCFA,
+                    250 000 FCFA ou plus : formule 2 000 FCFA.
+                  </div>
+                </FieldRow>
               ) : (
                 <>
+                  {chooserInfo && (
+                    <div
+                      style={{
+                        background: "var(--sim-primary-50, #e6f1fb)",
+                        borderRadius: 10,
+                        padding: "12px 16px",
+                        marginBottom: 22,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div style={{ fontSize: 13, color: "#5b6b80" }}>
+                        Formule {Number(montantAchatInc) < 250_000 ? "1 000 FCFA" : "2 000 FCFA"}
+                      </div>
+                      <div style={{ fontWeight: 800, color: "#004b9c", fontSize: 15 }}>
+                        Capital garanti {fcfa(Number(montantAchatInc) < 250_000 ? 500_000 : 1_000_000)}
+                      </div>
+                    </div>
+                  )}
                   <FieldRow label="Téléphone * (pour recevoir le lien par SMS)">
                     <PhoneInput value={telephoneInc} onChange={setTelephoneInc} />
                   </FieldRow>
@@ -1527,7 +2558,15 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
-                  <FieldRow label="Commune">
+                  <FieldRow label="Ville *">
+                    <input
+                      value={villeInc}
+                      onChange={(e) => setVilleInc(e.target.value)}
+                      placeholder="Ex. Abidjan"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Commune *">
                     <input
                       value={communeInc}
                       onChange={(e) => setCommuneInc(e.target.value)}
@@ -1535,11 +2574,11 @@ export default function Souscription() {
                       style={inputStyle}
                     />
                   </FieldRow>
-                  <FieldRow label="Quartier">
+                  <FieldRow label="Référence CIE *">
                     <input
-                      value={quartierInc}
-                      onChange={(e) => setQuartierInc(e.target.value)}
-                      placeholder="Ex. Angré"
+                      value={refFactureInc}
+                      onChange={(e) => setRefFactureInc(e.target.value)}
+                      placeholder="N° de votre facture CIE"
                       style={inputStyle}
                     />
                   </FieldRow>
@@ -1547,6 +2586,34 @@ export default function Souscription() {
               )}
 
               {(() => {
+                // Étape "montant d'achat" du nouveau scénario Incendie : le
+                // bouton "Continuer" remplace le bouton de soumission tant
+                // que le montant n'est pas validé (voir formulaire ci-dessus).
+                if (qrInfo?.produit === "incendie" && chooserInfo && !montantAchatIncConfirme) {
+                  const montantValide = !!montantAchatInc && Number(montantAchatInc) > 0;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => montantValide && setMontantAchatIncConfirme(true)}
+                      disabled={!montantValide}
+                      style={{
+                        marginTop: 8,
+                        width: "100%",
+                        padding: "13px 0",
+                        background: "#004b9c",
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 12,
+                        fontWeight: 700,
+                        fontSize: 15,
+                        cursor: "pointer",
+                        opacity: montantValide ? 1 : 0.5,
+                      }}
+                    >
+                      Continuer →
+                    </button>
+                  );
+                }
                 const bloque =
                   submitting ||
                   (isRelaxAccidentsGenerale(qrInfo?.produit)
@@ -1594,7 +2661,70 @@ export default function Souscription() {
                       (qrInfo?.produit === "accident" ? !selectedTarifId : !selectedFormule || !sexe)
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
-                    : !phoneLocalPart(telephoneInc));
+                    : isSecurproDommages(qrInfo?.produit)
+                    ? !nom ||
+                      !prenom ||
+                      !villeSp ||
+                      !communeSp ||
+                      !refFactureSp ||
+                      !phoneLocalPart(telephone) ||
+                      !classeSp ||
+                      (statutOccupationSp === "proprietaire" ? !valeurBatimentSp : !loyerMensuelSp) ||
+                      !baremeSecurpro ||
+                      (() => {
+                        const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
+                        if (!bar) return true;
+                        const r = calculerSecurpro(
+                          {
+                            classe: classeSp as 1 | 2 | 3 | 4,
+                            statutOccupation: statutOccupationSp,
+                            valeurBatiment: statutOccupationSp === "proprietaire" ? Number(valeurBatimentSp || 0) : undefined,
+                            loyerMensuel: statutOccupationSp === "locataire" ? Number(loyerMensuelSp || 0) : undefined,
+                            contenu: Number(contenuSp || 0),
+                            dansMarche: dansMarcheSp,
+                            gardien: gardienSp,
+                            extincteur: extincteurSp,
+                            volContenu: volContenuSp,
+                            majorationVolContenu: volContenuSp ? majorationVolContenuSp : undefined,
+                            volCaisseCapital: volCaisseCapitalSp ? Number(volCaisseCapitalSp) : undefined,
+                            majorationVolCaisse: volCaisseCapitalSp ? majorationVolCaisseSp : undefined,
+                            ddeCapital: ddeCapitalSp ? Number(ddeCapitalSp) : undefined,
+                            deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
+                            bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
+                          },
+                          bar
+                        );
+                        return r.depassementPlafond;
+                      })()
+                    : isSecurhomeDommages(qrInfo?.produit)
+                    ? !nom ||
+                      !prenom ||
+                      !villeSh ||
+                      !communeSh ||
+                      !refFactureSh ||
+                      !phoneLocalPart(telephone) ||
+                      (statutOccupationSh === "proprietaire" ? !valeurBatimentSh : !loyerMensuelSh) ||
+                      (() => {
+                        try {
+                          calculerSecurhome({
+                            statutOccupation: statutOccupationSh,
+                            valeurBatiment: statutOccupationSh === "proprietaire" ? Number(valeurBatimentSh || 0) : undefined,
+                            loyerMensuel: statutOccupationSh === "locataire" ? Number(loyerMensuelSh || 0) : undefined,
+                            contenu: Number(contenuSh || 0),
+                            gardien: gardienSh,
+                            extincteur: extincteurSh,
+                            camera: cameraSh,
+                            volContenu: volContenuSh,
+                            ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
+                            deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
+                            bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
+                          });
+                          return false;
+                        } catch {
+                          return true;
+                        }
+                      })()
+                    : !phoneLocalPart(telephoneInc) || !villeInc || !communeInc || !refFactureInc);
                 return (
                   <button
                     onClick={handleSubmit}
@@ -1618,6 +2748,8 @@ export default function Souscription() {
                       : isAccidentLike(qrInfo?.produit) ||
                         isRelaxVoyage(qrInfo?.produit) ||
                         isRelaxAccidentsGenerale(qrInfo?.produit) ||
+                        isSecurproDommages(qrInfo?.produit) ||
+                        isSecurhomeDommages(qrInfo?.produit) ||
                         (qrInfo && isRelax(qrInfo.produit))
                       ? "Passer au paiement →"
                       : "Confirmer la souscription →"}
@@ -1722,7 +2854,113 @@ export default function Souscription() {
                 </svg>
               </div>
 
-              {isRelaxAccidentsGenerale(qrInfo?.produit) ? (
+              {isSecurhomeDommages(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre assurance SecurHome+ est activée.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.resultat && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isSecurproDommages(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre assurance SecurPro est activée.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.resultat && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isRelaxAccidentsGenerale(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Souscription confirmée !
