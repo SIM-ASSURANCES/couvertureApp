@@ -78,29 +78,33 @@ statsRouter.get(
     // du filtre de période du tableau de bord, toujours calculé sur le mois en cours.
     const budget = await budgetMensuelGlobal();
 
-    // ── Chiffre d'affaires (Prime TTC − Taxes) & Taxes, depuis les barèmes ──
-    function caEtTaxes(
+    // ── Chiffre d'affaires (Prime TTC − Taxes), Taxes et FG, depuis les barèmes ──
+    function caTaxesEtFg(
       groups: { montantPrime: number; _count: { _all: number } }[],
-      tarifs: { prime: number; taxes: number | null }[]
+      tarifs: { prime: number; taxes: number | null; fg: number | null }[]
     ) {
       const map = new Map(tarifs.map((t) => [t.prime, t]));
       let ca = 0;
       let taxes = 0;
+      let fg = 0;
       for (const g of groups) {
         const t = map.get(g.montantPrime);
         const tx = t?.taxes ?? 0;
+        const f = t?.fg ?? 0;
         ca += (g.montantPrime - tx) * g._count._all;
         taxes += tx * g._count._all;
+        fg += f * g._count._all;
       }
-      return { ca, taxes };
+      return { ca, taxes, fg };
     }
 
-    const acc = caEtTaxes(accGroups, tarifsAcc);
-    const inc = caEtTaxes(incGroups, tarifsInc);
+    const acc = caTaxesEtFg(accGroups, tarifsAcc);
+    const inc = caTaxesEtFg(incGroups, tarifsInc);
     const caAccident = acc.ca;
     const taxesAccident = acc.taxes;
     const caIncendie = inc.ca;
     const taxesIncendie = inc.taxes;
+    const fgTotal = acc.fg + inc.fg;
 
     // Prime Incendie TTC = somme des montants payés (1000 / 2000)
     const primesIncendie = incGroups.reduce(
@@ -117,6 +121,7 @@ statsRouter.get(
       primesIncendie,
       chiffreAffaires: Math.round(caIncendie + caAccident),
       taxes: Math.round(taxesIncendie + taxesAccident),
+      fgTotal: Math.round(fgTotal),
       caIncendie: Math.round(caIncendie),
       caAccident: Math.round(caAccident),
       budgetIncendie: budget.budgetIncendie,

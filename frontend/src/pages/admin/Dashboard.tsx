@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank, HeartPulse } from "lucide-react";
+import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank, HeartPulse, Coins } from "lucide-react";
 import {
   PageHeader,
   StatCard,
@@ -28,6 +28,7 @@ interface Overview {
   primesIncendie: number;
   chiffreAffaires: number;
   taxes: number;
+  fgTotal: number;
   caIncendie: number;
   caAccident: number;
   budgetIncendie: number;
@@ -63,7 +64,6 @@ export default function AdminDashboard() {
   // Produits de la sous-branche "Assurances Accidents" (refonte, modèle
   // générique) — comptés séparément de data.accidentTotal (ancien modèle).
   const { data: accidents } = useFetch<AccidentsOverview>("/assurances-accidents/overview");
-  const accidentsConfirmes = (accidents?.produits ?? []).reduce((s, p) => s + p.confirmes, 0);
 
   const periodeLabel =
     from || to
@@ -133,14 +133,14 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<FileText size={20} />}
-              label="Primes Incendie TTC"
+              label="Primes Dommages TTC"
               value={fcfa(data.primesIncendie)}
               color="#b45309"
               bg="#fdf3e3"
             />
             <StatCard
               icon={<Wallet size={20} />}
-              label="Primes Accident TTC"
+              label="Primes Accidents TTC"
               value={fcfa(data.primesAccident)}
               color="#15803d"
               bg="#e8f6ec"
@@ -152,14 +152,14 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<Flame size={20} />}
-              label="Souscr. Incendie"
+              label="Souscr. Dommages"
               value={nb(data.incendieTotal)}
               color="#b45309"
               bg="#fdf3e3"
             />
             <StatCard
               icon={<ShieldCheck size={20} />}
-              label="Souscr. Accident (historique)"
+              label="Souscr. Accidents"
               value={nb(data.accidentTotal)}
               color="#15803d"
               bg="#e8f6ec"
@@ -171,13 +171,13 @@ export default function AdminDashboard() {
               <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
                 <StatCard
                   icon={<Store size={20} />}
-                  label="Partenaires Assurances Accidents"
+                  label="Partenaires Assurances Accidents & Dommages"
                   value={nb(accidents.partenaires)}
                 />
                 <StatCard
                   icon={<HeartPulse size={20} />}
-                  label="Souscriptions confirmées"
-                  value={nb(accidentsConfirmes)}
+                  label="Souscriptions confirmées totales"
+                  value={nb(data.accidentTotal + data.incendieTotal)}
                   color="#15803d"
                   bg="#e8f6ec"
                 />
@@ -189,6 +189,13 @@ export default function AdminDashboard() {
           )}
 
           <div className="stat-grid" style={{ marginTop: 16, maxWidth: 640 }}>
+            <StatCard
+              icon={<Coins size={20} />}
+              label="FG totale"
+              value={fcfa(data.fgTotal)}
+              color="#7c3aed"
+              bg="#f3eefe"
+            />
             <StatCard
               icon={<PiggyBank size={20} />}
               label="Budget Incendie (mensuel)"
@@ -209,7 +216,7 @@ export default function AdminDashboard() {
 
           <div className="grid-2" style={{ marginTop: 24 }}>
             <Card
-              title="Dernières souscriptions Accident (historique)"
+              title="Dernières souscriptions Accidents"
               extra={
                 <Link className="muted" to="/admin/accident" style={{ fontSize: 13 }}>
                   Tout voir{" "}
@@ -256,7 +263,7 @@ export default function AdminDashboard() {
               </div>
             </Card>
 
-            <Card title="Souscriptions Incendie récentes" noBody>
+            <Card title="Dernières souscriptions Dommages" noBody>
               <div className="table-wrap">
                 <table className="tbl">
                   <thead>
