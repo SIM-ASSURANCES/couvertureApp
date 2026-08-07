@@ -44,12 +44,19 @@ const baseSchema = z.object({
   // Facultatifs : ne concernent pas la branche Relax.
   localisation: z.string().min(1).optional(),
   typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]).optional(),
-  // Deux façons mutuellement exclusives d'assigner un partenaire :
+  // Trois façons (mutuellement exclusives) d'assigner un partenaire :
   // - `produit` (historique) : un produit précis (Incendie/Accident restants,
   //   ou Relax) — un QR précis par produit.
-  // - `sousBranche` (refonte Assurances Accidents/Dommages) : une Assurance
-  //   entière (Accidents ou Dommages) — un seul QR "sélecteur", le prospect
-  //   choisit son produit après le scan (voir routes publiques /qr/:token).
+  // - `sousBranche` (Phase 2, conservé pour rétrocompatibilité API) : une
+  //   Assurance entière figée à la création (Accidents OU Dommages) — un QR
+  //   "sélecteur" scopé à cette seule Assurance. Le formulaire admin ne
+  //   propose plus ce choix (voir POST / ci-dessous) mais un appel API direct
+  //   peut encore l'utiliser.
+  // - ni l'un ni l'autre (défaut du formulaire admin depuis la refonte QR
+  //   unique) : un seul QrCode entièrement générique (produitId et
+  //   sousBranche tous deux null) — le prospect choisit son Assurance
+  //   (Accidents ou Dommages) PUIS son produit après le scan (voir routes
+  //   publiques /qr/:token).
   produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux"]).optional(),
   sousBranche: z.enum(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"]).optional(),
   email: z.string().min(1, "Email requis").email("Email invalide"),
@@ -79,7 +86,7 @@ function prefixeQr(produit: string): string {
   return "raf"; // relaxaccidents_fraismedicaux
 }
 
-const createSchema = baseSchema.refine((d) => (d.produit != null) !== (d.sousBranche != null), {
+const createSchema = baseSchema.refine((d) => !(d.produit != null && d.sousBranche != null), {
   message: "Indiquer soit un produit, soit une Assurance (sousBranche), jamais les deux.",
 });
 
@@ -128,10 +135,12 @@ partenairesRouter.get(
             souscriptionsGen: { where: { waveStatut: "confirme" } },
           },
         },
-        // QR "sélecteur" (refonte Assurances Accidents/Dommages) : au plus un
-        // par partenaire (voir contrainte d'unicité sur QrCode) — surface
-        // l'Assurance assignée pour l'affichage admin.
-        qrCodes: { where: { sousBranche: { not: null } }, select: { sousBranche: true }, take: 1 },
+        // QR sélecteur (au plus un par partenaire, voir contrainte d'unicité
+        // sur QrCode) : filtré sur `produitId: null` (et non plus
+        // `sousBranche: { not: null }`) pour couvrir aussi bien l'ancien QR
+        // scopé à une seule Assurance (`sousBranche` renseigné) que le nouveau
+        // QR unique (`sousBranche` null) — voir `qrUnifie` ci-dessous.
+        qrCodes: { where: { produitId: null }, select: { sousBranche: true }, take: 1 },
       },
     });
     res.json(
@@ -142,6 +151,9 @@ partenairesRouter.get(
         clientsAccident: p._count.accident,
         clientsRelax: p._count.souscriptionsGen,
         sousBranche: p.qrCodes[0]?.sousBranche ?? null,
+        // Vrai si le partenaire a un QR sélecteur mais qu'il n'est PAS figé
+        // sur une Assurance précise (nouveau QR unique, refonte 2026-08-07).
+        qrUnifie: p.qrCodes.length > 0 && p.qrCodes[0].sousBranche == null,
       }))
     );
   })
@@ -213,7 +225,7 @@ partenairesRouter.post(
     const data = createSchema.parse(req.body);
     const relax = data.produit ? isProduitRelax(data.produit) : false;
     const generique = data.produit ? isProduitGenerique(data.produit) : false;
-    const isIncendie = data.produit === "incendie" || data.sousBranche === "ASSURANCES_DOMMAGES";
+    const isIncendie = data.produit === "incendie";
     const isAccident = data.produit === "accident";
 
     const motDePasseProvisoire = data.email ? genMotDePasseProvisoire() : null;
@@ -233,11 +245,8 @@ partenairesRouter.post(
         passwordHash: motDePasseProvisoire
           ? await bcrypt.hash(motDePasseProvisoire, 10)
           : null,
-        // Le pont Incendie (voir ci-dessous) génère aussi un qrIncendie1000Token
-        // pour un partenaire assigné à l'Assurance "Dommages" — même mécanisme
-        // que l'ancien produit "incendie" seul.
         qrIncendie1000Token: isIncendie ? newQrToken("i1k") : null,
-        qrIncendie2000Token: data.produit === "incendie" ? newQrToken("i2k") : null,
+        qrIncendie2000Token: isIncendie ? newQrToken("i2k") : null,
         qrAccidentToken: isAccident ? newQrToken("acc") : null,
       },
     });
@@ -255,15 +264,29 @@ partenairesRouter.post(
       }
     }
 
-    // Refonte Assurances Accidents/Dommages : un seul QR "sélecteur" pour
-    // toute l'Assurance choisie (le prospect scanne, puis choisit son
-    // produit — voir GET /public/qr/:token).
+    // Un seul QR "sélecteur" pour toute l'Assurance choisie (le prospect
+    // scanne, puis choisit son produit — voir GET /public/qr/:token).
+    // Rétrocompatibilité API uniquement : le formulaire admin n'envoie plus
+    // `sousBranche` (voir le cas générique juste en dessous).
     if (data.sousBranche) {
       await prisma.qrCode.create({
         data: {
           partenaireId: created.id,
           sousBranche: data.sousBranche,
           token: newQrToken(data.sousBranche === "ASSURANCES_ACCIDENTS" ? "acc" : "dom"),
+        },
+      });
+    }
+
+    // Nouveau QR unique (refonte 2026-08-07) : ni produit précis ni Assurance
+    // figée — le prospect choisit son Assurance (Accidents ou Dommages) PUIS
+    // son produit après le scan (voir GET /public/qr/:token, branche
+    // `!produitId && !sousBranche`).
+    if (!data.produit && !data.sousBranche) {
+      await prisma.qrCode.create({
+        data: {
+          partenaireId: created.id,
+          token: newQrToken("qr"),
         },
       });
     }
@@ -506,10 +529,11 @@ partenairesRouter.get(
       | ProduitRelax
       | ProduitAccidentsGenerique
       | "ASSURANCES_ACCIDENTS"
-      | "ASSURANCES_DOMMAGES";
+      | "ASSURANCES_DOMMAGES"
+      | "UNIFIE";
 
-    // QR "sélecteur" (refonte Assurances Accidents/Dommages) : un seul par
-    // partenaire/Assurance, pointe vers l'écran de choix de produit.
+    // QR "sélecteur" scopé à une seule Assurance (figé à la création,
+    // rétrocompatibilité) : pointe vers l'écran de choix de produit.
     if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
       const qr = await prisma.qrCode.findFirst({
         where: { partenaireId: req.params.id, sousBranche: produit },
@@ -517,6 +541,17 @@ partenairesRouter.get(
       if (!qr) return res.status(404).json({ error: "QR non disponible pour cette Assurance" });
       const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
       const dataUrl = await qrDataUrl("choisir", qr.token, couleur);
+      return res.json({ produit, token: qr.token, dataUrl });
+    }
+
+    // QR unique (refonte 2026-08-07) : ni produit précis ni Assurance figée —
+    // pointe vers l'écran de choix d'Assurance puis de produit.
+    if (produit === "UNIFIE") {
+      const qr = await prisma.qrCode.findFirst({
+        where: { partenaireId: req.params.id, produitId: null, sousBranche: null },
+      });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      const dataUrl = await qrDataUrl("choisir", qr.token, "#004b9c");
       return res.json({ produit, token: qr.token, dataUrl });
     }
 

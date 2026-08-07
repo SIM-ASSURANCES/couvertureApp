@@ -124,16 +124,24 @@ meRouter.get(
       | "incendie2000"
       | "accident"
       | "ASSURANCES_ACCIDENTS"
-      | "ASSURANCES_DOMMAGES";
+      | "ASSURANCES_DOMMAGES"
+      | "UNIFIE";
     const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
 
-    // QR "sélecteur" (refonte Assurances Accidents/Dommages).
+    // QR "sélecteur" scopé à une seule Assurance (figé à la création, rétrocompatibilité).
     if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
       const qr = await prisma.qrCode.findFirst({ where: { partenaireId: p.id, sousBranche: produit } });
       if (!qr) return res.status(404).json({ error: "QR non disponible" });
       const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
       return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
+
+    // QR unique (refonte 2026-08-07) : ni produit précis ni Assurance figée.
+    if (produit === "UNIFIE") {
+      const qr = await prisma.qrCode.findFirst({ where: { partenaireId: p.id, produitId: null, sousBranche: null } });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, "#004b9c") });
     }
 
     const token =
@@ -320,11 +328,12 @@ meRouter.post(
     const p = await prisma.partenaire.findUnique({ where: { id: req.user!.sub } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
 
-    // L'agent hérite de(s) Assurance(s)/produit(s) du partenaire — mêmes QR
-    // codes que lui (refonte Assurances Accidents/Dommages : QR "sélecteur"
-    // générique en plus des colonnes historiques).
+    // L'agent hérite de(s) Assurance(s)/produit(s) du partenaire — même QR
+    // sélecteur que lui, qu'il soit scopé à une Assurance (`sousBranche`
+    // renseigné) ou unique (`sousBranche` null, refonte 2026-08-07) — d'où le
+    // filtre sur `produitId: null` plutôt que `sousBranche: { not: null }`.
     const qrSelecteurPartenaire = await prisma.qrCode.findFirst({
-      where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+      where: { partenaireId: p.id, agentDistributionId: null, produitId: null },
     });
 
     const motDePasse = genererMotDePasseClient();
@@ -335,19 +344,25 @@ meRouter.post(
         telephone: data.telephone,
         localisation: data.localisation,
         passwordHash: await bcrypt.hash(motDePasse, 10),
-        qrIncendie1000Token: p.produitIncendie || qrSelecteurPartenaire?.sousBranche === "ASSURANCES_DOMMAGES" ? newQrToken("i1k") : null,
+        qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
         qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
         qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
       },
     });
 
-    if (qrSelecteurPartenaire?.sousBranche) {
+    if (qrSelecteurPartenaire) {
       await prisma.qrCode.create({
         data: {
           partenaireId: p.id,
           agentDistributionId: created.id,
           sousBranche: qrSelecteurPartenaire.sousBranche,
-          token: newQrToken(qrSelecteurPartenaire.sousBranche === "ASSURANCES_ACCIDENTS" ? "acc" : "dom"),
+          token: newQrToken(
+            qrSelecteurPartenaire.sousBranche === "ASSURANCES_ACCIDENTS"
+              ? "acc"
+              : qrSelecteurPartenaire.sousBranche === "ASSURANCES_DOMMAGES"
+              ? "dom"
+              : "qr"
+          ),
         },
       });
     }

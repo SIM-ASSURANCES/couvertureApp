@@ -22,9 +22,11 @@ agentDistributionRouter.get(
       include: { partenaire: { select: { nomCommerce: true, produitIncendie: true, produitAccident: true } } },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
-    // QR "sélecteur" (refonte Assurances Accidents/Dommages) de l'agent lui-même.
+    // QR sélecteur de l'agent lui-même — filtré sur `produitId: null` pour
+    // couvrir aussi bien l'ancien QR scopé à une Assurance que le nouveau QR
+    // unique (`sousBranche` null, refonte 2026-08-07).
     const qrSelecteur = await prisma.qrCode.findFirst({
-      where: { agentDistributionId: a.id, sousBranche: { not: null } },
+      where: { agentDistributionId: a.id, produitId: null },
       select: { sousBranche: true },
     });
     res.json({
@@ -36,6 +38,7 @@ agentDistributionRouter.get(
       partenaireNom: a.partenaire.nomCommerce,
       produit: a.partenaire.produitIncendie ? "incendie" : "accident",
       sousBranche: qrSelecteur?.sousBranche ?? null,
+      qrUnifie: !!qrSelecteur && qrSelecteur.sousBranche == null,
       forcerChangementMotDePasse: a.forcerChangementMotDePasse,
     });
   })
@@ -46,7 +49,13 @@ agentDistributionRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.agentDistribution.findUnique({ where: { id: req.user!.sub } });
     if (!a) return res.status(404).json({ error: "Introuvable" });
-    const produit = req.params.produit as "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+    const produit = req.params.produit as
+      | "incendie1000"
+      | "incendie2000"
+      | "accident"
+      | "ASSURANCES_ACCIDENTS"
+      | "ASSURANCES_DOMMAGES"
+      | "UNIFIE";
 
     if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
       const qr = await prisma.qrCode.findFirst({
@@ -55,6 +64,14 @@ agentDistributionRouter.get(
       if (!qr) return res.status(404).json({ error: "QR non disponible" });
       const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
       return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
+
+    if (produit === "UNIFIE") {
+      const qr = await prisma.qrCode.findFirst({
+        where: { agentDistributionId: a.id, produitId: null, sousBranche: null },
+      });
+      if (!qr) return res.status(404).json({ error: "QR non disponible" });
+      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, "#004b9c") });
     }
 
     const token =

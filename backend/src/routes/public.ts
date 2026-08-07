@@ -88,10 +88,18 @@ async function resoudrePartenaireOuAgent(
 }
 
 /**
- * Résout un QR sur le modèle générique QrCode (précis ou sélecteur de
- * sousBranche) pour un produit donné — pattern partagé par tous les produits
- * à devis calculé dynamiquement (RelaxAccidents générale, SecurHome,
- * SecurPro Dommages, et désormais le repli du QR sélecteur pour Incendie).
+ * Résout un QR sur le modèle générique QrCode (précis, sélecteur de
+ * sousBranche, ou QR unique "choix de l'Assurance") pour un produit donné —
+ * pattern partagé par tous les produits/routes génériques (Relax,
+ * RelaxAccidents Frais Médicaux/RelaxVoyage, RelaxAccidents générale,
+ * SecurHome/SecurPro Dommages, et le repli du QR sélecteur pour Incendie).
+ *
+ * Un QR entièrement "vide" (`produitId: null, sousBranche: null`) est le
+ * nouveau QR unique par partenaire (refonte du 2026-08-07) : le prospect a
+ * choisi son Assurance puis son produit via GET /qr/:token, mais le token
+ * scanné reste le même du début à la fin — ce troisième cas du OR doit donc
+ * matcher N'IMPORTE QUEL produit, contrairement aux deux premiers qui sont
+ * scopés à un produit/une sousBranche précis.
  */
 async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
   const produit = await prisma.produit.findUnique({ where: { code: codeProduit } });
@@ -104,6 +112,7 @@ async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
       OR: [
         { produitId: produit.id },
         ...(produit.sousBranche ? [{ produitId: null, sousBranche: produit.sousBranche }] : []),
+        { produitId: null, sousBranche: null },
       ],
     },
     include: { partenaire: true },
@@ -114,6 +123,43 @@ async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
     if (!agent || agent.statut !== "actif") return null;
   }
   return { produit, qr };
+}
+
+/**
+ * Construit la réponse "chooser" (liste des produits d'une sousBranche) —
+ * partagée par le QR sélecteur classique (sousBranche figée sur le QrCode) et
+ * le nouveau QR unique (sousBranche choisie dynamiquement via ?sousBranche=,
+ * voir GET /qr/:token).
+ */
+async function construireChooserProduits(
+  sousBranche: string,
+  partenaire: { id: string; nomCommerce: string }
+) {
+  const produits = await prisma.produit.findMany({
+    where: { sousBranche },
+    orderBy: { ordre: "asc" },
+  });
+  const items = await Promise.all(
+    produits.map(async (p) => {
+      const tarifDefaut = await prisma.tarifProduit.findFirst({
+        where: { produitId: p.id },
+        orderBy: { prime: "asc" },
+      });
+      return {
+        code: p.code,
+        libelle: p.libelle,
+        disponible: p.actif,
+        montantPrime: tarifDefaut?.prime ?? null,
+        capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
+      };
+    })
+  );
+  return {
+    type: "chooser" as const,
+    sousBranche,
+    partenaire: { id: partenaire.id, nomCommerce: partenaire.nomCommerce },
+    produits: items,
+  };
 }
 
 export const publicRouter = Router();
@@ -141,43 +187,37 @@ publicRouter.get(
     // partenaires n'aient à réimprimer leur QR physique.
     const qr = await prisma.qrCode.findFirst({
       where: { token, actif: true, partenaire: { statut: "actif" } },
-      include: { produit: true, partenaire: { select: { id: true, nomCommerce: true, qrIncendie1000Token: true } } },
+      include: { produit: true, partenaire: { select: { id: true, nomCommerce: true } } },
     });
     if (qr) {
-      // QR "sélecteur" (un par partenaire/Assurance) : pas de produit précis,
-      // renvoie la liste des produits de la sous-branche pour que le
-      // prospect en choisisse un (refonte Assurances Accidents/Dommages).
+      // QR unique par partenaire (refonte 2026-08-07) : ni produit précis ni
+      // sousBranche figée — le prospect choisit d'abord son Assurance
+      // (Accidents ou Dommages), puis son produit. Le même token reste
+      // scanné du début à la fin : le choix d'Assurance est transmis en
+      // query (?sousBranche=...) lors du second appel à cette même route.
+      if (!qr.produitId && !qr.sousBranche) {
+        const sousBrancheChoisie = req.query.sousBranche;
+        if (
+          sousBrancheChoisie !== "ASSURANCES_ACCIDENTS" &&
+          sousBrancheChoisie !== "ASSURANCES_DOMMAGES"
+        ) {
+          return res.json({
+            type: "chooser-branche",
+            partenaire: { id: qr.partenaire.id, nomCommerce: qr.partenaire.nomCommerce },
+            options: [
+              { sousBranche: "ASSURANCES_ACCIDENTS", libelle: "Assurances Accidents" },
+              { sousBranche: "ASSURANCES_DOMMAGES", libelle: "Assurances Dommages" },
+            ],
+          });
+        }
+        return res.json(await construireChooserProduits(sousBrancheChoisie, qr.partenaire));
+      }
+
+      // QR "sélecteur" classique (un par partenaire/Assurance, figé à la
+      // création) : pas de produit précis, renvoie directement la liste des
+      // produits de la sous-branche (refonte Assurances Accidents/Dommages).
       if (!qr.produitId && qr.sousBranche) {
-        const produits = await prisma.produit.findMany({
-          where: { sousBranche: qr.sousBranche },
-          orderBy: { ordre: "asc" },
-        });
-        const items = await Promise.all(
-          produits.map(async (p) => {
-            const tarifDefaut = await prisma.tarifProduit.findFirst({
-              where: { produitId: p.id },
-              orderBy: { prime: "asc" },
-            });
-            // Incendie reste persisté sur le modèle historique
-            // (SouscriptionIncendie), mais n'a plus de QR dédié par formule :
-            // il continue avec le token du sélecteur comme tout autre produit
-            // (voir POST /souscriptions/incendie, résolution via
-            // resoudreQrCodeGenerique + montant d'achat → formule).
-            return {
-              code: p.code,
-              libelle: p.libelle,
-              disponible: p.actif,
-              montantPrime: tarifDefaut?.prime ?? null,
-              capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
-            };
-          })
-        );
-        return res.json({
-          type: "chooser",
-          sousBranche: qr.sousBranche,
-          partenaire: { id: qr.partenaire.id, nomCommerce: qr.partenaire.nomCommerce },
-          produits: items,
-        });
+        return res.json(await construireChooserProduits(qr.sousBranche, qr.partenaire));
       }
 
       const tarifDefaut = await prisma.tarifProduit.findFirst({
@@ -1248,28 +1288,9 @@ publicRouter.post(
     if (!isProduitRelax(code)) return res.status(404).json({ error: "Produit inconnu" });
     const data = relaxSchema.parse(req.body);
 
-    const prod = await prisma.produit.findUnique({ where: { code } });
-    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
-
-    // Le QR peut pointer précisément sur ce produit (comportement historique)
-    // ou être un QR "sélecteur" de sa sous-branche (refonte Assurances
-    // Accidents/Dommages — un seul QR par partenaire, produit choisi côté
-    // client). Un produit sans sousBranche ne peut être atteint que par un QR
-    // précis (sinon un QR sélecteur "orphelin" — impossible en pratique,
-    // aucun n'est créé sans sousBranche — matcherait n'importe quel produit).
-    const qr = await prisma.qrCode.findFirst({
-      where: {
-        token: data.qrToken,
-        actif: true,
-        partenaire: { statut: "actif" },
-        OR: [
-          { produitId: prod.id },
-          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
-        ],
-      },
-      include: { partenaire: true },
-    });
-    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
 
     // Le tarif est déterminé par la formule choisie (libelleVariante = cycle),
     // jamais par un id envoyé par le client — chaque cycle porte son propre
@@ -1396,31 +1417,9 @@ publicRouter.post(
       return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
     }
 
-    const prod = await prisma.produit.findUnique({ where: { code } });
-    if (!prod) return res.status(404).json({ error: "Produit inconnu" });
-
-    // Résout le QR — accepte aussi bien un partenaire qu'un de ses agents de
-    // distribution (comme resoudrePartenaireOuAgent pour Incendie/Accident,
-    // mais sur le modèle générique QrCode) — précis (produitId) ou sélecteur
-    // (sousBranche, voir /initiate ci-dessus pour le détail du raisonnement).
-    const qr = await prisma.qrCode.findFirst({
-      where: {
-        token: data.qrToken,
-        actif: true,
-        partenaire: { statut: "actif" },
-        OR: [
-          { produitId: prod.id },
-          ...(prod.sousBranche ? [{ produitId: null, sousBranche: prod.sousBranche }] : []),
-        ],
-      },
-    });
-    if (!qr) return res.status(404).json({ error: "QR invalide pour ce produit" });
-    if (qr.agentDistributionId) {
-      const agent = await prisma.agentDistribution.findUnique({ where: { id: qr.agentDistributionId } });
-      if (!agent || agent.statut !== "actif") {
-        return res.status(404).json({ error: "QR invalide (agent inactif)" });
-      }
-    }
+    const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: prod.id, libelleVariante: data.formule },

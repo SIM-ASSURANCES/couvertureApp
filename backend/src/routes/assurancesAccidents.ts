@@ -41,12 +41,20 @@ assurancesAccidentsRouter.get(
       }))
     );
     // Compte les partenaires ayant soit un QR précis pour l'un de ces
-    // produits (comportement historique), soit un QR "sélecteur" de cette
-    // sous-branche (refonte — un partenaire assigné à l'Assurance entière).
+    // produits (comportement historique), soit un QR "sélecteur" scopé à
+    // cette sous-branche, soit le nouveau QR unique (refonte 2026-08-07 —
+    // ni produit précis ni sousBranche, un partenaire au QR unique peut
+    // vendre dans les deux Assurances donc compte pour les deux dashboards).
     const partenaires = await prisma.partenaire.count({
       where: {
         qrCodes: {
-          some: { OR: [{ produitId: { in: produits.map((p) => p.id) } }, { sousBranche: SOUS_BRANCHE }] },
+          some: {
+            OR: [
+              { produitId: { in: produits.map((p) => p.id) } },
+              { sousBranche: SOUS_BRANCHE },
+              { produitId: null, sousBranche: null },
+            ],
+          },
         },
       },
     });

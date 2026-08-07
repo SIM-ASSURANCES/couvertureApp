@@ -115,6 +115,20 @@ interface ChooserInfo {
   produits: ChooserProduit[];
 }
 
+// QR unique par partenaire (refonte 2026-08-07) : premier niveau, avant même
+// le choix du produit — le prospect choisit son Assurance (Accidents ou
+// Dommages). Une fois ce choix fait, GET /public/qr/:token?sousBranche=...
+// renvoie le ChooserInfo habituel (liste de produits) sans rien changer côté
+// composant en aval.
+interface ChooserBrancheOption {
+  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+  libelle: string;
+}
+interface ChooserBrancheInfo {
+  partenaire: { id: string; nomCommerce: string };
+  options: ChooserBrancheOption[];
+}
+
 interface TarifAccident {
   id: number;
   prime: number;
@@ -136,7 +150,7 @@ interface TarifFormule {
   capitalGaranti: number;
 }
 
-type Step = "loading" | "choose-produit" | "infos" | "confirm" | "retry" | "success" | "error";
+type Step = "loading" | "choose-branche" | "choose-produit" | "infos" | "confirm" | "retry" | "success" | "error";
 
 const PHONE_PREFIX = "+225";
 function phoneLocalPart(v: string) {
@@ -1143,6 +1157,7 @@ export default function Souscription() {
 
   const [step, setStep] = useState<Step>("loading");
   const [qrInfo, setQrInfo] = useState<QrInfo | null>(null);
+  const [chooserBrancheInfo, setChooserBrancheInfo] = useState<ChooserBrancheInfo | null>(null);
   const [chooserInfo, setChooserInfo] = useState<ChooserInfo | null>(null);
   const [tarifsAcc, setTarifsAcc] = useState<TarifAccident[]>([]);
   const [selectedTarifId, setSelectedTarifId] = useState<number | null>(null);
@@ -1456,8 +1471,16 @@ export default function Souscription() {
           return;
         }
 
-        // QR "sélecteur" (refonte Assurances Accidents/Dommages) : affiche la
-        // liste des produits de la sous-branche, le prospect en choisit un.
+        // QR unique par partenaire (refonte 2026-08-07) : premier niveau,
+        // le prospect choisit d'abord son Assurance (Accidents ou Dommages).
+        if (qr.type === "chooser-branche") {
+          setChooserBrancheInfo(qr);
+          setStep("choose-branche");
+          return;
+        }
+
+        // QR "sélecteur" : affiche la liste des produits de la sous-branche,
+        // le prospect en choisit un.
         if (qr.type === "chooser") {
           setChooserInfo(qr);
           setStep("choose-produit");
@@ -1503,6 +1526,33 @@ export default function Souscription() {
       const bareme: BaremeClasseSecurpro[] = await fetch(`${BASE}/public/baremes/securpro`).then((r) => r.json());
       setBaremeSecurpro(bareme);
     }
+  }
+
+  /** Choix de l'Assurance depuis l'écran de premier niveau (QR unique, refonte 2026-08-07). */
+  async function choisirBranche(sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES") {
+    if (!token) return;
+    setStep("loading");
+    try {
+      const r = await fetch(`${BASE}/public/qr/${token}?sousBranche=${sousBranche}`);
+      const qr = await r.json();
+      if (qr.error) {
+        setErrorMsg(qr.error);
+        setStep("error");
+        return;
+      }
+      setChooserInfo(qr);
+      setStep("choose-produit");
+    } catch {
+      setErrorMsg("Impossible de charger les informations. Veuillez réessayer.");
+      setStep("error");
+    }
+  }
+
+  /** Retour à l'écran de choix de l'Assurance (uniquement possible depuis un QR unique). */
+  function retourChoixAssurance() {
+    if (!chooserBrancheInfo) return;
+    setChooserInfo(null);
+    setStep("choose-branche");
   }
 
   /** Choix d'un produit depuis l'écran sélecteur (QR "sélecteur" — Assurance Accidents/Dommages). */
@@ -2045,6 +2095,14 @@ export default function Souscription() {
               </div>
             </div>
           )}
+          {!qrInfo && !chooserInfo && chooserBrancheInfo && (
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>Assurances Accidents et Dommages</div>
+              <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
+                via {chooserBrancheInfo.partenaire.nomCommerce}
+              </div>
+            </div>
+          )}
           {!qrInfo && chooserInfo && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>
@@ -2093,11 +2151,69 @@ export default function Souscription() {
             </div>
           )}
 
-          {/* ── SÉLECTEUR DE PRODUIT (QR "sélecteur" Assurances Accidents/Dommages) ── */}
-          {step === "choose-produit" && chooserInfo && (
+          {/* ── CHOIX DE L'ASSURANCE (QR unique par partenaire) ── */}
+          {step === "choose-branche" && chooserBrancheInfo && (
             <div>
               <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
                 Choisissez votre assurance
+              </div>
+              <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 20 }}>
+                Sélectionnez l'Assurance qui vous intéresse pour découvrir ses produits.
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {chooserBrancheInfo.options.map((o) => (
+                  <button
+                    key={o.sousBranche}
+                    type="button"
+                    onClick={() => choisirBranche(o.sousBranche)}
+                    style={{
+                      width: "100%",
+                      padding: "20px 22px",
+                      border: "2px solid var(--border-strong, #dde3ec)",
+                      borderRadius: 14,
+                      background: "#fff",
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 16, color: "#0f1b2d" }}>{o.libelle}</div>
+                    <span style={{ color: "#004b9c", fontSize: 18 }}>→</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── SÉLECTEUR DE PRODUIT (Assurances Accidents/Dommages) ── */}
+          {step === "choose-produit" && chooserInfo && (
+            <div>
+              {chooserBrancheInfo && (
+                <button
+                  type="button"
+                  onClick={retourChoixAssurance}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    marginBottom: 18,
+                    color: "#004b9c",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  ← Retour au choix de l'Assurance
+                </button>
+              )}
+              <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
+                Choisissez votre produit
               </div>
               <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 20 }}>
                 Sélectionnez le produit qui vous intéresse pour poursuivre votre souscription.

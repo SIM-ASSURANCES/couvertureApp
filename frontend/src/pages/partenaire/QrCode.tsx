@@ -17,7 +17,7 @@ function QrCard({
   label,
   sublabel,
 }: {
-  produit: "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+  produit: "incendie1000" | "incendie2000" | "accident" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | "UNIFIE";
   icon: React.ReactNode;
   color: string;
   bg: string;
@@ -58,13 +58,16 @@ export default function PartenaireQr() {
   const { user } = useAuth();
   const produit = user?.produit ?? "accident";
   const sousBranche = user?.sousBranche;
+  const qrUnifie = user?.qrUnifie;
 
   return (
     <>
       <PageHeader
         title="Mes QR codes"
         subtitle={
-          sousBranche
+          qrUnifie
+            ? "Présentez ce QR code à vos clients : ils choisiront leur Assurance (Accidents ou Dommages) puis leur produit après l'avoir scanné."
+            : sousBranche
             ? "Présentez ce QR code à vos clients : ils choisiront leur produit après l'avoir scanné."
             : produit === "incendie"
             ? "Deux QR codes selon le montant des achats du client."
@@ -72,7 +75,16 @@ export default function PartenaireQr() {
         }
       />
       <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 24, maxWidth: 440 }}>
-        {sousBranche ? (
+        {qrUnifie ? (
+          <QrCard
+            produit="UNIFIE"
+            icon={<HeartPulse size={20} />}
+            color="#004b9c"
+            bg="#e6f1fb"
+            label="QR Assurances Accidents et Dommages"
+            sublabel="Le client choisit son Assurance puis son produit après le scan"
+          />
+        ) : sousBranche ? (
           <QrCard
             produit={sousBranche}
             icon={<HeartPulse size={20} />}

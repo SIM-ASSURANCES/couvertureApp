@@ -20,9 +20,15 @@ export interface Partenaire {
   clientsIncendie: number;
   clientsAccident: number;
   clientsRelax?: number;
-  // Assurance assignée (refonte Assurances Accidents/Dommages, QR "sélecteur") —
-  // null pour un partenaire encore sur l'ancien modèle (produitIncendie/produitAccident).
+  // Assurance assignée (QR "sélecteur" scopé à une seule Assurance, figé à la
+  // création) — null pour un partenaire encore sur l'ancien modèle
+  // (produitIncendie/produitAccident) OU pour un partenaire au QR unique
+  // (voir qrUnifie ci-dessous).
   sousBranche?: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null;
+  // Vrai si le partenaire a un QR sélecteur unique (ni produit précis ni
+  // Assurance figée) — le client choisit son Assurance puis son produit
+  // après le scan (refonte 2026-08-07).
+  qrUnifie?: boolean;
 }
 
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---

@@ -18,9 +18,10 @@ interface Moi {
   statut: "actif" | "inactif";
   partenaireNom: string;
   produit: "incendie" | "accident";
-  // QR "sélecteur" (refonte Assurances Accidents/Dommages), remplace produit
-  // si renseigné.
+  // QR "sélecteur" scopé à une Assurance (figé à la création, rétrocompatibilité).
   sousBranche?: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null;
+  // QR sélecteur unique (ni produit précis ni Assurance figée) — refonte 2026-08-07.
+  qrUnifie?: boolean;
   forcerChangementMotDePasse: boolean;
 }
 
@@ -135,8 +136,8 @@ export default function AgentDistributionDashboard() {
         if (m.forcerChangementMotDePasse) return;
         const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
         setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-        if (m.sousBranche) {
-          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${m.sousBranche}`));
+        if (m.sousBranche || m.qrUnifie) {
+          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${m.sousBranche ?? "UNIFIE"}`));
         } else if (m.produit === "incendie") {
           const [q1, q2] = await Promise.all([
             agentDistApi.get<Qr>("/qr/incendie1000"),
@@ -169,8 +170,8 @@ export default function AgentDistributionDashboard() {
         setMoi({ ...moi, forcerChangementMotDePasse: false });
         const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
         setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
-        if (moi.sousBranche) {
-          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${moi.sousBranche}`));
+        if (moi.sousBranche || moi.qrUnifie) {
+          setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${moi.sousBranche ?? "UNIFIE"}`));
         } else if (moi.produit === "incendie") {
           const [q1, q2] = await Promise.all([
             agentDistApi.get<Qr>("/qr/incendie1000"),
@@ -299,7 +300,7 @@ export default function AgentDistributionDashboard() {
                 <div style={card}>
                   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>Mon/mes QR code(s)</div>
                   <div style={{ display: "flex", gap: 20, flexWrap: "wrap", justifyContent: "center" }}>
-                    {moi.sousBranche ? (
+                    {moi.sousBranche || moi.qrUnifie ? (
                       qrSelecteur && (
                         <div style={{ textAlign: "center" }}>
                           <img src={qrSelecteur.dataUrl} alt="QR" style={{ width: 170, height: 170, border: "1px solid #eee", borderRadius: 10, padding: 6 }} />

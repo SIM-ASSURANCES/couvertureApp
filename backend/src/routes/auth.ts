@@ -82,8 +82,12 @@ authRouter.post(
       const token = signToken({ sub: p.id, type: "partenaire", nom: p.nomResponsable });
       // QR "sélecteur" (refonte Assurances Accidents/Dommages) — au plus un
       // par partenaire, voir contrainte d'unicité sur QrCode.
+      // QR sélecteur — au plus un par partenaire (voir contrainte d'unicité
+      // sur QrCode) : filtré sur `produitId: null` pour couvrir aussi bien
+      // l'ancien QR scopé à une Assurance (`sousBranche` renseigné) que le
+      // nouveau QR unique (`sousBranche` null, refonte 2026-08-07).
       const qrSelecteur = await prisma.qrCode.findFirst({
-        where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+        where: { partenaireId: p.id, agentDistributionId: null, produitId: null },
         select: { sousBranche: true },
       });
       return res.json({
@@ -96,6 +100,7 @@ authRouter.post(
           type: "partenaire",
           produit: p.produitIncendie ? "incendie" : "accident",
           sousBranche: qrSelecteur?.sousBranche ?? null,
+          qrUnifie: !!qrSelecteur && qrSelecteur.sousBranche == null,
         },
       });
     }
@@ -253,8 +258,11 @@ authRouter.post(
       type: "partenaire",
       nom: p.nomResponsable,
     });
+    // Voir le commentaire équivalent plus haut (login) : `produitId: null`
+    // couvre à la fois l'ancien QR scopé à une Assurance et le nouveau QR
+    // unique (refonte 2026-08-07).
     const qrSelecteur = await prisma.qrCode.findFirst({
-      where: { partenaireId: p.id, agentDistributionId: null, sousBranche: { not: null } },
+      where: { partenaireId: p.id, agentDistributionId: null, produitId: null },
       select: { sousBranche: true },
     });
     res.json({
@@ -267,6 +275,7 @@ authRouter.post(
         type: "partenaire",
         produit: p.produitIncendie ? "incendie" : "accident",
         sousBranche: qrSelecteur?.sousBranche ?? null,
+        qrUnifie: !!qrSelecteur && qrSelecteur.sousBranche == null,
       },
     });
   })
