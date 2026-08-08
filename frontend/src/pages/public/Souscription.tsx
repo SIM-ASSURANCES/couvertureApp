@@ -19,9 +19,8 @@ import {
   MONTANTS_FRAIS_MEDICAUX,
   MONTANT_IPT_MAX,
   MONTANT_DECES_ACCIDENTEL_MAX,
-  CLASSE_LABELS,
+  NOMENCLATURE_PROFESSIONS,
   TYPE_COUVERTURE_LABELS,
-  type Classe,
   type TypeCouverture,
   type ResultatRelaxAccidentsGenerale,
 } from "../../relaxAccidentsGenerale";
@@ -298,8 +297,6 @@ function RelaxAccidentsGeneraleForm({
   setRaisonSociale,
   profession,
   setProfession,
-  classe,
-  setClasse,
   typeCouverture,
   setTypeCouverture,
   effectif,
@@ -320,8 +317,6 @@ function RelaxAccidentsGeneraleForm({
   setRaisonSociale: (v: string) => void;
   profession: string;
   setProfession: (v: string) => void;
-  classe: Classe | "";
-  setClasse: (v: Classe | "") => void;
   typeCouverture: TypeCouverture | "";
   setTypeCouverture: (v: TypeCouverture | "") => void;
   effectif: string;
@@ -340,10 +335,10 @@ function RelaxAccidentsGeneraleForm({
 }) {
   let resultat: ResultatRelaxAccidentsGenerale | null = null;
   let erreur = "";
-  if (classe && typeCouverture && effectif) {
+  if (profession && typeCouverture && effectif) {
     try {
       resultat = calculerRelaxAccidentsGenerale({
-        classe,
+        profession,
         typeCouverture,
         effectif: Number(effectif),
         montantIJ: Number(montantIJ),
@@ -367,24 +362,16 @@ function RelaxAccidentsGeneraleForm({
         />
       </FieldRow>
       <FieldRow label="Profession / Type d'activité *">
-        <input
-          value={profession}
-          onChange={(e) => setProfession(e.target.value)}
-          placeholder="Ex. Construction bâtiment"
-          style={inputStyle}
-        />
-      </FieldRow>
-      <FieldRow label="Classe de risque *">
-        <select
-          value={classe}
-          onChange={(e) => setClasse(e.target.value ? (Number(e.target.value) as Classe) : "")}
-          style={inputStyle}
-        >
-          <option value="">Sélectionnez...</option>
-          {([1, 2, 3, 4] as Classe[]).map((c) => (
-            <option key={c} value={c}>
-              {CLASSE_LABELS[c]}
-            </option>
+        <select value={profession} onChange={(e) => setProfession(e.target.value)} style={inputStyle}>
+          <option value="">Sélectionnez votre profession / type d'activité...</option>
+          {([1, 2, 3, 4] as const).map((c) => (
+            <optgroup key={c} label={`Classe ${c}`}>
+              {NOMENCLATURE_PROFESSIONS.filter((p) => p.classe === c).map((p) => (
+                <option key={p.libelle} value={p.libelle}>
+                  {p.libelle}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </FieldRow>
@@ -1206,7 +1193,6 @@ export default function Souscription() {
   // partagés avec la branche isAccidentLike/isRelaxVoyage ci-dessus.
   const [raisonSociale, setRaisonSociale] = useState("");
   const [profession, setProfession] = useState("");
-  const [classe, setClasse] = useState<Classe | "">("");
   const [typeCouverture, setTypeCouverture] = useState<TypeCouverture | "">("");
   const [effectif, setEffectif] = useState("1");
   const [montantIJ, setMontantIJ] = useState<string>(String(MONTANTS_IJ[0]));
@@ -1603,7 +1589,6 @@ export default function Souscription() {
             profession,
             telephone,
             signature,
-            classe,
             typeCouverture,
             effectif: Number(effectif),
             montantIJ: Number(montantIJ),
@@ -1859,7 +1844,7 @@ export default function Souscription() {
         telephone: result.telephone ?? telephone,
         raisonSociale: result.raisonSociale ?? raisonSociale,
         profession: result.profession ?? profession,
-        classe: result.classe ?? (classe as number),
+        classe: result.classe ?? resultat.classe,
         typeCouverture: (result.typeCouverture ?? typeCouverture) as
           | "vie_privee"
           | "vie_professionnelle"
@@ -2484,8 +2469,6 @@ export default function Souscription() {
                   setRaisonSociale={setRaisonSociale}
                   profession={profession}
                   setProfession={setProfession}
-                  classe={classe}
-                  setClasse={setClasse}
                   typeCouverture={typeCouverture}
                   setTypeCouverture={setTypeCouverture}
                   effectif={effectif}
@@ -2735,7 +2718,6 @@ export default function Souscription() {
                   (isRelaxAccidentsGenerale(qrInfo?.produit)
                     ? !raisonSociale ||
                       !profession ||
-                      !classe ||
                       !typeCouverture ||
                       !Number.isInteger(Number(effectif)) ||
                       Number(effectif) < 1 ||
@@ -2743,7 +2725,7 @@ export default function Souscription() {
                       (() => {
                         try {
                           calculerRelaxAccidentsGenerale({
-                            classe: classe as Classe,
+                            profession,
                             typeCouverture: typeCouverture as TypeCouverture,
                             effectif: Number(effectif),
                             montantIJ: Number(montantIJ),

@@ -849,7 +849,6 @@ const relaxAccidentsGeneraleSchema = z.object({
   profession: z.string().min(1).max(200),
   telephone: z.string().min(6),
   signature: z.string().min(1).optional(),
-  classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   typeCouverture: z.enum(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"]),
   effectif: z.number().int().min(1),
   montantIJ: z.number().finite(),
@@ -870,7 +869,7 @@ publicRouter.post(
     let resultat;
     try {
       resultat = calculerRelaxAccidentsGenerale({
-        classe: data.classe,
+        profession: data.profession,
         typeCouverture: data.typeCouverture,
         effectif: data.effectif,
         montantIJ: data.montantIJ,
@@ -897,7 +896,7 @@ publicRouter.post(
           signature: data.signature ?? null,
           raisonSociale: data.raisonSociale,
           profession: data.profession,
-          classe: data.classe,
+          classe: resultat.classe,
           typeCouverture: data.typeCouverture,
           effectif: data.effectif,
           montantIJ: data.montantIJ,
