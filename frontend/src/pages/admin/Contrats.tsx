@@ -13,11 +13,38 @@ import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
-import { genererContratIncendie, genererContratAccident } from "../../contract";
+import {
+  genererContratIncendie,
+  genererContratAccident,
+  genererContratRelaxAccidentsFraisMedicaux,
+  genererContratRelaxVoyage,
+  genererContratRelaxAccidentsGenerale,
+  genererContratSecurproDommages,
+  genererContratSecurhome,
+} from "../../contract";
+import { telechargerCarte } from "../../carte";
+
+// Reprend la nomenclature du document TARIF SECURHOME+_SECURPRO.docx (identique
+// à Souscription.tsx / backend/contractHtml.ts) — n'affecte que le libellé
+// réimprimé sur un contrat SecurPro déjà émis, jamais le calcul de la prime.
+const SECURPRO_CLASSE_LABELS: Record<number, string> = {
+  1: "Classe 1 — Bureau",
+  2: "Classe 2 — Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
+  3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
+  4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
+};
+
+const TYPES_SANS_CONTRAT_TELECHARGEABLE = ["relaxmoto", "relaxauto"] as const;
+
+interface CatalogueEntry {
+  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+  code: string;
+  libelle: string;
+}
 
 interface Contrat {
   id: string;
-  type: "incendie" | "accident";
+  type: string;
   numeroPolice: string;
   nom: string;
   prenom: string;
@@ -40,6 +67,46 @@ interface Contrat {
   fg?: number | null;
   dateNaissance?: string | null;
   signature?: string | null;
+  produitLibelle?: string;
+  compagnie?: string | null;
+  lieuDepart?: string | null;
+  lieuArrivee?: string | null;
+  numeroTicket?: string | null;
+  dateDepart?: string | null;
+  numeroPersonneContact?: string | null;
+  fraisSante?: number | null;
+  bagages?: string | null;
+  raisonSociale?: string | null;
+  profession?: string | null;
+  classe?: number | null;
+  typeCouverture?: string | null;
+  effectif?: number | null;
+  nomCommercial?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  statutOccupation?: "proprietaire" | "locataire" | null;
+  valeurBatiment?: number | null;
+  loyerMensuel?: number | null;
+  contenu?: number | null;
+  dansMarche?: boolean | null;
+  nombrePieces?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resultat?: any;
+}
+
+function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
+  const entree = catalogue?.find((p) => p.code === c.type);
+  const libelle = c.produitLibelle ?? entree?.libelle ?? (c.type === "accident" ? "Accident (historique)" : c.type);
+  const estDommages = entree ? entree.sousBranche === "ASSURANCES_DOMMAGES" : c.type === "incendie";
+  return estDommages ? (
+    <Badge kind="warning">
+      <Flame size={13} /> {libelle}
+    </Badge>
+  ) : (
+    <Badge kind="info">
+      <ShieldCheck size={13} /> {libelle}
+    </Badge>
+  );
 }
 
 function genererContrat(c: Contrat) {
@@ -51,6 +118,11 @@ function genererContrat(c: Contrat) {
         new Date(c.date).getMonth() + (c.type === "accident" ? 3 : 12)
       )
     ).toISOString();
+
+  if (TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto")) {
+    telechargerCarte(c.type as "relaxmoto" | "relaxauto", c.id);
+    return;
+  }
   if (c.type === "accident") {
     genererContratAccident({
       numeroPolice: c.numeroPolice,
@@ -65,7 +137,9 @@ function genererContrat(c: Contrat) {
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
     });
-  } else {
+    return;
+  }
+  if (c.type === "incendie") {
     genererContratIncendie({
       numeroPolice: c.numeroPolice,
       partenaire: c.partenaire,
@@ -82,7 +156,141 @@ function genererContrat(c: Contrat) {
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
     });
+    return;
   }
+  if (c.type === "relaxaccidents_fraismedicaux") {
+    genererContratRelaxAccidentsFraisMedicaux({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "relaxvoyage") {
+    genererContratRelaxVoyage({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      compagnie: c.compagnie ?? null,
+      lieuDepart: c.lieuDepart ?? null,
+      lieuArrivee: c.lieuArrivee ?? null,
+      numeroTicket: c.numeroTicket ?? null,
+      dateDepart: c.dateDepart ?? null,
+      numeroPersonneContact: c.numeroPersonneContact ?? null,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      fraisSante: c.fraisSante ?? null,
+      bagages: c.bagages ?? null,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "relaxaccidents") {
+    const r = c.resultat ?? {};
+    genererContratRelaxAccidentsGenerale({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      telephone: c.telephone,
+      raisonSociale: c.raisonSociale ?? null,
+      profession: c.profession ?? null,
+      classe: c.classe ?? r.classe ?? 1,
+      typeCouverture: (c.typeCouverture ?? "vie_privee") as
+        | "vie_privee"
+        | "vie_professionnelle"
+        | "vie_privee_professionnelle",
+      effectif: c.effectif ?? 1,
+      lignes: (r.lignes ?? []).map((l: { garantie: string; montant: number; prime: number }) => ({
+        garantie: l.garantie,
+        capital: l.montant,
+        prime: l.prime,
+      })),
+      primeNetteHT1: r.primeNetteHT1 ?? 0,
+      reductionPct: r.reductionPct ?? 0,
+      primeNetteHT2: r.primeNetteHT2 ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "securhome_dommages") {
+    const r = c.resultat ?? {};
+    const statutFinal = c.statutOccupation ?? "proprietaire";
+    genererContratSecurhome({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      ville: c.ville ?? null,
+      communeQuartier: c.communeQuartier ?? null,
+      referenceCIE: c.refFacture ?? null,
+      nombrePieces: c.nombrePieces ?? null,
+      statutOccupation: statutFinal,
+      valeurBatimentOuLoyer: statutFinal === "locataire" ? c.loyerMensuel ?? 0 : c.valeurBatiment ?? 0,
+      contenu: c.contenu ?? 0,
+      lignes: r.lignes ?? [],
+      primeNetteHT: r.primeNetteHT ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "securpro_dommages") {
+    const r = c.resultat ?? {};
+    const statutFinal = c.statutOccupation ?? "proprietaire";
+    genererContratSecurproDommages({
+      numeroPolice: c.numeroPolice,
+      intermediaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateSouscription: c.date,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      nomCommercial: c.nomCommercial ?? null,
+      referenceCIE: c.refFacture ?? null,
+      ville: c.ville ?? null,
+      communeQuartier: c.communeQuartier ?? null,
+      classeLabel: c.classe ? SECURPRO_CLASSE_LABELS[c.classe] ?? `Classe ${c.classe}` : "—",
+      statutOccupation: statutFinal,
+      valeurBatimentOuLoyer: statutFinal === "locataire" ? c.loyerMensuel ?? 0 : c.valeurBatiment ?? 0,
+      contenu: c.contenu ?? 0,
+      dansMarche: !!c.dansMarche,
+      lignes: r.lignes ?? [],
+      primeNetteHT: r.primeNetteHT ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+  }
+}
+
+/** Route de suppression : les deux modèles historiques gardent leurs routes dédiées, tout le reste passe par le modèle générique. */
+function routeSuppression(c: Contrat): string {
+  if (c.type === "incendie" || c.type === "accident") return `/souscriptions/${c.type}/${c.id}`;
+  return `/assurances-branche/souscriptions/${c.id}`;
 }
 
 export default function Contrats() {
@@ -98,6 +306,7 @@ export default function Contrats() {
   const { data, loading, error, reload } = useFetch<Contrat[]>(
     `/souscriptions/contrats?${params.toString()}`
   );
+  const { data: catalogue } = useFetch<CatalogueEntry[]>("/assurances-branche/catalogue");
 
   async function supprimer(c: Contrat) {
     if (
@@ -107,7 +316,7 @@ export default function Contrats() {
     )
       return;
     try {
-      await api.del(`/souscriptions/${c.type}/${c.id}`);
+      await api.del(routeSuppression(c));
       setDetail(null);
       reload();
     } catch (err) {
@@ -118,7 +327,7 @@ export default function Contrats() {
   function exportXlsx() {
     exportExcel(
       (data ?? []).map((c) => ({
-        "Produit": c.type === "accident" ? "Accident" : "Incendie",
+        "Produit": c.produitLibelle ?? (c.type === "accident" ? "Accident (historique)" : c.type === "incendie" ? "Incendie Habitation en Inclusion" : c.type),
         "N° police": c.numeroPolice,
         "Prénom": c.prenom,
         "Nom": c.nom,
@@ -140,7 +349,7 @@ export default function Contrats() {
     <>
       <PageHeader
         title="Contrats"
-        subtitle="Polices émises : assurances incendie complètes et accident confirmées."
+        subtitle="Polices émises, tous produits de la branche Assurances Accidents et Dommages."
         actions={
           <button className="btn btn-danger-soft" onClick={exportXlsx}>
             <FileSpreadsheet size={16} /> Export Excel
@@ -161,13 +370,21 @@ export default function Contrats() {
             />
             <select
               className="select"
-              style={{ width: 160, height: 40 }}
+              style={{ width: 260, height: 40 }}
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
               <option value="">Tous produits</option>
-              <option value="incendie">Incendie</option>
-              <option value="accident">Accident</option>
+              <optgroup label="Assurances Accidents">
+                {(catalogue ?? []).filter((p) => p.sousBranche === "ASSURANCES_ACCIDENTS").map((p) => (
+                  <option key={p.code} value={p.code}>{p.libelle}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Assurances Dommages">
+                {(catalogue ?? []).filter((p) => p.sousBranche === "ASSURANCES_DOMMAGES").map((p) => (
+                  <option key={p.code} value={p.code}>{p.libelle}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
         }
@@ -197,19 +414,9 @@ export default function Contrats() {
               <tbody>
                 {data.map((c) => (
                   <tr key={`${c.type}-${c.id}`}>
+                    <td>{produitBadge(c, catalogue)}</td>
                     <td>
-                      {c.type === "accident" ? (
-                        <Badge kind="info">
-                          <ShieldCheck size={13} /> Accident
-                        </Badge>
-                      ) : (
-                        <Badge kind="warning">
-                          <Flame size={13} /> Incendie
-                        </Badge>
-                      )}
-                    </td>
-                    <td>
-                      <strong>{c.numeroPolice}</strong>
+                      <strong>{c.numeroPolice || "—"}</strong>
                     </td>
                     <td>
                       {c.prenom} {c.nom}
@@ -246,16 +453,20 @@ export default function Contrats() {
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}
-                          title="Télécharger le contrat"
+                          title={
+                            TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto")
+                              ? "Télécharger la carte de prise en charge"
+                              : "Télécharger le contrat"
+                          }
                           onClick={() => genererContrat(c)}
                         >
-                          <Download size={15} /> PDF
+                          <Download size={15} /> {TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto") ? "Carte" : "PDF"}
                         </button>
                         {isSuper && (
                           <button
                             className="btn btn-ghost"
                             style={{ padding: "7px 10px" }}
-                            title="Supprimer le contrat"
+                            title="Supprimer"
                             onClick={() => supprimer(c)}
                           >
                             <Trash2 size={15} color="var(--danger)" />
@@ -317,16 +528,8 @@ export default function Contrats() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {detail.type === "accident" ? (
-                  <Badge kind="info">
-                    <ShieldCheck size={13} /> Accident
-                  </Badge>
-                ) : (
-                  <Badge kind="warning">
-                    <Flame size={13} /> Incendie
-                  </Badge>
-                )}
-                <strong style={{ fontSize: 16 }}>{detail.numeroPolice}</strong>
+                {produitBadge(detail, catalogue)}
+                <strong style={{ fontSize: 16 }}>{detail.numeroPolice || "—"}</strong>
               </div>
               <button
                 className="btn btn-ghost"
@@ -430,7 +633,10 @@ export default function Contrats() {
                 style={{ marginTop: 18 }}
                 onClick={() => genererContrat(detail)}
               >
-                <Download size={16} /> Télécharger le contrat
+                <Download size={16} />{" "}
+                {TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(detail.type as "relaxmoto" | "relaxauto")
+                  ? "Télécharger la carte de prise en charge"
+                  : "Télécharger le contrat"}
               </button>
               {isSuper && (
                 <button

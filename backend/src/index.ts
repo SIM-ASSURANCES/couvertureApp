@@ -18,6 +18,7 @@ import { commissionsRouter } from "./routes/commissions.js";
 import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
 import { assurancesAccidentsRouter } from "./routes/assurancesAccidents.js";
+import { assurancesBrancheRouter } from "./routes/assurancesBranche.js";
 import { imfRouter, agentImfRouter } from "./routes/imf.js";
 import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
@@ -108,6 +109,14 @@ app.use(
   requireAuth("admin"),
   requireBranche("INCENDIE_ACCIDENT"),
   assurancesAccidentsRouter
+);
+// Vue unifiée tous produits (générique + historiques Incendie/Accident) de la
+// même branche — alimente les filtres "type d'assurance"/"type de produit".
+app.use(
+  "/api/assurances-branche",
+  requireAuth("admin"),
+  requireBranche("INCENDIE_ACCIDENT"),
+  assurancesBrancheRouter
 );
 app.use(
   "/api/imf",

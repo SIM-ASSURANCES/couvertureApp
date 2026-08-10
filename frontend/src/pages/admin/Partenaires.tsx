@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, waveBadge, statutIncendieBadge } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel, exportExcelMultiSheet } from "../../xlsx";
-import type { Partenaire } from "../../types";
+import type { Partenaire, CatalogueProduitBranche, SouscriptionBranche } from "../../types";
 
 interface PartenaireDetails {
   partenaire: {
@@ -47,6 +47,21 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
     isSuper ? `/partenaires/${partenaireId}/agents` : null
   );
 
+  // Filtres "type d'assurance" / "type de produit" du tableau des souscripteurs
+  // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
+  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
+  const [produitFiltre, setProduitFiltre] = useState("");
+  const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
+  const souscripteursParams = new URLSearchParams();
+  souscripteursParams.set("partenaireId", partenaireId);
+  if (sousBrancheFiltre) souscripteursParams.set("sousBranche", sousBrancheFiltre);
+  if (produitFiltre) souscripteursParams.set("produit", produitFiltre);
+  if (from) souscripteursParams.set("from", from);
+  if (to) souscripteursParams.set("to", to);
+  const { data: souscripteurs } = useFetch<SouscriptionBranche[]>(
+    `/assurances-branche/souscriptions?${souscripteursParams.toString()}`
+  );
+
   const load = useCallback(() => {
     const params = new URLSearchParams();
     if (from) params.set("from", from);
@@ -86,24 +101,14 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
         },
         {
           name: "Souscripteurs",
-          rows: [
-            ...data.souscripteursIncendie.map((s) => ({
-              "Produit": "Incendie",
-              "Client": [s.prenom, s.nom].filter(Boolean).join(" "),
-              "Téléphone": s.telephone,
-              "Prime": s.montantPrime,
-              "Statut": s.statut,
-              "Date": fmtDate(s.createdAt),
-            })),
-            ...data.souscripteursAccident.map((s) => ({
-              "Produit": "Accident",
-              "Client": `${s.prenom} ${s.nom}`,
-              "Téléphone": s.telephone,
-              "Prime": s.montantPrime,
-              "Statut": s.waveStatut,
-              "Date": fmtDate(s.createdAt),
-            })),
-          ],
+          rows: (souscripteurs ?? []).map((s) => ({
+            "Produit": s.produitLibelle,
+            "Client": [s.prenom, s.nom].filter(Boolean).join(" "),
+            "Téléphone": s.telephone,
+            "Prime": s.montantPrime,
+            "Statut": s.statut,
+            "Date": fmtDate(s.createdAt),
+          })),
         },
       ],
       `partenaire_${data.partenaire.nomCommerce.replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.xlsx`
@@ -188,31 +193,59 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
               )}
             </div>
 
-            <div style={{ fontWeight: 700, margin: "8px 0 8px" }}>Souscripteurs via son canal ({data.souscripteursIncendie.length + data.souscripteursAccident.length})</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "8px 0 8px" }}>
+              <div style={{ fontWeight: 700 }}>Souscripteurs via son canal ({souscripteurs?.length ?? 0})</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <select
+                  className="select"
+                  style={{ width: 170, height: 36 }}
+                  value={sousBrancheFiltre}
+                  onChange={(e) => {
+                    setSousBrancheFiltre(e.target.value as "" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES");
+                    setProduitFiltre("");
+                  }}
+                >
+                  <option value="">Toutes les Assurances</option>
+                  <option value="ASSURANCES_ACCIDENTS">Assurances Accidents</option>
+                  <option value="ASSURANCES_DOMMAGES">Assurances Dommages</option>
+                </select>
+                <select
+                  className="select"
+                  style={{ width: 200, height: 36 }}
+                  value={produitFiltre}
+                  onChange={(e) => setProduitFiltre(e.target.value)}
+                >
+                  <option value="">Tous produits</option>
+                  {(catalogue ?? [])
+                    .filter((p) => !sousBrancheFiltre || p.sousBranche === sousBrancheFiltre)
+                    .map((p) => (
+                      <option key={p.code} value={p.code}>{p.libelle}</option>
+                    ))}
+                </select>
+              </div>
+            </div>
             <div className="table-wrap">
               <table className="tbl">
-                <thead><tr><th>Produit</th><th>Client</th><th>Téléphone</th><th>Prime</th><th>Date</th></tr></thead>
+                <thead><tr><th>Produit</th><th>Client</th><th>Téléphone</th><th>Prime</th><th>Statut</th><th>Date</th></tr></thead>
                 <tbody>
-                  {data.souscripteursIncendie.map((s) => (
+                  {(souscripteurs ?? []).map((s) => (
                     <tr key={s.id}>
-                      <td><Badge kind="warning">Incendie</Badge></td>
+                      <td>
+                        {s.sousBranche === "ASSURANCES_DOMMAGES" ? (
+                          <Badge kind="warning"><Flame size={12} /> {s.produitLibelle}</Badge>
+                        ) : (
+                          <Badge kind="info"><ShieldCheck size={12} /> {s.produitLibelle}</Badge>
+                        )}
+                      </td>
                       <td>{[s.prenom, s.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</td>
                       <td>{s.telephone}</td>
                       <td>{fcfa(s.montantPrime)}</td>
+                      <td>{s.produit === "incendie_historique" ? statutIncendieBadge(s.statut) : waveBadge(s.statut)}</td>
                       <td className="muted">{fmtDate(s.createdAt)}</td>
                     </tr>
                   ))}
-                  {data.souscripteursAccident.map((s) => (
-                    <tr key={s.id}>
-                      <td><Badge kind="success">Accident</Badge></td>
-                      <td>{s.prenom} {s.nom}</td>
-                      <td>{s.telephone}</td>
-                      <td>{fcfa(s.montantPrime)}</td>
-                      <td className="muted">{fmtDate(s.createdAt)}</td>
-                    </tr>
-                  ))}
-                  {data.souscripteursIncendie.length + data.souscripteursAccident.length === 0 && (
-                    <tr><td colSpan={5}><div className="empty">Aucun souscripteur sur la période.</div></td></tr>
+                  {(souscripteurs ?? []).length === 0 && (
+                    <tr><td colSpan={6}><div className="empty">Aucun souscripteur sur la période.</div></td></tr>
                   )}
                 </tbody>
               </table>

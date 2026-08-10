@@ -64,7 +64,7 @@ export const adminNav: AdminNavEntry[] = [
       {
         section: "Souscriptions",
         items: [
-          { to: "/admin/incendie", label: "Clients Incendie", icon: Flame },
+          { to: "/admin/incendie", label: "Clients Dommages", icon: Flame },
           { to: "/admin/clients-accidents", label: "Clients Accidents", icon: FileText },
           { to: "/admin/accident", label: "Clients Accident (historique)", icon: ShieldCheck },
           { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },

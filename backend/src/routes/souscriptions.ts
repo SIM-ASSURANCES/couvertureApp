@@ -13,6 +13,7 @@ import {
 } from "../services/notify.js";
 import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
+import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 
 export const souscriptionsRouter = Router();
 souscriptionsRouter.use(requireAuth("admin"));
@@ -25,7 +26,7 @@ souscriptionsRouter.get(
 
     type Contrat = {
       id: string;
-      type: "incendie" | "accident";
+      type: string;
       numeroPolice: string;
       nom: string;
       prenom: string;
@@ -48,6 +49,37 @@ souscriptionsRouter.get(
       taxes?: number | null;
       fg?: number | null;
       signature?: string | null;
+      // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale,
+      // RelaxVoyage, SecurHome+, SecurPro Dommages) — voir services/contratGenerique.ts
+      produitLibelle?: string;
+      compagnie?: string | null;
+      lieuDepart?: string | null;
+      lieuArrivee?: string | null;
+      numeroTicket?: string | null;
+      dateDepart?: string | null;
+      numeroPersonneContact?: string | null;
+      fraisSante?: number | null;
+      bagages?: string | null;
+      raisonSociale?: string | null;
+      profession?: string | null;
+      classe?: number | null;
+      typeCouverture?: string | null;
+      effectif?: number | null;
+      nomCommercial?: string | null;
+      ville?: string | null;
+      communeQuartier?: string | null;
+      statutOccupation?: "proprietaire" | "locataire" | null;
+      valeurBatiment?: number | null;
+      loyerMensuel?: number | null;
+      contenu?: number | null;
+      dansMarche?: boolean | null;
+      gardien?: boolean | null;
+      extincteur?: boolean | null;
+      camera?: boolean | null;
+      volContenu?: boolean | null;
+      nombrePieces?: number | null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      resultat?: any;
     };
 
     const out: Contrat[] = [];
@@ -59,7 +91,7 @@ souscriptionsRouter.get(
     const incTarifMap = new Map(tarifsInc.map((t) => [t.prime, t]));
     const accTarifMap = new Map(tarifsAcc.map((t) => [t.prime, t]));
 
-    if (type !== "accident") {
+    if (!type || type === "incendie") {
       const inc = await prisma.souscriptionIncendie.findMany({
         where: { statut: "complet" },
         include: {
@@ -100,7 +132,7 @@ souscriptionsRouter.get(
       }
     }
 
-    if (type !== "incendie") {
+    if (!type || type === "accident") {
       const acc = await prisma.souscriptionAccident.findMany({
         where: { waveStatut: "confirme" },
         include: {
@@ -132,6 +164,78 @@ souscriptionsRouter.get(
           fg: t?.fg ?? null,
           signature: s.signature,
         });
+      }
+    }
+
+    // Modèle générique (branches "Assurances Accidents"/"Assurances Dommages") —
+    // toujours confirmé (waveStatut === "confirme"), même convention que Accident.
+    if (type !== "incendie" && type !== "accident") {
+      const produitsGeneriques = await prisma.produit.findMany({
+        where: {
+          sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] },
+          ...(type ? { code: type } : {}),
+        },
+      });
+      if (produitsGeneriques.length > 0) {
+        const generiques = await prisma.souscription.findMany({
+          where: { produitId: { in: produitsGeneriques.map((p) => p.id) }, waveStatut: "confirme" },
+          include: {
+            partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+            produit: { select: { code: true, libelle: true } },
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        for (const s of generiques) {
+          const d = await mapperSouscriptionGenerique(s);
+          out.push({
+            id: d.id,
+            type: d.produit,
+            numeroPolice: d.numeroPolice ?? "",
+            nom: d.nom ?? "",
+            prenom: d.prenom ?? "",
+            telephone: d.telephone,
+            montant: d.montant,
+            capitalGaranti: d.capitalGaranti,
+            partenaire: d.partenaire,
+            partenaireResponsable: d.partenaireResponsable,
+            partenaireLocalisation: d.partenaireLocalisation,
+            dateDebut: d.dateDebut,
+            dateFin: d.dateFin,
+            date: d.createdAt,
+            dateNaissance: d.dateNaissance,
+            primeTTC: d.montant,
+            signature: d.signature,
+            produitLibelle: d.produitLibelle,
+            compagnie: d.compagnie,
+            lieuDepart: d.lieuDepart,
+            lieuArrivee: d.lieuArrivee,
+            numeroTicket: d.numeroTicket,
+            dateDepart: d.dateDepart,
+            numeroPersonneContact: d.numeroPersonneContact,
+            fraisSante: d.fraisSante,
+            bagages: d.bagages,
+            raisonSociale: d.raisonSociale,
+            profession: d.profession,
+            classe: d.classe,
+            typeCouverture: d.typeCouverture,
+            effectif: d.effectif,
+            nomCommercial: d.nomCommercial,
+            ville: d.ville,
+            communeQuartier: d.communeQuartier,
+            refFacture: d.refFacture,
+            statutOccupation: d.statutOccupation,
+            valeurBatiment: d.valeurBatiment,
+            loyerMensuel: d.loyerMensuel,
+            contenu: d.contenu,
+            dansMarche: d.dansMarche,
+            gardien: d.gardien,
+            extincteur: d.extincteur,
+            camera: d.camera,
+            volContenu: d.volContenu,
+            nombrePieces: d.nombrePieces,
+            resultat: d.resultat,
+          });
+        }
       }
     }
 

@@ -31,6 +31,35 @@ export interface Partenaire {
   qrUnifie?: boolean;
 }
 
+// --- Vue unifiée branche "Assurances Accidents et Dommages" (modèle générique
+// + les deux modèles historiques Incendie/Accident), voir backend
+// routes/assurancesBranche.ts — alimente les filtres "type d'assurance"/
+// "type de produit" du tableau de bord, des détails partenaire et des pages
+// Clients/Contrats. ---
+
+export type SousBrancheAccidentsDommages = "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+
+export interface CatalogueProduitBranche {
+  sousBranche: SousBrancheAccidentsDommages;
+  code: string;
+  libelle: string;
+}
+
+export interface SouscriptionBranche {
+  id: string;
+  sousBranche: SousBrancheAccidentsDommages;
+  produit: string;
+  produitLibelle: string;
+  telephone: string;
+  nom: string;
+  prenom: string;
+  montantPrime: number;
+  statut: string;
+  partenaireId: string;
+  partenaireNom: string;
+  createdAt: string;
+}
+
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---
 
 export type ProduitRelax = "relaxmoto" | "relaxauto";

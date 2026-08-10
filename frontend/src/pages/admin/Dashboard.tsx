@@ -11,8 +11,10 @@ import {
   statutIncendieBadge,
   waveBadge,
   nb,
+  Badge,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
+import type { CatalogueProduitBranche, SouscriptionBranche } from "../../types";
 
 interface AccidentsOverview {
   partenaires: number;
@@ -64,6 +66,21 @@ export default function AdminDashboard() {
   // Produits de la sous-branche "Assurances Accidents" (refonte, modèle
   // générique) — comptés séparément de data.accidentTotal (ancien modèle).
   const { data: accidents } = useFetch<AccidentsOverview>("/assurances-accidents/overview");
+
+  // Filtres "type d'assurance" / "type de produit" des dernières souscriptions
+  // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
+  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
+  const [produitFiltre, setProduitFiltre] = useState("");
+  const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
+  const recentParams = new URLSearchParams();
+  if (sousBrancheFiltre) recentParams.set("sousBranche", sousBrancheFiltre);
+  if (produitFiltre) recentParams.set("produit", produitFiltre);
+  if (from) recentParams.set("from", from);
+  if (to) recentParams.set("to", to);
+  recentParams.set("limit", "10");
+  const { data: recents } = useFetch<SouscriptionBranche[]>(
+    `/assurances-branche/souscriptions?${recentParams.toString()}`
+  );
 
   const periodeLabel =
     from || to
@@ -213,88 +230,84 @@ export default function AdminDashboard() {
             </Link>
           )}
 
-          <div className="grid-2" style={{ marginTop: 24 }}>
-            <Card
-              title="Dernières souscriptions Accidents"
-              extra={
-                <Link className="muted" to="/admin/accident" style={{ fontSize: 13 }}>
-                  Tout voir{" "}
-                  <ArrowUpRight size={14} style={{ verticalAlign: -2 }} />
-                </Link>
-              }
-              noBody
-            >
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Client</th>
-                      <th>Partenaire</th>
-                      <th>Paiement Wave</th>
-                      <th>N° police</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.derniersAccident.map((c) => (
-                      <tr key={c.id}>
-                        <td>
-                          <strong>
-                            {c.prenom} {c.nom}
-                          </strong>
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            {c.telephone}
-                          </div>
-                        </td>
-                        <td>{c.partenaireNom}</td>
-                        <td>{waveBadge(c.waveStatut)}</td>
-                        <td className="muted">{c.numeroPolice ?? "—"}</td>
-                      </tr>
+          <Card
+            title="Dernières souscriptions"
+            style={{ marginTop: 24 }}
+            extra={
+              <div style={{ display: "flex", gap: 10 }}>
+                <select
+                  className="select"
+                  style={{ width: 180, height: 40 }}
+                  value={sousBrancheFiltre}
+                  onChange={(e) => {
+                    setSousBrancheFiltre(e.target.value as "" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES");
+                    setProduitFiltre("");
+                  }}
+                >
+                  <option value="">Toutes les Assurances</option>
+                  <option value="ASSURANCES_ACCIDENTS">Assurances Accidents</option>
+                  <option value="ASSURANCES_DOMMAGES">Assurances Dommages</option>
+                </select>
+                <select
+                  className="select"
+                  style={{ width: 220, height: 40 }}
+                  value={produitFiltre}
+                  onChange={(e) => setProduitFiltre(e.target.value)}
+                >
+                  <option value="">Tous produits</option>
+                  {(catalogue ?? [])
+                    .filter((p) => !sousBrancheFiltre || p.sousBranche === sousBrancheFiltre)
+                    .map((p) => (
+                      <option key={p.code} value={p.code}>{p.libelle}</option>
                     ))}
-                    {data.derniersAccident.length === 0 && (
-                      <tr>
-                        <td colSpan={4}>
-                          <div className="empty">Aucune souscription.</div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                </select>
               </div>
-            </Card>
-
-            <Card title="Dernières souscriptions Dommages" noBody>
-              <div className="table-wrap">
-                <table className="tbl">
-                  <thead>
-                    <tr>
-                      <th>Téléphone</th>
-                      <th>Statut</th>
+            }
+            noBody
+          >
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th>Produit</th>
+                    <th>Client</th>
+                    <th>Partenaire</th>
+                    <th>Prime</th>
+                    <th>Statut</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(recents ?? []).map((r) => (
+                    <tr key={r.id}>
+                      <td>
+                        {r.sousBranche === "ASSURANCES_DOMMAGES" ? (
+                          <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
+                        ) : (
+                          <Badge kind="info"><ShieldCheck size={12} /> {r.produitLibelle}</Badge>
+                        )}
+                      </td>
+                      <td>
+                        <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>
+                        <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
+                      </td>
+                      <td>{r.partenaireNom}</td>
+                      <td><strong>{fcfa(r.montantPrime)}</strong></td>
+                      <td>{r.produit === "incendie_historique" ? statutIncendieBadge(r.statut) : waveBadge(r.statut)}</td>
+                      <td className="muted">{new Date(r.createdAt).toLocaleDateString("fr-FR")}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {data.derniersIncendie.map((c) => (
-                      <tr key={c.id}>
-                        <td>
-                          {c.telephone}
-                          <div className="muted" style={{ fontSize: 12 }}>
-                            {c.partenaireNom}
-                          </div>
-                        </td>
-                        <td>{statutIncendieBadge(c.statut)}</td>
-                      </tr>
-                    ))}
-                    {data.derniersIncendie.length === 0 && (
-                      <tr>
-                        <td colSpan={2}>
-                          <div className="empty">Aucune souscription.</div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
+                  ))}
+                  {(recents ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={6}>
+                        <div className="empty">Aucune souscription.</div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         </>
       )}
     </>

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
 import {
   PageHeader,
   Card,
   Loader,
   ErrorBox,
   statutIncendieBadge,
+  waveBadge,
+  Badge,
   fcfa,
   fmtDate,
 } from "../../components/ui";
@@ -13,7 +15,7 @@ import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
-import type { ClientIncendie, Partenaire } from "../../types";
+import type { ClientIncendie, Partenaire, SouscriptionBranche } from "../../types";
 
 export default function ClientsIncendie() {
   const { user } = useAuth();
@@ -30,7 +32,20 @@ export default function ClientsIncendie() {
   );
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires");
 
+  // Complète la liste avec les produits Dommages du modèle générique
+  // (SecurHome+, SecurPro) — cette page reçoit désormais toutes les
+  // souscriptions Dommages, pas seulement Incendie. Le filtre "Réf. facture"
+  // et le workflow de complétion restent spécifiques à Incendie.
+  const dommagesParams = new URLSearchParams();
+  dommagesParams.set("sousBranche", "ASSURANCES_DOMMAGES");
+  if (part) dommagesParams.set("partenaireId", part);
+  const { data: dommagesGenerique, reload: reloadGenerique } = useFetch<SouscriptionBranche[]>(
+    `/assurances-branche/souscriptions?${dommagesParams.toString()}`
+  );
+  const generiqueSeul = (dommagesGenerique ?? []).filter((r) => r.produit !== "incendie_historique");
+
   const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
+  const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
   const [factureFor, setFactureFor] = useState<ClientIncendie | null>(null);
   const [factureVal, setFactureVal] = useState("");
   const [communeVal, setCommuneVal] = useState("");
@@ -85,39 +100,73 @@ export default function ClientsIncendie() {
     }
   }
 
+  async function supprimerGenerique(id: string) {
+    if (!confirm("Supprimer définitivement ce client ?")) return;
+    try {
+      await api.del(`/assurances-branche/souscriptions/${id}`);
+      setToast("Client supprimé ✓");
+      setTimeout(() => setToast(""), 2500);
+      setDetailGenerique(null);
+      reloadGenerique();
+    } catch (e) {
+      setToast((e as Error).message);
+    }
+  }
+
   function exportXlsx() {
     exportExcel(
-      (data ?? []).map((c) => ({
-        "Téléphone": c.telephone,
-        "Prénom": c.prenom ?? "",
-        "Nom": c.nom ?? "",
-        "Partenaire": c.partenaireNom,
-        "Prime": c.montantPrime,
-        "Capital garanti": c.capitalGaranti,
-        "Réf. facture": c.refFacture ?? "",
-        "Commune": c.commune ?? "",
-        "Quartier": c.quartier ?? "",
-        "N° de maison": c.numeroMaison ?? "",
-        "Statut": c.statut,
-        "Relances SMS": c.relanceCount ?? 0,
-        "Date": fmtDate(c.createdAt),
-      })),
-      "clients_incendie.xlsx"
+      [
+        ...(data ?? []).map((c) => ({
+          "Produit": "Incendie Habitation en Inclusion",
+          "Téléphone": c.telephone,
+          "Prénom": c.prenom ?? "",
+          "Nom": c.nom ?? "",
+          "Partenaire": c.partenaireNom,
+          "Prime": c.montantPrime,
+          "Capital garanti": c.capitalGaranti,
+          "Réf. facture": c.refFacture ?? "",
+          "Commune": c.commune ?? "",
+          "Quartier": c.quartier ?? "",
+          "N° de maison": c.numeroMaison ?? "",
+          "Statut": c.statut,
+          "Relances SMS": c.relanceCount ?? 0,
+          "Date": fmtDate(c.createdAt),
+        })),
+        ...generiqueSeul.map((r) => ({
+          "Produit": r.produitLibelle,
+          "Téléphone": r.telephone,
+          "Prénom": r.prenom ?? "",
+          "Nom": r.nom ?? "",
+          "Partenaire": r.partenaireNom,
+          "Prime": r.montantPrime,
+          "Capital garanti": "",
+          "Réf. facture": "",
+          "Commune": "",
+          "Quartier": "",
+          "N° de maison": "",
+          "Statut": r.statut,
+          "Relances SMS": "",
+          "Date": fmtDate(r.createdAt),
+        })),
+      ],
+      "clients_dommages.xlsx"
     );
   }
+
+  const total = (data?.length ?? 0) + generiqueSeul.length;
 
   return (
     <>
       <PageHeader
-        title="Clients — Assurance Incendie"
-        subtitle="Souscriptions générées par scan du QR Incendie des partenaires."
+        title="Clients — Assurances Dommages"
+        subtitle="Toutes les souscriptions Dommages : Incendie Habitation en Inclusion, SecurHome+, SecurPro."
         actions={
           <>
             <button
               className="btn btn-ghost"
               onClick={() => downloadCsv("/souscriptions/incendie/export.csv", "clients_incendie.csv")}
             >
-              <Download size={16} /> CSV
+              <Download size={16} /> CSV (Incendie)
             </button>
             <button className="btn btn-danger-soft" onClick={exportXlsx}>
               <FileSpreadsheet size={16} /> Export Excel
@@ -127,7 +176,7 @@ export default function ClientsIncendie() {
       />
 
       <Card
-        title={data ? `${data.length} souscriptions` : "Souscriptions"}
+        title={`${total} souscriptions`}
         extra={
           <div style={{ display: "flex", gap: 10 }}>
             <select className="select" style={{ width: 180, height: 40 }} value={part} onChange={(e) => setPart(e.target.value)}>
@@ -137,7 +186,7 @@ export default function ClientsIncendie() {
               ))}
             </select>
             <select className="select" style={{ width: 170, height: 40 }} value={statut} onChange={(e) => setStatut(e.target.value)}>
-              <option value="">Tous statuts</option>
+              <option value="">Tous statuts (Incendie)</option>
               <option value="en_cours">En cours</option>
               <option value="complet">Complète</option>
               <option value="expire">Expiré</option>
@@ -153,11 +202,11 @@ export default function ClientsIncendie() {
             <table className="tbl">
               <thead>
                 <tr>
+                  <th>Produit</th>
                   <th>Téléphone</th>
                   <th>Nom / Prénom</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
-                  <th>Capital garanti</th>
                   <th>Réf. facture</th>
                   <th>Statut</th>
                   <th>Date</th>
@@ -166,7 +215,8 @@ export default function ClientsIncendie() {
               </thead>
               <tbody>
                 {data.map((c) => (
-                  <tr key={c.id}>
+                  <tr key={`inc-${c.id}`}>
+                    <td><Badge kind="warning"><Flame size={12} /> Incendie</Badge></td>
                     <td><strong>{c.telephone}</strong></td>
                     <td>
                       {c.nom || c.prenom ? (
@@ -185,7 +235,6 @@ export default function ClientsIncendie() {
                       )}
                     </td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
-                    <td className="muted">{fcfa(c.capitalGaranti)}</td>
                     <td>{c.refFacture ?? <span className="muted">—</span>}</td>
                     <td>{statutIncendieBadge(c.statut)}</td>
                     <td className="muted">{fmtDate(c.createdAt)}</td>
@@ -263,7 +312,47 @@ export default function ClientsIncendie() {
                     </td>
                   </tr>
                 ))}
-                {data.length === 0 && (
+                {generiqueSeul.map((r) => (
+                  <tr key={`gen-${r.id}`}>
+                    <td><Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge></td>
+                    <td><strong>{r.telephone}</strong></td>
+                    <td>
+                      {r.nom || r.prenom ? (
+                        `${r.prenom ?? ""} ${r.nom ?? ""}`.trim()
+                      ) : (
+                        <span className="muted">Non renseigné</span>
+                      )}
+                    </td>
+                    <td><strong>{r.partenaireNom}</strong></td>
+                    <td><strong>{fcfa(r.montantPrime)}</strong></td>
+                    <td><span className="muted">—</span></td>
+                    <td>{waveBadge(r.statut)}</td>
+                    <td className="muted">{fmtDate(r.createdAt)}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Voir les détails"
+                          onClick={() => setDetailGenerique(r)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {isSuper && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Supprimer"
+                            onClick={() => supprimerGenerique(r.id)}
+                          >
+                            <Trash2 size={15} color="var(--danger)" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {total === 0 && (
                   <tr><td colSpan={9}><div className="empty">Aucune souscription.</div></td></tr>
                 )}
               </tbody>
@@ -306,6 +395,35 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+      {detailGenerique && (
+        <div
+          onClick={() => setDetailGenerique(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <ShieldCheck size={16} />
+                <strong style={{ fontSize: 17 }}>{detailGenerique.produitLibelle}</strong>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setDetailGenerique(null)}><X size={18} /></button>
+            </div>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireNom}</td></tr>
+                <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
+                <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
+                <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailGenerique.createdAt)}</td></tr>
+              </tbody>
+            </table>
+            <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+              Détail complet (garanties, montants) disponible dans <strong>Contrats</strong>.
+            </p>
           </div>
         </div>
       )}
