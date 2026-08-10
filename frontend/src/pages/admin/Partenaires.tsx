@@ -54,6 +54,9 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
   const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
   const souscripteursParams = new URLSearchParams();
   souscripteursParams.set("partenaireId", partenaireId);
+  // Seules les souscriptions confirmées apparaissent ici — celles en attente
+  // de paiement sont à retrouver sur la page dédiée "Paiement en attente".
+  souscripteursParams.set("statut", "confirme");
   if (sousBrancheFiltre) souscripteursParams.set("sousBranche", sousBrancheFiltre);
   if (produitFiltre) souscripteursParams.set("produit", produitFiltre);
   if (from) souscripteursParams.set("from", from);
@@ -554,6 +557,7 @@ export default function Partenaires() {
         "Statut": p.statut,
         "Clients Incendie": p.clientsIncendie,
         "Clients Accident": p.clientsAccident,
+        "Clients (autres produits)": p.clientsRelax ?? 0,
         "Email": p.email ?? "",
         "Créé le": fmtDate(p.createdAt),
       })),
@@ -650,7 +654,7 @@ export default function Partenaires() {
                         </div>
                       </td>
                       <td className="muted">
-                        {p.clientsIncendie + p.clientsAccident}
+                        {p.clientsIncendie + p.clientsAccident + (p.clientsRelax ?? 0)}
                       </td>
                       <td>
                         {p.statut === "actif" ? (

@@ -323,6 +323,17 @@ souscriptionsRouter.get(
       attente?: string;
       partenaireId?: string;
     };
+    // Purge les paiements toujours en attente/échoués 24h après la
+    // souscription — la page "Paiement en attente" ne doit jamais accumuler
+    // indéfiniment des tentatives de paiement abandonnées.
+    if (attente === "1") {
+      await prisma.souscriptionAccident.deleteMany({
+        where: {
+          waveStatut: { in: ["en_attente", "echoue"] },
+          createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        },
+      });
+    }
     const rows = await prisma.souscriptionAccident.findMany({
       where: {
         waveStatut:

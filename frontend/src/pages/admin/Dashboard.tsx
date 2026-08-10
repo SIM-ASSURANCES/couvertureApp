@@ -66,6 +66,15 @@ export default function AdminDashboard() {
   // Produits de la sous-branche "Assurances Accidents" (refonte, modèle
   // générique) — comptés séparément de data.accidentTotal (ancien modèle).
   const { data: accidents } = useFetch<AccidentsOverview>("/assurances-accidents/overview");
+  // Total des souscriptions confirmées du modèle générique (RelaxMoto/Auto,
+  // RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro
+  // Dommages) — sans quoi les partenaires vendant uniquement ces produits
+  // (notamment ceux au QR unique) n'étaient comptés nulle part sur ce tableau
+  // de bord, qui ne portait jusqu'ici que sur les deux modèles historiques.
+  const { data: generiqueConfirmes } = useFetch<SouscriptionBranche[]>(
+    "/assurances-branche/souscriptions?statut=confirme&generiqueSeul=1"
+  );
+  const generiqueConfirmesTotal = generiqueConfirmes?.length ?? 0;
 
   // Filtres "type d'assurance" / "type de produit" des dernières souscriptions
   // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
@@ -73,6 +82,9 @@ export default function AdminDashboard() {
   const [produitFiltre, setProduitFiltre] = useState("");
   const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
   const recentParams = new URLSearchParams();
+  // Seules les souscriptions confirmées apparaissent ici — celles en attente
+  // de paiement se retrouvent sur la page dédiée "Paiement en attente".
+  recentParams.set("statut", "confirme");
   if (sousBrancheFiltre) recentParams.set("sousBranche", sousBrancheFiltre);
   if (produitFiltre) recentParams.set("produit", produitFiltre);
   if (from) recentParams.set("from", from);
@@ -194,7 +206,7 @@ export default function AdminDashboard() {
                 <StatCard
                   icon={<HeartPulse size={20} />}
                   label="Souscriptions confirmées totales"
-                  value={nb(data.accidentTotal + data.incendieTotal)}
+                  value={nb(data.accidentTotal + data.incendieTotal + generiqueConfirmesTotal)}
                   color="#15803d"
                   bg="#e8f6ec"
                 />

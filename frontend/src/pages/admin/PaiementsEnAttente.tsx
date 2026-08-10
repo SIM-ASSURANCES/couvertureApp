@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet } from "lucide-react";
+import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
 import {
   PageHeader,
   Card,
   Loader,
   ErrorBox,
+  Badge,
   waveBadge,
   fcfa,
   fmtDate,
@@ -13,7 +14,7 @@ import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
-import type { ClientAccident, Partenaire } from "../../types";
+import type { ClientAccident, Partenaire, SouscriptionBranche } from "../../types";
 
 export default function PaiementsEnAttente() {
   const { user } = useAuth();
@@ -29,7 +30,18 @@ export default function PaiementsEnAttente() {
   );
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires");
 
+  // Autres produits de la branche (RelaxMoto/Auto, RelaxAccidents Frais
+  // Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro Dommages) — modèle
+  // générique, purgé automatiquement 24h après la création côté serveur.
+  const genParams = new URLSearchParams();
+  genParams.set("statut", "attente");
+  if (part) genParams.set("partenaireId", part);
+  const { data: genData, loading: genLoading, error: genError, reload: genReload } = useFetch<SouscriptionBranche[]>(
+    `/assurances-branche/souscriptions?${genParams.toString()}`
+  );
+
   const [detailFor, setDetailFor] = useState<ClientAccident | null>(null);
+  const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
   const [verifId, setVerifId] = useState("");
   const [relanceId, setRelanceId] = useState("");
 
@@ -75,6 +87,18 @@ export default function PaiementsEnAttente() {
       await api.del(`/souscriptions/accident/${id}`);
       notify("Souscription supprimée ✓");
       reload();
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }
+
+  async function supprimerGenerique(id: string) {
+    if (!confirm("Supprimer définitivement cette souscription ?")) return;
+    try {
+      await api.del(`/assurances-branche/souscriptions/${id}`);
+      notify("Souscription supprimée ✓");
+      setDetailGenerique(null);
+      genReload();
     } catch (e) {
       notify((e as Error).message);
     }
@@ -227,6 +251,105 @@ export default function PaiementsEnAttente() {
           </div>
         )}
       </Card>
+
+      <Card
+        title={genData ? `${genData.length} autre(s) produit(s) en attente` : "Autres produits en attente"}
+        style={{ marginTop: 24 }}
+      >
+        <p className="muted" style={{ fontSize: 13, marginTop: -8, marginBottom: 16 }}>
+          RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro — supprimées
+          automatiquement 24h après la souscription si le paiement n'aboutit pas.
+        </p>
+        {genLoading && <Loader />}
+        {genError && <ErrorBox message={genError} />}
+        {genData && (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>Produit</th>
+                  <th>Client</th>
+                  <th>Partenaire</th>
+                  <th>Prime</th>
+                  <th>Paiement Wave</th>
+                  <th>Date</th>
+                  <th style={{ width: 80 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {genData.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      {r.sousBranche === "ASSURANCES_DOMMAGES" ? (
+                        <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
+                      ) : (
+                        <Badge kind="info"><ShieldCheck size={12} /> {r.produitLibelle}</Badge>
+                      )}
+                    </td>
+                    <td>
+                      <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>
+                      <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
+                    </td>
+                    <td>{r.partenaireNom}</td>
+                    <td><strong>{fcfa(r.montantPrime)}</strong></td>
+                    <td>{waveBadge(r.statut)}</td>
+                    <td className="muted">{fmtDate(r.createdAt)}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Voir les détails"
+                          onClick={() => setDetailGenerique(r)}
+                        >
+                          <Eye size={15} />
+                        </button>
+                        {isSuper && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Supprimer"
+                            onClick={() => supprimerGenerique(r.id)}
+                          >
+                            <Trash2 size={15} color="var(--danger)" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {genData.length === 0 && (
+                  <tr><td colSpan={7}><div className="empty">Aucun paiement en attente.</div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {detailGenerique && (
+        <div
+          onClick={() => setDetailGenerique(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <strong style={{ fontSize: 17 }}>{detailGenerique.produitLibelle}</strong>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setDetailGenerique(null)}><X size={18} /></button>
+            </div>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireNom}</td></tr>
+                <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
+                <tr><td className="muted">Paiement Wave</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
+                <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailGenerique.createdAt)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {detailFor && (
         <div

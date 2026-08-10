@@ -44,17 +44,54 @@ interface Filtres {
   partenaireId?: string;
   from?: Date;
   to?: Date;
+  // "confirme" : uniquement les souscriptions confirmées (paiement Wave
+  // confirmé, ou statut "complet" pour Incendie). "attente" : uniquement les
+  // souscriptions dont le paiement Wave est en attente/échoué — Incendie et
+  // l'ancien Accident en sont exclus (Incendie n'a pas de paiement Wave à
+  // proprement parler ; l'ancien Accident a sa propre page dédiée). Undefined
+  // : tout, comportement historique de cet endpoint.
+  statut?: "confirme" | "attente";
+  // Exclut les deux modèles historiques (Incendie/Accident) — ne renvoie que
+  // le modèle générique, utile pour un total qui ne doit jamais faire
+  // doublon avec des compteurs déjà basés sur les modèles historiques.
+  generiqueSeul?: boolean;
 }
 
 function parseFiltres(query: Record<string, string | undefined>): Filtres {
-  const { sousBranche, produit, partenaireId, from, to } = query;
+  const { sousBranche, produit, partenaireId, from, to, statut, generiqueSeul } = query;
   return {
     sousBranche: sousBranche === "ASSURANCES_ACCIDENTS" || sousBranche === "ASSURANCES_DOMMAGES" ? sousBranche : undefined,
     produit: produit || undefined,
     partenaireId: partenaireId || undefined,
     from: from ? new Date(`${from}T00:00:00`) : undefined,
     to: to ? new Date(`${to}T23:59:59.999`) : undefined,
+    statut: statut === "confirme" || statut === "attente" ? statut : undefined,
+    generiqueSeul: generiqueSeul === "1",
   };
+}
+
+const DELAI_EXPIRATION_ATTENTE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Supprime les souscriptions du modèle générique (branche Accidents/Dommages)
+ * encore en attente/échouées 24h après leur création — même politique que
+ * l'ancien Accident (voir routes/souscriptions.ts). Appelé avant toute
+ * lecture en mode "attente" pour que la liste affichée soit toujours à jour,
+ * sans dépendre d'une tâche planifiée séparée.
+ */
+async function purgerAttentesExpirees(): Promise<void> {
+  const produits = await prisma.produit.findMany({
+    where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+    select: { id: true },
+  });
+  if (produits.length === 0) return;
+  await prisma.souscription.deleteMany({
+    where: {
+      produitId: { in: produits.map((p) => p.id) },
+      waveStatut: { in: ["en_attente", "echoue"] },
+      createdAt: { lt: new Date(Date.now() - DELAI_EXPIRATION_ATTENTE_MS) },
+    },
+  });
 }
 
 /** Catalogue des produits filtrables (modèle générique + les deux entrées historiques). */
@@ -94,6 +131,12 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
       produitId: { in: produitIds },
       partenaireId: f.partenaireId,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+      waveStatut:
+        f.statut === "confirme"
+          ? "confirme"
+          : f.statut === "attente"
+          ? { in: ["en_attente", "echoue"] }
+          : undefined,
     },
     include: {
       partenaire: { select: { nomCommerce: true } },
@@ -118,11 +161,16 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
 }
 
 async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+  if (f.generiqueSeul) return [];
+  // Incendie n'a pas de paiement Wave en attente à proprement parler (la
+  // prime est incluse dans l'achat) — exclu du mode "attente".
+  if (f.statut === "attente") return [];
   if (f.sousBranche === "ASSURANCES_ACCIDENTS") return [];
   if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE) return [];
   const rows = await prisma.souscriptionIncendie.findMany({
     where: {
       partenaireId: f.partenaireId,
+      statut: f.statut === "confirme" ? "complet" : undefined,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
     },
     include: { partenaire: { select: { nomCommerce: true } } },
@@ -145,6 +193,10 @@ async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[
 }
 
 async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+  if (f.generiqueSeul) return [];
+  // L'ancien Accident a sa propre page "Paiement en attente" dédiée
+  // (routes/souscriptions.ts) — pas de doublon ici en mode "attente".
+  if (f.statut === "attente") return [];
   if (f.sousBranche === "ASSURANCES_DOMMAGES") return [];
   if (f.produit && f.produit !== CODE_ACCIDENT_HISTORIQUE) return [];
   const rows = await prisma.souscriptionAccident.findMany({
@@ -178,6 +230,8 @@ assurancesBrancheRouter.get(
   asyncHandler(async (req, res) => {
     const f = parseFiltres(req.query as Record<string, string | undefined>);
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+    if (f.statut === "attente") await purgerAttentesExpirees();
 
     const [generique, incendie, accident] = await Promise.all([
       fetchGenerique(f),
