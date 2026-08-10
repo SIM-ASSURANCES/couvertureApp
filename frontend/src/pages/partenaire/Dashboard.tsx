@@ -11,9 +11,11 @@ import {
   statutIncendieBadge,
   fmtDate,
   nb,
+  Badge,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { useAuth } from "../../auth";
+import type { CatalogueProduitBranche, SouscriptionBranche } from "../../types";
 
 interface Overview {
   partenaire: { nomCommerce: string; nomResponsable: string; localisation: string };
@@ -61,6 +63,25 @@ export default function PartenaireDashboard() {
     `/me/overview${qs ? `?${qs}` : ""}`
   );
   const { data: sous } = useFetch<Sous>("/me/souscriptions");
+
+  // Vue unifiée (modèle générique + historiques), toujours confirmée
+  // uniquement — utilisée par la branche Accidents/Dommages ci-dessous
+  // (produit === "accident", qui couvre aussi bien l'ancien Accident que les
+  // partenaires au QR unique vendant dans les deux Assurances).
+  const { data: brancheToutes } = useFetch<SouscriptionBranche[]>("/me/souscriptions-branche");
+  const clientsAccidents = brancheToutes?.filter((r) => r.sousBranche === "ASSURANCES_ACCIDENTS").length ?? 0;
+  const clientsDommages = brancheToutes?.filter((r) => r.sousBranche === "ASSURANCES_DOMMAGES").length ?? 0;
+
+  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
+  const [produitFiltre, setProduitFiltre] = useState("");
+  const { data: catalogueBranche } = useFetch<CatalogueProduitBranche[]>("/me/catalogue-branche");
+  const brancheParams = new URLSearchParams();
+  if (sousBrancheFiltre) brancheParams.set("sousBranche", sousBrancheFiltre);
+  if (produitFiltre) brancheParams.set("produit", produitFiltre);
+  brancheParams.set("limit", "15");
+  const { data: brancheRecentes } = useFetch<SouscriptionBranche[]>(
+    `/me/souscriptions-branche?${brancheParams.toString()}`
+  );
 
   const periodeLabel =
     from || to
@@ -139,39 +160,78 @@ export default function PartenaireDashboard() {
           ) : (
             <>
               <div className="stat-grid" style={{ marginTop: 24 }}>
-                <StatCard icon={<ShieldCheck size={20} />} label="Clients Accident" value={nb(data.clientsAccident)} color="#15803d" bg="#e8f6ec" />
-                <StatCard icon={<FileText size={20} />} label="Primes Accident" value={fcfa(data.primesAccident)} color="#15803d" bg="#e8f6ec" />
+                <StatCard icon={<ShieldCheck size={20} />} label="Clients Accidents" value={nb(clientsAccidents)} color="#15803d" bg="#e8f6ec" />
+                <StatCard icon={<Flame size={20} />} label="Clients Dommages" value={nb(clientsDommages)} color="#b45309" bg="#fdf3e3" />
                 <StatCard icon={<TrendingUp size={20} />} label="Chiffre d'affaires" value={fcfa(data.chiffreAffaires)} />
                 <StatCard icon={<Wallet size={20} />} label="Commission estimée" value={fcfa(data.commission)} />
               </div>
               <div style={{ marginTop: 24 }}>
-                <Card title="Mes dernières souscriptions Accident" noBody>
+                <Card
+                  title="Mes dernières souscriptions"
+                  noBody
+                  extra={
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <select
+                        className="select"
+                        style={{ width: 180, height: 40 }}
+                        value={sousBrancheFiltre}
+                        onChange={(e) => {
+                          setSousBrancheFiltre(e.target.value as "" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES");
+                          setProduitFiltre("");
+                        }}
+                      >
+                        <option value="">Toutes les Assurances</option>
+                        <option value="ASSURANCES_ACCIDENTS">Assurances Accidents</option>
+                        <option value="ASSURANCES_DOMMAGES">Assurances Dommages</option>
+                      </select>
+                      <select
+                        className="select"
+                        style={{ width: 220, height: 40 }}
+                        value={produitFiltre}
+                        onChange={(e) => setProduitFiltre(e.target.value)}
+                      >
+                        <option value="">Tous produits</option>
+                        {(catalogueBranche ?? [])
+                          .filter((p) => !sousBrancheFiltre || p.sousBranche === sousBrancheFiltre)
+                          .map((p) => (
+                            <option key={p.code} value={p.code}>{p.libelle}</option>
+                          ))}
+                      </select>
+                    </div>
+                  }
+                >
                   <div className="table-wrap">
                     <table className="tbl">
                       <thead>
                         <tr>
+                          <th>Produit</th>
                           <th>Client</th>
                           <th>Prime</th>
-                          <th>Paiement</th>
-                          <th>N° police</th>
+                          <th>Statut</th>
                           <th>Date</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sous?.accident.map((c) => (
-                          <tr key={c.id}>
+                        {(brancheRecentes ?? []).map((r) => (
+                          <tr key={r.id}>
                             <td>
-                              <strong>{c.prenom} {c.nom}</strong>
-                              <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
+                              {r.sousBranche === "ASSURANCES_DOMMAGES" ? (
+                                <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
+                              ) : (
+                                <Badge kind="info"><ShieldCheck size={12} /> {r.produitLibelle}</Badge>
+                              )}
                             </td>
-                            <td>{fcfa(c.montantPrime)}</td>
-                            <td>{waveBadge(c.waveStatut)}</td>
-                            <td className="muted">{c.numeroPolice ?? "—"}</td>
-                            <td className="muted">{fmtDate(c.createdAt)}</td>
+                            <td>
+                              <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>
+                              <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
+                            </td>
+                            <td><strong>{fcfa(r.montantPrime)}</strong></td>
+                            <td>{r.produit === "incendie_historique" ? statutIncendieBadge(r.statut) : waveBadge(r.statut)}</td>
+                            <td className="muted">{fmtDate(r.createdAt)}</td>
                           </tr>
                         ))}
-                        {sous && sous.accident.length === 0 && (
-                          <tr><td colSpan={5}><div className="empty">Aucune souscription Accident.</div></td></tr>
+                        {(brancheRecentes ?? []).length === 0 && (
+                          <tr><td colSpan={5}><div className="empty">Aucune souscription confirmée.</div></td></tr>
                         )}
                       </tbody>
                     </table>

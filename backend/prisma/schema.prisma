@@ -407,6 +407,12 @@ model Produit {
   actif         Boolean        @default(true)
   ordre         Int            @default(0)
   createdAt     DateTime       @default(now())
+  // Taux de commission (décimal, ex. 0.20 = 20%) pour un produit à devis
+  // calculé dynamiquement (RelaxAccidents générale, SecurHome+) — ces
+  // produits n'ont pas de TarifProduit (donc pas de commission par formule),
+  // le taux s'applique directement sur la prime nette HT calculée à la
+  // souscription (voir services/commission.ts).
+  tauxCommission Float?
   tarifs        TarifProduit[]
   qrCodes       QrCode[]
   souscriptions Souscription[]

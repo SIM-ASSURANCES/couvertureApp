@@ -34,7 +34,7 @@ async function commissionBrute(
   agentDistributionId: FiltreAgent,
   dateWhere: DateWhere
 ): Promise<number> {
-  const [incGroups, accGroups, tarifsInc, tarifsAcc, generique] = await Promise.all([
+  const [incGroups, accGroups, tarifsInc, tarifsAcc, generique, dynamique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
       where: { partenaireId, agentDistributionId, ...dateWhere },
@@ -48,9 +48,10 @@ async function commissionBrute(
     prisma.tarifIncendie.findMany(),
     prisma.tarifAccident.findMany(),
     commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId, ...dateWhere }),
+    commissionSouscriptionsDynamiques({ partenaireId, agentDistributionId, ...dateWhere }),
   ]);
 
-  return sommeParPrime(incGroups, tarifsInc) + sommeParPrime(accGroups, tarifsAcc) + generique;
+  return sommeParPrime(incGroups, tarifsInc) + sommeParPrime(accGroups, tarifsAcc) + generique + dynamique;
 }
 
 /**
@@ -80,6 +81,53 @@ async function commissionSouscriptionsGeneriques(where: {
     (s, g) => s + (map.get(`${g.produitId}:${g.montantPrime}`)?.commission ?? 0) * g._count._all,
     0
   );
+}
+
+/**
+ * Produits à devis calculé dynamiquement (pas de TarifProduit, donc jamais
+ * couverts par commissionSouscriptionsGeneriques ci-dessus) — le taux de
+ * commission est configurable depuis la page admin Tarifs et s'applique sur
+ * la prime nette HT du devis, stockée dans `Souscription.resultat` à la
+ * souscription. SecurPro a un taux par classe de risque (BaremeSecurpro,
+ * déjà utilisé côté IMF) ; RelaxAccidents générale et SecurHome+ ont un taux
+ * unique par produit (Produit.tauxCommission).
+ */
+const PRODUITS_COMMISSION_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
+
+async function commissionSouscriptionsDynamiques(where: {
+  partenaireId?: string;
+  agentDistributionId?: FiltreAgent;
+  createdAt?: { gte?: Date; lte?: Date };
+}): Promise<number> {
+  const produits = await prisma.produit.findMany({
+    where: { code: { in: [...PRODUITS_COMMISSION_DYNAMIQUE] } },
+  });
+  if (produits.length === 0) return 0;
+  const produitParId = new Map(produits.map((p) => [p.id, p]));
+
+  const rows = await prisma.souscription.findMany({
+    where: { ...where, produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },
+    select: { produitId: true, resultat: true, donneesSpecifiques: true },
+  });
+  if (rows.length === 0) return 0;
+
+  const baremes = await prisma.baremeSecurpro.findMany();
+  const baremeParClasse = new Map(baremes.map((b) => [b.classe, b]));
+
+  return rows.reduce((total, s) => {
+    const produit = produitParId.get(s.produitId);
+    const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number } | null;
+    if (!produit || !resultat) return total;
+
+    if (produit.code === "securpro_dommages") {
+      const specs = s.donneesSpecifiques as { classe?: number } | null;
+      const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
+      return total + (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
+    }
+
+    const primeBase = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
+    return total + primeBase * (produit.tauxCommission ?? 0);
+  }, 0);
 }
 
 /**

@@ -232,6 +232,171 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
   );
 }
 
+/**
+ * RelaxAccidents générale et SecurHome+ n'ont pas de TarifProduit (prime
+ * recalculée à chaque souscription selon la saisie du client) — un taux de
+ * commission unique par produit, en %, appliqué sur la prime nette HT.
+ */
+function CommissionTauxUniqueCard({ code, libelle }: { code: string; libelle: string }) {
+  const { data, loading, error, reload } = useFetch<{ code: string; tauxCommission: number }>(
+    `/assurances-accidents/produits/${code}/commission`
+  );
+  const [valeur, setValeur] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const affichee = valeur ?? (data ? String(Math.round(data.tauxCommission * 1000) / 10) : "");
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function enregistrer() {
+    const pct = Number(affichee);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      notify("Taux invalide (0 à 100%)");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.patch(`/assurances-accidents/produits/${code}/commission`, { tauxCommission: pct / 100 });
+      notify("Commission mise à jour ✓");
+      setValeur(null);
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card title={libelle} style={{ marginBottom: 24 }}>
+      {loading && <Loader />}
+      {error && <ErrorBox message={error} />}
+      {data && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <label className="label" style={{ margin: 0 }}>Taux de commission partenaire</label>
+          <input
+            className="input"
+            style={{ width: 100 }}
+            type="number"
+            min={0}
+            max={100}
+            step={0.1}
+            value={affichee}
+            onChange={(e) => setValeur(e.target.value)}
+          />
+          <span className="muted">%</span>
+          <button className="btn btn-primary" style={{ padding: "7px 14px" }} disabled={saving} onClick={enregistrer}>
+            <Save size={15} /> Enregistrer
+          </button>
+          <span className="muted" style={{ fontSize: 12.5 }}>Appliqué sur la prime nette HT de chaque devis.</span>
+        </div>
+      )}
+      {toast && <div className="toast">{toast}</div>}
+    </Card>
+  );
+}
+
+interface BaremeSecurproCommission {
+  classe: number;
+  tauxCommission: number;
+}
+
+/** SecurPro : un taux de commission par classe de risque (1 à 4). */
+function CommissionSecurproTable() {
+  const { data, loading, error, reload } = useFetch<BaremeSecurproCommission[]>(
+    "/assurances-accidents/baremes/securpro-commission"
+  );
+  const [valeurs, setValeurs] = useState<Record<number, string>>({});
+  const [saving, setSaving] = useState<number | null>(null);
+  const [toast, setToast] = useState("");
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 2500);
+  }
+
+  async function enregistrer(b: BaremeSecurproCommission) {
+    const brut = valeurs[b.classe] ?? String(Math.round(b.tauxCommission * 1000) / 10);
+    const pct = Number(brut);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      notify("Taux invalide (0 à 100%)");
+      return;
+    }
+    setSaving(b.classe);
+    try {
+      await api.patch(`/assurances-accidents/baremes/securpro/${b.classe}/commission`, { tauxCommission: pct / 100 });
+      notify("Commission mise à jour ✓");
+      setValeurs((v) => {
+        const { [b.classe]: _omise, ...reste } = v;
+        return reste;
+      });
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  return (
+    <Card title="SecurPro — commission par classe de risque" style={{ marginBottom: 24 }}>
+      {loading && <Loader />}
+      {error && <ErrorBox message={error} />}
+      {data && (
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Classe de risque</th>
+                <th>Commission (%)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((b) => (
+                <tr key={b.classe}>
+                  <td>Classe {b.classe}</td>
+                  <td>
+                    <input
+                      className="input"
+                      style={cellInputStyle}
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={valeurs[b.classe] ?? String(Math.round(b.tauxCommission * 1000) / 10)}
+                      onChange={(e) => setValeurs((v) => ({ ...v, [b.classe]: e.target.value }))}
+                    />
+                  </td>
+                  <td>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ padding: "7px 10px" }}
+                      disabled={saving === b.classe}
+                      onClick={() => enregistrer(b)}
+                      title="Enregistrer"
+                    >
+                      <Save size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="muted" style={{ fontSize: 12.5, marginTop: 10 }}>
+        Appliqué sur la prime nette HT de chaque devis, selon la classe de risque déduite de la profession/activité.
+      </div>
+      {toast && <div className="toast">{toast}</div>}
+    </Card>
+  );
+}
+
 export default function AssurancesAccidentsTarifs() {
   return (
     <>
@@ -244,6 +409,11 @@ export default function AssurancesAccidentsTarifs() {
         <ProduitTarifsTable code="relaxmoto" libelle="RelaxMoto" />
         <ProduitTarifsTable code="relaxauto" libelle="RelaxAuto" />
         <ProduitTarifsTable code="relaxvoyage" libelle="RelaxVoyage" />
+
+        <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Accidents & Dommages)</h3>
+        <CommissionTauxUniqueCard code="relaxaccidents" libelle="RelaxAccidents générale" />
+        <CommissionTauxUniqueCard code="securhome_dommages" libelle="SecurHome+" />
+        <CommissionSecurproTable />
       </div>
     </>
   );

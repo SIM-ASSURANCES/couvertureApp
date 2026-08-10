@@ -5,7 +5,15 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
-import { commissionStatsPartenaire, commissionTotaleAgent, TAUX_COMMISSION_AGENT } from "../services/commission.js";
+import { commissionStatsPartenaire, commissionTotaleAgent, commissionTotalePartenaire } from "../services/commission.js";
+import {
+  parseFiltres,
+  fetchGenerique,
+  fetchIncendieHistorique,
+  fetchAccidentHistorique,
+  CODE_INCENDIE_HISTORIQUE,
+  CODE_ACCIDENT_HISTORIQUE,
+} from "./assurancesBranche.js";
 import { genererMotDePasseClient } from "../services/notify.js";
 import { notifyAdmins } from "../services/notifications.js";
 
@@ -54,7 +62,7 @@ meRouter.get(
     const createdAt = parseDateRange(req as { query: { from?: string; to?: string } });
     const dateWhere = createdAt ? { createdAt } : {};
 
-    const [p, incGroups, accCount, accGroups, incGroupsViaAgents, accGroupsViaAgents, tarifsInc, tarifsAcc] =
+    const [p, incGroups, accCount, accGroups, tarifsInc, tarifsAcc, commissionTotale] =
       await Promise.all([
         prisma.partenaire.findUnique({ where: { id } }),
         prisma.souscriptionIncendie.groupBy({
@@ -68,21 +76,12 @@ meRouter.get(
           where: { partenaireId: id, ...dateWhere, waveStatut: "confirme" },
           _count: { _all: true },
         }),
-        // Sous-ensemble vendu par un agent de distribution : seuls 25% de leur
-        // commission reviennent au partenaire, le reste (75%) à l'agent — voir
-        // services/commission.ts.
-        prisma.souscriptionIncendie.groupBy({
-          by: ["montantPrime"],
-          where: { partenaireId: id, agentDistributionId: { not: null }, ...dateWhere },
-          _count: { _all: true },
-        }),
-        prisma.souscriptionAccident.groupBy({
-          by: ["montantPrime"],
-          where: { partenaireId: id, agentDistributionId: { not: null }, ...dateWhere, waveStatut: "confirme" },
-          _count: { _all: true },
-        }),
         prisma.tarifIncendie.findMany(),
         prisma.tarifAccident.findMany(),
+        // Source unique de vérité (part du partage 75/25 agent/partenaire déjà
+        // appliquée, inclut aussi les produits Accidents/Dommages à devis
+        // dynamique) — voir services/commission.ts.
+        commissionTotalePartenaire(id, dateWhere),
       ]);
 
     if (!p) return res.status(404).json({ error: "Introuvable" });
@@ -90,10 +89,6 @@ meRouter.get(
     const produit = p.produitIncendie ? "incendie" : "accident";
     const inc = depuisBareme(incGroups, tarifsInc);
     const acc = depuisBareme(accGroups, tarifsAcc);
-    const incViaAgents = depuisBareme(incGroupsViaAgents, tarifsInc);
-    const accViaAgents = depuisBareme(accGroupsViaAgents, tarifsAcc);
-    const commissionInc = inc.commission - incViaAgents.commission * TAUX_COMMISSION_AGENT;
-    const commissionAcc = acc.commission - accViaAgents.commission * TAUX_COMMISSION_AGENT;
 
     const estIncendie = produit === "incendie";
 
@@ -110,7 +105,7 @@ meRouter.get(
       primesIncendie: inc.primes,
       primesAccident: acc.primes,
       chiffreAffaires: Math.round(estIncendie ? inc.ca : acc.ca),
-      commission: Math.round(estIncendie ? commissionInc : commissionAcc),
+      commission: Math.round(commissionTotale),
     });
   })
 );
@@ -130,6 +125,51 @@ meRouter.get(
       }),
     ]);
     res.json({ incendie, accident });
+  })
+);
+
+/** Catalogue des produits filtrables de la branche Accidents/Dommages (pour le filtre "Mes dernières souscriptions"). */
+meRouter.get(
+  "/catalogue-branche",
+  asyncHandler(async (_req, res) => {
+    const produits = await prisma.produit.findMany({
+      where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+      orderBy: { ordre: "asc" },
+    });
+    res.json([
+      { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accident (historique)" },
+      { sousBranche: "ASSURANCES_DOMMAGES", code: CODE_INCENDIE_HISTORIQUE, libelle: "Incendie Habitation en Inclusion" },
+      ...produits.map((p) => ({ sousBranche: p.sousBranche, code: p.code, libelle: p.libelle })),
+    ]);
+  })
+);
+
+/**
+ * Vue unifiée (modèle générique + Incendie/Accident historiques) des
+ * souscriptions DU PARTENAIRE CONNECTÉ, toujours confirmées uniquement
+ * (jamais les paiements en attente — ceux-ci ne concernent que la page
+ * "Paiement en attente" admin) — filtrable par produit / type d'assurance.
+ * `partenaireId` et `statut` du query sont ignorés : toujours forcés au
+ * partenaire connecté et à "confirme".
+ */
+meRouter.get(
+  "/souscriptions-branche",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const f = parseFiltres(req.query as Record<string, string | undefined>);
+    f.partenaireId = req.user!.sub;
+    f.statut = "confirme";
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+
+    const [generique, incendie, accident] = await Promise.all([
+      fetchGenerique(f),
+      fetchIncendieHistorique(f),
+      fetchAccidentHistorique(f),
+    ]);
+    let rows = [...generique, ...incendie, ...accident].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+    if (limit) rows = rows.slice(0, limit);
+    res.json(rows);
   })
 );
 

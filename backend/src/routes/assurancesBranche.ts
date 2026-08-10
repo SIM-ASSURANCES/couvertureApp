@@ -20,10 +20,10 @@ assurancesBrancheRouter.use(requireAuth("admin"));
 
 type SousBranche = "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
 
-const CODE_INCENDIE_HISTORIQUE = "incendie_historique";
-const CODE_ACCIDENT_HISTORIQUE = "accident_historique";
+export const CODE_INCENDIE_HISTORIQUE = "incendie_historique";
+export const CODE_ACCIDENT_HISTORIQUE = "accident_historique";
 
-interface SouscriptionBranche {
+export interface SouscriptionBranche {
   id: string;
   sousBranche: SousBranche;
   produit: string;
@@ -38,7 +38,7 @@ interface SouscriptionBranche {
   createdAt: string;
 }
 
-interface Filtres {
+export interface Filtres {
   sousBranche?: SousBranche;
   produit?: string;
   partenaireId?: string;
@@ -57,7 +57,7 @@ interface Filtres {
   generiqueSeul?: boolean;
 }
 
-function parseFiltres(query: Record<string, string | undefined>): Filtres {
+export function parseFiltres(query: Record<string, string | undefined>): Filtres {
   const { sousBranche, produit, partenaireId, from, to, statut, generiqueSeul } = query;
   return {
     sousBranche: sousBranche === "ASSURANCES_ACCIDENTS" || sousBranche === "ASSURANCES_DOMMAGES" ? sousBranche : undefined,
@@ -110,7 +110,7 @@ assurancesBrancheRouter.get(
   })
 );
 
-async function fetchGenerique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchGenerique(f: Filtres): Promise<SouscriptionBranche[]> {
   if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE && f.produit !== CODE_ACCIDENT_HISTORIQUE) {
     const produit = await prisma.produit.findUnique({ where: { code: f.produit } });
     if (!produit) return [];
@@ -160,7 +160,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
   }));
 }
 
-async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
   if (f.generiqueSeul) return [];
   // Incendie n'a pas de paiement Wave en attente à proprement parler (la
   // prime est incluse dans l'achat) — exclu du mode "attente".
@@ -192,7 +192,7 @@ async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[
   }));
 }
 
-async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
   if (f.generiqueSeul) return [];
   // L'ancien Accident a sa propre page "Paiement en attente" dédiée
   // (routes/souscriptions.ts) — pas de doublon ici en mode "attente".

@@ -269,3 +269,86 @@ assurancesAccidentsRouter.delete(
     res.status(204).end();
   })
 );
+
+/**
+ * Commission des produits à devis calculé dynamiquement — pas de
+ * TarifProduit pour RelaxAccidents générale/SecurHome+/SecurPro (prime
+ * recalculée à chaque souscription, jamais une table de formules), donc pas
+ * de colonne "commission" par formule à éditer comme ci-dessus. Le taux
+ * (décimal, appliqué sur la prime nette HT) est réglé ici — voir
+ * services/commission.ts::commissionSouscriptionsDynamiques.
+ */
+const PRODUITS_COMMISSION_TAUX_UNIQUE = ["relaxaccidents", "securhome_dommages"] as const;
+type ProduitCommissionTauxUnique = (typeof PRODUITS_COMMISSION_TAUX_UNIQUE)[number];
+function estProduitCommissionTauxUnique(code: string): code is ProduitCommissionTauxUnique {
+  return (PRODUITS_COMMISSION_TAUX_UNIQUE as readonly string[]).includes(code);
+}
+
+const commissionTauxSchema = z.object({ tauxCommission: z.number().min(0).max(1) });
+
+assurancesAccidentsRouter.get(
+  "/produits/:code/commission",
+  asyncHandler(async (req, res) => {
+    if (!estProduitCommissionTauxUnique(req.params.code)) {
+      return res.status(404).json({ error: "Produit inconnu" });
+    }
+    const produit = await prisma.produit.findUnique({ where: { code: req.params.code } });
+    if (!produit) return res.status(404).json({ error: "Produit inconnu" });
+    res.json({ code: produit.code, tauxCommission: produit.tauxCommission ?? 0 });
+  })
+);
+
+assurancesAccidentsRouter.patch(
+  "/produits/:code/commission",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    if (!estProduitCommissionTauxUnique(req.params.code)) {
+      return res.status(404).json({ error: "Produit inconnu" });
+    }
+    const { tauxCommission } = commissionTauxSchema.parse(req.body);
+    const produit = await prisma.produit.findUnique({ where: { code: req.params.code } });
+    if (!produit) return res.status(404).json({ error: "Produit inconnu" });
+    const updated = await prisma.produit.update({
+      where: { id: produit.id },
+      data: { tauxCommission },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "produit_commission",
+      objetId: updated.id,
+      valeurApres: { code: updated.code, tauxCommission: updated.tauxCommission },
+    });
+    res.json({ code: updated.code, tauxCommission: updated.tauxCommission });
+  })
+);
+
+/** SecurPro : taux de commission par classe de risque (réutilise BaremeSecurpro.tauxCommission, déjà en base). */
+assurancesAccidentsRouter.get(
+  "/baremes/securpro-commission",
+  asyncHandler(async (_req, res) => {
+    const baremes = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+    res.json(baremes.map((b) => ({ classe: b.classe, tauxCommission: b.tauxCommission })));
+  })
+);
+
+assurancesAccidentsRouter.patch(
+  "/baremes/securpro/:classe/commission",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const classe = Number(req.params.classe);
+    const { tauxCommission } = commissionTauxSchema.parse(req.body);
+    const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe } });
+    if (!bareme) return res.status(404).json({ error: "Classe introuvable" });
+    const updated = await prisma.baremeSecurpro.update({
+      where: { classe },
+      data: { tauxCommission },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "bareme_securpro_commission",
+      objetId: String(updated.id),
+      valeurApres: { classe: updated.classe, tauxCommission: updated.tauxCommission },
+    });
+    res.json({ classe: updated.classe, tauxCommission: updated.tauxCommission });
+  })
+);
