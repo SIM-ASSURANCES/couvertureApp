@@ -1,45 +1,56 @@
 import { prisma } from "../db.js";
 
 type DateWhere = { createdAt?: { gte?: Date; lte?: Date } };
+type FiltreAgent = string | null | { not: null };
 
 /**
- * Commission totale générée par un partenaire, depuis les barèmes (colonne
- * commission) — exclut les souscriptions apportées par un agent de
- * distribution (payées directement à l'agent, voir commissionTotaleAgent),
- * pour éviter tout double comptage.
+ * Part de la commission qui revient à l'agent de distribution quand la
+ * souscription est faite depuis son propre espace (QR agent) — le reste
+ * (25%) revient au partenaire. Quand la souscription est faite directement
+ * depuis l'espace du partenaire (agentDistributionId null), le partenaire
+ * garde 100% : voir commissionTotalePartenaire/commissionTotaleAgent.
  */
-export async function commissionTotalePartenaire(
-  partenaireId: string,
-  dateWhere: DateWhere = {}
+export const TAUX_COMMISSION_AGENT = 0.75;
+
+function sommeParPrime(
+  groups: { montantPrime: number; _count: { _all: number } }[],
+  tarifs: { prime: number; commission: number }[]
+): number {
+  const map = new Map(tarifs.map((t) => [t.prime, t]));
+  return groups.reduce(
+    (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * g._count._all,
+    0
+  );
+}
+
+/**
+ * Commission brute (100%, avant tout partage agent/partenaire) générée par
+ * les souscriptions Incendie + Accident + modèle générique correspondant au
+ * filtre `agentDistributionId` donné (null = ventes directes du partenaire,
+ * {not: null} = ventes via un agent quelconque, une valeur précise = un seul agent).
+ */
+async function commissionBrute(
+  partenaireId: string | undefined,
+  agentDistributionId: FiltreAgent,
+  dateWhere: DateWhere
 ): Promise<number> {
   const [incGroups, accGroups, tarifsInc, tarifsAcc, generique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
-      where: { partenaireId, agentDistributionId: null, ...dateWhere },
+      where: { partenaireId, agentDistributionId, ...dateWhere },
       _count: { _all: true },
     }),
     prisma.souscriptionAccident.groupBy({
       by: ["montantPrime"],
-      where: { partenaireId, agentDistributionId: null, ...dateWhere, waveStatut: "confirme" },
+      where: { partenaireId, agentDistributionId, ...dateWhere, waveStatut: "confirme" },
       _count: { _all: true },
     }),
     prisma.tarifIncendie.findMany(),
     prisma.tarifAccident.findMany(),
-    commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId: null, ...dateWhere }),
+    commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId, ...dateWhere }),
   ]);
 
-  const sum = (
-    groups: { montantPrime: number; _count: { _all: number } }[],
-    tarifs: { prime: number; commission: number }[]
-  ) => {
-    const map = new Map(tarifs.map((t) => [t.prime, t]));
-    return groups.reduce(
-      (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * g._count._all,
-      0
-    );
-  };
-
-  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc) + generique;
+  return sommeParPrime(incGroups, tarifsInc) + sommeParPrime(accGroups, tarifsAcc) + generique;
 }
 
 /**
@@ -51,7 +62,7 @@ export async function commissionTotalePartenaire(
  */
 async function commissionSouscriptionsGeneriques(where: {
   partenaireId?: string;
-  agentDistributionId?: string | null;
+  agentDistributionId?: FiltreAgent;
   createdAt?: { gte?: Date; lte?: Date };
 }): Promise<number> {
   const groups = await prisma.souscription.groupBy({
@@ -72,41 +83,30 @@ async function commissionSouscriptionsGeneriques(where: {
 }
 
 /**
- * Commission totale générée par un agent de distribution précis (sous-ensemble
- * des souscriptions du partenaire, filtrées par agentDistributionId) — payée
- * directement à l'agent via ses propres demandes de commission (voir
- * commissionStatsAgent), donc exclue du calcul de commission due du
- * partenaire (commissionTotalePartenaire).
+ * Commission totale due au partenaire : 100% de ses ventes directes
+ * (agentDistributionId null) + la part partenaire (25%) des ventes faites
+ * par ses agents de distribution — le reste (75%) revient à l'agent
+ * concerné, voir commissionTotaleAgent.
+ */
+export async function commissionTotalePartenaire(
+  partenaireId: string,
+  dateWhere: DateWhere = {}
+): Promise<number> {
+  const [directe, viaAgents] = await Promise.all([
+    commissionBrute(partenaireId, null, dateWhere),
+    commissionBrute(partenaireId, { not: null }, dateWhere),
+  ]);
+  return directe + viaAgents * (1 - TAUX_COMMISSION_AGENT);
+}
+
+/**
+ * Commission totale due à un agent de distribution précis : 75% de la
+ * commission brute générée par ses propres ventes (le reste, 25%, revient
+ * au partenaire — voir commissionTotalePartenaire).
  */
 export async function commissionTotaleAgent(agentDistributionId: string): Promise<number> {
-  const [incGroups, accGroups, tarifsInc, tarifsAcc, generique] = await Promise.all([
-    prisma.souscriptionIncendie.groupBy({
-      by: ["montantPrime"],
-      where: { agentDistributionId },
-      _count: { _all: true },
-    }),
-    prisma.souscriptionAccident.groupBy({
-      by: ["montantPrime"],
-      where: { agentDistributionId, waveStatut: "confirme" },
-      _count: { _all: true },
-    }),
-    prisma.tarifIncendie.findMany(),
-    prisma.tarifAccident.findMany(),
-    commissionSouscriptionsGeneriques({ agentDistributionId }),
-  ]);
-
-  const sum = (
-    groups: { montantPrime: number; _count: { _all: number } }[],
-    tarifs: { prime: number; commission: number }[]
-  ) => {
-    const map = new Map(tarifs.map((t) => [t.prime, t]));
-    return groups.reduce(
-      (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * g._count._all,
-      0
-    );
-  };
-
-  return sum(incGroups, tarifsInc) + sum(accGroups, tarifsAcc) + generique;
+  const brute = await commissionBrute(undefined, agentDistributionId, {});
+  return brute * TAUX_COMMISSION_AGENT;
 }
 
 /**

@@ -13,11 +13,15 @@ export default function RelaxPerformance() {
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires?branche=RELAX");
   const { data: souscriptions } = useFetch<SouscriptionRelax[]>("/relax/souscriptions");
 
+  // Une souscription faite via l'espace d'un agent de distribution ne rapporte
+  // que 25% de sa commission au partenaire (le reste, 75%, revient à l'agent).
+  const TAUX_COMMISSION_AGENT = 0.75;
   const commissionParPartenaire = new Map<string, number>();
   for (const s of souscriptions ?? []) {
+    const part = s.agentDistributionId ? 1 - TAUX_COMMISSION_AGENT : 1;
     commissionParPartenaire.set(
       s.partenaireId,
-      (commissionParPartenaire.get(s.partenaireId) ?? 0) + (s.commissionCalculee ?? 0)
+      (commissionParPartenaire.get(s.partenaireId) ?? 0) + (s.commissionCalculee ?? 0) * part
     );
   }
 

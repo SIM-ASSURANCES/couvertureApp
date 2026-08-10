@@ -3,7 +3,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
-import { budgetMensuelGlobal } from "../services/commission.js";
+import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT } from "../services/commission.js";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth("admin"));
@@ -196,7 +196,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
       const incWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
       const accWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
 
-      const [incGroups, accGroups, accCount] = await Promise.all([
+      const [incGroups, accGroups, accCount, incGroupsViaAgents, accGroupsViaAgents] = await Promise.all([
         showInc
           ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: incWhere, _count: { _all: true } })
           : [],
@@ -206,6 +206,15 @@ async function buildPerformance(opts: PerfOpts = {}) {
         showAcc
           ? prisma.souscriptionAccident.count({ where: { ...accWhere, waveStatut: "confirme" } })
           : 0,
+        // Sous-ensemble vendu par un agent de distribution : seuls 25% de leur
+        // commission reviennent au partenaire, le reste (75%) à l'agent — voir
+        // services/commission.ts.
+        showInc
+          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: { ...incWhere, agentDistributionId: { not: null } }, _count: { _all: true } })
+          : [],
+        showAcc
+          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, agentDistributionId: { not: null }, waveStatut: "confirme" }, _count: { _all: true } })
+          : [],
       ]);
 
       let primesIncendie = 0, primesIncendieHT = 0, caIncendie = 0;
@@ -219,6 +228,11 @@ async function buildPerformance(opts: PerfOpts = {}) {
         commissionIncendie += (t?.commission ?? 0) * n;
         incendieCount += n;
       }
+      let commissionIncendieViaAgents = 0;
+      for (const g of incGroupsViaAgents) {
+        commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.commission ?? 0) * g._count._all;
+      }
+      commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
 
       let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
       let commissionAccident = 0;
@@ -230,6 +244,11 @@ async function buildPerformance(opts: PerfOpts = {}) {
         caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
         commissionAccident += (t?.commission ?? 0) * n;
       }
+      let commissionAccidentViaAgents = 0;
+      for (const g of accGroupsViaAgents) {
+        commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.commission ?? 0) * g._count._all;
+      }
+      commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
 
       const ca = Math.round(caIncendie + caAccident);
 

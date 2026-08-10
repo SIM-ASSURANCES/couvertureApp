@@ -1306,6 +1306,7 @@ publicRouter.post(
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
+        agentDistributionId: qr.agentDistributionId,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,

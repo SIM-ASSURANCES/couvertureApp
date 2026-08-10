@@ -72,6 +72,7 @@ export interface SouscriptionRelax {
   id: string;
   partenaireId: string;
   partenaireNom: string;
+  agentDistributionId?: string | null;
   produit: { code: ProduitRelax; libelle: string };
   telephone: string;
   nom?: string | null;

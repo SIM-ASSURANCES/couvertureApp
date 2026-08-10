@@ -5,7 +5,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
-import { commissionStatsPartenaire, commissionTotaleAgent } from "../services/commission.js";
+import { commissionStatsPartenaire, commissionTotaleAgent, TAUX_COMMISSION_AGENT } from "../services/commission.js";
 import { genererMotDePasseClient } from "../services/notify.js";
 import { notifyAdmins } from "../services/notifications.js";
 
@@ -54,7 +54,7 @@ meRouter.get(
     const createdAt = parseDateRange(req as { query: { from?: string; to?: string } });
     const dateWhere = createdAt ? { createdAt } : {};
 
-    const [p, incGroups, accCount, accGroups, tarifsInc, tarifsAcc] =
+    const [p, incGroups, accCount, accGroups, incGroupsViaAgents, accGroupsViaAgents, tarifsInc, tarifsAcc] =
       await Promise.all([
         prisma.partenaire.findUnique({ where: { id } }),
         prisma.souscriptionIncendie.groupBy({
@@ -68,6 +68,19 @@ meRouter.get(
           where: { partenaireId: id, ...dateWhere, waveStatut: "confirme" },
           _count: { _all: true },
         }),
+        // Sous-ensemble vendu par un agent de distribution : seuls 25% de leur
+        // commission reviennent au partenaire, le reste (75%) à l'agent — voir
+        // services/commission.ts.
+        prisma.souscriptionIncendie.groupBy({
+          by: ["montantPrime"],
+          where: { partenaireId: id, agentDistributionId: { not: null }, ...dateWhere },
+          _count: { _all: true },
+        }),
+        prisma.souscriptionAccident.groupBy({
+          by: ["montantPrime"],
+          where: { partenaireId: id, agentDistributionId: { not: null }, ...dateWhere, waveStatut: "confirme" },
+          _count: { _all: true },
+        }),
         prisma.tarifIncendie.findMany(),
         prisma.tarifAccident.findMany(),
       ]);
@@ -77,6 +90,10 @@ meRouter.get(
     const produit = p.produitIncendie ? "incendie" : "accident";
     const inc = depuisBareme(incGroups, tarifsInc);
     const acc = depuisBareme(accGroups, tarifsAcc);
+    const incViaAgents = depuisBareme(incGroupsViaAgents, tarifsInc);
+    const accViaAgents = depuisBareme(accGroupsViaAgents, tarifsAcc);
+    const commissionInc = inc.commission - incViaAgents.commission * TAUX_COMMISSION_AGENT;
+    const commissionAcc = acc.commission - accViaAgents.commission * TAUX_COMMISSION_AGENT;
 
     const estIncendie = produit === "incendie";
 
@@ -93,7 +110,7 @@ meRouter.get(
       primesIncendie: inc.primes,
       primesAccident: acc.primes,
       chiffreAffaires: Math.round(estIncendie ? inc.ca : acc.ca),
-      commission: Math.round(estIncendie ? inc.commission : acc.commission),
+      commission: Math.round(estIncendie ? commissionInc : commissionAcc),
     });
   })
 );
@@ -282,8 +299,9 @@ meRouter.patch(
 
 /* ── Agents de distribution (Incendie/Accident) : créés par le partenaire
  * lui-même, mêmes QR codes que lui (selon ses produits), suivi individuel des
- * souscriptions et de la commission générée (informatif — le versement de
- * commission reste global au partenaire, voir /me/commission). ── */
+ * souscriptions et de la commission générée. Chaque agent perçoit 75% de la
+ * commission sur ses propres ventes (le reste, 25%, revient au partenaire) et
+ * gère sa propre demande de versement (voir agentDistribution.ts). ── */
 
 const agentSchema = z.object({
   nom: z.string().min(1),
