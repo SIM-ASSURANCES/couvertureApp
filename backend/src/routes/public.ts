@@ -769,6 +769,7 @@ publicRouter.get(
       return res.status(404).json({ error: "Contrat non disponible" });
     }
     res.json({
+      souscriptionId: s.id,
       numeroPolice: s.numeroPolice,
       montant: s.montantPrime,
       capitalGaranti: s.capitalGaranti,
@@ -1630,6 +1631,7 @@ publicRouter.get(
       bagages = infos?.bagages ?? null;
     }
     res.json({
+      souscriptionId: s.id,
       numeroPolice: s.numeroPolice,
       montant: s.montantPrime,
       capitalGaranti: s.capitalGaranti,

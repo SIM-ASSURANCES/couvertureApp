@@ -39,6 +39,14 @@ function isAccidentLike(p?: string): p is "accident" | "relaxaccidents_fraismedi
   return p === "accident" || p === "relaxaccidents_fraismedicaux";
 }
 
+// RelaxAccidents Frais Médicaux : pièce d'identité + selfie AVANT le paiement
+// (comme RelaxMoto/RelaxAuto) et carte de prise en charge automatique après
+// paiement — diverge donc de isAccidentLike (qui reste sur signature +
+// photos après paiement pour l'ancien Accident).
+function isRelaxAccidentsFraisMedicaux(p?: string): p is "relaxaccidents_fraismedicaux" {
+  return p === "relaxaccidents_fraismedicaux";
+}
+
 function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
@@ -448,26 +456,10 @@ function RelaxAccidentsGeneraleForm({
         </div>
         {resultat ? (
           <>
-            {resultat.lignes.map((l) => (
-              <div
-                key={l.garantie}
-                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
-              >
-                <span>{l.garantie}</span>
-                <span>{fcfa(l.prime)}</span>
-              </div>
-            ))}
-            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-              <span>Prime nette HT ({resultat.effectif} pers.)</span>
-              <span>{fcfa(resultat.primeNetteHT1)}</span>
+              <span>Prime nette HT</span>
+              <span>{fcfa(resultat.primeNetteHT2)}</span>
             </div>
-            {resultat.reductionPct > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-                <span>Réduction com. effectif (-{Math.round(resultat.reductionPct * 100)}%)</span>
-                <span>-{fcfa(resultat.primeNetteHT1 - resultat.primeNetteHT2)}</span>
-              </div>
-            )}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Accessoires</span>
               <span>{fcfa(resultat.accessoires)}</span>
@@ -811,16 +803,6 @@ function SecurproDommagesForm({
           </div>
         ) : resultat ? (
           <>
-            {resultat.lignes.map((l) => (
-              <div
-                key={l.garantie}
-                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
-              >
-                <span>{l.garantie}</span>
-                <span>{fcfa(l.prime)}</span>
-              </div>
-            ))}
-            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Prime nette HT</span>
               <span>{fcfa(resultat.primeNetteHT)}</span>
@@ -1091,16 +1073,6 @@ function SecurhomeDommagesForm({
         <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Aperçu du devis</div>
         {resultat ? (
           <>
-            {resultat.lignes.map((l) => (
-              <div
-                key={l.garantie}
-                style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}
-              >
-                <span>{l.garantie}</span>
-                <span>{fcfa(l.prime)}</span>
-              </div>
-            ))}
-            <div style={{ borderTop: "1px solid #cfe0f5", margin: "8px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Prime nette HT</span>
               <span>{fcfa(resultat.primeNetteHT)}</span>
@@ -1367,6 +1339,7 @@ export default function Souscription() {
             partenaire: { id: "", nomCommerce: data.partenaire ?? "" },
           });
           setResult({
+            souscriptionId: data.souscriptionId,
             numeroPolice: data.numeroPolice,
             montant: data.montant,
             capitalGaranti: data.capitalGaranti,
@@ -1407,6 +1380,16 @@ export default function Souscription() {
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
           setStep("success");
+          // RelaxAccidents Frais Médicaux : pièce/selfie déjà déposées avant
+          // le paiement — la carte de prise en charge est générée et
+          // téléchargée automatiquement, sans étape manuelle supplémentaire.
+          // Utilise directement `data.souscriptionId` (pas `result.souscriptionId`,
+          // pas encore à jour dans cette fermeture au moment de l'appel).
+          if (produitEffectif === "relaxaccidents_fraismedicaux" && data.souscriptionId) {
+            telechargerCarte("relaxaccidents_fraismedicaux", data.souscriptionId).catch((e) =>
+              setCarteErreur(e instanceof Error ? e.message : "Erreur lors de la génération de la carte.")
+            );
+          }
         } catch {
           setErrorMsg("Erreur lors de la récupération du contrat.");
           setStep("error");
@@ -1569,8 +1552,10 @@ export default function Souscription() {
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue sans.
+    // RelaxAccidents Frais Médicaux n'a plus de pavé de signature (photos
+    // pièce/selfie avant paiement à la place) — exclu volontairement ici.
     const signature =
-      isAccidentLike(qrInfo.produit) ||
+      qrInfo.produit === "accident" ||
       isRelaxVoyage(qrInfo.produit) ||
       isRelaxAccidentsGenerale(qrInfo.produit) ||
       isSecurproDommages(qrInfo.produit) ||
@@ -1758,6 +1743,23 @@ export default function Souscription() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+
+        // Pièce d'identité + selfie déposées AVANT le paiement (comme
+        // RelaxMoto/RelaxAuto) — best-effort, ne bloque jamais le paiement.
+        const documentsFraisMedicaux = [
+          piecePhotoRx ? { type: typePieceRx, url: piecePhotoRx } : null,
+          selfiePhotoRx ? { type: "Selfie" as const, url: selfiePhotoRx } : null,
+        ].filter((d): d is { type: "CNI" | "Permis" | "Selfie"; url: string } => d !== null);
+        await Promise.all(
+          documentsFraisMedicaux.map((doc) =>
+            fetch(`${BASE}/public/souscriptions/relaxaccidents_fraismedicaux/${data.souscriptionId}/documents`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(doc),
+            }).catch(() => null)
+          )
+        );
+
         setResult({
           checkoutUrl: data.checkoutUrl,
           souscriptionId: data.souscriptionId,
@@ -1969,17 +1971,21 @@ export default function Souscription() {
   // sont déposées via les mêmes routes /documents que RelaxMoto/RelaxAuto —
   // pas de colonnes pieceIdentiteUrl/selfieUrl dédiées comme sur l'ancien Accident.
   async function envoyerPhotosCarteAccident() {
-    if (!paidId || !cartePieceUrl || !carteSelfieUrl || !qrInfo) return;
+    // Voir le commentaire de telechargerCarteVirtuelle : pour RelaxVoyage
+    // (modèle générique), `paidId` est un id d'échéance — /documents attend
+    // le véritable id de souscription, porté par `result.souscriptionId`.
+    const souscriptionId = result?.souscriptionId ?? paidId;
+    if (!souscriptionId || !cartePieceUrl || !carteSelfieUrl || !qrInfo) return;
     setCartePhotosBusy(true);
     setCarteErreur("");
     try {
-      if (qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") {
+      if (qrInfo.produit === "relaxvoyage") {
         const results = await Promise.all(
           [
             { type: "CNI" as const, url: cartePieceUrl },
             { type: "Selfie" as const, url: carteSelfieUrl },
           ].map((doc) =>
-            fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/${paidId}/documents`, {
+            fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/${souscriptionId}/documents`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(doc),
@@ -2005,7 +2011,14 @@ export default function Souscription() {
   }
 
   async function telechargerCarteVirtuelle() {
-    if (!paidId || !qrInfo) return;
+    // Pour les produits du modèle générique (RelaxMoto/Auto, RelaxAccidents
+    // Frais Médicaux, RelaxVoyage), `paidId` (paramètre `paid` de l'URL de
+    // retour Wave) est un identifiant d'ÉCHÉANCE, pas de souscription — or
+    // /cartes/png attend un véritable id de souscription. `result.souscriptionId`
+    // (renseigné par /contrat) porte la bonne valeur ; on ne retombe sur
+    // `paidId` que pour l'ancien Accident, où `paid` est déjà le bon id.
+    const souscriptionId = result?.souscriptionId ?? paidId;
+    if (!souscriptionId || !qrInfo) return;
     setCarteBusy(true);
     setCarteErreur("");
     try {
@@ -2013,7 +2026,7 @@ export default function Souscription() {
         isRelax(qrInfo.produit) || qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage"
           ? qrInfo.produit
           : "accident";
-      await telechargerCarte(type, paidId);
+      await telechargerCarte(type, souscriptionId);
     } catch (e) {
       setCarteErreur(e instanceof Error ? e.message : "Erreur");
     } finally {
@@ -2520,7 +2533,7 @@ export default function Souscription() {
                   </FieldRow>
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
-              ) : isAccidentLike(qrInfo?.produit) ? (
+              ) : qrInfo?.produit === "accident" ? (
                 <>
                   <FieldRow label="Prénom *">
                     <input
@@ -2551,6 +2564,63 @@ export default function Souscription() {
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
+                </>
+              ) : isRelaxAccidentsFraisMedicaux(qrInfo?.produit) ? (
+                <>
+                  <FieldRow label="Prénom *">
+                    <input
+                      value={prenom}
+                      onChange={(e) => setPrenom(e.target.value)}
+                      placeholder="Votre prénom"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Nom *">
+                    <input
+                      value={nom}
+                      onChange={(e) => setNom(e.target.value)}
+                      placeholder="Votre nom"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+                    <PhoneInput value={telephone} onChange={setTelephone} />
+                  </FieldRow>
+                  <FieldRow label="Date de naissance *">
+                    <input
+                      value={dateNaissance}
+                      onChange={(e) => setDateNaissance(e.target.value)}
+                      type="date"
+                      style={inputStyle}
+                    />
+                  </FieldRow>
+                  <SexeField value={sexe} onChange={setSexe} />
+                  <FieldRow label="Pièce d'identité *">
+                    <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceRx === "CNI"} onChange={() => setTypePieceRx("CNI")} />
+                        CNI
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceRx === "Permis"} onChange={() => setTypePieceRx("Permis")} />
+                        Permis de conduire
+                      </label>
+                    </div>
+                  </FieldRow>
+                  <PhotoCapture
+                    label={`Photo de votre ${typePieceRx === "CNI" ? "CNI" : "permis"}`}
+                    value={piecePhotoRx}
+                    onChange={setPiecePhotoRx}
+                    capture="environment"
+                    required
+                  />
+                  <PhotoCapture
+                    label="Selfie (photo de votre visage)"
+                    value={selfiePhotoRx}
+                    onChange={setSelfiePhotoRx}
+                    capture="user"
+                    required
+                  />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
                 <>
@@ -2756,7 +2826,9 @@ export default function Souscription() {
                       !prenom ||
                       !phoneLocalPart(telephone) ||
                       !dateNaissance ||
-                      (qrInfo?.produit === "accident" ? !selectedTarifId : !selectedFormule || !sexe)
+                      (qrInfo?.produit === "accident"
+                        ? !selectedTarifId
+                        : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx)
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : isSecurproDommages(qrInfo?.produit)
@@ -3112,7 +3184,82 @@ export default function Souscription() {
                     ⬇ Télécharger mon contrat
                   </button>
                 </>
-              ) : isAccidentLike(qrInfo?.produit) || isRelaxVoyage(qrInfo?.produit) ? (
+              ) : isRelaxAccidentsFraisMedicaux(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Félicitations !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre assurance RelaxAccidents Frais Médicaux est activée pour <strong>3 mois</strong>.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Valable jusqu'au{" "}
+                          {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+
+                  <button
+                    onClick={telechargerCarteVirtuelle}
+                    disabled={carteBusy}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#fff",
+                      color: "#004b9c",
+                      border: "1.5px solid #004b9c",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: carteBusy ? "default" : "pointer",
+                      marginTop: 12,
+                      opacity: carteBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {carteBusy ? "Génération…" : "⬇ Télécharger ma carte de prise en charge"}
+                  </button>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                    Générée automatiquement à partir des photos fournies avant le paiement.
+                  </div>
+                  {carteErreur && (
+                    <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                  )}
+                </>
+              ) : qrInfo?.produit === "accident" || isRelaxVoyage(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Félicitations !
