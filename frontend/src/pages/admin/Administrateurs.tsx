@@ -26,7 +26,7 @@ const empty = {
 };
 
 function brancheLabel(b: Branche) {
-  if (b === "INCENDIE_ACCIDENT") return "Incendie et Accident";
+  if (b === "INCENDIE_ACCIDENT") return "Assurances Accidents et Dommages";
   if (b === "RELAX") return "RelaxMoto et RelaxAuto";
   return "IMF";
 }
@@ -224,7 +224,7 @@ export default function Administrateurs() {
                             checked={form.branches.includes("INCENDIE_ACCIDENT")}
                             onChange={() => toggleBranche("INCENDIE_ACCIDENT")}
                           />
-                          <span>Assurances Incendie et Accident</span>
+                          <span>Assurances Accidents et Dommages</span>
                         </label>
                       )}
                       {branchesAssignables.includes("RELAX") && (
