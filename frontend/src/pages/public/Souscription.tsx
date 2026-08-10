@@ -458,8 +458,14 @@ function RelaxAccidentsGeneraleForm({
           <>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Prime nette HT</span>
-              <span>{fcfa(resultat.primeNetteHT2)}</span>
+              <span>{fcfa(resultat.primeNetteHT1)}</span>
             </div>
+            {resultat.reductionPct > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+                <span>Réduction com. effectif (-{Math.round(resultat.reductionPct * 100)}%)</span>
+                <span>-{fcfa(resultat.primeNetteHT1 - resultat.primeNetteHT2)}</span>
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Accessoires</span>
               <span>{fcfa(resultat.accessoires)}</span>

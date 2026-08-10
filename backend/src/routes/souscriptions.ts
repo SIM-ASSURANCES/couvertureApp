@@ -22,7 +22,13 @@ souscriptionsRouter.use(requireAuth("admin"));
 souscriptionsRouter.get(
   "/contrats",
   asyncHandler(async (req, res) => {
-    const { q, type } = req.query as { q?: string; type?: string };
+    const { q, type, from, to } = req.query as { q?: string; type?: string; from?: string; to?: string };
+    // Filtre "date d'effet" (dateDebut) — pour Incendie, dateDebut = createdAt
+    // (pas de colonne dédiée sur ce modèle historique, voir plus bas).
+    const dateEffetRange =
+      from || to
+        ? { gte: from ? new Date(`${from}T00:00:00`) : undefined, lte: to ? new Date(`${to}T23:59:59.999`) : undefined }
+        : undefined;
 
     type Contrat = {
       id: string;
@@ -93,7 +99,7 @@ souscriptionsRouter.get(
 
     if (!type || type === "incendie") {
       const inc = await prisma.souscriptionIncendie.findMany({
-        where: { statut: "complet" },
+        where: { statut: "complet", createdAt: dateEffetRange },
         include: {
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
         },
@@ -134,7 +140,7 @@ souscriptionsRouter.get(
 
     if (!type || type === "accident") {
       const acc = await prisma.souscriptionAccident.findMany({
-        where: { waveStatut: "confirme" },
+        where: { waveStatut: "confirme", dateDebut: dateEffetRange },
         include: {
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
         },
@@ -178,7 +184,11 @@ souscriptionsRouter.get(
       });
       if (produitsGeneriques.length > 0) {
         const generiques = await prisma.souscription.findMany({
-          where: { produitId: { in: produitsGeneriques.map((p) => p.id) }, waveStatut: "confirme" },
+          where: {
+            produitId: { in: produitsGeneriques.map((p) => p.id) },
+            waveStatut: "confirme",
+            dateDebut: dateEffetRange,
+          },
           include: {
             partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
             produit: { select: { code: true, libelle: true } },

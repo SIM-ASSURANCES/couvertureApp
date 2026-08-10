@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet, Trash2 } from "lucide-react";
+import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet, Trash2, CreditCard } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -35,6 +35,14 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
 };
 
 const TYPES_SANS_CONTRAT_TELECHARGEABLE = ["relaxmoto", "relaxauto"] as const;
+
+// Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
+// quatre, d'un contrat PDF distinct) — RelaxAccidents générale, SecurHome+ et
+// SecurPro Dommages n'en ont pas (police collective/pro, pas d'identité
+// individuelle capturée). RelaxMoto/Auto ont une carte mais pas de contrat
+// PDF séparé, déjà couverts par TYPES_SANS_CONTRAT_TELECHARGEABLE ci-dessus.
+const TYPES_AVEC_CARTE = ["incendie", "accident", "relaxaccidents_fraismedicaux", "relaxvoyage"] as const;
+type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
 
 interface CatalogueEntry {
   sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
@@ -293,15 +301,28 @@ function routeSuppression(c: Contrat): string {
   return `/assurances-branche/souscriptions/${c.id}`;
 }
 
+/** Télécharge la carte virtuelle de prise en charge déjà générée pour ce client (même rendu que côté public). */
+async function voirCarte(c: Contrat) {
+  try {
+    await telechargerCarte(c.type as TypeCarte, c.id);
+  } catch (err) {
+    alert((err as Error).message);
+  }
+}
+
 export default function Contrats() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const [type, setType] = useState("");
   const [q, setQ] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [detail, setDetail] = useState<Contrat | null>(null);
   const params = new URLSearchParams();
   if (type) params.set("type", type);
   if (q) params.set("q", q);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
 
   const { data, loading, error, reload } = useFetch<Contrat[]>(
     `/souscriptions/contrats?${params.toString()}`
@@ -357,8 +378,42 @@ export default function Contrats() {
         }
       />
 
+      <Card title="Filtrer par date d'effet">
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Du</label>
+            <input
+              className="input"
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(e) => setFrom(e.target.value)}
+            />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label className="label">Au</label>
+            <input
+              className="input"
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(e) => setTo(e.target.value)}
+            />
+          </div>
+          {(from || to) && (
+            <button className="btn btn-ghost" onClick={() => { setFrom(""); setTo(""); }}>
+              Réinitialiser
+            </button>
+          )}
+          <span className="muted" style={{ fontSize: 13, marginLeft: "auto" }}>
+            {from || to ? `Période : ${from || "début"} → ${to || "aujourd'hui"}` : "Toutes périodes"}
+          </span>
+        </div>
+      </Card>
+
       <Card
         title={data ? `${data.length} contrats` : "Contrats"}
+        style={{ marginTop: 24 }}
         extra={
           <div style={{ display: "flex", gap: 10 }}>
             <input
@@ -462,6 +517,16 @@ export default function Contrats() {
                         >
                           <Download size={15} /> {TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto") ? "Carte" : "PDF"}
                         </button>
+                        {TYPES_AVEC_CARTE.includes(c.type as (typeof TYPES_AVEC_CARTE)[number]) && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Voir la carte de prise en charge"
+                            onClick={() => voirCarte(c)}
+                          >
+                            <CreditCard size={15} /> Carte
+                          </button>
+                        )}
                         {isSuper && (
                           <button
                             className="btn btn-ghost"
@@ -638,6 +703,15 @@ export default function Contrats() {
                   ? "Télécharger la carte de prise en charge"
                   : "Télécharger le contrat"}
               </button>
+              {TYPES_AVEC_CARTE.includes(detail.type as (typeof TYPES_AVEC_CARTE)[number]) && (
+                <button
+                  className="btn btn-ghost btn-block"
+                  style={{ marginTop: 10 }}
+                  onClick={() => voirCarte(detail)}
+                >
+                  <CreditCard size={16} /> Voir la carte de prise en charge
+                </button>
+              )}
               {isSuper && (
                 <button
                   className="btn btn-danger-soft btn-block"
