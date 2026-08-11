@@ -107,7 +107,7 @@ async function commissionSouscriptionsGeneriques(where: {
  * déjà utilisé côté IMF) ; RelaxAccidents générale et SecurHome+ ont un taux
  * unique par produit (Produit.tauxCommission).
  */
-const PRODUITS_COMMISSION_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
+export const PRODUITS_COMMISSION_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
 
 async function commissionSouscriptionsDynamiques(where: {
   partenaireId?: string;

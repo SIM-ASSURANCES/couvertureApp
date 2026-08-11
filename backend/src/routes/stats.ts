@@ -3,7 +3,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
-import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT } from "../services/commission.js";
+import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT, PRODUITS_COMMISSION_DYNAMIQUE } from "../services/commission.js";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth("admin"));
@@ -16,6 +16,90 @@ function parseDateRange(req: {
   if (from) range.gte = new Date(`${from}T00:00:00`);
   if (to) range.lte = new Date(`${to}T23:59:59.999`);
   return range.gte || range.lte ? range : undefined;
+}
+
+type DateWhereStats = { createdAt?: { gte?: Date; lte?: Date } };
+
+/**
+ * Chiffre d'affaires/taxes/FG/primes du modèle GÉNÉRIQUE (RelaxMoto/Auto,
+ * RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro
+ * Dommages), réparti par sous-branche — sans quoi les partenaires au QR
+ * unique (dont les ventes se font surtout sur ces produits) n'étaient
+ * comptabilisés nulle part sur ces cartes du tableau de bord, qui ne
+ * portaient jusqu'ici que sur les deux modèles historiques Incendie/Accident.
+ * Pondéré par `nombrePaiements` (1er paiement + renouvellements), comme
+ * services/commission.ts. Les 3 produits à devis dynamique (pas de
+ * TarifProduit) n'ont pas de FG séparé dans leur `resultat` — seulement
+ * primeNetteHT/accessoires/taxes/primeTTC (voir relaxAccidentsGenerale.ts/
+ * securhomeDommages.ts/tarificationImf.ts) — leur contribution au FG total
+ * reste donc nulle, seuls les produits à tarif catalogue (TarifProduit.fg)
+ * peuvent y contribuer.
+ */
+async function statsGeneriques(dateWhere: DateWhereStats) {
+  const totals = {
+    ASSURANCES_ACCIDENTS: { primes: 0, ca: 0, taxes: 0, fg: 0 },
+    ASSURANCES_DOMMAGES: { primes: 0, ca: 0, taxes: 0, fg: 0 },
+  };
+
+  const produits = await prisma.produit.findMany({
+    where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+  });
+  if (produits.length === 0) return totals;
+  const produitParId = new Map(produits.map((p) => [p.id, p]));
+  const idsDynamique = produits
+    .filter((p) => (PRODUITS_COMMISSION_DYNAMIQUE as readonly string[]).includes(p.code))
+    .map((p) => p.id);
+  const idsCatalogue = produits.filter((p) => !idsDynamique.includes(p.id)).map((p) => p.id);
+
+  const [groups, tarifs, dynRows] = await Promise.all([
+    idsCatalogue.length
+      ? prisma.souscription.groupBy({
+          by: ["produitId", "montantPrime"],
+          where: { produitId: { in: idsCatalogue }, waveStatut: "confirme", ...dateWhere },
+          _count: { _all: true },
+          _sum: { nombrePaiements: true },
+        })
+      : [],
+    idsCatalogue.length
+      ? prisma.tarifProduit.findMany({ where: { produitId: { in: idsCatalogue } } })
+      : [],
+    idsDynamique.length
+      ? prisma.souscription.findMany({
+          where: { produitId: { in: idsDynamique }, waveStatut: "confirme", ...dateWhere },
+          select: { produitId: true, montantPrime: true, resultat: true, nombrePaiements: true },
+        })
+      : [],
+  ]);
+
+  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+
+  for (const g of groups) {
+    const produit = produitParId.get(g.produitId);
+    if (!produit?.sousBranche) continue;
+    const bucket = totals[produit.sousBranche as keyof typeof totals];
+    const t = tarifMap.get(`${g.produitId}:${g.montantPrime}`);
+    const tx = t?.taxes ?? 0;
+    const f = t?.fg ?? 0;
+    const n = g._sum.nombrePaiements ?? g._count._all;
+    bucket.primes += g.montantPrime * n;
+    bucket.ca += (g.montantPrime - tx) * n;
+    bucket.taxes += tx * n;
+    bucket.fg += f * n;
+  }
+
+  for (const s of dynRows) {
+    const produit = produitParId.get(s.produitId);
+    if (!produit?.sousBranche) continue;
+    const bucket = totals[produit.sousBranche as keyof typeof totals];
+    const resultat = s.resultat as { taxes?: number } | null;
+    const tx = resultat?.taxes ?? 0;
+    const n = s.nombrePaiements ?? 1;
+    bucket.primes += s.montantPrime * n;
+    bucket.ca += (s.montantPrime - tx) * n;
+    bucket.taxes += tx * n;
+  }
+
+  return totals;
 }
 
 statsRouter.get(
@@ -72,7 +156,7 @@ statsRouter.get(
 
     // Budget mensuel (5% du CA prime HT sur 31 jours glissants) — indépendant
     // du filtre de période du tableau de bord, toujours calculé sur le mois en cours.
-    const budget = await budgetMensuelGlobal();
+    const [budget, generiques] = await Promise.all([budgetMensuelGlobal(), statsGeneriques(dateWhere)]);
 
     // ── Chiffre d'affaires (Prime TTC − Taxes), Taxes et FG, depuis les barèmes ──
     // Pondéré par `_sum.nombrePaiements` quand disponible (Accident : chaque
@@ -100,31 +184,35 @@ statsRouter.get(
 
     const acc = caTaxesEtFg(accGroups, tarifsAcc);
     const inc = caTaxesEtFg(incGroups, tarifsInc);
-    const caAccident = acc.ca;
-    const taxesAccident = acc.taxes;
-    const caIncendie = inc.ca;
-    const taxesIncendie = inc.taxes;
-    const fgTotal = acc.fg + inc.fg;
+    // Étendu au modèle générique (RelaxMoto/Auto, RelaxAccidents Frais
+    // Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro Dommages) — sans
+    // quoi les partenaires au QR unique n'étaient comptabilisés nulle part
+    // sur ces cartes, qui ne portaient que sur Incendie/Accident historiques.
+    const caAccident = acc.ca + generiques.ASSURANCES_ACCIDENTS.ca;
+    const taxesAccident = acc.taxes + generiques.ASSURANCES_ACCIDENTS.taxes;
+    const caIncendie = inc.ca + generiques.ASSURANCES_DOMMAGES.ca;
+    const taxesIncendie = inc.taxes + generiques.ASSURANCES_DOMMAGES.taxes;
+    const fgTotal = acc.fg + inc.fg + generiques.ASSURANCES_ACCIDENTS.fg + generiques.ASSURANCES_DOMMAGES.fg;
 
-    // Prime Incendie TTC = somme des montants payés (1000 / 2000)
-    const primesIncendie = incGroups.reduce(
-      (s, g) => s + g.montantPrime * g._count._all,
-      0
-    );
-    // Prime Accident TTC = somme des montants payés, PAIEMENTS confirmés
-    // (1er + renouvellements), pas lignes distinctes.
-    const primesAccident = accGroups.reduce(
-      (s, g) => s + g.montantPrime * (g._sum.nombrePaiements ?? g._count._all),
-      0
-    );
+    // Prime Incendie/Dommages TTC = somme des montants payés (1000 / 2000)
+    // + produits génériques Dommages (SecurHome+, SecurPro).
+    const primesIncendie =
+      incGroups.reduce((s, g) => s + g.montantPrime * g._count._all, 0) +
+      generiques.ASSURANCES_DOMMAGES.primes;
+    // Prime Accident/Accidents TTC = somme des montants payés, PAIEMENTS
+    // confirmés (1er + renouvellements), pas lignes distinctes, + produits
+    // génériques Accidents (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage...).
+    const primesAccident =
+      accGroups.reduce((s, g) => s + g.montantPrime * (g._sum.nombrePaiements ?? g._count._all), 0) +
+      generiques.ASSURANCES_ACCIDENTS.primes;
 
     res.json({
       partenairesTotal,
       partenairesActifs,
       incendieTotal,
       accidentTotal,
-      primesAccident,
-      primesIncendie,
+      primesAccident: Math.round(primesAccident),
+      primesIncendie: Math.round(primesIncendie),
       chiffreAffaires: Math.round(caIncendie + caAccident),
       taxes: Math.round(taxesIncendie + taxesAccident),
       fgTotal: Math.round(fgTotal),
