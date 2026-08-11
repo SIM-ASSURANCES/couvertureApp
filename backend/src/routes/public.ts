@@ -128,10 +128,12 @@ async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
 /**
  * Un client (identifié par nom/raison sociale + téléphone — la plupart de ces
  * produits ne collectent pas de date de naissance fiable, contrairement à
- * Accident) ne peut souscrire qu'une seule fois à un PRODUIT donné : le
- * renouvellement se fait ensuite via relance admin (voir POST
- * /assurances-branche/souscriptions/:id/relance-renouvellement), pas une
- * nouvelle souscription. Comparaison insensible à la casse/aux espaces.
+ * Accident) ne peut souscrire qu'une seule fois à un PRODUIT donné UNE FOIS
+ * SA SOUSCRIPTION CONFIRMÉE : le renouvellement se fait ensuite via relance
+ * admin (voir POST /assurances-branche/souscriptions/:id/relance-renouvellement),
+ * pas une nouvelle souscription. Une souscription encore en attente de
+ * paiement (jamais aboutie) ne bloque rien — le prospect peut retenter
+ * librement. Comparaison insensible à la casse/aux espaces.
  */
 async function souscriptionDejaExistante(
   produitId: string,
@@ -143,6 +145,7 @@ async function souscriptionDejaExistante(
       produitId,
       nom: { equals: nom.trim(), mode: "insensitive" },
       telephone: telephone.trim(),
+      waveStatut: "confirme",
     },
   });
   return !!existante;
@@ -379,9 +382,12 @@ publicRouter.post(
 
     // Un client (téléphone — seul identifiant fiable à ce stade, `nom` n'est
     // rendu obligatoire que côté formulaire) ne peut souscrire qu'une seule
-    // fois : le renouvellement se fait ensuite via relance admin (nouvelle
-    // réf.facture requise), pas une nouvelle souscription.
-    if (await prisma.souscriptionIncendie.findFirst({ where: { telephone: data.telephone } })) {
+    // fois UNE FOIS SA SOUSCRIPTION COMPLÈTE (équivalent "confirmé" pour ce
+    // produit, pas de paiement Wave) : le renouvellement se fait ensuite via
+    // relance admin (nouvelle réf.facture requise), pas une nouvelle
+    // souscription. Une souscription encore "en_cours" (jamais complétée) ne
+    // bloque rien — le prospect peut retenter librement.
+    if (await prisma.souscriptionIncendie.findFirst({ where: { telephone: data.telephone, statut: "complet" } })) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
 
@@ -587,10 +593,14 @@ publicRouter.post(
     // fois — le renouvellement se fait ensuite, 2 semaines avant l'échéance,
     // par relance admin (met à jour la souscription existante, n'en crée pas
     // une nouvelle). Comparaison insensible à la casse/aux espaces sur le nom.
+    // Seule une souscription CONFIRMÉE bloque un nouveau prospect — une
+    // souscription encore en attente de paiement (jamais aboutie) ne compte
+    // pas comme une "vraie" souscription, le prospect peut retenter librement.
     const doublon = await prisma.souscriptionAccident.findFirst({
       where: {
         nom: { equals: data.nom.trim(), mode: "insensitive" },
         dateNaissance: data.dateNaissance,
+        waveStatut: "confirme",
       },
     });
     if (doublon) {
