@@ -155,6 +155,11 @@ export interface ClientAccident {
   relanceCount?: number;
   signature?: string | null;
   createdAt: string;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  renouvellementEnCoursDepuis?: string | null;
+  renouveleAt?: string | null;
+  relanceRenouvellementCount?: number;
 }
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---

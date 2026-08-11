@@ -125,6 +125,11 @@ export function messageRelancePaiement(montant: number, lienPaiement: string) {
   return `SIM Assurances : payez ${montant} FCFA : ${lienPaiement}`;
 }
 
+/** Relance admin du renouvellement d'un contrat Accident proche de son échéance. */
+export function messageRelanceRenouvellement(prenom: string, montant: number, lienPaiement: string) {
+  return `SIM Assurances : ${prenom}, votre assurance accident arrive à échéance. Renouvelez (${montant} FCFA) : ${lienPaiement}`;
+}
+
 /**
  * Activation RelaxMoto/RelaxAuto : contrat confirmé + accès à l'espace client
  * (identifiant = numéro de téléphone) envoyés en un seul SMS.

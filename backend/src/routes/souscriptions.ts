@@ -10,6 +10,7 @@ import {
   newFormulaireToken,
   initiateWavePayment,
   messageRelancePaiement,
+  messageRelanceRenouvellement,
 } from "../services/notify.js";
 import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
@@ -320,20 +321,28 @@ souscriptionsRouter.get(
   })
 );
 
+const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
+
 /**
  * Liste des clients Accident. Un accident n'est considéré comme une souscription
- * réelle qu'une fois le paiement Wave confirmé : cette route ne renvoie donc que
- * les souscriptions confirmées, sauf si `attente=1` est passé (utilisé par la
- * page dédiée « Paiement en attente », qui liste les paiements en attente ET échoués).
+ * réelle qu'une fois le paiement Wave confirmé au moins une fois : cette route
+ * renvoie par défaut toute souscription ayant déjà eu un numéro de police
+ * (donc y compris pendant l'attente d'un paiement de renouvellement, où
+ * `waveStatut` ne change plus — voir services/accident.ts), sauf si `attente=1`
+ * est passé (utilisé par la page dédiée « Paiement en attente », qui liste les
+ * PREMIERS paiements en attente ET échoués — jamais les renouvellements, qui
+ * ne touchent pas `waveStatut`). `renouvellementProche=1` filtre en plus sur les
+ * échéances (`dateFin`) dans les 2 semaines à venir, pour la page d'alerte.
  */
 souscriptionsRouter.get(
   "/accident",
   asyncHandler(async (req, res) => {
-    const { attente, partenaireId } = req.query as {
+    const { attente, partenaireId, renouvellementProche } = req.query as {
       attente?: string;
       partenaireId?: string;
+      renouvellementProche?: string;
     };
-    // Purge les paiements toujours en attente/échoués 24h après la
+    // Purge les PREMIERS paiements toujours en attente/échoués 24h après la
     // souscription — la page "Paiement en attente" ne doit jamais accumuler
     // indéfiniment des tentatives de paiement abandonnées.
     if (attente === "1") {
@@ -346,14 +355,18 @@ souscriptionsRouter.get(
     }
     const rows = await prisma.souscriptionAccident.findMany({
       where: {
-        waveStatut:
-          attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
+        waveStatut: attente === "1" ? { in: ["en_attente", "echoue"] } : undefined,
+        numeroPolice: attente === "1" ? undefined : { not: null },
+        dateFin:
+          renouvellementProche === "1"
+            ? { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) }
+            : undefined,
         partenaireId: partenaireId || undefined,
       },
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: renouvellementProche === "1" ? { dateFin: "asc" } : { createdAt: "desc" },
     });
     res.json(
       rows.map((r) => ({
@@ -409,6 +422,56 @@ souscriptionsRouter.post(
       objetId: s.id,
     });
     res.json({ ok: true, relanceCount: updated.relanceCount });
+  })
+);
+
+/**
+ * Relance le RENOUVELLEMENT d'un contrat Accident déjà confirmé (proche de
+ * son échéance) : régénère un lien de paiement pour la même prime et l'envoie
+ * par SMS. Contrairement à relance-paiement, ne touche jamais `waveStatut`
+ * (la couverture en cours reste "confirme" pendant que le renouvellement est
+ * en attente de paiement) — voir `renouvellementEnCoursDepuis` et
+ * services/accident.ts::confirmerAccident pour la suite du traitement.
+ */
+souscriptionsRouter.post(
+  "/accident/:id/relance-renouvellement",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const s = await prisma.souscriptionAccident.findUnique({
+      where: { id: req.params.id },
+      include: { partenaire: { select: { qrAccidentToken: true } } },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.waveStatut !== "confirme" || !s.numeroPolice) {
+      return res.status(400).json({ error: "Cette souscription n'est pas encore confirmée." });
+    }
+    if (!process.env.WAVE_API_KEY) {
+      return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
+    }
+    if (!s.partenaire.qrAccidentToken) {
+      return res.status(400).json({ error: "QR Accident introuvable pour ce partenaire." });
+    }
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/accident/${s.partenaire.qrAccidentToken}?paid=${s.id}`;
+    const errorUrl = `${appUrl}/s/accident/${s.partenaire.qrAccidentToken}?paiement=echec`;
+
+    const wave = await initiateWavePayment(s.montantPrime, s.id, successUrl, errorUrl);
+    const updated = await prisma.souscriptionAccident.update({
+      where: { id: s.id },
+      data: {
+        waveTransactionId: wave.transactionId,
+        renouvellementEnCoursDepuis: new Date(),
+        relanceRenouvellementCount: { increment: 1 },
+      },
+    });
+    await sendSMS(s.telephone, messageRelanceRenouvellement(s.prenom, s.montantPrime, wave.checkoutUrl));
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "relance",
+      objetType: "souscription_accident_renouvellement",
+      objetId: s.id,
+    });
+    res.json({ ok: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
   })
 );
 

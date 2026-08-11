@@ -296,6 +296,23 @@ model SouscriptionAccident {
   signature            String? // data URL PNG, capturée avant le paiement Wave
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
+
+  // --- Renouvellement (2 semaines avant dateFin) ---
+  // Un client (nom, dateNaissance) ne peut souscrire qu'une seule fois — voir
+  // la vérification applicative dans POST /public/souscriptions/accident/initiate
+  // (pas de contrainte @@unique ici, qui interdirait aussi le renouvellement).
+  // Le renouvellement met à jour CETTE MÊME ligne (dateDebut/dateFin prolongés,
+  // numeroPolice conservé) plutôt que d'en créer une nouvelle — voir
+  // services/accident.ts::confirmerAccident.
+  // Horodatage du dernier paiement de renouvellement initié (relance admin),
+  // effacé une fois confirmé ou échoué — signale au webhook Wave qu'un
+  // paiement est en cours même si waveStatut reste "confirme" (la couverture
+  // en cours n'est jamais interrompue pendant l'attente du renouvellement).
+  renouvellementEnCoursDepuis DateTime?
+  // Horodatage de la dernière confirmation de renouvellement réussie (null
+  // tant qu'aucun renouvellement n'a eu lieu).
+  renouveleAt                 DateTime?
+  relanceRenouvellementCount  Int       @default(0)
 }
 
 model JournalActivite {

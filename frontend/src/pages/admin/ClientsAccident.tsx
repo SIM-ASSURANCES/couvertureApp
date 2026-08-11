@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2, Eye, X, FileSpreadsheet } from "lucide-react";
+import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -16,6 +16,12 @@ import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import type { ClientAccident, Partenaire } from "../../types";
 
+function statutRenouvellement(c: ClientAccident) {
+  if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
+  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDate(c.renouveleAt)}</Badge>;
+  return <span className="muted">—</span>;
+}
+
 export default function ClientsAccident() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
@@ -29,15 +35,36 @@ export default function ClientsAccident() {
   );
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires");
 
+  const alerteParams = new URLSearchParams(params);
+  alerteParams.set("renouvellementProche", "1");
+  const { data: renouvellementsProches, reload: reloadAlertes } = useFetch<ClientAccident[]>(
+    `/souscriptions/accident?${alerteParams.toString()}`
+  );
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 3000);
+  }
+
   async function supprimer(id: string) {
     if (!confirm("Supprimer définitivement ce client ?")) return;
     try {
       await api.del(`/souscriptions/accident/${id}`);
-      setToast("Client supprimé ✓");
-      setTimeout(() => setToast(""), 2500);
+      notify("Client supprimé ✓");
       reload();
     } catch (e) {
-      setToast((e as Error).message);
+      notify((e as Error).message);
+    }
+  }
+
+  async function relancerRenouvellement(id: string) {
+    try {
+      await api.post(`/souscriptions/accident/${id}/relance-renouvellement`, {});
+      notify("SMS de renouvellement envoyé ✓");
+      reloadAlertes();
+      reload();
+    } catch (e) {
+      notify((e as Error).message);
     }
   }
 
@@ -49,14 +76,14 @@ export default function ClientsAccident() {
         "Prénom": c.prenom,
         "Nom": c.nom,
         "Téléphone": c.telephone,
-        "Date de naissance": c.dateNaissance ? fmtDate(c.dateNaissance) : "",
+        "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
         "Partenaire": c.partenaireNom,
         "Prime": c.montantPrime,
         "Capital garanti": c.capitalGaranti,
         "Paiement Wave": c.waveStatut,
         "N° police": c.numeroPolice ?? "",
         "Dossier": c.statutDossier,
-        "Date": fmtDate(c.createdAt),
+        "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
       })),
       "clients_accident.xlsx"
     );
@@ -80,7 +107,56 @@ export default function ClientsAccident() {
       />
 
       <Card
+        title="Renouvellements à venir (échéance ≤ 2 semaines)"
+        extra={<Bell size={18} color="#b45309" />}
+        style={{ marginTop: 24 }}
+        noBody
+      >
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Partenaire</th>
+                <th>Date d'échéance</th>
+                <th>Statut renouvellement</th>
+                <th style={{ width: 180 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(renouvellementsProches ?? []).map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <strong>{c.prenom} {c.nom}</strong>
+                    <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
+                  </td>
+                  <td>{c.partenaireNom}</td>
+                  <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                  <td>{statutRenouvellement(c)}</td>
+                  <td>
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: "7px 12px" }}
+                      disabled={!!c.renouvellementEnCoursDepuis}
+                      onClick={() => relancerRenouvellement(c.id)}
+                      title="Envoyer un SMS avec lien de paiement pour le renouvellement"
+                    >
+                      <Send size={14} /> Relance
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {(renouvellementsProches ?? []).length === 0 && (
+                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir dans les 2 prochaines semaines.</div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card
         title={data ? `${data.length} souscriptions` : "Souscriptions"}
+        style={{ marginTop: 24 }}
         extra={
           <div style={{ display: "flex", gap: 10 }}>
             <select className="select" style={{ width: 180, height: 40 }} value={part} onChange={(e) => setPart(e.target.value)}>
@@ -101,14 +177,15 @@ export default function ClientsAccident() {
               <thead>
                 <tr>
                   <th>Client</th>
-                  <th>Date de naissance</th>
+                  <th>Date d'échéance</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
                   <th>Capital garanti</th>
                   <th>Paiement Wave</th>
                   <th>N° police</th>
                   <th>Dossier</th>
-                  <th>Date</th>
+                  <th>Renouvellement</th>
+                  <th>Date d'effet</th>
                   <th style={{ width: 96 }}></th>
                 </tr>
               </thead>
@@ -119,7 +196,7 @@ export default function ClientsAccident() {
                       <strong>{c.prenom} {c.nom}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
-                    <td className="muted">{c.dateNaissance ? fmtDate(c.dateNaissance) : "—"}</td>
+                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                     <td>
                       <strong>{c.partenaireNom}</strong>
                       {c.partenaireResponsable && (
@@ -140,7 +217,8 @@ export default function ClientsAccident() {
                         <Badge kind="warning">Formulaire en attente</Badge>
                       )}
                     </td>
-                    <td className="muted">{fmtDate(c.createdAt)}</td>
+                    <td>{statutRenouvellement(c)}</td>
+                    <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
@@ -166,7 +244,7 @@ export default function ClientsAccident() {
                   </tr>
                 ))}
                 {data.length === 0 && (
-                  <tr><td colSpan={10}><div className="empty">Aucune souscription.</div></td></tr>
+                  <tr><td colSpan={11}><div className="empty">Aucune souscription.</div></td></tr>
                 )}
               </tbody>
             </table>
@@ -205,6 +283,9 @@ export default function ClientsAccident() {
                   <td className="muted">Dossier</td>
                   <td>{detailFor.statutDossier === "complet" ? <Badge kind="success">Complet</Badge> : <Badge kind="warning">Formulaire en attente</Badge>}</td>
                 </tr>
+                <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>

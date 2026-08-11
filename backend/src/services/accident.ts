@@ -3,16 +3,23 @@ import { getWaveSession, newNumeroPolice } from "./notify.js";
 import type { SouscriptionAccident } from "@prisma/client";
 
 /**
- * Confirme une souscription accident : génère la police, les dates et la commission.
- * Idempotent : si déjà confirmée, ne fait rien.
+ * Confirme une souscription accident : génère la police, les dates et la
+ * commission. Idempotent pour un premier paiement (si déjà confirmée et
+ * qu'aucun renouvellement n'est en cours, ne fait rien) ; sert aussi à
+ * confirmer un paiement de RENOUVELLEMENT sur la même ligne (numeroPolice déjà
+ * présent = c'est un renouvellement, pas une première souscription) : la
+ * police est conservée, la couverture est prolongée de 3 mois à partir de
+ * l'échéance précédente (ou d'aujourd'hui si déjà expirée), et `renouveleAt`
+ * est renseigné pour que l'admin voie le statut "Renouvelé".
  */
 export async function confirmerAccident(s: SouscriptionAccident): Promise<void> {
-  if (s.waveStatut === "confirme") return;
-  const numeroPolice = newNumeroPolice();
+  if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) return;
+  const estRenouvellement = !!s.numeroPolice;
   const tarifAcc = await prisma.tarifAccident.findFirst({
     where: { prime: s.montantPrime },
   });
-  const dateDebut = new Date();
+  const dateDebut =
+    estRenouvellement && s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
   const dateFin = new Date(dateDebut);
   dateFin.setMonth(dateFin.getMonth() + 3);
 
@@ -20,12 +27,14 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
     where: { id: s.id },
     data: {
       waveStatut: "confirme",
-      numeroPolice,
+      numeroPolice: s.numeroPolice ?? newNumeroPolice(),
       dateDebut,
       dateFin,
       statutDossier: "complet",
       whatsappEnvoyeAt: new Date(),
       commissionCalculee: tarifAcc?.commission ?? null,
+      renouvellementEnCoursDepuis: null,
+      ...(estRenouvellement ? { renouveleAt: new Date() } : {}),
     },
   });
 }
@@ -38,7 +47,7 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
 export async function verifierPaiementAccident(
   s: SouscriptionAccident
 ): Promise<"confirme" | "echoue" | "en_attente"> {
-  if (s.waveStatut === "confirme") return "confirme";
+  if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) return "confirme";
 
   if (s.waveTransactionId) {
     const session = await getWaveSession(s.waveTransactionId);

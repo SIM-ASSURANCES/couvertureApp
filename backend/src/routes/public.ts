@@ -523,6 +523,23 @@ publicRouter.post(
       return res.status(404).json({ error: "QR Accident invalide" });
     }
 
+    // Une personne (nom + date de naissance) ne peut souscrire qu'une seule
+    // fois — le renouvellement se fait ensuite, 2 semaines avant l'échéance,
+    // par relance admin (met à jour la souscription existante, n'en crée pas
+    // une nouvelle). Comparaison insensible à la casse/aux espaces sur le nom.
+    const doublon = await prisma.souscriptionAccident.findFirst({
+      where: {
+        nom: { equals: data.nom.trim(), mode: "insensitive" },
+        dateNaissance: data.dateNaissance,
+      },
+    });
+    if (doublon) {
+      return res.status(409).json({
+        error:
+          "Une souscription existe déjà pour ce nom et cette date de naissance. Le renouvellement se fait automatiquement 2 semaines avant l'échéance — contactez votre partenaire.",
+      });
+    }
+
     let montant = 500;
     let capitalGaranti = 100000;
     let tarifAcc: { commission: number } | null = null;
@@ -657,10 +674,25 @@ publicRouter.post(
     });
 
     if (s) {
-      // Idempotent
-      if (s.waveStatut === "confirme") return res.json({ ok: true, statut: "confirme" });
+      const renouvellementEnCours = !!s.renouvellementEnCoursDepuis;
+      // Idempotent — sauf si un renouvellement est en cours : la ligne est
+      // déjà "confirme" (couverture existante), mais ce callback correspond à
+      // un NOUVEAU paiement (celui du renouvellement), pas à celui déjà traité.
+      if (s.waveStatut === "confirme" && !renouvellementEnCours) {
+        return res.json({ ok: true, statut: "confirme" });
+      }
 
       if (!isConfirme) {
+        if (renouvellementEnCours) {
+          // Échec du paiement de renouvellement : la couverture en cours
+          // n'est pas remise en cause, on efface juste la tentative — l'admin
+          // peut relancer à nouveau depuis la page Clients Accident.
+          await prisma.souscriptionAccident.update({
+            where: { id: s.id },
+            data: { renouvellementEnCoursDepuis: null },
+          });
+          return res.json({ ok: true, statut: "renouvellement_echoue" });
+        }
         await prisma.souscriptionAccident.update({
           where: { id: s.id },
           data: { waveStatut: "echoue" },
