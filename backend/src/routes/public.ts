@@ -126,6 +126,32 @@ async function resoudreQrCodeGenerique(codeProduit: string, token: string) {
 }
 
 /**
+ * Un client (identifié par nom/raison sociale + téléphone — la plupart de ces
+ * produits ne collectent pas de date de naissance fiable, contrairement à
+ * Accident) ne peut souscrire qu'une seule fois à un PRODUIT donné : le
+ * renouvellement se fait ensuite via relance admin (voir POST
+ * /assurances-branche/souscriptions/:id/relance-renouvellement), pas une
+ * nouvelle souscription. Comparaison insensible à la casse/aux espaces.
+ */
+async function souscriptionDejaExistante(
+  produitId: string,
+  nom: string,
+  telephone: string
+): Promise<boolean> {
+  const existante = await prisma.souscription.findFirst({
+    where: {
+      produitId,
+      nom: { equals: nom.trim(), mode: "insensitive" },
+      telephone: telephone.trim(),
+    },
+  });
+  return !!existante;
+}
+
+const MESSAGE_DOUBLON =
+  "Une souscription existe déjà pour ce nom et ce numéro sur ce produit. Le renouvellement se fait automatiquement 2 semaines avant l'échéance — contactez votre partenaire.";
+
+/**
  * Construit la réponse "chooser" (liste des produits d'une sousBranche) —
  * partagée par le QR sélecteur classique (sousBranche figée sur le QrCode) et
  * le nouveau QR unique (sousBranche choisie dynamiquement via ?sousBranche=,
@@ -351,6 +377,14 @@ publicRouter.post(
       capitalGaranti = montantPrime === 1000 ? 500000 : 1000000;
     }
 
+    // Un client (téléphone — seul identifiant fiable à ce stade, `nom` n'est
+    // rendu obligatoire que côté formulaire) ne peut souscrire qu'une seule
+    // fois : le renouvellement se fait ensuite via relance admin (nouvelle
+    // réf.facture requise), pas une nouvelle souscription.
+    if (await prisma.souscriptionIncendie.findFirst({ where: { telephone: data.telephone } })) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
+
     // Champs désormais requis dès cette étape pour le nouveau scénario
     // (formulaire.tsx les rend obligatoires) — repli optionnel côté schéma
     // pour ne pas casser un éventuel appel via un ancien QR précis qui ne les
@@ -401,9 +435,13 @@ publicRouter.get(
       include: { partenaire: { select: { nomCommerce: true } } },
     });
     if (!s) return res.status(404).json({ error: "Lien invalide" });
-    const debut = s.createdAt;
-    const fin = new Date(debut);
-    fin.setFullYear(fin.getFullYear() + 1);
+    // Couverture 3 mois (comme Accident et les produits génériques à formule
+    // unique) — reprend dateDebut/dateFin déjà stockés une fois la complétion
+    // effectuée (voir PATCH ci-dessous), sinon les calcule pour l'affichage
+    // (aperçu avant complétion). Corrigé d'un ancien calcul erroné à 1 an,
+    // jamais stocké nulle part, seulement affiché ici.
+    const debut = s.dateDebut ?? s.createdAt;
+    const fin = s.dateFin ?? (() => { const d = new Date(debut); d.setMonth(d.getMonth() + 3); return d; })();
     res.json({
       id: s.id,
       nom: s.nom,
@@ -443,19 +481,23 @@ publicRouter.patch(
       dateNaissance, pieceIdentiteUrl, selfieUrl,
     } = req.body ?? {};
 
-    // Nouveau scénario : refFacture (Référence CIE) et commune sont désormais
-    // saisis dès la souscription (voir POST /souscriptions/incendie) — on
-    // retombe sur les valeurs déjà en base si le formulaire de complétion ne
-    // les renvoie pas. Rétro-compatible avec les souscriptions historiques où
-    // elles sont encore vides à ce stade (le client les saisit alors ici).
-    const refFactureFinale = refFacture || s.refFacture;
+    // Renouvellement : une souscription déjà "complet" qui reçoit une NOUVELLE
+    // complétion (relance admin, voir /souscriptions/incendie/:id/relance-
+    // renouvellement) — la référence facture doit alors être neuve, jamais
+    // celle déjà en base (contrairement à la toute première complétion, où
+    // refFacture/commune peuvent avoir été saisis dès la souscription — voir
+    // POST /souscriptions/incendie — et sont donc repris ici s'ils manquent).
+    const estRenouvellement = s.statut === "complet";
+    const refFactureFinale = estRenouvellement ? refFacture : refFacture || s.refFacture;
     const communeFinale = commune || s.commune;
 
     const tenteCompletion = !!(refFacture || commune || quartier || numeroMaison);
     if (tenteCompletion) {
       if (!refFactureFinale || !communeFinale || !quartier) {
         return res.status(400).json({
-          error: "Réf.facture, commune et quartier sont obligatoires.",
+          error: estRenouvellement
+            ? "Une nouvelle réf.facture (justifiant le renouvellement), la commune et le quartier sont obligatoires."
+            : "Réf.facture, commune et quartier sont obligatoires.",
         });
       }
       if (!(await refFactureDisponible(refFactureFinale, s.id))) {
@@ -467,12 +509,24 @@ publicRouter.patch(
 
     const factureAjoutee = tenteCompletion && !s.refFacture;
     let commissionCalculee = s.commissionCalculee;
-    if (factureAjoutee) {
+    if (factureAjoutee || (estRenouvellement && tenteCompletion)) {
       const params = await prisma.parametre.findUnique({ where: { id: 1 } });
       const primeHt = s.montantPrime === 1000
         ? (params?.primeHtIncendie1000 ?? 800)
         : (params?.primeHtIncendie2000 ?? 1600);
       commissionCalculee = primeHt * (params?.tauxCommissionIncendie ?? 0.20);
+    }
+
+    // Échéance (3 mois, comme Accident et les produits génériques à formule
+    // unique) — recalculée à chaque complétion réelle (initiale ou
+    // renouvellement) ; un renouvellement prolonge à partir de l'échéance
+    // précédente si elle n'est pas encore expirée, sinon à partir d'aujourd'hui.
+    let dateDebut = s.dateDebut;
+    let dateFin = s.dateFin;
+    if (tenteCompletion) {
+      dateDebut = estRenouvellement && s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
+      dateFin = new Date(dateDebut);
+      dateFin.setMonth(dateFin.getMonth() + 3);
     }
 
     const updated = await prisma.souscriptionIncendie.update({
@@ -491,6 +545,12 @@ publicRouter.patch(
         selfieUrl: selfieUrl ?? s.selfieUrl,
         statut: tenteCompletion ? "complet" : s.statut,
         commissionCalculee,
+        dateDebut,
+        dateFin,
+        renouvellementEnCoursDepuis: null,
+        ...(estRenouvellement && tenteCompletion
+          ? { renouveleAt: new Date(), nombrePaiements: { increment: 1 } }
+          : {}),
       },
     });
     res.json({
@@ -730,6 +790,15 @@ publicRouter.post(
 
     if (!isConfirme) {
       await prisma.paiement.update({ where: { id: p.id }, data: { statut: "echoue" } });
+      if (p.estRenouvellement) {
+        // Échec d'un paiement de RENOUVELLEMENT (relance admin) : la
+        // couverture en cours n'est pas remise en cause, on efface juste la
+        // tentative — l'admin peut relancer à nouveau.
+        await prisma.souscription.update({
+          where: { id: p.souscriptionId },
+          data: { renouvellementEnCoursDepuis: null },
+        });
+      }
       return res.json({ ok: true, statut: "echoue" });
     }
 
@@ -899,6 +968,10 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await souscriptionDejaExistante(prod.id, data.raisonSociale, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
+
     let resultat;
     try {
       resultat = calculerRelaxAccidentsGenerale({
@@ -1046,6 +1119,10 @@ publicRouter.post(
     const resolu = await resoudreQrCodeGenerique("securpro_dommages", data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
+
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
 
     const baremeRow = await prisma.baremeSecurpro.findUnique({ where: { classe: data.classe } });
     if (!baremeRow) return res.status(400).json({ error: "Barème SECURPRO introuvable pour cette classe." });
@@ -1211,6 +1288,10 @@ publicRouter.post(
     const resolu = await resoudreQrCodeGenerique("securhome_dommages", data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
+
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
 
     const input: SecurhomeInput = {
       statutOccupation: data.statutOccupation,
@@ -1453,6 +1534,10 @@ publicRouter.post(
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
+
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: prod.id, libelleVariante: data.formule },

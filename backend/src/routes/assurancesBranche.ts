@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
+import { sendSMS, initiateWavePayment, messageRelanceRenouvellement } from "../services/notify.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -36,6 +37,16 @@ export interface SouscriptionBranche {
   partenaireId: string;
   partenaireNom: string;
   createdAt: string;
+  // Échéance/renouvellement — voir services/paiementWave.ts::confirmerEcheance
+  // (générique, cycleFacturation null) et routes/public.ts (Incendie). null
+  // pour un abonnement RelaxMoto/Auto (cycleFacturation non-null, son propre
+  // renouvellement côté espace client, hors périmètre de ces champs) tant que
+  // non demandé — dateDebut/dateFin y existent mais ne sont pas exposés ici.
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  renouvellementEnCoursDepuis?: string | null;
+  renouveleAt?: string | null;
+  cycleFacturation?: string | null;
 }
 
 export interface Filtres {
@@ -55,10 +66,16 @@ export interface Filtres {
   // le modèle générique, utile pour un total qui ne doit jamais faire
   // doublon avec des compteurs déjà basés sur les modèles historiques.
   generiqueSeul?: boolean;
+  // Ne renvoie que les souscriptions dont l'échéance (dateFin) tombe dans les
+  // 2 semaines à venir — pour la section d'alerte "Renouvellements à venir".
+  // N'inclut jamais un abonnement RelaxMoto/Auto (cycleFacturation non-null,
+  // son propre renouvellement côté espace client) ni Incendie (traité à part
+  // via routes/souscriptions.ts, même politique que Accident historique).
+  renouvellementProche?: boolean;
 }
 
 export function parseFiltres(query: Record<string, string | undefined>): Filtres {
-  const { sousBranche, produit, partenaireId, from, to, statut, generiqueSeul } = query;
+  const { sousBranche, produit, partenaireId, from, to, statut, generiqueSeul, renouvellementProche } = query;
   return {
     sousBranche: sousBranche === "ASSURANCES_ACCIDENTS" || sousBranche === "ASSURANCES_DOMMAGES" ? sousBranche : undefined,
     produit: produit || undefined,
@@ -67,8 +84,11 @@ export function parseFiltres(query: Record<string, string | undefined>): Filtres
     to: to ? new Date(`${to}T23:59:59.999`) : undefined,
     statut: statut === "confirme" || statut === "attente" ? statut : undefined,
     generiqueSeul: generiqueSeul === "1",
+    renouvellementProche: renouvellementProche === "1",
   };
 }
+
+const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
 
 const DELAI_EXPIRATION_ATTENTE_MS = 24 * 60 * 60 * 1000;
 
@@ -137,12 +157,18 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
           : f.statut === "attente"
           ? { in: ["en_attente", "echoue"] }
           : undefined,
+      ...(f.renouvellementProche
+        ? {
+            cycleFacturation: null,
+            dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
+          }
+        : {}),
     },
     include: {
       partenaire: { select: { nomCommerce: true } },
       produit: { select: { code: true, libelle: true, sousBranche: true } },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
   });
   return rows.map((r) => ({
     id: r.id,
@@ -157,6 +183,11 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
     createdAt: r.createdAt.toISOString(),
+    dateDebut: r.dateDebut ? r.dateDebut.toISOString() : null,
+    dateFin: r.dateFin ? r.dateFin.toISOString() : null,
+    renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis ? r.renouvellementEnCoursDepuis.toISOString() : null,
+    renouveleAt: r.renouveleAt ? r.renouveleAt.toISOString() : null,
+    cycleFacturation: r.cycleFacturation,
   }));
 }
 
@@ -172,9 +203,12 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
       partenaireId: f.partenaireId,
       statut: f.statut === "confirme" ? "complet" : undefined,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+      ...(f.renouvellementProche
+        ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
+        : {}),
     },
     include: { partenaire: { select: { nomCommerce: true } } },
-    orderBy: { createdAt: "desc" },
+    orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
   });
   return rows.map((r) => ({
     id: r.id,
@@ -189,14 +223,20 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
     createdAt: r.createdAt.toISOString(),
+    dateDebut: r.dateDebut ? r.dateDebut.toISOString() : null,
+    dateFin: r.dateFin ? r.dateFin.toISOString() : null,
+    renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis ? r.renouvellementEnCoursDepuis.toISOString() : null,
+    renouveleAt: r.renouveleAt ? r.renouveleAt.toISOString() : null,
   }));
 }
 
 export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
   if (f.generiqueSeul) return [];
-  // L'ancien Accident a sa propre page "Paiement en attente" dédiée
-  // (routes/souscriptions.ts) — pas de doublon ici en mode "attente".
+  // L'ancien Accident a sa propre page "Paiement en attente" ET sa propre
+  // alerte de renouvellement dédiées (routes/souscriptions.ts) — pas de
+  // doublon ici.
   if (f.statut === "attente") return [];
+  if (f.renouvellementProche) return [];
   if (f.sousBranche === "ASSURANCES_DOMMAGES") return [];
   if (f.produit && f.produit !== CODE_ACCIDENT_HISTORIQUE) return [];
   const rows = await prisma.souscriptionAccident.findMany({
@@ -239,11 +279,80 @@ assurancesBrancheRouter.get(
       fetchAccidentHistorique(f),
     ]);
 
-    let rows = [...generique, ...incendie, ...accident].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    let rows = [...generique, ...incendie, ...accident].sort((a, b) =>
+      f.renouvellementProche
+        ? new Date(a.dateFin ?? 0).getTime() - new Date(b.dateFin ?? 0).getTime()
+        : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
     if (limit) rows = rows.slice(0, limit);
     res.json(rows);
+  })
+);
+
+/**
+ * Relance le RENOUVELLEMENT d'une souscription générique à formule unique
+ * (RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro
+ * Dommages — jamais RelaxMoto/Auto, qui ont leur propre renouvellement côté
+ * espace client) : crée une nouvelle échéance (Paiement estRenouvellement)
+ * pour la même prime, envoie le lien Wave par SMS. Ne touche jamais
+ * `Souscription.waveStatut` (reste "confirme" tout du long, contrairement à
+ * SouscriptionAccident qui n'a pas de table Paiement séparée) — la couverture
+ * en cours n'est donc jamais interrompue pendant l'attente du paiement.
+ */
+assurancesBrancheRouter.post(
+  "/souscriptions/:id/relance-renouvellement",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const s = await prisma.souscription.findUnique({
+      where: { id: req.params.id },
+      include: { produit: { select: { code: true } } },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.cycleFacturation) {
+      return res.status(400).json({ error: "Ce produit se renouvelle depuis l'espace client, pas via l'admin." });
+    }
+    if (s.waveStatut !== "confirme" || !s.numeroPolice) {
+      return res.status(400).json({ error: "Cette souscription n'est pas encore confirmée." });
+    }
+    if (!process.env.WAVE_API_KEY) {
+      return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
+    }
+    const qr = await prisma.qrCode.findFirst({
+      where: { partenaireId: s.partenaireId, produitId: s.produitId },
+    });
+    if (!qr) return res.status(400).json({ error: "QR introuvable pour ce partenaire/produit." });
+
+    const dejaExistantes = await prisma.paiement.count({ where: { souscriptionId: s.id } });
+    const paiement = await prisma.paiement.create({
+      data: {
+        souscriptionId: s.id,
+        numeroEcheance: dejaExistantes + 1,
+        montant: s.montantPrime,
+        dateEcheance: new Date(),
+        estRenouvellement: true,
+      },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/${s.produit.code}/${qr.token}?paid=${paiement.id}`;
+    const errorUrl = `${appUrl}/s/${s.produit.code}/${qr.token}?paiement=echec`;
+    const wave = await initiateWavePayment(paiement.montant, paiement.id, successUrl, errorUrl);
+    await prisma.paiement.update({ where: { id: paiement.id }, data: { waveTransactionId: wave.transactionId } });
+    const updated = await prisma.souscription.update({
+      where: { id: s.id },
+      data: {
+        renouvellementEnCoursDepuis: new Date(),
+        relanceRenouvellementCount: { increment: 1 },
+      },
+    });
+
+    await sendSMS(s.telephone, messageRelanceRenouvellement(s.prenom ?? "", paiement.montant, wave.checkoutUrl));
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "relance",
+      objetType: "souscription_renouvellement",
+      objetId: s.id,
+    });
+    res.json({ ok: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
   })
 );
 

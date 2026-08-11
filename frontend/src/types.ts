@@ -58,6 +58,11 @@ export interface SouscriptionBranche {
   partenaireId: string;
   partenaireNom: string;
   createdAt: string;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  renouvellementEnCoursDepuis?: string | null;
+  renouveleAt?: string | null;
+  cycleFacturation?: string | null;
 }
 
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---
@@ -135,6 +140,11 @@ export interface ClientIncendie {
   relanceCount?: number;
   signature?: string | null;
   createdAt: string;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  renouvellementEnCoursDepuis?: string | null;
+  renouveleAt?: string | null;
+  relanceRenouvellementCount?: number;
 }
 
 export interface ClientAccident {

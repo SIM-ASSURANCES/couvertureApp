@@ -34,7 +34,9 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
       whatsappEnvoyeAt: new Date(),
       commissionCalculee: tarifAcc?.commission ?? null,
       renouvellementEnCoursDepuis: null,
-      ...(estRenouvellement ? { renouveleAt: new Date() } : {}),
+      ...(estRenouvellement
+        ? { renouveleAt: new Date(), nombrePaiements: { increment: 1 } }
+        : {}),
     },
   });
 }

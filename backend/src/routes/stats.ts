@@ -64,23 +64,22 @@ statsRouter.get(
         by: ["montantPrime"],
         where: { ...dateWhere, waveStatut: "confirme" },
         _count: { _all: true },
+        _sum: { nombrePaiements: true },
       }),
       prisma.tarifAccident.findMany(),
       prisma.tarifIncendie.findMany(),
     ]);
-
-    const primes = await prisma.souscriptionAccident.aggregate({
-      _sum: { montantPrime: true },
-      where: { ...dateWhere, waveStatut: "confirme" },
-    });
 
     // Budget mensuel (5% du CA prime HT sur 31 jours glissants) — indépendant
     // du filtre de période du tableau de bord, toujours calculé sur le mois en cours.
     const budget = await budgetMensuelGlobal();
 
     // ── Chiffre d'affaires (Prime TTC − Taxes), Taxes et FG, depuis les barèmes ──
+    // Pondéré par `_sum.nombrePaiements` quand disponible (Accident : chaque
+    // renouvellement paie de nouveau la même ligne, voir services/accident.ts),
+    // sinon par le nombre de lignes (Incendie, pas de renouvellement).
     function caTaxesEtFg(
-      groups: { montantPrime: number; _count: { _all: number } }[],
+      groups: { montantPrime: number; _count: { _all: number }; _sum?: { nombrePaiements: number | null } }[],
       tarifs: { prime: number; taxes: number | null; fg: number | null }[]
     ) {
       const map = new Map(tarifs.map((t) => [t.prime, t]));
@@ -91,9 +90,10 @@ statsRouter.get(
         const t = map.get(g.montantPrime);
         const tx = t?.taxes ?? 0;
         const f = t?.fg ?? 0;
-        ca += (g.montantPrime - tx) * g._count._all;
-        taxes += tx * g._count._all;
-        fg += f * g._count._all;
+        const n = g._sum?.nombrePaiements ?? g._count._all;
+        ca += (g.montantPrime - tx) * n;
+        taxes += tx * n;
+        fg += f * n;
       }
       return { ca, taxes, fg };
     }
@@ -111,13 +111,19 @@ statsRouter.get(
       (s, g) => s + g.montantPrime * g._count._all,
       0
     );
+    // Prime Accident TTC = somme des montants payés, PAIEMENTS confirmés
+    // (1er + renouvellements), pas lignes distinctes.
+    const primesAccident = accGroups.reduce(
+      (s, g) => s + g.montantPrime * (g._sum.nombrePaiements ?? g._count._all),
+      0
+    );
 
     res.json({
       partenairesTotal,
       partenairesActifs,
       incendieTotal,
       accidentTotal,
-      primesAccident: primes._sum.montantPrime ?? 0,
+      primesAccident,
       primesIncendie,
       chiffreAffaires: Math.round(caIncendie + caAccident),
       taxes: Math.round(taxesIncendie + taxesAccident),
@@ -201,7 +207,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
           ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: incWhere, _count: { _all: true } })
           : [],
         showAcc
-          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, waveStatut: "confirme" }, _count: { _all: true } })
+          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
         showAcc
           ? prisma.souscriptionAccident.count({ where: { ...accWhere, waveStatut: "confirme" } })
@@ -213,7 +219,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
           ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: { ...incWhere, agentDistributionId: { not: null } }, _count: { _all: true } })
           : [],
         showAcc
-          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, agentDistributionId: { not: null }, waveStatut: "confirme" }, _count: { _all: true } })
+          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, agentDistributionId: { not: null }, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
       ]);
 
@@ -234,11 +240,15 @@ async function buildPerformance(opts: PerfOpts = {}) {
       }
       commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
 
+      // Pondéré par le nombre de paiements confirmés (1er + renouvellements),
+      // pas par le nombre de lignes — un même client renouvelé génère une
+      // prime/commission à chaque renouvellement (voir services/accident.ts).
+      // `accCount` (nombre de CLIENTS distincts) reste, lui, non pondéré.
       let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
       let commissionAccident = 0;
       for (const g of accGroups) {
         const t = accMap.get(g.montantPrime);
-        const n = g._count._all;
+        const n = g._sum.nombrePaiements ?? g._count._all;
         primesAccident += g.montantPrime * n;
         primesAccidentHT += (t?.primeHT ?? g.montantPrime) * n;
         caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
@@ -246,7 +256,8 @@ async function buildPerformance(opts: PerfOpts = {}) {
       }
       let commissionAccidentViaAgents = 0;
       for (const g of accGroupsViaAgents) {
-        commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.commission ?? 0) * g._count._all;
+        const n = g._sum.nombrePaiements ?? g._count._all;
+        commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.commission ?? 0) * n;
       }
       commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
 

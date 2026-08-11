@@ -103,6 +103,11 @@ export function messageIncendie(_prenom: string | null, lien: string) {
   return `SIM Assurances : finalisez votre souscription incendie : ${lien}`;
 }
 
+/** Relance admin du renouvellement Incendie — pas de paiement Wave, juste une nouvelle réf.facture à fournir. */
+export function messageRelanceRenouvellementIncendie(lien: string) {
+  return `SIM Assurances : votre assurance incendie arrive à échéance. Renouvelez en indiquant votre nouvelle réf.facture : ${lien}`;
+}
+
 export function messageAccidentEchec(
   _prenom: string,
   _montant: number,

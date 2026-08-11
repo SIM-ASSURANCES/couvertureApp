@@ -12,13 +12,19 @@ type FiltreAgent = string | null | { not: null };
  */
 export const TAUX_COMMISSION_AGENT = 0.75;
 
+/**
+ * Pondère par `_sum.nombrePaiements` quand disponible (Accident : chaque
+ * renouvellement paie à nouveau la même ligne, voir services/accident.ts),
+ * sinon retombe sur le nombre de lignes (`_count._all` — Incendie, qui n'a
+ * pas de notion de renouvellement).
+ */
 function sommeParPrime(
-  groups: { montantPrime: number; _count: { _all: number } }[],
+  groups: { montantPrime: number; _count: { _all: number }; _sum?: { nombrePaiements: number | null } }[],
   tarifs: { prime: number; commission: number }[]
 ): number {
   const map = new Map(tarifs.map((t) => [t.prime, t]));
   return groups.reduce(
-    (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * g._count._all,
+    (s, g) => s + (map.get(g.montantPrime)?.commission ?? 0) * (g._sum?.nombrePaiements ?? g._count._all),
     0
   );
 }
@@ -44,6 +50,7 @@ async function commissionBrute(
       by: ["montantPrime"],
       where: { partenaireId, agentDistributionId, ...dateWhere, waveStatut: "confirme" },
       _count: { _all: true },
+      _sum: { nombrePaiements: true },
     }),
     prisma.tarifIncendie.findMany(),
     prisma.tarifAccident.findMany(),
@@ -70,6 +77,11 @@ async function commissionSouscriptionsGeneriques(where: {
     by: ["produitId", "montantPrime"],
     where: { ...where, waveStatut: "confirme" },
     _count: { _all: true },
+    // Pondère par le nombre de paiements confirmés (1er + renouvellements —
+    // produits à formule unique, RelaxMoto/Auto restent toujours à 1, voir
+    // services/paiementWave.ts) plutôt que par ligne, pour qu'un
+    // renouvellement génère une commission au partenaire.
+    _sum: { nombrePaiements: true },
   });
   if (groups.length === 0) return 0;
 
@@ -78,7 +90,10 @@ async function commissionSouscriptionsGeneriques(where: {
   });
   const map = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
   return groups.reduce(
-    (s, g) => s + (map.get(`${g.produitId}:${g.montantPrime}`)?.commission ?? 0) * g._count._all,
+    (s, g) =>
+      s +
+      (map.get(`${g.produitId}:${g.montantPrime}`)?.commission ?? 0) *
+        (g._sum.nombrePaiements ?? g._count._all),
     0
   );
 }
@@ -107,7 +122,7 @@ async function commissionSouscriptionsDynamiques(where: {
 
   const rows = await prisma.souscription.findMany({
     where: { ...where, produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },
-    select: { produitId: true, resultat: true, donneesSpecifiques: true },
+    select: { produitId: true, resultat: true, donneesSpecifiques: true, nombrePaiements: true },
   });
   if (rows.length === 0) return 0;
 
@@ -118,15 +133,18 @@ async function commissionSouscriptionsDynamiques(where: {
     const produit = produitParId.get(s.produitId);
     const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number } | null;
     if (!produit || !resultat) return total;
+    // Pondère par le nombre de paiements confirmés (1er + renouvellements) —
+    // voir services/paiementWave.ts::confirmerEcheance.
+    const poids = s.nombrePaiements ?? 1;
 
     if (produit.code === "securpro_dommages") {
       const specs = s.donneesSpecifiques as { classe?: number } | null;
       const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
-      return total + (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
+      return total + (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0) * poids;
     }
 
     const primeBase = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
-    return total + primeBase * (produit.tauxCommission ?? 0);
+    return total + primeBase * (produit.tauxCommission ?? 0) * poids;
   }, 0);
 }
 

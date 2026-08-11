@@ -11,6 +11,7 @@ import {
   initiateWavePayment,
   messageRelancePaiement,
   messageRelanceRenouvellement,
+  messageRelanceRenouvellementIncendie,
 } from "../services/notify.js";
 import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
@@ -293,10 +294,12 @@ souscriptionsRouter.post(
 souscriptionsRouter.get(
   "/incendie",
   asyncHandler(async (req, res) => {
-    const { statut, partenaireId } = req.query as {
+    const { statut, partenaireId, renouvellementProche } = req.query as {
       statut?: string;
       partenaireId?: string;
+      renouvellementProche?: string;
     };
+    const procheDeLecheance = renouvellementProche === "1";
     const rows = await prisma.souscriptionIncendie.findMany({
       where: {
         statut:
@@ -304,11 +307,14 @@ souscriptionsRouter.get(
             ? statut
             : undefined,
         partenaireId: partenaireId || undefined,
+        ...(procheDeLecheance
+          ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) } }
+          : {}),
       },
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
     res.json(
       rows.map((r) => ({
@@ -506,6 +512,15 @@ souscriptionsRouter.patch(
       where: { prime: s.montantPrime },
     });
 
+    // Renouvellement (voir routes/public.ts PATCH /souscriptions/incendie/:token
+    // pour le même traitement côté client) : une souscription déjà "complet"
+    // qui reçoit ici une NOUVELLE réf.facture prolonge l'échéance de 3 mois
+    // sur la même ligne, plutôt que de simplement écraser refFacture.
+    const estRenouvellement = s.statut === "complet";
+    const dateDebut = estRenouvellement && s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
+    const dateFin = new Date(dateDebut);
+    dateFin.setMonth(dateFin.getMonth() + 3);
+
     const updated = await prisma.souscriptionIncendie.update({
       where: { id: s.id },
       data: {
@@ -515,6 +530,10 @@ souscriptionsRouter.patch(
         numeroMaison: numeroMaison?.trim() || s.numeroMaison,
         statut: "complet",
         commissionCalculee: tarif?.commission ?? s.commissionCalculee,
+        dateDebut,
+        dateFin,
+        renouvellementEnCoursDepuis: null,
+        ...(estRenouvellement ? { renouveleAt: new Date(), nombrePaiements: { increment: 1 } } : {}),
       },
     });
     await logAction({
@@ -525,6 +544,46 @@ souscriptionsRouter.patch(
       valeurApres: { refFacture: updated.refFacture, statut: "complet" },
     });
     res.json({ ...updated, partenaireNom: undefined });
+  })
+);
+
+/**
+ * Relance le RENOUVELLEMENT d'un contrat Incendie déjà complet (proche de son
+ * échéance) — contrairement à /relance ci-dessous (relance la complétion
+ * INITIALE), et contrairement au renouvellement Accident/générique : pas de
+ * paiement Wave pour ce produit (payé via réf.facture à l'achat), donc le SMS
+ * renvoie vers le même lien de COMPLÉTION, réutilisé en mode renouvellement
+ * (voir PATCH /public/souscriptions/incendie/:token — détecte le
+ * renouvellement via `statut === "complet"`, exige une réf.facture NEUVE).
+ */
+souscriptionsRouter.post(
+  "/incendie/:id/relance-renouvellement",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const s = await prisma.souscriptionIncendie.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.statut !== "complet" || !s.lienFormulaireToken) {
+      return res.status(400).json({ error: "Cette souscription n'est pas encore complète." });
+    }
+    await sendSMS(
+      s.telephone,
+      messageRelanceRenouvellementIncendie(lienFormulaire("incendie", s.lienFormulaireToken))
+    );
+    const updatedRenouv = await prisma.souscriptionIncendie.update({
+      where: { id: s.id },
+      data: {
+        renouvellementEnCoursDepuis: new Date(),
+        relanceRenouvellementCount: { increment: 1 },
+      },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "relance",
+      objetType: "souscription_incendie_renouvellement",
+      objetId: s.id,
+    });
+    res.json({ ok: true, relanceRenouvellementCount: updatedRenouv.relanceRenouvellementCount });
   })
 );
 

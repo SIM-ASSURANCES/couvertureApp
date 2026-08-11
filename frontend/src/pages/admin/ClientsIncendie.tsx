@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -16,6 +16,12 @@ import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import type { ClientIncendie, Partenaire, SouscriptionBranche } from "../../types";
+
+function statutRenouvellement(c: { renouvellementEnCoursDepuis?: string | null; renouveleAt?: string | null }) {
+  if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
+  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDate(c.renouveleAt)}</Badge>;
+  return <span className="muted">—</span>;
+}
 
 export default function ClientsIncendie() {
   const { user } = useAuth();
@@ -44,6 +50,42 @@ export default function ClientsIncendie() {
   );
   const generiqueSeul = (dommagesGenerique ?? []).filter((r) => r.produit !== "incendie_historique");
 
+  // Alerte renouvellement (échéance ≤ 2 semaines) — Incendie historique +
+  // SecurHome+/SecurPro (modèle générique), toutes deux à formule unique de 3
+  // mois, combinées dans une même section.
+  const { data: incendieProches, reload: reloadIncendieProches } = useFetch<ClientIncendie[]>(
+    "/souscriptions/incendie?renouvellementProche=1"
+  );
+  const { data: genProches, reload: reloadGenProches } = useFetch<SouscriptionBranche[]>(
+    "/assurances-branche/souscriptions?sousBranche=ASSURANCES_DOMMAGES&renouvellementProche=1"
+  );
+  const renouvellementsProches = [
+    ...(incendieProches ?? []).map((c) => ({
+      id: c.id,
+      genre: "incendie" as const,
+      nom: [c.prenom, c.nom].filter(Boolean).join(" ") || "Non renseigné",
+      telephone: c.telephone,
+      produitLibelle: "Incendie Habitation en Inclusion",
+      partenaireNom: c.partenaireNom,
+      dateFin: c.dateFin,
+      renouvellementEnCoursDepuis: c.renouvellementEnCoursDepuis,
+      renouveleAt: c.renouveleAt,
+    })),
+    ...(genProches ?? [])
+      .filter((r) => r.produit !== "incendie_historique")
+      .map((r) => ({
+      id: r.id,
+      genre: "generique" as const,
+      nom: [r.prenom, r.nom].filter(Boolean).join(" ") || "Non renseigné",
+      telephone: r.telephone,
+      produitLibelle: r.produitLibelle,
+      partenaireNom: r.partenaireNom,
+      dateFin: r.dateFin,
+      renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis,
+      renouveleAt: r.renouveleAt,
+    })),
+  ].sort((a, b) => new Date(a.dateFin ?? 0).getTime() - new Date(b.dateFin ?? 0).getTime());
+
   const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
   const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
   const [factureFor, setFactureFor] = useState<ClientIncendie | null>(null);
@@ -52,6 +94,11 @@ export default function ClientsIncendie() {
   const [quartierVal, setQuartierVal] = useState("");
   const [numeroMaisonVal, setNumeroMaisonVal] = useState("");
   const [savingFacture, setSavingFacture] = useState(false);
+
+  function notify(m: string) {
+    setToast(m);
+    setTimeout(() => setToast(""), 3000);
+  }
 
   async function saveFacture() {
     if (
@@ -69,13 +116,12 @@ export default function ClientsIncendie() {
         quartier: quartierVal.trim(),
         numeroMaison: numeroMaisonVal.trim(),
       });
-      setToast("Réf.facture enregistrée ✓");
-      setTimeout(() => setToast(""), 2500);
+      notify("Réf.facture enregistrée ✓");
       setFactureFor(null);
       reload();
+      reloadIncendieProches();
     } catch (e) {
-      setToast((e as Error).message);
-      setTimeout(() => setToast(""), 2500);
+      notify((e as Error).message);
     } finally {
       setSavingFacture(false);
     }
@@ -83,20 +129,40 @@ export default function ClientsIncendie() {
 
   async function relance(id: string) {
     await api.post(`/souscriptions/incendie/${id}/relance`);
-    setToast("Relance SMS envoyée ✓");
-    setTimeout(() => setToast(""), 2500);
+    notify("Relance SMS envoyée ✓");
     reload();
+  }
+
+  async function relancerRenouvellementIncendie(id: string) {
+    try {
+      await api.post(`/souscriptions/incendie/${id}/relance-renouvellement`, {});
+      notify("SMS de renouvellement envoyé ✓");
+      reloadIncendieProches();
+      reload();
+    } catch (e) {
+      notify((e as Error).message);
+    }
+  }
+
+  async function relancerRenouvellementGenerique(id: string) {
+    try {
+      await api.post(`/assurances-branche/souscriptions/${id}/relance-renouvellement`, {});
+      notify("SMS de renouvellement envoyé ✓");
+      reloadGenProches();
+      reloadGenerique();
+    } catch (e) {
+      notify((e as Error).message);
+    }
   }
 
   async function supprimer(id: string) {
     if (!confirm("Supprimer définitivement ce client ?")) return;
     try {
       await api.del(`/souscriptions/incendie/${id}`);
-      setToast("Client supprimé ✓");
-      setTimeout(() => setToast(""), 2500);
+      notify("Client supprimé ✓");
       reload();
     } catch (e) {
-      setToast((e as Error).message);
+      notify((e as Error).message);
     }
   }
 
@@ -104,12 +170,11 @@ export default function ClientsIncendie() {
     if (!confirm("Supprimer définitivement ce client ?")) return;
     try {
       await api.del(`/assurances-branche/souscriptions/${id}`);
-      setToast("Client supprimé ✓");
-      setTimeout(() => setToast(""), 2500);
+      notify("Client supprimé ✓");
       setDetailGenerique(null);
       reloadGenerique();
     } catch (e) {
-      setToast((e as Error).message);
+      notify((e as Error).message);
     }
   }
 
@@ -130,7 +195,8 @@ export default function ClientsIncendie() {
           "N° de maison": c.numeroMaison ?? "",
           "Statut": c.statut,
           "Relances SMS": c.relanceCount ?? 0,
-          "Date": fmtDate(c.createdAt),
+          "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
+          "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
         })),
         ...generiqueSeul.map((r) => ({
           "Produit": r.produitLibelle,
@@ -146,7 +212,8 @@ export default function ClientsIncendie() {
           "N° de maison": "",
           "Statut": r.statut,
           "Relances SMS": "",
-          "Date": fmtDate(r.createdAt),
+          "Date d'échéance": r.dateFin ? fmtDate(r.dateFin) : "",
+          "Date d'effet": r.dateDebut ? fmtDate(r.dateDebut) : "",
         })),
       ],
       "clients_dommages.xlsx"
@@ -176,7 +243,68 @@ export default function ClientsIncendie() {
       />
 
       <Card
+        title="Renouvellements à venir (échéance ≤ 2 semaines)"
+        extra={<Bell size={18} color="#b45309" />}
+        style={{ marginTop: 24 }}
+        noBody
+      >
+        <div className="table-wrap">
+          <table className="tbl">
+            <thead>
+              <tr>
+                <th>Client</th>
+                <th>Produit</th>
+                <th>Partenaire</th>
+                <th>Date d'échéance</th>
+                <th>Statut renouvellement</th>
+                <th style={{ width: 180 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {renouvellementsProches.map((r) => (
+                <tr key={`${r.genre}-${r.id}`}>
+                  <td>
+                    <strong>{r.nom}</strong>
+                    <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
+                  </td>
+                  <td>
+                    <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
+                  </td>
+                  <td>{r.partenaireNom}</td>
+                  <td className="muted">{r.dateFin ? fmtDate(r.dateFin) : "—"}</td>
+                  <td>{statutRenouvellement(r)}</td>
+                  <td>
+                    <button
+                      className="btn btn-primary"
+                      style={{ padding: "7px 12px" }}
+                      disabled={!!r.renouvellementEnCoursDepuis}
+                      onClick={() =>
+                        r.genre === "incendie"
+                          ? relancerRenouvellementIncendie(r.id)
+                          : relancerRenouvellementGenerique(r.id)
+                      }
+                      title={
+                        r.genre === "incendie"
+                          ? "Envoyer un SMS invitant à renouveler avec une nouvelle réf.facture"
+                          : "Envoyer un SMS avec lien de paiement pour le renouvellement"
+                      }
+                    >
+                      <Send size={14} /> Relance
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {renouvellementsProches.length === 0 && (
+                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 2 prochaines semaines.</div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card
         title={`${total} souscriptions`}
+        style={{ marginTop: 24 }}
         extra={
           <div style={{ display: "flex", gap: 10 }}>
             <select className="select" style={{ width: 180, height: 40 }} value={part} onChange={(e) => setPart(e.target.value)}>
@@ -209,7 +337,9 @@ export default function ClientsIncendie() {
                   <th>Prime</th>
                   <th>Réf. facture</th>
                   <th>Statut</th>
-                  <th>Date</th>
+                  <th>Date d'échéance</th>
+                  <th>Renouvellement</th>
+                  <th>Date d'effet</th>
                   <th style={{ width: 80 }}></th>
                 </tr>
               </thead>
@@ -237,7 +367,9 @@ export default function ClientsIncendie() {
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{c.refFacture ?? <span className="muted">—</span>}</td>
                     <td>{statutIncendieBadge(c.statut)}</td>
-                    <td className="muted">{fmtDate(c.createdAt)}</td>
+                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                    <td>{statutRenouvellement(c)}</td>
+                    <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
                     <td>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button
@@ -327,7 +459,9 @@ export default function ClientsIncendie() {
                     <td><strong>{fcfa(r.montantPrime)}</strong></td>
                     <td><span className="muted">—</span></td>
                     <td>{waveBadge(r.statut)}</td>
-                    <td className="muted">{fmtDate(r.createdAt)}</td>
+                    <td className="muted">{r.dateFin ? fmtDate(r.dateFin) : "—"}</td>
+                    <td>{statutRenouvellement(r)}</td>
+                    <td className="muted">{r.dateDebut ? fmtDate(r.dateDebut) : "—"}</td>
                     <td>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button
@@ -353,7 +487,7 @@ export default function ClientsIncendie() {
                   </tr>
                 ))}
                 {total === 0 && (
-                  <tr><td colSpan={9}><div className="empty">Aucune souscription.</div></td></tr>
+                  <tr><td colSpan={11}><div className="empty">Aucune souscription.</div></td></tr>
                 )}
               </tbody>
             </table>
@@ -391,6 +525,9 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Quartier</td><td>{detailFor.quartier || "—"}</td></tr>
                 <tr><td className="muted">N° de maison</td><td>{detailFor.numeroMaison || "—"}</td></tr>
                 <tr><td className="muted">Statut</td><td>{statutIncendieBadge(detailFor.statut)}</td></tr>
+                <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
                 <tr><td className="muted">Relances SMS</td><td>{detailFor.relanceCount ?? 0}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
@@ -418,6 +555,9 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
+                <tr><td className="muted">Date d'effet</td><td>{detailGenerique.dateDebut ? fmtDate(detailGenerique.dateDebut) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td>{detailGenerique.dateFin ? fmtDate(detailGenerique.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailGenerique)}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailGenerique.createdAt)}</td></tr>
               </tbody>
             </table>
@@ -437,6 +577,11 @@ export default function ClientsIncendie() {
               <strong style={{ fontSize: 16 }}>Réf. facture</strong>
               <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setFactureFor(null)}><X size={18} /></button>
             </div>
+            {factureFor.statut === "complet" && (
+              <p className="muted" style={{ fontSize: 12.5, marginBottom: 14, background: "var(--bg-2)", padding: 8, borderRadius: 8 }}>
+                Ce contrat est déjà complet — saisir ici une NOUVELLE réf.facture le renouvelle (prolonge l'échéance de 3 mois).
+              </p>
+            )}
             <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
               Souscripteur : <strong>{factureFor.telephone}</strong>
               {factureFor.prenom || factureFor.nom ? ` — ${factureFor.prenom ?? ""} ${factureFor.nom ?? ""}`.trimEnd() : ""}

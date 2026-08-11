@@ -9,10 +9,13 @@ import type { Paiement } from "@prisma/client";
  * par `cycleFacturation`, renseigné uniquement pour un abonnement) :
  * - Abonnement (RelaxMoto/RelaxAuto) : 1ère échéance → police, couverture 1 an,
  *   espace client (identifiant/mot de passe envoyés par SMS) ; renouvellement
- *   → prolonge dateFin d'un an.
- * - Formule à paiement unique (ex. RelaxAccidents Frais Médicaux) : pas
- *   d'abonnement ni d'espace client, couverture 3 mois (comme l'ancien
- *   produit Accident qu'elle remplace).
+ *   (déclenché par le CLIENT, espace client) → prolonge dateFin d'un an.
+ * - Formule à paiement unique (RelaxAccidents Frais Médicaux/générale,
+ *   RelaxVoyage, SecurHome+, SecurPro Dommages) : pas d'abonnement ni d'espace
+ *   client, couverture 3 mois (comme l'ancien produit Accident) ; renouvellement
+ *   (déclenché par l'ADMIN, relance SMS) → prolonge dateFin de 3 mois sur la
+ *   MÊME souscription (police conservée) — voir POST
+ *   /assurances-branche/souscriptions/:id/relance-renouvellement.
  * Idempotent dans tous les cas.
  */
 export async function confirmerEcheance(p: Paiement): Promise<void> {
@@ -28,10 +31,20 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     if (!s) return;
     const base = s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
     const dateFin = new Date(base);
-    dateFin.setFullYear(dateFin.getFullYear() + 1);
+    if (s.cycleFacturation) {
+      dateFin.setFullYear(dateFin.getFullYear() + 1);
+    } else {
+      dateFin.setMonth(dateFin.getMonth() + 3);
+    }
     await prisma.souscription.update({
       where: { id: s.id },
-      data: { dateFin, statutAbonnement: "actif" },
+      data: {
+        dateFin,
+        statutAbonnement: s.cycleFacturation ? "actif" : s.statutAbonnement,
+        renouvellementEnCoursDepuis: null,
+        renouveleAt: new Date(),
+        nombrePaiements: { increment: 1 },
+      },
     });
     return;
   }

@@ -68,32 +68,45 @@ assurancesAccidentsRouter.get(
   })
 );
 
-/** Liste des souscriptions de la sous-branche, filtrable par produit / partenaire / attente */
+const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * Liste des souscriptions de la sous-branche, filtrable par produit /
+ * partenaire / attente. `renouvellementProche=1` : uniquement les échéances
+ * (dateFin) dans les 2 semaines à venir, pour la section d'alerte — exclut
+ * toujours RelaxMoto/Auto (cycleFacturation non-null, leur propre
+ * renouvellement se fait côté espace client, pas via relance admin).
+ */
 assurancesAccidentsRouter.get(
   "/souscriptions",
   asyncHandler(async (req, res) => {
-    const { produit, attente, partenaireId } = req.query as {
+    const { produit, attente, partenaireId, renouvellementProche } = req.query as {
       produit?: string;
       attente?: string;
       partenaireId?: string;
+      renouvellementProche?: string;
     };
     const produitId = produit ? await resolveProduitId(produit) : undefined;
     if (produit && !produitId) return res.status(404).json({ error: "Produit inconnu" });
 
     const produits = await produitsSousBranche();
     const produitIds = produitId ? [produitId] : produits.map((p) => p.id);
+    const procheDeLecheance = renouvellementProche === "1";
 
     const rows = await prisma.souscription.findMany({
       where: {
         produitId: { in: produitIds },
         waveStatut: attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
         partenaireId: partenaireId || undefined,
+        ...(procheDeLecheance
+          ? { cycleFacturation: null, dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
+          : {}),
       },
       include: {
         partenaire: { select: { nomCommerce: true } },
         produit: { select: { code: true, libelle: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
     res.json(rows.map((r) => ({ ...r, partenaireNom: r.partenaire.nomCommerce })));
   })

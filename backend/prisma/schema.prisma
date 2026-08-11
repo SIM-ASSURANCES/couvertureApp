@@ -262,6 +262,19 @@ model SouscriptionIncendie {
   signature           String? // data URL PNG, capturée à la complétion du formulaire
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @updatedAt
+
+  // --- Échéance + renouvellement (3 mois, comme Accident et les produits
+  // génériques à formule unique) — couverture activée à la complétion du
+  // formulaire (statut "complet"), pas de paiement Wave pour ce produit (payé
+  // via réf.facture à l'achat) : le renouvellement renvoie donc un lien de
+  // COMPLÉTION (nouvelle réf.facture requise), pas un lien de paiement — voir
+  // routes/public.ts PATCH /souscriptions/incendie/:token.
+  dateDebut                    DateTime?
+  dateFin                      DateTime?
+  renouvellementEnCoursDepuis  DateTime?
+  renouveleAt                  DateTime?
+  relanceRenouvellementCount   Int       @default(0)
+  nombrePaiements              Int       @default(1)
 }
 
 model SouscriptionAccident {
@@ -313,6 +326,12 @@ model SouscriptionAccident {
   // tant qu'aucun renouvellement n'a eu lieu).
   renouveleAt                 DateTime?
   relanceRenouvellementCount  Int       @default(0)
+  // Nombre de paiements CONFIRMÉS sur cette ligne (1 = souscription initiale
+  // seule, 2 = une fois renouvelée, etc.) — puisque le renouvellement met à
+  // jour la même ligne plutôt que d'en créer une nouvelle, la commission
+  // (services/commission.ts) pondère par ce compteur au lieu de compter les
+  // lignes, pour qu'un renouvellement génère bien une commission au partenaire.
+  nombrePaiements Int @default(1)
 }
 
 model JournalActivite {
@@ -557,6 +576,23 @@ model Souscription {
   // mot de passe généré et envoyé par SMS.
   clientPasswordHash String?
   sinistres          SinistreRelax[]
+
+  // --- Renouvellement admin (produits à formule unique, 3 mois, SANS
+  // cycleFacturation : RelaxAccidents Frais Médicaux/générale, RelaxVoyage,
+  // SecurHome+, SecurPro Dommages) — RelaxMoto/RelaxAuto gardent leur propre
+  // renouvellement côté espace client (cycleFacturation non-null), ces champs
+  // n'y sont pas utilisés. Un client (nom, dateNaissance) ne peut souscrire
+  // qu'une seule fois — voir vérification applicative dans public.ts. Le
+  // renouvellement crée une nouvelle échéance (Paiement, estRenouvellement:
+  // true) sur CETTE MÊME souscription plutôt qu'une nouvelle ligne — voir
+  // services/paiementWave.ts::confirmerEcheance.
+  renouvellementEnCoursDepuis DateTime?
+  renouveleAt                 DateTime?
+  relanceRenouvellementCount  Int       @default(0)
+  // Nombre de paiements confirmés (1er + renouvellements) — la commission
+  // (services/commission.ts) pondère par ce compteur plutôt que par ligne,
+  // pour qu'un renouvellement génère une commission au partenaire.
+  nombrePaiements              Int       @default(1)
 }
 
 /**
@@ -574,9 +610,10 @@ model Paiement {
   dateEcheance      DateTime
   datePaiement      DateTime?
   waveTransactionId String?
-  // Paiement de renouvellement (depuis l'espace client) plutôt qu'échéance du
-  // cycle initial — confirmerEcheance prolonge alors juste dateFin d'un an,
-  // sans reproduire la logique de première activation.
+  // Paiement de renouvellement (RelaxMoto/Auto : depuis l'espace client ;
+  // formule unique : relance admin) plutôt qu'échéance du cycle initial —
+  // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le
+  // produit), sans reproduire la logique de première activation.
   estRenouvellement Boolean        @default(false)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt

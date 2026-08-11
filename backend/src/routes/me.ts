@@ -32,9 +32,15 @@ function parseDateRange(req: {
   return range.gte || range.lte ? range : undefined;
 }
 
-/** Primes (TTC), CA (Prime TTC − Taxes) et commission depuis le barème */
+/**
+ * Primes (TTC), CA (Prime TTC − Taxes) et commission depuis le barème.
+ * `count` (nombre de clients distincts) reste basé sur les LIGNES ; les
+ * montants financiers sont pondérés par `_sum.nombrePaiements` quand
+ * disponible (Accident : un renouvellement paie de nouveau la même ligne,
+ * voir services/accident.ts) — sinon retombe sur le nombre de lignes.
+ */
 function depuisBareme(
-  groups: { montantPrime: number; _count: { _all: number } }[],
+  groups: { montantPrime: number; _count: { _all: number }; _sum?: { nombrePaiements: number | null } }[],
   tarifs: { prime: number; taxes: number | null; commission: number }[]
 ) {
   const map = new Map(tarifs.map((t) => [t.prime, t]));
@@ -47,9 +53,10 @@ function depuisBareme(
     const tx = t?.taxes ?? 0;
     const com = t?.commission ?? 0;
     const n = g._count._all;
-    primes += g.montantPrime * n;
-    ca += (g.montantPrime - tx) * n;
-    commission += com * n;
+    const poids = g._sum?.nombrePaiements ?? n;
+    primes += g.montantPrime * poids;
+    ca += (g.montantPrime - tx) * poids;
+    commission += com * poids;
     count += n;
   }
   return { primes, ca, commission, count };
@@ -75,6 +82,7 @@ meRouter.get(
           by: ["montantPrime"],
           where: { partenaireId: id, ...dateWhere, waveStatut: "confirme" },
           _count: { _all: true },
+          _sum: { nombrePaiements: true },
         }),
         prisma.tarifIncendie.findMany(),
         prisma.tarifAccident.findMany(),
