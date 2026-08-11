@@ -257,7 +257,10 @@ async function buildPerformance(opts: PerfOpts = {}) {
         }
       : undefined;
 
-  const [allPartenaires, tarifsInc, tarifsAcc, encaisseeRows] = await Promise.all([
+  const showInc = !produit || produit === "incendie";
+  const showAcc = !produit || produit === "accident";
+
+  const [allPartenaires, tarifsInc, tarifsAcc, encaisseeRows, produitsGeneriques] = await Promise.all([
     prisma.partenaire.findMany({
       where: partenaireId ? { id: partenaireId } : undefined,
       orderBy: { createdAt: "desc" },
@@ -272,14 +275,32 @@ async function buildPerformance(opts: PerfOpts = {}) {
       },
       _sum: { montant: true },
     }),
+    // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale,
+    // RelaxVoyage, SecurHome+, SecurPro Dommages) — sans quoi les partenaires au
+    // QR unique, dont les ventes se font surtout sur ces produits, n'étaient
+    // comptabilisés nulle part sur cette page (même angle mort que /overview,
+    // déjà corrigé). Repartis dans les buckets "Incendie"/"Dommages" et
+    // "Accident"/"Accidents" existants selon `Produit.sousBranche`.
+    prisma.produit.findMany({
+      where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+    }),
   ]);
 
   const incMap = new Map(tarifsInc.map((t) => [t.prime, t]));
   const accMap = new Map(tarifsAcc.map((t) => [t.prime, t]));
   const encMap = new Map(encaisseeRows.map((r) => [r.partenaireId, r._sum.montant ?? 0]));
 
-  const showInc = !produit || produit === "incendie";
-  const showAcc = !produit || produit === "accident";
+  const produitGenParId = new Map(produitsGeneriques.map((p) => [p.id, p]));
+  const idsGenDynamique = produitsGeneriques
+    .filter((p) => (PRODUITS_COMMISSION_DYNAMIQUE as readonly string[]).includes(p.code))
+    .map((p) => p.id);
+  const idsGenCatalogue = produitsGeneriques.filter((p) => !idsGenDynamique.includes(p.id)).map((p) => p.id);
+  const [tarifsGeneriques, baremesSecurpro] = await Promise.all([
+    idsGenCatalogue.length ? prisma.tarifProduit.findMany({ where: { produitId: { in: idsGenCatalogue } } }) : [],
+    idsGenDynamique.length ? prisma.baremeSecurpro.findMany() : [],
+  ]);
+  const tarifGenMap = new Map(tarifsGeneriques.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  const baremeParClasse = new Map(baremesSecurpro.map((b) => [b.classe, b]));
 
   const rows = await Promise.all(
     allPartenaires.map(async (p) => {
@@ -289,11 +310,13 @@ async function buildPerformance(opts: PerfOpts = {}) {
       };
       const incWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
       const accWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
+      const genWhere = { ...baseWhere, waveStatut: "confirme" as const, ...(montantPrime ? { montantPrime } : {}) };
 
-      const [incGroups, accGroups, accCount, incGroupsViaAgents, accGroupsViaAgents] = await Promise.all([
+      const [incGroups, incCount, accGroups, accCount, incGroupsViaAgents, accGroupsViaAgents, genCatalogueGroups, genDynRows] = await Promise.all([
         showInc
-          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: incWhere, _count: { _all: true } })
+          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: incWhere, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
+        showInc ? prisma.souscriptionIncendie.count({ where: incWhere }) : 0,
         showAcc
           ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
@@ -304,34 +327,48 @@ async function buildPerformance(opts: PerfOpts = {}) {
         // commission reviennent au partenaire, le reste (75%) à l'agent — voir
         // services/commission.ts.
         showInc
-          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: { ...incWhere, agentDistributionId: { not: null } }, _count: { _all: true } })
+          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: { ...incWhere, agentDistributionId: { not: null } }, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
         showAcc
           ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, agentDistributionId: { not: null }, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
           : [],
+        (showInc || showAcc) && idsGenCatalogue.length
+          ? prisma.souscription.groupBy({
+              by: ["produitId", "montantPrime", "agentDistributionId"],
+              where: { ...genWhere, produitId: { in: idsGenCatalogue } },
+              _count: { _all: true },
+              _sum: { nombrePaiements: true },
+            })
+          : [],
+        (showInc || showAcc) && idsGenDynamique.length
+          ? prisma.souscription.findMany({
+              where: { ...genWhere, produitId: { in: idsGenDynamique } },
+              select: { produitId: true, montantPrime: true, resultat: true, donneesSpecifiques: true, nombrePaiements: true, agentDistributionId: true },
+            })
+          : [],
       ]);
 
       let primesIncendie = 0, primesIncendieHT = 0, caIncendie = 0;
-      let incendieCount = 0, commissionIncendie = 0;
+      let commissionIncendie = 0;
       for (const g of incGroups) {
         const t = incMap.get(g.montantPrime);
-        const n = g._count._all;
+        const n = g._sum.nombrePaiements ?? g._count._all;
         primesIncendie += g.montantPrime * n;
         primesIncendieHT += (t?.primeHT ?? g.montantPrime) * n;
         caIncendie += (g.montantPrime - (t?.taxes ?? 0)) * n;
         commissionIncendie += (t?.commission ?? 0) * n;
-        incendieCount += n;
       }
       let commissionIncendieViaAgents = 0;
       for (const g of incGroupsViaAgents) {
-        commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.commission ?? 0) * g._count._all;
+        const n = g._sum.nombrePaiements ?? g._count._all;
+        commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.commission ?? 0) * n;
       }
       commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
 
       // Pondéré par le nombre de paiements confirmés (1er + renouvellements),
       // pas par le nombre de lignes — un même client renouvelé génère une
       // prime/commission à chaque renouvellement (voir services/accident.ts).
-      // `accCount` (nombre de CLIENTS distincts) reste, lui, non pondéré.
+      // `accCount`/`incCount` (nombre de CLIENTS distincts) restent, eux, non pondérés.
       let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
       let commissionAccident = 0;
       for (const g of accGroups) {
@@ -349,16 +386,75 @@ async function buildPerformance(opts: PerfOpts = {}) {
       }
       commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
 
+      // ── Modèle générique, réparti par sous-branche + agent/direct ──
+      let genIncendieCount = 0, genAccidentCount = 0;
+      for (const g of genCatalogueGroups) {
+        const prod = produitGenParId.get(g.produitId);
+        if (!prod?.sousBranche) continue;
+        const t = tarifGenMap.get(`${g.produitId}:${g.montantPrime}`);
+        const nPaiements = g._sum.nombrePaiements ?? g._count._all;
+        const primeHT = t?.primeHT ?? g.montantPrime;
+        const taxes = t?.taxes ?? 0;
+        const commissionBrute = (t?.commission ?? 0) * nPaiements;
+        const commissionPart = g.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
+        if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
+          primesIncendie += g.montantPrime * nPaiements;
+          primesIncendieHT += primeHT * nPaiements;
+          caIncendie += (g.montantPrime - taxes) * nPaiements;
+          commissionIncendie += commissionPart;
+          genIncendieCount += g._count._all;
+        } else {
+          primesAccident += g.montantPrime * nPaiements;
+          primesAccidentHT += primeHT * nPaiements;
+          caAccident += (g.montantPrime - taxes) * nPaiements;
+          commissionAccident += commissionPart;
+          genAccidentCount += g._count._all;
+        }
+      }
+      for (const s of genDynRows) {
+        const prod = produitGenParId.get(s.produitId);
+        const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number; taxes?: number } | null;
+        if (!prod?.sousBranche || !resultat) continue;
+        const nPaiements = s.nombrePaiements ?? 1;
+        const primeHT = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
+        const taxes = resultat.taxes ?? 0;
+        let commissionUnitaire = 0;
+        if (prod.code === "securpro_dommages") {
+          const specs = s.donneesSpecifiques as { classe?: number } | null;
+          const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
+          commissionUnitaire = (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
+        } else {
+          commissionUnitaire = primeHT * (prod.tauxCommission ?? 0);
+        }
+        const commissionBrute = commissionUnitaire * nPaiements;
+        const commissionPart = s.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
+        if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
+          primesIncendie += s.montantPrime * nPaiements;
+          primesIncendieHT += primeHT * nPaiements;
+          caIncendie += (s.montantPrime - taxes) * nPaiements;
+          commissionIncendie += commissionPart;
+          genIncendieCount += 1;
+        } else {
+          primesAccident += s.montantPrime * nPaiements;
+          primesAccidentHT += primeHT * nPaiements;
+          caAccident += (s.montantPrime - taxes) * nPaiements;
+          commissionAccident += commissionPart;
+          genAccidentCount += 1;
+        }
+      }
+
       const ca = Math.round(caIncendie + caAccident);
+      const clientsIncendie = incCount + genIncendieCount;
+      const clientsAccident = (accCount as number) + genAccidentCount;
 
       return {
         id: p.id,
         nomCommerce: p.nomCommerce,
         nomResponsable: p.nomResponsable,
         localisation: p.localisation,
-        clientsIncendie: incendieCount,
-        clientsAccident: accCount as number,
-        total: incendieCount + (accCount as number),
+        clientsIncendie,
+        clientsAccident,
+        total: clientsIncendie + clientsAccident,
         primesAccident: Math.round(primesAccident),
         primesAccidentHT: Math.round(primesAccidentHT),
         primesIncendie: Math.round(primesIncendie),
@@ -437,9 +533,10 @@ statsRouter.get(
         rows.map((r) => ({
           partenaire: r.nomCommerce,
           localisation: r.localisation,
-          clientsIncendie: r.clientsIncendie,
-          clientsAccident: r.clientsAccident,
-          primesAccident: r.primesAccident,
+          clientsDommages: r.clientsIncendie,
+          clientsAccidents: r.clientsAccident,
+          primesAccidents: r.primesAccident,
+          primesDommages: r.primesIncendie,
           commission: r.commission,
         }))
       )

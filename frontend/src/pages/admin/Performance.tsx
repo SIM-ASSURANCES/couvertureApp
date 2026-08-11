@@ -121,14 +121,14 @@ export default function Performance() {
         "Responsable": r.nomResponsable,
         "Localisation": r.localisation,
         "Volume total": r.total,
-        "Clients Incendie": r.clientsIncendie,
-        "Clients Accident": r.clientsAccident,
-        "Primes Inc. HT": r.primesIncendieHT,
-        "Primes Acc. HT": r.primesAccidentHT,
+        "Clients Dommages": r.clientsIncendie,
+        "Clients Accidents": r.clientsAccident,
+        "Primes Dommages HT": r.primesIncendieHT,
+        "Primes Accidents HT": r.primesAccidentHT,
         "CA": r.ca,
         "Commission": r.commission,
-        "Commission Incendie": r.commissionIncendie,
-        "Commission Accident": r.commissionAccident,
+        "Commission Dommages": r.commissionIncendie,
+        "Commission Accidents": r.commissionAccident,
         "Commission encaissée": r.commissionEncaissee,
         "Commission due": r.commission - r.commissionEncaissee,
       })),
@@ -175,7 +175,7 @@ export default function Performance() {
                   {nb(r.total)} souscription{r.total > 1 ? "s" : ""}
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-2)" }}>
-                  {r.clientsIncendie} incendie · {r.clientsAccident} accident · {fcfa(r.ca)} CA
+                  {r.clientsIncendie} dommages · {r.clientsAccident} accidents · {fcfa(r.ca)} CA
                 </div>
               </div>
             ))}
@@ -231,8 +231,8 @@ export default function Performance() {
             <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 4 }}>Produit</div>
             <select className="select" style={{ height: 38, width: 150 }} value={filterProduit} onChange={(e) => setFilterProduit(e.target.value)}>
               <option value="">Tous produits</option>
-              <option value="incendie">Incendie</option>
-              <option value="accident">Accident</option>
+              <option value="incendie">Dommages</option>
+              <option value="accident">Accidents</option>
             </select>
           </div>
 
@@ -323,11 +323,11 @@ export default function Performance() {
               <div className="stat-value">{nb(totalSous)}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Primes Incendie HT</div>
+              <div className="stat-label">Primes Dommages HT</div>
               <div className="stat-value">{fcfa(totalIncHT)}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Primes Accident HT</div>
+              <div className="stat-label">Primes Accidents HT</div>
               <div className="stat-value">{fcfa(totalAccHT)}</div>
             </div>
             <div className="stat">
@@ -339,11 +339,11 @@ export default function Performance() {
               <div className="stat-value">{fcfa(totalEncaisse)}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Commission totale Incendie</div>
+              <div className="stat-label">Commission totale Dommages</div>
               <div className="stat-value">{fcfa(totalComIncendie)}</div>
             </div>
             <div className="stat">
-              <div className="stat-label">Commission totale Accident</div>
+              <div className="stat-label">Commission totale Accidents</div>
               <div className="stat-value">{fcfa(totalComAccident)}</div>
             </div>
           </div>
@@ -356,9 +356,9 @@ export default function Performance() {
                     <th>#</th>
                     <th>Partenaire</th>
                     <th>Volume</th>
-                    <th>Inc.</th>
+                    <th>Dom.</th>
                     <th>Acc.</th>
-                    <th>Primes Inc. HT</th>
+                    <th>Primes Dom. HT</th>
                     <th>Primes Acc. HT</th>
                     <th>CA</th>
                     <th>Commission</th>
