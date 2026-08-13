@@ -13,10 +13,10 @@ type FiltreAgent = string | null | { not: null };
 export const TAUX_COMMISSION_AGENT = 0.75;
 
 /**
- * Pondère par `_sum.nombrePaiements` quand disponible (Accident : chaque
- * renouvellement paie à nouveau la même ligne, voir services/accident.ts),
- * sinon retombe sur le nombre de lignes (`_count._all` — Incendie, qui n'a
- * pas de notion de renouvellement).
+ * Pondère par `_sum.nombrePaiements` quand disponible (chaque renouvellement
+ * paie à nouveau la même ligne, voir services/accident.ts et
+ * services/paiementWave.ts), sinon retombe sur le nombre de lignes
+ * (`_count._all`, pour compatibilité si l'appelant n'a pas demandé `_sum`).
  */
 function sommeParPrime(
   groups: { montantPrime: number; _count: { _all: number }; _sum?: { nombrePaiements: number | null } }[],
@@ -45,6 +45,7 @@ async function commissionBrute(
       by: ["montantPrime"],
       where: { partenaireId, agentDistributionId, ...dateWhere },
       _count: { _all: true },
+      _sum: { nombrePaiements: true },
     }),
     prisma.souscriptionAccident.groupBy({
       by: ["montantPrime"],
@@ -256,42 +257,105 @@ function debutPeriode31Jours(): Date {
   return d;
 }
 
+/**
+ * CA (prime HT) du modèle générique pour une sous-branche donnée, pondéré
+ * par `nombrePaiements` — même logique que routes/stats.ts::statsGeneriques.
+ * Sans ceci, les partenaires au QR unique (dont les ventes se font surtout
+ * sur ces produits : RelaxAccidents/RelaxVoyage/SecurHome+/SecurPro Dommages,
+ * etc.) ne pouvaient jamais compter dans le bonus mensuel ni dans le budget
+ * mensuel global du tableau de bord, quel que soit leur volume réel.
+ */
+async function caHTGenerique(
+  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES",
+  where: { partenaireId?: string; createdAt?: { gte: Date } }
+): Promise<number> {
+  const produits = await prisma.produit.findMany({ where: { sousBranche } });
+  if (produits.length === 0) return 0;
+  const idsDynamique = produits
+    .filter((p) => (PRODUITS_COMMISSION_DYNAMIQUE as readonly string[]).includes(p.code))
+    .map((p) => p.id);
+  const idsCatalogue = produits.filter((p) => !idsDynamique.includes(p.id)).map((p) => p.id);
+
+  const [groups, tarifs, dynRows] = await Promise.all([
+    idsCatalogue.length
+      ? prisma.souscription.groupBy({
+          by: ["produitId", "montantPrime"],
+          where: { produitId: { in: idsCatalogue }, waveStatut: "confirme", ...where },
+          _count: { _all: true },
+          _sum: { nombrePaiements: true },
+        })
+      : [],
+    idsCatalogue.length
+      ? prisma.tarifProduit.findMany({ where: { produitId: { in: idsCatalogue } } })
+      : [],
+    idsDynamique.length
+      ? prisma.souscription.findMany({
+          where: { produitId: { in: idsDynamique }, waveStatut: "confirme", ...where },
+          select: { produitId: true, montantPrime: true, resultat: true, nombrePaiements: true },
+        })
+      : [],
+  ]);
+
+  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  let total = 0;
+  for (const g of groups) {
+    const primeHT = tarifMap.get(`${g.produitId}:${g.montantPrime}`)?.primeHT ?? g.montantPrime;
+    total += primeHT * (g._sum.nombrePaiements ?? g._count._all);
+  }
+  for (const s of dynRows) {
+    const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number } | null;
+    const primeHT = resultat?.primeNetteHT2 ?? resultat?.primeNetteHT ?? s.montantPrime;
+    total += primeHT * (s.nombrePaiements ?? 1);
+  }
+  return total;
+}
+
+/** CA (prime HT) "Dommages" : Incendie (historique) + modèle générique ASSURANCES_DOMMAGES (SecurHome+, SecurPro Dommages). */
 async function caHTIncendie(where: {
   partenaireId?: string;
   createdAt?: { gte: Date };
 }): Promise<number> {
-  const [groups, tarifs] = await Promise.all([
+  const [groups, tarifs, generique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["montantPrime"],
       where: { ...where, statut: "complet" },
       _count: { _all: true },
+      _sum: { nombrePaiements: true },
     }),
     prisma.tarifIncendie.findMany(),
+    caHTGenerique("ASSURANCES_DOMMAGES", where),
   ]);
   const map = new Map(tarifs.map((t) => [t.prime, t]));
-  return groups.reduce(
-    (s, g) => s + (map.get(g.montantPrime)?.primeHT ?? g.montantPrime) * g._count._all,
+  const legacy = groups.reduce(
+    (s, g) =>
+      s + (map.get(g.montantPrime)?.primeHT ?? g.montantPrime) * (g._sum.nombrePaiements ?? g._count._all),
     0
   );
+  return legacy + generique;
 }
 
+/** CA (prime HT) "Accidents" : Accident (historique) + modèle générique ASSURANCES_ACCIDENTS (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage). */
 async function caHTAccident(where: {
   partenaireId?: string;
   createdAt?: { gte: Date };
 }): Promise<number> {
-  const [groups, tarifs] = await Promise.all([
+  const [groups, tarifs, generique] = await Promise.all([
     prisma.souscriptionAccident.groupBy({
       by: ["montantPrime"],
       where: { ...where, waveStatut: "confirme" },
       _count: { _all: true },
+      _sum: { nombrePaiements: true },
     }),
     prisma.tarifAccident.findMany(),
+    caHTGenerique("ASSURANCES_ACCIDENTS", where),
   ]);
   const map = new Map(tarifs.map((t) => [t.prime, t]));
-  return groups.reduce(
-    (s, g) => s + (map.get(g.montantPrime)?.primeHT ?? g.montantPrime) * g._count._all,
+  const legacy = groups.reduce(
+    (s, g) =>
+      s + (map.get(g.montantPrime)?.primeHT ?? g.montantPrime) * (g._sum.nombrePaiements ?? g._count._all),
     0
   );
+  return legacy + generique;
 }
 
 /** Commission mensuelle (bonus de performance) d'un partenaire, sur les 31 derniers jours. */

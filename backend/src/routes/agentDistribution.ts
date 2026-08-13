@@ -88,13 +88,21 @@ agentDistributionRouter.get(
   "/souscriptions",
   asyncHandler(async (req: AuthedRequest, res) => {
     const agentDistributionId = req.user!.sub;
-    const [incendie, accident] = await Promise.all([
+    const [incendie, accident, generique] = await Promise.all([
       prisma.souscriptionIncendie.findMany({
         where: { agentDistributionId },
         orderBy: { createdAt: "desc" },
       }),
       prisma.souscriptionAccident.findMany({
         where: { agentDistributionId },
+        orderBy: { createdAt: "desc" },
+      }),
+      // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
+      // SecurHome+, SecurPro Dommages) — sans ceci, un agent dont les ventes
+      // sont uniquement sur ces produits voyait toujours "0 souscription".
+      prisma.souscription.findMany({
+        where: { agentDistributionId, waveStatut: "confirme" },
+        include: { produit: { select: { code: true } } },
         orderBy: { createdAt: "desc" },
       }),
     ]);
@@ -112,6 +120,16 @@ agentDistributionRouter.get(
       accident: accident.map((s) => ({
         id: s.id,
         produit: "accident" as const,
+        nom: s.nom,
+        prenom: s.prenom,
+        telephone: s.telephone,
+        montantPrime: s.montantPrime,
+        statut: s.waveStatut,
+        createdAt: s.createdAt,
+      })),
+      generique: generique.map((s) => ({
+        id: s.id,
+        produit: s.produit.code,
         nom: s.nom,
         prenom: s.prenom,
         telephone: s.telephone,

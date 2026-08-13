@@ -34,8 +34,12 @@ type DateWhereStats = { createdAt?: { gte?: Date; lte?: Date } };
  * securhomeDommages.ts/tarificationImf.ts) — leur contribution au FG total
  * reste donc nulle, seuls les produits à tarif catalogue (TarifProduit.fg)
  * peuvent y contribuer.
+ *
+ * `partenaireId` restreint à un seul partenaire — réutilisé par
+ * routes/me.ts pour le chiffre d'affaires de l'espace partenaire.
  */
-async function statsGeneriques(dateWhere: DateWhereStats) {
+export async function statsGeneriques(dateWhere: DateWhereStats & { partenaireId?: string }) {
+  const { partenaireId, ...periode } = dateWhere;
   const totals = {
     ASSURANCES_ACCIDENTS: { primes: 0, ca: 0, taxes: 0, fg: 0 },
     ASSURANCES_DOMMAGES: { primes: 0, ca: 0, taxes: 0, fg: 0 },
@@ -55,7 +59,7 @@ async function statsGeneriques(dateWhere: DateWhereStats) {
     idsCatalogue.length
       ? prisma.souscription.groupBy({
           by: ["produitId", "montantPrime"],
-          where: { produitId: { in: idsCatalogue }, waveStatut: "confirme", ...dateWhere },
+          where: { produitId: { in: idsCatalogue }, partenaireId, waveStatut: "confirme", ...periode },
           _count: { _all: true },
           _sum: { nombrePaiements: true },
         })
@@ -65,7 +69,7 @@ async function statsGeneriques(dateWhere: DateWhereStats) {
       : [],
     idsDynamique.length
       ? prisma.souscription.findMany({
-          where: { produitId: { in: idsDynamique }, waveStatut: "confirme", ...dateWhere },
+          where: { produitId: { in: idsDynamique }, partenaireId, waveStatut: "confirme", ...periode },
           select: { produitId: true, montantPrime: true, resultat: true, nombrePaiements: true },
         })
       : [],
@@ -143,6 +147,7 @@ statsRouter.get(
         by: ["montantPrime"],
         where: dateWhere,
         _count: { _all: true },
+        _sum: { nombrePaiements: true },
       }),
       prisma.souscriptionAccident.groupBy({
         by: ["montantPrime"],
@@ -194,10 +199,11 @@ statsRouter.get(
     const taxesIncendie = inc.taxes + generiques.ASSURANCES_DOMMAGES.taxes;
     const fgTotal = acc.fg + inc.fg + generiques.ASSURANCES_ACCIDENTS.fg + generiques.ASSURANCES_DOMMAGES.fg;
 
-    // Prime Incendie/Dommages TTC = somme des montants payés (1000 / 2000)
-    // + produits génériques Dommages (SecurHome+, SecurPro).
+    // Prime Incendie/Dommages TTC = somme des montants payés, PAIEMENTS
+    // confirmés (1er + renouvellements), pas lignes distinctes, + produits
+    // génériques Dommages (SecurHome+, SecurPro).
     const primesIncendie =
-      incGroups.reduce((s, g) => s + g.montantPrime * g._count._all, 0) +
+      incGroups.reduce((s, g) => s + g.montantPrime * (g._sum.nombrePaiements ?? g._count._all), 0) +
       generiques.ASSURANCES_DOMMAGES.primes;
     // Prime Accident/Accidents TTC = somme des montants payés, PAIEMENTS
     // confirmés (1er + renouvellements), pas lignes distinctes, + produits
@@ -535,8 +541,10 @@ statsRouter.get(
           localisation: r.localisation,
           clientsDommages: r.clientsIncendie,
           clientsAccidents: r.clientsAccident,
-          primesAccidents: r.primesAccident,
-          primesDommages: r.primesIncendie,
+          // HT, comme le tableau à l'écran (Performance.tsx) — la valeur TTC
+          // n'y est jamais affichée, l'export ne doit pas diverger de l'écran.
+          primesAccidentsHT: r.primesAccidentHT,
+          primesDommagesHT: r.primesIncendieHT,
           commission: r.commission,
         }))
       )

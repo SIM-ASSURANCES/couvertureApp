@@ -11,6 +11,7 @@ interface PartenaireDetails {
   partenaire: {
     id: string; nomCommerce: string; nomResponsable: string; telephone: string;
     localisation: string; email: string | null; statut: string;
+    branche: "INCENDIE_ACCIDENT" | "RELAX" | null;
     produitIncendie: boolean; produitAccident: boolean;
   };
   souscripteursIncendie: { id: string; telephone: string; nom?: string | null; prenom?: string | null; montantPrime: number; statut: string; createdAt: string }[];
@@ -166,9 +167,9 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
               Commission mensuelle (31 derniers jours)
             </div>
             <div className="stat-grid" style={{ marginBottom: 20 }}>
-              {data.partenaire.produitIncendie && (
+              {data.partenaire.branche === "INCENDIE_ACCIDENT" && (
                 <div className="stat">
-                  <div className="stat-label">Incendie — CA prime HT</div>
+                  <div className="stat-label">Dommages — CA prime HT</div>
                   <div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionMensuelle.incendie.caHT)}</div>
                   <div
                     className="stat-trend"
@@ -180,9 +181,9 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                   </div>
                 </div>
               )}
-              {data.partenaire.produitAccident && (
+              {data.partenaire.branche === "INCENDIE_ACCIDENT" && (
                 <div className="stat">
-                  <div className="stat-label">Accident — CA prime HT</div>
+                  <div className="stat-label">Accidents — CA prime HT</div>
                   <div className="stat-value" style={{ fontSize: 18 }}>{fcfa(data.commissionMensuelle.accident.caHT)}</div>
                   <div
                     className="stat-trend"

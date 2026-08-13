@@ -15,6 +15,9 @@ export default function RelaxPerformance() {
 
   // Une souscription faite via l'espace d'un agent de distribution ne rapporte
   // que 25% de sa commission au partenaire (le reste, 75%, revient à l'agent).
+  // Approximation d'affichage (vue "v1" ci-dessus) : la valeur exacte, source
+  // de vérité, est TAUX_COMMISSION_AGENT dans backend/src/services/commission.ts
+  // — à garder synchronisée si ce taux change un jour.
   const TAUX_COMMISSION_AGENT = 0.75;
   const commissionParPartenaire = new Map<string, number>();
   for (const s of souscriptions ?? []) {

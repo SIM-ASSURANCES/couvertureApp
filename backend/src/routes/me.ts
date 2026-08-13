@@ -6,6 +6,7 @@ import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
 import { commissionStatsPartenaire, commissionTotaleAgent, commissionTotalePartenaire } from "../services/commission.js";
+import { statsGeneriques } from "./stats.js";
 import {
   parseFiltres,
   fetchGenerique,
@@ -69,7 +70,7 @@ meRouter.get(
     const createdAt = parseDateRange(req as { query: { from?: string; to?: string } });
     const dateWhere = createdAt ? { createdAt } : {};
 
-    const [p, incGroups, accCount, accGroups, tarifsInc, tarifsAcc, commissionTotale] =
+    const [p, incGroups, accCount, accGroups, tarifsInc, tarifsAcc, commissionTotale, generique] =
       await Promise.all([
         prisma.partenaire.findUnique({ where: { id } }),
         prisma.souscriptionIncendie.groupBy({
@@ -90,6 +91,11 @@ meRouter.get(
         // appliquée, inclut aussi les produits Accidents/Dommages à devis
         // dynamique) — voir services/commission.ts.
         commissionTotalePartenaire(id, dateWhere),
+        // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
+        // SecurHome+, SecurPro Dommages) — sans ceci, le CA affiché à un
+        // partenaire au QR unique (dont les ventes se font surtout sur ces
+        // produits) ne comptait jamais que les deux modèles historiques.
+        statsGeneriques({ ...dateWhere, partenaireId: id }),
       ]);
 
     if (!p) return res.status(404).json({ error: "Introuvable" });
@@ -97,6 +103,7 @@ meRouter.get(
     const produit = p.produitIncendie ? "incendie" : "accident";
     const inc = depuisBareme(incGroups, tarifsInc);
     const acc = depuisBareme(accGroups, tarifsAcc);
+    const caGenerique = generique.ASSURANCES_ACCIDENTS.ca + generique.ASSURANCES_DOMMAGES.ca;
 
     const estIncendie = produit === "incendie";
 
@@ -112,7 +119,10 @@ meRouter.get(
       clientsAccident: accCount,
       primesIncendie: inc.primes,
       primesAccident: acc.primes,
-      chiffreAffaires: Math.round(estIncendie ? inc.ca : acc.ca),
+      // Un partenaire legacy Incendie n'a jamais de ventes sur le modèle
+      // générique (produit figé à la création) — seul le partenaire
+      // Accident/QR unique/sousBranche peut en avoir, d'où l'ajout ici.
+      chiffreAffaires: Math.round(estIncendie ? inc.ca : acc.ca + caGenerique),
       commission: Math.round(commissionTotale),
     });
   })
@@ -366,9 +376,13 @@ meRouter.get(
     });
     const rows = await Promise.all(
       agents.map(async (a) => {
-        const [nbIncendie, nbAccident, commissionTotale] = await Promise.all([
+        const [nbIncendie, nbAccident, nbGenerique, commissionTotale] = await Promise.all([
           prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
           prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
+          // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
+          // SecurHome+, SecurPro Dommages) — sans ceci, un agent qui ne vend
+          // que ces produits affichait toujours 0 souscription ici.
+          prisma.souscription.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
           commissionTotaleAgent(a.id),
         ]);
         return {
@@ -378,7 +392,7 @@ meRouter.get(
           localisation: a.localisation,
           statut: a.statut,
           createdAt: a.createdAt,
-          nombreSouscriptions: nbIncendie + nbAccident,
+          nombreSouscriptions: nbIncendie + nbAccident + nbGenerique,
           commissionTotale: Math.round(commissionTotale),
         };
       })

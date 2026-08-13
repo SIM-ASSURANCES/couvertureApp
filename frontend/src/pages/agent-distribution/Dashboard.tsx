@@ -33,7 +33,9 @@ interface Qr {
 
 interface Souscription {
   id: string;
-  produit: "incendie" | "accident";
+  // "incendie"/"accident" (historiques) ou le code d'un produit générique
+  // (relaxmoto, relaxauto, relaxaccidents_fraismedicaux, etc.).
+  produit: string;
   nom: string | null;
   prenom: string | null;
   telephone: string;
@@ -134,8 +136,8 @@ export default function AgentDistributionDashboard() {
         const m = await agentDistApi.get<Moi>("/moi");
         setMoi(m);
         if (m.forcerChangementMotDePasse) return;
-        const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
-        setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+        const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[]; generique: Souscription[] }>("/souscriptions");
+        setSouscriptions([...s.incendie, ...s.accident, ...s.generique].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
         if (m.sousBranche || m.qrUnifie) {
           setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${m.sousBranche ?? "UNIFIE"}`));
         } else if (m.produit === "incendie") {
@@ -168,8 +170,8 @@ export default function AgentDistributionDashboard() {
       if (moi?.forcerChangementMotDePasse) {
         setLoading(true);
         setMoi({ ...moi, forcerChangementMotDePasse: false });
-        const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[] }>("/souscriptions");
-        setSouscriptions([...s.incendie, ...s.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+        const s = await agentDistApi.get<{ incendie: Souscription[]; accident: Souscription[]; generique: Souscription[] }>("/souscriptions");
+        setSouscriptions([...s.incendie, ...s.accident, ...s.generique].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
         if (moi.sousBranche || moi.qrUnifie) {
           setQrSelecteur(await agentDistApi.get<Qr>(`/qr/${moi.sousBranche ?? "UNIFIE"}`));
         } else if (moi.produit === "incendie") {

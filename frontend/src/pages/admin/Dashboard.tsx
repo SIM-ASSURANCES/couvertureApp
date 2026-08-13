@@ -221,7 +221,7 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<PiggyBank size={20} />}
-              label="Budget Incendie (mensuel)"
+              label="Budget Dommages (mensuel)"
               value={fcfa(data.budgetIncendie)}
               trend="5% du CA prime HT sur 31 jours glissants"
               color="#b45309"
@@ -229,7 +229,7 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<PiggyBank size={20} />}
-              label="Budget Accident (mensuel)"
+              label="Budget Accidents (mensuel)"
               value={fcfa(data.budgetAccident)}
               trend="5% du CA prime HT sur 31 jours glissants"
               color="#15803d"
