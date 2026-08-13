@@ -1,11 +1,24 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import { prisma } from "../db.js";
 import { signToken, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 
 export const authRouter = Router();
+
+// Toutes les routes de connexion ci-dessous doivent forcer `email`/`password`/
+// `telephone`/`motDePasse` à être des chaînes : sans ceci, un login basé sur
+// `findFirst` (client/agent-distribution) accepterait un objet-filtre Prisma
+// (ex. `{"telephone":{"startsWith":"07"}}`) à la place d'une valeur exacte,
+// permettant d'énumérer des comptes sans en connaître le numéro.
+const identifiantsSchema = z.object({
+  email: z.string().min(1).max(200).optional(),
+  password: z.string().min(1).max(200).optional(),
+  telephone: z.string().min(1).max(40).optional(),
+  motDePasse: z.string().min(1).max(200).optional(),
+});
 
 /**
  * Branches effectives d'un admin : un SUPER_ADMIN a toujours accès aux deux,
@@ -20,7 +33,7 @@ function branchesEffectives(admin: { role: string; branches: string[] }): Branch
 authRouter.post(
   "/admin/login",
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, password } = identifiantsSchema.parse(req.body ?? {});
     const admin = await prisma.admin.findUnique({ where: { email } });
     if (!admin || !(await bcrypt.compare(password ?? "", admin.passwordHash))) {
       return res.status(401).json({ error: "Identifiants invalides" });
@@ -57,7 +70,7 @@ authRouter.post(
 authRouter.post(
   "/login",
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, password } = identifiantsSchema.parse(req.body ?? {});
     if (!email || !password)
       return res.status(400).json({ error: "Email et mot de passe requis" });
 
@@ -139,7 +152,7 @@ authRouter.post(
 authRouter.post(
   "/agent-imf/login",
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, password } = identifiantsSchema.parse(req.body ?? {});
     const a = await prisma.agentImf.findUnique({
       where: { email },
       include: { agence: { include: { zone: true } }, zone: true, zones: true },
@@ -179,7 +192,7 @@ authRouter.post(
 authRouter.post(
   "/client/login",
   asyncHandler(async (req, res) => {
-    const { telephone, motDePasse } = req.body ?? {};
+    const { telephone, motDePasse } = identifiantsSchema.parse(req.body ?? {});
     if (!telephone || !motDePasse) {
       return res.status(400).json({ error: "Téléphone et mot de passe requis" });
     }
@@ -214,7 +227,7 @@ authRouter.post(
 authRouter.post(
   "/agent-distribution/login",
   asyncHandler(async (req, res) => {
-    const { telephone, motDePasse } = req.body ?? {};
+    const { telephone, motDePasse } = identifiantsSchema.parse(req.body ?? {});
     if (!telephone || !motDePasse) {
       return res.status(400).json({ error: "Téléphone et mot de passe requis" });
     }
@@ -244,7 +257,7 @@ authRouter.post(
 authRouter.post(
   "/partenaire/login",
   asyncHandler(async (req, res) => {
-    const { email, password } = req.body ?? {};
+    const { email, password } = identifiantsSchema.parse(req.body ?? {});
     const p = await prisma.partenaire.findUnique({ where: { email } });
     if (
       !p ||

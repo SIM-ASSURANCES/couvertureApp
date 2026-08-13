@@ -1,8 +1,9 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
@@ -27,10 +28,17 @@ function parseDateRange(req: {
   return range.gte || range.lte ? range : undefined;
 }
 
+// Math.random() (xorshift128+) est prédictible à partir de quelques sorties
+// observées — un mot de passe provisoire (même temporaire) doit venir d'un
+// générateur cryptographique, comme genererMotDePasseClient (notify.ts).
 function genMotDePasseProvisoire(): string {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const part = (n: number) =>
-    Array.from({ length: n }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const part = (n: number) => {
+    const octets = randomBytes(n);
+    let s = "";
+    for (let i = 0; i < n; i++) s += chars[octets[i] % chars.length];
+    return s;
+  };
   return `${part(3)}-${part(4)}`;
 }
 
@@ -90,9 +98,16 @@ const createSchema = baseSchema.refine((d) => !(d.produit != null && d.sousBranc
   message: "Indiquer soit un produit, soit une Assurance (sousBranche), jamais les deux.",
 });
 
-const patchSchema = baseSchema.partial().extend({
-  motDePasse: z.string().min(1).optional(),
-});
+// Pas de champ mot de passe ici : cette route générique n'est protégée que
+// par requireAuth("admin") (aucun contrôle de branche), donc permettre d'y
+// réinitialiser un mot de passe reviendrait à laisser n'importe quel admin
+// prendre le contrôle du compte d'un partenaire d'une autre branche.
+const patchSchema = baseSchema.partial();
+
+/** Branches auxquelles cet admin a accès (toutes pour un SUPER_ADMIN). */
+function branchesAutorisees(req: AuthedRequest): BrancheAcces[] {
+  return (["INCENDIE_ACCIDENT", "RELAX"] as BrancheAcces[]).filter((b) => hasBranche(req.user, b));
+}
 
 async function withCounts(id: string) {
   const [incendie, accident, relax] = await Promise.all([
@@ -107,12 +122,17 @@ async function withCounts(id: string) {
 
 partenairesRouter.get(
   "/",
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const { q, statut, branche, produit } = req.query as { q?: string; statut?: string; branche?: string; produit?: string };
+    const autorisees = branchesAutorisees(req);
+    const brancheDemandee = branche === "INCENDIE_ACCIDENT" || branche === "RELAX" ? branche : undefined;
+    // Un admin ne peut jamais élargir sa propre visibilité via le paramètre
+    // `branche` : l'intersection avec ses branches autorisées reste la borne.
+    const branchesFiltre = brancheDemandee ? autorisees.filter((b) => b === brancheDemandee) : autorisees;
     const list = await prisma.partenaire.findMany({
       where: {
         statut: statut === "actif" || statut === "inactif" ? statut : undefined,
-        branche: branche === "INCENDIE_ACCIDENT" || branche === "RELAX" ? branche : undefined,
+        branche: { in: branchesFiltre },
         // Filtre par produit générique précis (ex. "relaxaccidents_fraismedicaux")
         // — nécessaire quand plusieurs produits génériques partagent la même
         // branche (Assurances Accidents reste rattachée à INCENDIE_ACCIDENT).
@@ -161,9 +181,12 @@ partenairesRouter.get(
 
 partenairesRouter.get(
   "/:id",
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
     const counts = await withCounts(p.id);
     res.json({ ...p, passwordHash: undefined, ...counts });
   })
@@ -172,10 +195,13 @@ partenairesRouter.get(
 /** Détails d'un partenaire : souscripteurs + commission (totale / encaissée / due), avec filtre période */
 partenairesRouter.get(
   "/:id/details",
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const id = req.params.id;
     const p = await prisma.partenaire.findUnique({ where: { id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
 
     const range = parseDateRange(req as { query: { from?: string; to?: string } });
     const dateWhere = range ? { createdAt: range } : {};
@@ -205,6 +231,7 @@ partenairesRouter.get(
         localisation: p.localisation,
         email: p.email,
         statut: p.statut,
+        branche: p.branche,
         produitIncendie: p.produitIncendie,
         produitAccident: p.produitAccident,
       },
@@ -227,6 +254,10 @@ partenairesRouter.post(
     const generique = data.produit ? isProduitGenerique(data.produit) : false;
     const isIncendie = data.produit === "incendie";
     const isAccident = data.produit === "accident";
+
+    if (!hasBranche(req.user, relax ? "RELAX" : "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
 
     const motDePasseProvisoire = data.email ? genMotDePasseProvisoire() : null;
 
@@ -320,6 +351,9 @@ partenairesRouter.patch(
       where: { id: req.params.id },
     });
     if (!before) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, before.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
     const data = patchSchema.parse(req.body);
     const relax = data.produit != null ? isProduitRelax(data.produit) : before.branche === "RELAX";
     const generique = data.produit != null ? isProduitGenerique(data.produit) : false;
@@ -355,9 +389,6 @@ partenairesRouter.patch(
           data.produit != null && isAccident && !before.qrAccidentToken
             ? newQrToken("acc")
             : undefined,
-        passwordHash: data.motDePasse
-          ? await bcrypt.hash(data.motDePasse, 10)
-          : undefined,
       },
     });
 
@@ -412,10 +443,17 @@ partenairesRouter.patch(
   })
 );
 
+const statutSchema = z.object({ statut: z.enum(["actif", "inactif"]) });
+
 partenairesRouter.post(
   "/:id/statut",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { statut } = req.body as { statut: "actif" | "inactif" };
+    const before = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!before) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, before.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
+    const { statut } = statutSchema.parse(req.body);
     const updated = await prisma.partenaire.update({
       where: { id: req.params.id },
       data: { statut },
@@ -479,9 +517,10 @@ partenairesRouter.get(
     });
     const rows = await Promise.all(
       agents.map(async (a) => {
-        const [nbIncendie, nbAccident, commissionTotale] = await Promise.all([
+        const [nbIncendie, nbAccident, nbGenerique, commissionTotale] = await Promise.all([
           prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
           prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
+          prisma.souscription.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
           commissionTotaleAgent(a.id),
         ]);
         return {
@@ -491,7 +530,7 @@ partenairesRouter.get(
           localisation: a.localisation,
           statut: a.statut,
           createdAt: a.createdAt,
-          nombreSouscriptions: nbIncendie + nbAccident,
+          nombreSouscriptions: nbIncendie + nbAccident + nbGenerique,
           commissionTotale: Math.round(commissionTotale),
         };
       })

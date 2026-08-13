@@ -101,7 +101,7 @@ export function renderCarteHtml(c: CarteData): string {
     </div>
     <div class="separateur"></div>
     <div class="corps">
-      <div class="photo"><img src="${c.photoDataUrl}" alt="" /></div>
+      <div class="photo"><img src="${esc(c.photoDataUrl)}" alt="" /></div>
       <div class="infos">
         <div class="ligne"><div class="k">Matricule</div><div class="sep">:</div><div class="v">${val(c.matricule)}</div></div>
         <div class="ligne"><div class="k">Nom</div><div class="sep">:</div><div class="v">${val(c.nom)}</div></div>

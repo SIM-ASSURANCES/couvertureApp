@@ -101,10 +101,10 @@ clientRouter.get(
 );
 
 const sinistreSchema = z.object({
-  typeEvenement: z.string().min(1),
+  typeEvenement: z.string().min(1).max(120),
   dateSurvenance: z.coerce.date(),
-  description: z.string().optional(),
-  photoUrl: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  photoUrl: z.string().max(2_000_000).optional(),
 });
 
 clientRouter.post(

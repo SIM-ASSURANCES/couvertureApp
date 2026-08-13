@@ -104,6 +104,13 @@ export function requireAnySuperAdmin(
   next();
 }
 
+/** Vrai si l'utilisateur (SUPER_ADMIN, ou admin dont le claim branches couvre cette branche) peut accéder à la branche donnée. */
+export function hasBranche(user: AuthUser | undefined, branche: BrancheAcces): boolean {
+  if (!user) return false;
+  if (user.role === "SUPER_ADMIN") return true;
+  return !!user.branches?.includes(branche);
+}
+
 /**
  * Restreint l'accès aux admins ayant la branche demandée (Incendie/Accident ou Relax).
  * Un SUPER_ADMIN a toujours accès aux deux branches, quel que soit le contenu
@@ -112,13 +119,7 @@ export function requireAnySuperAdmin(
  */
 export function requireBranche(branche: BrancheAcces) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
-    if (req.user?.role === "SUPER_ADMIN") return next();
-    // Jeton émis avant l'introduction des branches (claim absent, et non un
-    // tableau vide) : on laisse passer le temps que la session expire
-    // naturellement (≤ 12h) plutôt que de couper l'accès en plein milieu
-    // d'une session déjà ouverte au moment du déploiement.
-    if (req.user?.branches === undefined) return next();
-    if (!req.user.branches.includes(branche)) {
+    if (!hasBranche(req.user, branche)) {
       return res.status(403).json({ error: "Accès refusé pour cette branche" });
     }
     next();

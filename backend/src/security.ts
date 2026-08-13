@@ -41,6 +41,9 @@ export interface RawBodyRequest extends Request {
  *
  * Renvoie `true` si la signature est valide, `false` sinon.
  */
+/** Tolérance anti-rejeu : au-delà, un webhook pourtant signé valablement est refusé. */
+const WAVE_SIGNATURE_MAX_AGE_MS = 5 * 60 * 1000;
+
 export function verifyWaveSignature(
   rawBody: Buffer | undefined,
   signatureHeader: string | undefined,
@@ -56,6 +59,11 @@ export function verifyWaveSignature(
     .map((p) => p.slice(3));
 
   if (!timestamp || signatures.length === 0) return false;
+
+  const timestampMs = Number(timestamp) * 1000;
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > WAVE_SIGNATURE_MAX_AGE_MS) {
+    return false;
+  }
 
   const signedPayload = `${timestamp}.${rawBody.toString("utf8")}`;
   const expected = crypto

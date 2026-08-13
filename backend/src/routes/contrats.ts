@@ -22,7 +22,14 @@ export const contratsRouter = Router();
 const texte = (max = 200) => z.string().max(max);
 const texteOpt = (max = 200) => texte(max).nullish();
 const montant = z.number().finite().min(0).max(1_000_000_000);
-const dataUrlSignature = z.string().max(500_000).startsWith("data:image/").nullish();
+// Regex stricte (et non startsWith, qui ne borne que le début de la chaîne) :
+// tout le reste de la valeur doit être du base64 valide, aucun caractère
+// permettant de sortir de l'attribut src="" (guillemet, chevron) ne peut s'y glisser.
+const dataUrlSignature = z
+  .string()
+  .max(500_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Signature invalide")
+  .nullish();
 
 const ligneGarantieSchema = z.object({
   garantie: texte(200),

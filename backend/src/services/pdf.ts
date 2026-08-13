@@ -27,11 +27,31 @@ async function getBrowser(): Promise<Browser> {
   return browserPromise;
 }
 
+/**
+ * Défense en profondeur contre une éventuelle injection HTML dans le contenu
+ * rendu (voir services/contractHtml.ts, carteHtml.ts) : même si un attribut
+ * `src` était détourné, Chromium (lancé avec --no-sandbox) ne doit jamais
+ * pouvoir charger un schéma autre que data:/http(s) — bloque notamment
+ * file:// (lecture de fichiers locaux) et les schémas internes/réseau.
+ */
+async function bloquerSchemasDangereux(page: import("puppeteer-core").Page): Promise<void> {
+  await page.setRequestInterception(true);
+  page.on("request", (req) => {
+    const scheme = req.url().split(":")[0];
+    if (scheme === "data" || scheme === "http" || scheme === "https") {
+      req.continue();
+    } else {
+      req.abort();
+    }
+  });
+}
+
 /** Rend un document HTML autonome (avec son <style>) en PDF A4 — texte réel, pas une image. */
 export async function htmlToPdf(html: string): Promise<Buffer> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    await bloquerSchemasDangereux(page);
     await page.setContent(html, { waitUntil: "load", timeout: 30000 });
     const pdf = await page.pdf({
       format: "a4",
@@ -49,6 +69,7 @@ export async function htmlToPng(html: string, width: number, height: number): Pr
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
+    await bloquerSchemasDangereux(page);
     await page.setViewport({ width, height, deviceScaleFactor: 2 });
     await page.setContent(html, { waitUntil: "load", timeout: 30000 });
     const png = await page.screenshot({ type: "png", omitBackground: false });

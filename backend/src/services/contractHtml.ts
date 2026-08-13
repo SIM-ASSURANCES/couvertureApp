@@ -342,9 +342,11 @@ const RECLAMATION = `<div class="note" style="font-weight:bold;font-style:italic
 </div>`;
 
 function signatures(sig?: string | null) {
-  // `sig` est une data URL PNG (capture de signature) — pas de texte libre, non échappée.
+  // `sig` est censée être une data URL image, mais provient in fine d'une
+  // requête publique (voir contrats.ts) — toujours échappée avant interpolation
+  // dans l'attribut src, pour ne jamais permettre une sortie d'attribut HTML.
   const gauche = sig
-    ? `<img src="${sig}" style="height:60px;max-width:220px;display:block;margin-bottom:4px;" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">LE SOUSCRIPTEUR</div>`
+    ? `<img src="${esc(sig)}" style="height:60px;max-width:220px;display:block;margin-bottom:4px;" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">LE SOUSCRIPTEUR</div>`
     : `<div>LE SOUSCRIPTEUR</div>`;
   const droite = `<img src="${APP_PUBLIC_URL}/signature-compagnie.png" alt="" style="height:60px;max-width:220px;display:inline-block;margin-bottom:4px;" /><div style="border-top:1px solid #5b6b80;padding-top:4px;">POUR LA COMPAGNIE</div>`;
   return `<div class="sign"><div>${gauche}</div><div style="text-align:right;">${droite}</div></div>`;

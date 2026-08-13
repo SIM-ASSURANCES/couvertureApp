@@ -27,6 +27,17 @@ function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
   return (PRODUITS_RELAX as readonly string[]).includes(p);
 }
 
+// Data URL image (signature, pièce d'identité, selfie) : régime commun à tous
+// les schémas publics ci-dessous — bornée en taille et validée par regex
+// stricte (et non startsWith, qui ne borne que le début de la chaîne), pour
+// qu'aucun caractère de sortie d'attribut HTML (guillemet, chevron) ne
+// puisse s'y glisser jusqu'au rendu PDF/carte (voir services/contractHtml.ts,
+// services/carteHtml.ts).
+const dataUrlImage = z
+  .string()
+  .max(2_000_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
 // refonte Assurances Accidents/Dommages (voir routes /initiate-formule ci-dessous).
@@ -475,6 +486,20 @@ publicRouter.get(
 );
 
 /** Incendie : complétion du formulaire via lien WhatsApp */
+const completionIncendieSchema = z.object({
+  nom: z.string().min(1).max(120).optional(),
+  prenom: z.string().min(1).max(120).optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  refFacture: z.string().min(1).max(120).optional(),
+  commune: z.string().min(1).max(120).optional(),
+  quartier: z.string().min(1).max(120).optional(),
+  numeroMaison: z.string().max(60).optional(),
+  signature: dataUrlImage.optional(),
+  dateNaissance: z.coerce.date().optional(),
+  pieceIdentiteUrl: dataUrlImage.optional(),
+  selfieUrl: dataUrlImage.optional(),
+});
+
 publicRouter.patch(
   "/souscriptions/incendie/:token",
   asyncHandler(async (req, res) => {
@@ -485,7 +510,7 @@ publicRouter.patch(
     const {
       nom, prenom, email, refFacture, commune, quartier, numeroMaison, signature,
       dateNaissance, pieceIdentiteUrl, selfieUrl,
-    } = req.body ?? {};
+    } = completionIncendieSchema.parse(req.body ?? {});
 
     // Renouvellement : une souscription déjà "complet" qui reçoit une NOUVELLE
     // complétion (relance admin, voir /souscriptions/incendie/:id/relance-
@@ -577,7 +602,7 @@ const accSchema = z.object({
   telephone: z.string().min(6),
   dateNaissance: z.coerce.date(),
   tarifAccidentId: z.number().int().positive().optional(),
-  signature: z.string().min(1).optional(),
+  signature: dataUrlImage.optional(),
 });
 
 publicRouter.post(
@@ -704,22 +729,25 @@ publicRouter.post(
   "/wave/callback",
   asyncHandler(async (req, res) => {
     // Sécurité : vérifie que la requête provient bien de Wave via la signature HMAC.
-    // En l'absence de WAVE_WEBHOOK_SECRET (mode dev/stub), on journalise un avertissement.
+    // Sans WAVE_WEBHOOK_SECRET configuré, on refuse tout callback plutôt que de
+    // l'accepter sans vérification (fail-closed) — en mode stub (pas de
+    // WAVE_API_KEY), ce webhook n'est de toute façon jamais appelé, la
+    // confirmation se fait immédiatement à la création (voir plus haut).
     const webhookSecret =
       process.env.WAVE_WEBHOOK_SECRET || process.env.WAVE_HMAC_SECRET;
-    if (webhookSecret) {
-      const valid = verifyWaveSignature(
-        (req as RawBodyRequest).rawBody,
-        req.headers["wave-signature"] as string | undefined,
-        webhookSecret
+    if (!webhookSecret) {
+      console.error(
+        "[Wave callback] WAVE_WEBHOOK_SECRET non défini — callback refusé."
       );
-      if (!valid) {
-        return res.status(401).json({ error: "Signature webhook invalide" });
-      }
-    } else {
-      console.warn(
-        "[Wave callback] WAVE_WEBHOOK_SECRET non défini — signature NON vérifiée."
-      );
+      return res.status(401).json({ error: "Webhook non configuré" });
+    }
+    const valid = verifyWaveSignature(
+      (req as RawBodyRequest).rawBody,
+      req.headers["wave-signature"] as string | undefined,
+      webhookSecret
+    );
+    if (!valid) {
+      return res.status(401).json({ error: "Signature webhook invalide" });
     }
 
     // Wave CI envoie : { id, client_reference, payment_status, amount, currency, transaction_id }
@@ -738,6 +766,14 @@ publicRouter.post(
 
     const isConfirme =
       body.payment_status === "succeeded" || body.status === "confirme";
+
+    // Le montant doit toujours être fourni sur une confirmation : sans lui,
+    // le contrôle de cohérence ci-dessous (comparaison au montant attendu)
+    // serait silencieusement sauté, ce qui permettrait de confirmer un
+    // paiement sans jamais prouver le montant réellement payé.
+    if (isConfirme && body.amount == null) {
+      return res.status(400).json({ error: "amount manquant" });
+    }
 
     const s = await prisma.souscriptionAccident.findUnique({
       where: { id: reference },
@@ -904,8 +940,8 @@ publicRouter.get(
  * de collecte n'apparaît côté client qu'à ce moment-là).
  */
 const cartePhotosSchema = z.object({
-  pieceIdentiteUrl: z.string().min(1),
-  selfieUrl: z.string().min(1),
+  pieceIdentiteUrl: dataUrlImage,
+  selfieUrl: dataUrlImage,
 });
 
 publicRouter.patch(
@@ -915,6 +951,13 @@ publicRouter.patch(
     const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
     if (!s || s.waveStatut !== "confirme") {
       return res.status(404).json({ error: "Souscription non disponible" });
+    }
+    // Cette route n'est protégée que par l'id de souscription (visible dans
+    // l'URL de retour Wave, donc potentiellement dans des logs/historiques) —
+    // une fois les photos déposées une première fois, on refuse tout dépôt
+    // suivant plutôt que de permettre un remplacement (fraude à l'identité).
+    if (s.pieceIdentiteUrl || s.selfieUrl) {
+      return res.status(409).json({ error: "Les documents ont déjà été déposés pour cette souscription." });
     }
     const updated = await prisma.souscriptionAccident.update({
       where: { id: s.id },
@@ -960,7 +1003,7 @@ const relaxAccidentsGeneraleSchema = z.object({
   raisonSociale: z.string().min(1).max(200),
   profession: z.string().min(1).max(200),
   telephone: z.string().min(6),
-  signature: z.string().min(1).optional(),
+  signature: dataUrlImage.optional(),
   typeCouverture: z.enum(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"]),
   effectif: z.number().int().min(1),
   montantIJ: z.number().finite(),
@@ -1088,7 +1131,7 @@ const securproDommagesSchema = z.object({
   communeQuartier: z.string().min(1).max(120),
   refFacture: z.string().min(1).max(120),
   telephone: z.string().min(6),
-  signature: z.string().min(1).optional(),
+  signature: dataUrlImage.optional(),
   classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   statutOccupation: z.enum(["proprietaire", "locataire"]),
   valeurBatiment: z.number().finite().min(0).optional(),
@@ -1269,7 +1312,7 @@ const securhomeDommagesSchema = z.object({
   // avec l'utilisateur).
   nombrePieces: z.number().int().min(0).optional(),
   telephone: z.string().min(6),
-  signature: z.string().min(1).optional(),
+  signature: dataUrlImage.optional(),
   statutOccupation: z.enum(["proprietaire", "locataire"]),
   valeurBatiment: z.number().finite().min(0).optional(),
   loyerMensuel: z.number().finite().min(0).optional(),
@@ -1415,6 +1458,10 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
+
     // Le tarif est déterminé par la formule choisie (libelleVariante = cycle),
     // jamais par un id envoyé par le client — chaque cycle porte son propre
     // montant PAR échéance (voir echeancier.ts).
@@ -1510,7 +1557,7 @@ const formuleSchema = z.object({
   // Affiché sur la carte de prise en charge (refonte Novelia).
   sexe: z.enum(["masculin", "feminin"]).optional(),
   formule: z.string().min(1),
-  signature: z.string().min(1).optional(),
+  signature: dataUrlImage.optional(),
   // RelaxVoyage uniquement — voir isProduitFormule ci-dessus.
   typePiece: z.enum(["CNI", "Permis"]).optional(),
   compagnie: z.string().min(1).max(120).optional(),
@@ -1650,7 +1697,7 @@ publicRouter.get(
  */
 const documentSchema = z.object({
   type: z.enum(["CNI", "Permis", "Selfie"]),
-  url: z.string().min(1),
+  url: dataUrlImage,
 });
 
 publicRouter.post(

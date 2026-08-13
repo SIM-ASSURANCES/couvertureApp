@@ -28,6 +28,25 @@ import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
 import { requireAuth, requireBranche } from "./auth.js";
 
+// Sans WAVE_API_KEY, toute souscription payante est confirmée immédiatement
+// sans paiement réel (mode stub — voir routes/public.ts, client.ts). Utile en
+// développement, mais un incident de configuration qui déploierait la
+// production sans cette clé transformerait l'API en distributeur de polices
+// gratuites : on refuse de démarrer plutôt que de laisser passer ce cas.
+if (process.env.NODE_ENV === "production" && !process.env.WAVE_API_KEY) {
+  throw new Error(
+    "WAVE_API_KEY manquant en production — refus de démarrer (le mode stub confirmerait les paiements sans encaissement réel)."
+  );
+}
+// Même logique pour les SMS : sans SMS_API_KEY, le mode stub (services/notify.ts)
+// journalise le message tel quel en console — y compris les mots de passe
+// provisoires envoyés par SMS à l'activation d'un compte client/agent.
+if (process.env.NODE_ENV === "production" && !process.env.SMS_API_KEY) {
+  throw new Error(
+    "SMS_API_KEY manquant en production — refus de démarrer (le mode stub journalierait les SMS, dont des mots de passe, en clair)."
+  );
+}
+
 const app = express();
 // 1 seul proxy en amont (Traefik). Évite le contournement du rate limiter
 // signalé par express-rate-limit quand "trust proxy" vaut true.
@@ -36,14 +55,22 @@ app.set("trust proxy", 1);
 // En-têtes de sécurité HTTP (anti-clickjacking, MIME-sniffing, HSTS, etc.)
 app.use(helmet());
 
-// CORS restreint au domaine du frontend (configurable via CORS_ORIGIN, sinon APP_PUBLIC_URL)
+// CORS restreint au domaine du frontend (configurable via CORS_ORIGIN, sinon APP_PUBLIC_URL).
+// Sans l'un des deux, on refuse de démarrer plutôt que de refléter n'importe
+// quelle origine (ce que ferait `cors({origin:true})`) alors que `credentials:
+// true` est actif — combinaison qui romprait l'isolation cross-origine.
 const allowedOrigins = (process.env.CORS_ORIGIN || process.env.APP_PUBLIC_URL || "")
   .split(",")
   .map((o) => o.trim())
   .filter(Boolean);
+if (allowedOrigins.length === 0) {
+  throw new Error(
+    "CORS_ORIGIN ou APP_PUBLIC_URL doit être défini — aucune origine autorisée n'a été configurée."
+  );
+}
 app.use(
   cors({
-    origin: allowedOrigins.length ? allowedOrigins : true,
+    origin: allowedOrigins,
     credentials: true,
   })
 );

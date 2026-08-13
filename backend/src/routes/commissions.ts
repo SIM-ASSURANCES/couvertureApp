@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
-import { requireAuth, type AuthedRequest } from "../auth.js";
+import { requireAuth, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { notifyPartenaire } from "../services/notifications.js";
@@ -11,10 +11,19 @@ commissionsRouter.use(requireAuth("admin"));
 /** Liste des demandes de commission */
 commissionsRouter.get(
   "/demandes",
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const { statut } = req.query as { statut?: string };
+    // Un admin ne voit que les demandes des partenaires de sa/ses branche(s)
+    // (un SUPER_ADMIN voit tout) — les commissions sont un flux financier,
+    // pas seulement une donnée de lecture.
+    const branchesAutorisees = (["INCENDIE_ACCIDENT", "RELAX", "IMF"] as BrancheAcces[]).filter((b) =>
+      hasBranche(req.user, b)
+    );
     const rows = await prisma.demandeCommission.findMany({
-      where: { statut: statut ? (statut as never) : undefined },
+      where: {
+        statut: statut ? (statut as never) : undefined,
+        partenaire: { branche: { in: branchesAutorisees } },
+      },
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         agentDistribution: { select: { nom: true, telephone: true } },
@@ -45,8 +54,12 @@ commissionsRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const d = await prisma.demandeCommission.findUnique({
       where: { id: req.params.id },
+      include: { partenaire: { select: { branche: true } } },
     });
     if (!d) return res.status(404).json({ error: "Demande introuvable" });
+    if (!hasBranche(req.user, d.partenaire.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
     if (d.statut !== "en_attente")
       return res.status(409).json({ error: "Demande déjà traitée" });
 
@@ -84,8 +97,12 @@ commissionsRouter.post(
     const { motif } = (req.body ?? {}) as { motif?: string };
     const d = await prisma.demandeCommission.findUnique({
       where: { id: req.params.id },
+      include: { partenaire: { select: { branche: true } } },
     });
     if (!d) return res.status(404).json({ error: "Demande introuvable" });
+    if (!hasBranche(req.user, d.partenaire.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
     if (d.statut !== "en_attente")
       return res.status(409).json({ error: "Demande déjà traitée" });
 
