@@ -4,12 +4,23 @@ import { getWaveSession, newNumeroPolice, genererMotDePasseClient, lienClientRel
 import { genererCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
+/** Avance `date` de la durée d'un cycle RelaxMoto/RelaxAuto ("mensuel" = 1 mois, "annuel" = 1 an). */
+function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel"): Date {
+  const d = new Date(date);
+  if (cycle === "mensuel") d.setMonth(d.getMonth() + 1);
+  else d.setFullYear(d.getFullYear() + 1);
+  return d;
+}
+
 /**
  * Confirme le paiement d'une échéance. Deux cas selon le produit (distingués
  * par `cycleFacturation`, renseigné uniquement pour un abonnement) :
- * - Abonnement (RelaxMoto/RelaxAuto) : 1ère échéance → police, couverture 1 an,
- *   espace client (identifiant/mot de passe envoyés par SMS) ; renouvellement
- *   (déclenché par le CLIENT, espace client) → prolonge dateFin d'un an.
+ * - Abonnement (RelaxMoto/RelaxAuto) : 1ère échéance → police, couverture pour
+ *   la durée du cycle choisi (1 mois si "mensuel" à 2 500 FCFA, 1 an si
+ *   "annuel" à 25 000 FCFA), espace client (identifiant/mot de passe envoyés
+ *   par SMS) ; renouvellement (déclenché par le CLIENT, espace client) →
+ *   prolonge dateFin de la même durée, au même tarif — le cycle initial ne
+ *   change jamais.
  * - Formule à paiement unique (RelaxAccidents Frais Médicaux/générale,
  *   RelaxVoyage, SecurHome+, SecurPro Dommages) : pas d'abonnement ni d'espace
  *   client, couverture 3 mois (comme l'ancien produit Accident) ; renouvellement
@@ -30,12 +41,14 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     const s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId } });
     if (!s) return;
     const base = s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
-    const dateFin = new Date(base);
-    if (s.cycleFacturation) {
-      dateFin.setFullYear(dateFin.getFullYear() + 1);
-    } else {
-      dateFin.setMonth(dateFin.getMonth() + 3);
-    }
+    const dateFin =
+      s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel"
+        ? avancerDateCycle(base, s.cycleFacturation)
+        : (() => {
+            const d = new Date(base);
+            d.setMonth(d.getMonth() + 3);
+            return d;
+          })();
     await prisma.souscription.update({
       where: { id: s.id },
       data: {
@@ -58,7 +71,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     });
     const dateDebut = new Date();
 
-    if (!s.cycleFacturation) {
+    if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
       const dateFin = new Date(dateDebut);
       dateFin.setMonth(dateFin.getMonth() + 3);
       await prisma.souscription.update({
@@ -76,8 +89,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
       return;
     }
 
-    const dateFin = new Date(dateDebut);
-    dateFin.setFullYear(dateFin.getFullYear() + 1);
+    const dateFin = avancerDateCycle(dateDebut, s.cycleFacturation);
 
     // Crée l'accès de l'espace client (identifiant = téléphone) à l'activation.
     const motDePasse = genererMotDePasseClient();

@@ -43,18 +43,22 @@ clientRouter.get(
 );
 
 /**
- * Renouvellement : toujours un paiement annuel unique (25 000 FCFA de base),
- * qui prolonge dateFin d'un an à la confirmation — voir confirmerEcheance
- * (branche estRenouvellement). Ne modifie jamais le cycle initial du contrat.
+ * Renouvellement : un paiement unique, au même cycle que le contrat initial
+ * (mensuel à 2 500 FCFA reste mensuel, annuel à 25 000 FCFA reste annuel —
+ * jamais l'inverse), qui prolonge dateFin de la durée de ce cycle à la
+ * confirmation — voir confirmerEcheance (branche estRenouvellement).
  */
 clientRouter.post(
   "/renouveler",
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscription.findUnique({ where: { id: req.user!.sub } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
+      return res.status(400).json({ error: "Ce contrat ne se renouvelle pas depuis l'espace client." });
+    }
 
     const tarif = await prisma.tarifProduit.findFirst({
-      where: { produitId: s.produitId, libelleVariante: "annuel" },
+      where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
     });
     if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
 

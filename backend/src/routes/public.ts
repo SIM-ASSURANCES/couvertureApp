@@ -16,7 +16,6 @@ import { verifyWaveSignature, type RawBodyRequest } from "../security.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
-import { genererEcheancier } from "../services/echeancier.js";
 import { calculerRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
 import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
@@ -1500,14 +1499,16 @@ publicRouter.post(
     }
 
     // Le tarif est déterminé par la formule choisie (libelleVariante = cycle),
-    // jamais par un id envoyé par le client — chaque cycle porte son propre
-    // montant PAR échéance (voir echeancier.ts).
+    // jamais par un id envoyé par le client. Un seul paiement est dû
+    // maintenant (comme tous les autres produits à formule) — le contrat dure
+    // exactement la durée du cycle choisi (1 mois ou 1 an, voir
+    // services/paiementWave.ts::confirmerEcheance) et se renouvelle ensuite
+    // au même cycle, au même tarif, depuis l'espace client
+    // (POST /client/renouveler).
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: prod.id, libelleVariante: data.cycle },
     });
     if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
-
-    const echeancier = genererEcheancier(tarif.prime, data.cycle);
 
     const s = await prisma.souscription.create({
       data: {
@@ -1523,15 +1524,9 @@ publicRouter.post(
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
         cycleFacturation: data.cycle,
-        nombreEcheances: echeancier.length,
+        nombreEcheances: 1,
         paiements: {
-          createMany: {
-            data: echeancier.map((e) => ({
-              numeroEcheance: e.numeroEcheance,
-              montant: e.montant,
-              dateEcheance: e.dateEcheance,
-            })),
-          },
+          create: { numeroEcheance: 1, montant: tarif.prime, dateEcheance: new Date() },
         },
       },
     });
@@ -1563,7 +1558,7 @@ publicRouter.post(
       qr.partenaireId,
       "souscription",
       `Nouvelle souscription ${prod.libelle}`,
-      `Nouveau client ${prod.libelle} (${tarif.prime} FCFA/an, ${data.cycle}) via votre QR code.`,
+      `Nouveau client ${prod.libelle} (${tarif.prime} FCFA, formule ${data.cycle}) via votre QR code.`,
       "/partenaire/souscriptions"
     );
 
@@ -1571,7 +1566,7 @@ publicRouter.post(
       souscriptionId: s.id,
       echeanceId: premiereEcheance.id,
       montantEcheance: premiereEcheance.montant,
-      nombreEcheances: echeancier.length,
+      nombreEcheances: 1,
       capitalGaranti: tarif.capitalGaranti,
       checkoutUrl,
       transactionId,

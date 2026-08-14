@@ -206,10 +206,12 @@ async function seedTarificationImf() {
 }
 
 /**
- * Tarifs RelaxMoto/RelaxAuto : deux formules par produit, chacune avec son
- * propre montant PAR échéance (voir echeancier.ts — le mensuel n'est jamais
- * la prime annuelle divisée). Valeurs de départ à ajuster depuis l'admin ;
- * idempotent (upsert), ne touche jamais un montant déjà édité en prod.
+ * Tarifs RelaxMoto/RelaxAuto : deux formules par produit — "mensuel" (contrat
+ * d'un mois, renouvelable au même prix) et "annuel" (contrat d'un an,
+ * renouvelable au même prix) — le mensuel n'est jamais la prime annuelle
+ * divisée, c'est un tarif indépendant (voir services/paiementWave.ts).
+ * Valeurs de départ à ajuster depuis l'admin ; idempotent (upsert), ne touche
+ * jamais un montant déjà édité en prod.
  */
 async function seedTarificationRelax() {
   const produits: {

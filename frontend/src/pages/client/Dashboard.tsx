@@ -195,7 +195,9 @@ export default function ClientDashboard() {
 
         {confirmationRenouvellement && (
           <div style={{ ...card, background: "#e8f6ec", border: "1px solid #bbf7d0" }}>
-            <div style={{ fontWeight: 700, color: "#15803d" }}>✓ Contrat renouvelé pour un an de plus</div>
+            <div style={{ fontWeight: 700, color: "#15803d" }}>
+              ✓ Contrat renouvelé pour {moi?.cycleFacturation === "mensuel" ? "un mois" : "un an"} de plus
+            </div>
           </div>
         )}
 
@@ -227,7 +229,9 @@ export default function ClientDashboard() {
                   opacity: renouvellement ? 0.5 : 1,
                 }}
               >
-                {renouvellement ? "Redirection…" : "🔄 Renouveler mon contrat (1 an)"}
+                {renouvellement
+                  ? "Redirection…"
+                  : `🔄 Renouveler mon contrat (${moi.cycleFacturation === "mensuel" ? "1 mois" : "1 an"})`}
               </button>
             </div>
 
