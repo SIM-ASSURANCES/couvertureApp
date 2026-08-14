@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent } from "react";
+import { Calendar } from "lucide-react";
 
 export function PageHeader({
   title,
@@ -317,25 +318,44 @@ export function DateNaissanceInput({
         style={{ ...segStyle, width: 68 }}
         aria-label="Année de naissance"
       />
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={required && !value}
-        max={new Date().toISOString().slice(0, 10)}
-        style={{
-          height: 42,
-          width: 42,
-          padding: 0,
-          border: "1px solid var(--border-strong, #dde3ec)",
-          borderRadius: 10,
-          color: "transparent",
-          background: "var(--card, #fff)",
-          cursor: "pointer",
-        }}
-        aria-label="Choisir la date de naissance dans le calendrier"
-        title="Choisir dans le calendrier"
-      />
+      <div style={{ position: "relative", width: 42, height: 42, flex: "none" }}>
+        <input
+          type="date"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required && !value}
+          max={new Date().toISOString().slice(0, 10)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            padding: 0,
+            border: "1px solid var(--border-strong, #dde3ec)",
+            borderRadius: 10,
+            color: "transparent",
+            background: "var(--card, #fff)",
+            cursor: "pointer",
+            // Le texte de la valeur reste transparent (JJ/MM/AAAA l'affichent
+            // déjà à côté) mais l'icône calendrier native est peu fiable/
+            // invisible selon les navigateurs — remplacée par l'icône visible
+            // ci-dessous, superposée mais neutre aux clics (pointerEvents none).
+          }}
+          aria-label="Choisir la date de naissance dans le calendrier"
+          title="Choisir dans le calendrier"
+        />
+        <Calendar
+          size={18}
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            color: "var(--sim-primary, #004b9c)",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
     </div>
   );
 }
