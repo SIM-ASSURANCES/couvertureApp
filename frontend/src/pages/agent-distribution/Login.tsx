@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { agentDistLogin } from "../../agentDistributionAuth";
+import { PhoneInput } from "../../components/ui";
 
 const inputStyle: React.CSSProperties = {
   width: "100%",
@@ -59,12 +60,7 @@ export default function AgentDistributionLogin() {
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
               Téléphone
             </label>
-            <input
-              value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
-              placeholder="07 00 00 00 00"
-              style={inputStyle}
-            />
+            <PhoneInput value={telephone} onChange={setTelephone} className="" style={inputStyle} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
@@ -81,7 +77,7 @@ export default function AgentDistributionLogin() {
             <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 14 }}>{erreur}</div>
           )}
           <button
-            disabled={chargement || !telephone || !motDePasse}
+            disabled={chargement || telephone.length !== 10 || !motDePasse}
             style={{
               width: "100%",
               padding: "13px 0",
@@ -92,7 +88,7 @@ export default function AgentDistributionLogin() {
               fontWeight: 700,
               fontSize: 15,
               cursor: "pointer",
-              opacity: chargement || !telephone || !motDePasse ? 0.5 : 1,
+              opacity: chargement || telephone.length !== 10 || !motDePasse ? 0.5 : 1,
             }}
           >
             {chargement ? "Connexion…" : "Se connecter"}

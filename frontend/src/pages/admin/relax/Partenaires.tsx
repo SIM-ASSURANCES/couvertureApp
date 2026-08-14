@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { QrCode, Power, Trash2, Search, X } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox } from "../../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import type { Partenaire, ProduitRelax } from "../../../types";
@@ -175,7 +175,7 @@ export default function RelaxPartenaires() {
             </div>
             <div className="field">
               <label className="label">Téléphone <span className="req">*</span></label>
-              <input className="input" required value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
+              <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
             </div>
             <div className="field">
               <label className="label">Produit <span className="req">*</span></label>

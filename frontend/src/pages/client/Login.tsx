@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clientLogin } from "../../clientAuth";
+import { PhoneInput } from "../../components/ui";
 
 const PHONE_PREFIX = "+225";
 
@@ -19,7 +20,7 @@ const inputStyle: React.CSSProperties = {
 
 export default function ClientLogin() {
   const navigate = useNavigate();
-  const [telephone, setTelephone] = useState(PHONE_PREFIX);
+  const [telephone, setTelephone] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [erreur, setErreur] = useState("");
   const [chargement, setChargement] = useState(false);
@@ -29,7 +30,7 @@ export default function ClientLogin() {
     setChargement(true);
     setErreur("");
     try {
-      await clientLogin(telephone.replace(/\s/g, ""), motDePasse);
+      await clientLogin(PHONE_PREFIX + telephone, motDePasse);
       navigate("/client");
     } catch (err) {
       setErreur(err instanceof Error ? err.message : "Erreur de connexion");
@@ -61,12 +62,7 @@ export default function ClientLogin() {
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
               Téléphone
             </label>
-            <input
-              value={telephone}
-              onChange={(e) => setTelephone(e.target.value)}
-              placeholder="+225 07 00 00 00 00"
-              style={inputStyle}
-            />
+            <PhoneInput value={telephone} onChange={setTelephone} className="" style={inputStyle} />
           </div>
           <div style={{ marginBottom: 14 }}>
             <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
@@ -83,7 +79,7 @@ export default function ClientLogin() {
             <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 14 }}>{erreur}</div>
           )}
           <button
-            disabled={chargement || !telephone || !motDePasse}
+            disabled={chargement || telephone.length !== 10 || !motDePasse}
             style={{
               width: "100%",
               padding: "13px 0",
@@ -94,7 +90,7 @@ export default function ClientLogin() {
               fontWeight: 700,
               fontSize: 15,
               cursor: "pointer",
-              opacity: chargement || !telephone || !motDePasse ? 0.5 : 1,
+              opacity: chargement || telephone.length !== 10 || !motDePasse ? 0.5 : 1,
             }}
           >
             {chargement ? "Connexion…" : "Se connecter"}

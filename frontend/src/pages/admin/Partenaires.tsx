@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, waveBadge, statutIncendieBadge } from "../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -366,7 +366,7 @@ function EditModal({
           </div>
           <div className="field">
             <label className="label">Téléphone <span className="req">*</span></label>
-            <input className="input" required value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
+            <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
           </div>
           <div className="field">
             <label className="label">Localisation <span className="req">*</span></label>
@@ -789,12 +789,7 @@ export default function Partenaires() {
             </div>
             <div className="field">
               <label className="label">Téléphone <span className="req">*</span></label>
-              <input
-                className="input"
-                required
-                value={form.telephone}
-                onChange={(e) => setForm({ ...form, telephone: e.target.value })}
-              />
+              <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
             </div>
             <div className="field">
               <label className="label">Localisation <span className="req">*</span></label>

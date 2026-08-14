@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
@@ -119,7 +119,7 @@ export default function Agences() {
             </div>
             <div className="field">
               <label className="label">Téléphone</label>
-              <input className="input" value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
+              <PhoneInput value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
             </div>
             <div className="field">
               <label className="label">Localisation</label>

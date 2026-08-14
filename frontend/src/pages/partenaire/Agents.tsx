@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Plus, Power, Download, X, Flame, ShieldCheck, Copy, KeyRound } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate } from "../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -248,7 +248,7 @@ export default function PartenaireAgents() {
             </div>
             <div className="field">
               <label className="label">Téléphone <span className="req">*</span></label>
-              <input className="input" required value={telephone} onChange={(e) => setTelephone(e.target.value)} />
+              <PhoneInput required value={telephone} onChange={setTelephone} />
             </div>
             <div className="field">
               <label className="label">Localisation</label>

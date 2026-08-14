@@ -5,6 +5,7 @@ import { genererContratIncendie } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
+import { DateNaissanceInput } from "../../components/ui";
 
 const BASE = API_BASE;
 
@@ -344,12 +345,7 @@ export default function SouscriptionComplement() {
               </div>
 
               <FieldRow label="Date de naissance">
-                <input
-                  value={dateNaissance}
-                  onChange={(e) => setDateNaissance(e.target.value)}
-                  type="date"
-                  style={inputStyle}
-                />
+                <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
               </FieldRow>
               <PhotoCapture
                 label="Photo de votre pièce d'identité (CNI/Permis)"

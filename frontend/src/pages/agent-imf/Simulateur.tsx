@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FileCheck, Download, Plus, X, WifiOff, Save, RotateCcw, Trash2 } from "lucide-react";
-import { PageHeader, Card, Badge, fcfa, fmtDate } from "../../components/ui";
+import { PageHeader, Card, Badge, fcfa, fmtDate, PhoneInput } from "../../components/ui";
 import { api } from "../../api";
 import { genererContratImf, contratImfDisponible } from "../../contract";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -1180,7 +1180,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
                 </div>
                 <div className="field">
                   <label className="label">Téléphone <span className="req">*</span></label>
-                  <input className="input" required value={client.telephone} onChange={(e) => setClient({ ...client, telephone: e.target.value })} />
+                  <PhoneInput required value={client.telephone} onChange={(v) => setClient({ ...client, telephone: v })} />
                 </div>
                 <div className="field">
                   <label className="label">Email</label>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Save } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox } from "../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 
@@ -74,7 +74,7 @@ export default function PartenaireProfil() {
               </div>
               <div className="field">
                 <label className="label">Téléphone</label>
-                <input className="input" value={val("telephone")} onChange={(e) => setForm({ ...form, telephone: e.target.value })} />
+                <PhoneInput value={val("telephone")} onChange={(v) => setForm({ ...form, telephone: v })} />
               </div>
               <div className="field">
                 <label className="label">Email</label>

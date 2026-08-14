@@ -26,6 +26,7 @@ import {
 } from "../../relaxAccidentsGenerale";
 import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
 import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
+import { DateNaissanceInput } from "../../components/ui";
 const BASE = API_BASE;
 
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
@@ -162,6 +163,10 @@ type Step = "loading" | "choose-branche" | "choose-produit" | "infos" | "confirm
 const PHONE_PREFIX = "+225";
 function phoneLocalPart(v: string) {
   return v.startsWith(PHONE_PREFIX) ? v.slice(PHONE_PREFIX.length) : v;
+}
+// Un numéro doit contenir exactement 10 chiffres — ni moins, ni plus.
+function phoneInvalid(v: string) {
+  return phoneLocalPart(v).length !== 10;
 }
 
 function fcfa(n: number) {
@@ -2516,7 +2521,7 @@ export default function Souscription() {
                     <PhoneInput value={telephone} onChange={setTelephone} />
                   </FieldRow>
                   <FieldRow label="Date de naissance *">
-                    <input value={dateNaissance} onChange={(e) => setDateNaissance(e.target.value)} type="date" style={inputStyle} />
+                    <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
                   <FieldRow label="Compagnie de transport *">
@@ -2561,12 +2566,7 @@ export default function Souscription() {
                     <PhoneInput value={telephone} onChange={setTelephone} />
                   </FieldRow>
                   <FieldRow label="Date de naissance *">
-                    <input
-                      value={dateNaissance}
-                      onChange={(e) => setDateNaissance(e.target.value)}
-                      type="date"
-                      style={inputStyle}
-                    />
+                    <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
@@ -2593,12 +2593,7 @@ export default function Souscription() {
                     <PhoneInput value={telephone} onChange={setTelephone} />
                   </FieldRow>
                   <FieldRow label="Date de naissance *">
-                    <input
-                      value={dateNaissance}
-                      onChange={(e) => setDateNaissance(e.target.value)}
-                      type="date"
-                      style={inputStyle}
-                    />
+                    <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
                   <FieldRow label="Pièce d'identité *">
@@ -2797,7 +2792,7 @@ export default function Souscription() {
                       !typeCouverture ||
                       !Number.isInteger(Number(effectif)) ||
                       Number(effectif) < 1 ||
-                      !phoneLocalPart(telephone) ||
+                      phoneInvalid(telephone) ||
                       (() => {
                         try {
                           calculerRelaxAccidentsGenerale({
@@ -2817,7 +2812,7 @@ export default function Souscription() {
                     : isRelaxVoyage(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
-                      !phoneLocalPart(telephone) ||
+                      phoneInvalid(telephone) ||
                       !dateNaissance ||
                       !sexe ||
                       !selectedFormule ||
@@ -2826,24 +2821,24 @@ export default function Souscription() {
                       !lieuArrivee ||
                       !numeroTicket ||
                       !dateDepart ||
-                      !phoneLocalPart(numeroPersonneContact)
+                      phoneInvalid(numeroPersonneContact)
                     : isAccidentLike(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
-                      !phoneLocalPart(telephone) ||
+                      phoneInvalid(telephone) ||
                       !dateNaissance ||
                       (qrInfo?.produit === "accident"
                         ? !selectedTarifId
                         : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx)
                     : qrInfo && isRelax(qrInfo.produit)
-                    ? !nomRx || !prenomRx || !phoneLocalPart(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
+                    ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : isSecurproDommages(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
                       !villeSp ||
                       !communeSp ||
                       !refFactureSp ||
-                      !phoneLocalPart(telephone) ||
+                      phoneInvalid(telephone) ||
                       !classeSp ||
                       (statutOccupationSp === "proprietaire" ? !valeurBatimentSp : !loyerMensuelSp) ||
                       !baremeSecurpro ||
@@ -2878,7 +2873,7 @@ export default function Souscription() {
                       !villeSh ||
                       !communeSh ||
                       !refFactureSh ||
-                      !phoneLocalPart(telephone) ||
+                      phoneInvalid(telephone) ||
                       (statutOccupationSh === "proprietaire" ? !valeurBatimentSh : !loyerMensuelSh) ||
                       (() => {
                         try {
@@ -2900,7 +2895,7 @@ export default function Souscription() {
                           return true;
                         }
                       })()
-                    : !phoneLocalPart(telephoneInc) || !villeInc || !communeInc || !refFactureInc);
+                    : phoneInvalid(telephoneInc) || !villeInc || !communeInc || !refFactureInc);
                 return (
                   <button
                     onClick={handleSubmit}

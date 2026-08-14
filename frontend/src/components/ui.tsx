@@ -1,4 +1,4 @@
-import type { ReactNode, CSSProperties } from "react";
+import { useEffect, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent } from "react";
 
 export function PageHeader({
   title,
@@ -148,6 +148,194 @@ export function ErrorBox({ message }: { message: string }) {
       }}
     >
       {message}
+    </div>
+  );
+}
+
+/** Ne garde que les chiffres, tronqué à `max` (10 par défaut — numéro ivoirien sans indicatif). */
+export function onlyDigits(v: string, max = 10): string {
+  return v.replace(/\D/g, "").slice(0, max);
+}
+
+export function isValidPhone10(v: string): boolean {
+  return /^\d{10}$/.test(v);
+}
+
+function blockNonDigitKey(e: KeyboardEvent<HTMLInputElement>) {
+  // Laisse passer les touches de contrôle/navigation (Backspace, Tab, flèches,
+  // Ctrl/Cmd+V etc.) — ne bloque que les caractères imprimables non numériques.
+  if (e.key.length === 1 && !/[0-9]/.test(e.key) && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+  }
+}
+
+/**
+ * Champ numéro de téléphone : chiffres uniquement (les lettres/symboles sont
+ * bloqués à la frappe et retirés au collage), exactement 10 chiffres — ni
+ * plus (tronqué), ni moins (bloque la soumission du formulaire englobant via
+ * `pattern`, tant que l'utilisateur n'a pas complété les 10 chiffres).
+ */
+export function PhoneInput({
+  value,
+  onChange,
+  required,
+  placeholder = "07 00 00 00 00",
+  className = "input",
+  style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+  placeholder?: string;
+  className?: string;
+  style?: CSSProperties;
+}) {
+  return (
+    <input
+      className={className}
+      style={style}
+      type="tel"
+      inputMode="numeric"
+      autoComplete="tel"
+      required={required}
+      value={value}
+      onChange={(e) => onChange(onlyDigits(e.target.value))}
+      onKeyDown={blockNonDigitKey}
+      maxLength={10}
+      pattern="\d{10}"
+      title="Le numéro doit contenir exactement 10 chiffres."
+      placeholder={placeholder}
+    />
+  );
+}
+
+/**
+ * Date de naissance : trois champs JJ / MM / AAAA saisissables au clavier
+ * (en plus du calendrier natif) — utile sur mobile où le calendrier seul est
+ * lent pour une date ancienne (naviguer des dizaines d'années en arrière).
+ * `value`/`onChange` utilisent le format ISO `AAAA-MM-JJ` (comme
+ * `<input type="date">`), pour rester compatible avec l'existant.
+ */
+export function DateNaissanceInput({
+  value,
+  onChange,
+  required,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  required?: boolean;
+}) {
+  const [jour, setJour] = useState("");
+  const [mois, setMois] = useState("");
+  const [annee, setAnnee] = useState("");
+  const moisRef = useRef<HTMLInputElement>(null);
+  const anneeRef = useRef<HTMLInputElement>(null);
+
+  // Resynchronise depuis l'extérieur (calendrier natif, réinitialisation du
+  // formulaire, pré-remplissage) — sans écraser une saisie manuelle en cours.
+  useEffect(() => {
+    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [a, m, j] = value.split("-");
+      setAnnee(a);
+      setMois(m);
+      setJour(j);
+    } else if (!value) {
+      setJour("");
+      setMois("");
+      setAnnee("");
+    }
+  }, [value]);
+
+  function commit(j: string, m: string, a: string) {
+    if (j.length === 2 && m.length === 2 && a.length === 4) {
+      onChange(`${a}-${m}-${j}`);
+    } else if (!j && !m && !a) {
+      onChange("");
+    }
+  }
+
+  const segStyle: CSSProperties = {
+    width: 52,
+    height: 42,
+    textAlign: "center",
+    border: "1px solid var(--border-strong, #dde3ec)",
+    borderRadius: 10,
+    fontFamily: "inherit",
+    fontSize: 13.5,
+    outline: "none",
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <input
+        value={jour}
+        onChange={(e) => {
+          const v = onlyDigits(e.target.value, 2);
+          setJour(v);
+          commit(v, mois, annee);
+          if (v.length === 2) moisRef.current?.focus();
+        }}
+        onKeyDown={blockNonDigitKey}
+        onBlur={() => jour && setJour(String(Math.min(31, Math.max(1, Number(jour)))).padStart(2, "0"))}
+        placeholder="JJ"
+        inputMode="numeric"
+        maxLength={2}
+        style={segStyle}
+        aria-label="Jour de naissance"
+      />
+      <span style={{ color: "var(--text-3, #8fa2bd)" }}>/</span>
+      <input
+        ref={moisRef}
+        value={mois}
+        onChange={(e) => {
+          const v = onlyDigits(e.target.value, 2);
+          setMois(v);
+          commit(jour, v, annee);
+          if (v.length === 2) anneeRef.current?.focus();
+        }}
+        onKeyDown={blockNonDigitKey}
+        onBlur={() => mois && setMois(String(Math.min(12, Math.max(1, Number(mois)))).padStart(2, "0"))}
+        placeholder="MM"
+        inputMode="numeric"
+        maxLength={2}
+        style={segStyle}
+        aria-label="Mois de naissance"
+      />
+      <span style={{ color: "var(--text-3, #8fa2bd)" }}>/</span>
+      <input
+        ref={anneeRef}
+        value={annee}
+        onChange={(e) => {
+          const v = onlyDigits(e.target.value, 4);
+          setAnnee(v);
+          commit(jour, mois, v);
+        }}
+        onKeyDown={blockNonDigitKey}
+        placeholder="AAAA"
+        inputMode="numeric"
+        maxLength={4}
+        style={{ ...segStyle, width: 68 }}
+        aria-label="Année de naissance"
+      />
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required && !value}
+        max={new Date().toISOString().slice(0, 10)}
+        style={{
+          height: 42,
+          width: 42,
+          padding: 0,
+          border: "1px solid var(--border-strong, #dde3ec)",
+          borderRadius: 10,
+          color: "transparent",
+          background: "var(--card, #fff)",
+          cursor: "pointer",
+        }}
+        aria-label="Choisir la date de naissance dans le calendrier"
+        title="Choisir dans le calendrier"
+      />
     </div>
   );
 }
