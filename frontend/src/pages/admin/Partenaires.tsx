@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
@@ -312,6 +312,98 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
   );
 }
 
+interface ProduitPartenaire {
+  id: string;
+  code: string;
+  libelle: string;
+  sousBranche: string | null;
+  actif: boolean;
+}
+
+function ProduitsModal({ partenaireId, onClose }: { partenaireId: string; onClose: () => void }) {
+  const { data, loading, error, reload } = useFetch<ProduitPartenaire[]>(`/partenaires/${partenaireId}/produits`);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function toggle(p: ProduitPartenaire) {
+    setBusyId(p.id);
+    try {
+      await api.post(`/partenaires/${partenaireId}/produits/${p.id}/statut`, { actif: !p.actif });
+      reload();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const parGroupe = {
+    ASSURANCES_ACCIDENTS: (data ?? []).filter((p) => p.sousBranche === "ASSURANCES_ACCIDENTS"),
+    ASSURANCES_DOMMAGES: (data ?? []).filter((p) => p.sousBranche === "ASSURANCES_DOMMAGES"),
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <strong style={{ fontSize: 17 }}>Produits actifs pour ce partenaire</strong>
+          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 16 }}>
+          Un produit désactivé ici apparaît grisé et non cliquable dans le formulaire public de ce partenaire — les autres partenaires ne sont pas concernés.
+        </p>
+        {loading && <Loader />}
+        {error && <ErrorBox message={error} />}
+        {data && data.length === 0 && (
+          <div className="empty">Aucun produit géré individuellement pour ce partenaire.</div>
+        )}
+        {(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] as const).map((groupe) =>
+          parGroupe[groupe].length > 0 ? (
+            <div key={groupe} style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                {groupe === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {parGroupe[groupe].map((p) => (
+                  <div
+                    key={p.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "10px 12px",
+                      border: "1px solid var(--border-strong)",
+                      borderRadius: 10,
+                      opacity: busyId === p.id ? 0.6 : 1,
+                    }}
+                  >
+                    <span style={{ fontSize: 13.5, fontWeight: 600 }}>{p.libelle}</span>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busyId === p.id}
+                      onClick={() => toggle(p)}
+                      style={{
+                        padding: "5px 12px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        borderRadius: 999,
+                        border: "none",
+                        cursor: "pointer",
+                        background: p.actif ? "var(--success-50, #e8f6ec)" : "var(--danger-50, #fdeaea)",
+                        color: p.actif ? "var(--success, #15803d)" : "var(--danger, #dc2626)",
+                      }}
+                    >
+                      {p.actif ? "Actif" : "Désactivé"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null
+        )}
+      </div>
+    </div>
+  );
+}
+
 function EditModal({
   partenaire,
   onClose,
@@ -450,6 +542,7 @@ export default function Partenaires() {
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [produitsId, setProduitsId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partenaire | null>(null);
 
   function notify(m: string) {
@@ -682,6 +775,16 @@ export default function Partenaires() {
                           >
                             <Pencil size={15} />
                           </button>
+                          {(p.sousBranche || p.qrUnifie) && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 8 }}
+                              title="Produits actifs pour ce partenaire"
+                              onClick={() => setProduitsId(p.id)}
+                            >
+                              <SlidersHorizontal size={15} />
+                            </button>
+                          )}
                           {p.qrUnifie && (
                             <button
                               className="btn btn-ghost"
@@ -932,6 +1035,7 @@ export default function Partenaires() {
       )}
 
       {detailsId && <DetailsModal partenaireId={detailsId} onClose={() => setDetailsId(null)} />}
+      {produitsId && <ProduitsModal partenaireId={produitsId} onClose={() => setProduitsId(null)} />}
       {editing && (
         <EditModal
           partenaire={editing}

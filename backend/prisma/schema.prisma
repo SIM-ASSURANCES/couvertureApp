@@ -186,6 +186,15 @@ model Partenaire {
 
   // Agents de distribution (Incendie/Accident) créés par le partenaire lui-même.
   agents AgentDistribution[]
+
+  // Produits du catalogue générique désactivés spécifiquement pour ce
+  // partenaire (en plus de Produit.actif, qui est un interrupteur global) —
+  // n'a d'effet que pour un partenaire au QR sélecteur (sousBranche figée ou
+  // QR unique) : le produit apparaît grisé et non cliquable dans le chooser
+  // public (voir construireChooserProduits, routes/public.ts), et toute
+  // tentative de souscription directe à ce produit pour ce partenaire est
+  // rejetée côté serveur (voir produitDesactivePourPartenaire).
+  produitsDesactives Produit[] @relation("ProduitsDesactivesPartenaire")
 }
 
 /**
@@ -452,6 +461,7 @@ model Produit {
   tarifs        TarifProduit[]
   qrCodes       QrCode[]
   souscriptions Souscription[]
+  partenairesDesactives Partenaire[] @relation("ProduitsDesactivesPartenaire")
 }
 
 model TarifProduit {

@@ -619,3 +619,91 @@ partenairesRouter.get(
     res.json({ produit, token, dataUrl });
   })
 );
+
+/**
+ * Activation/désactivation par produit pour un partenaire — ne s'applique
+ * qu'aux partenaires au QR sélecteur multi-produits (sousBranche figée ou QR
+ * unique) : un produit désactivé apparaît grisé et non cliquable dans le
+ * chooser public (voir construireChooserProduits, routes/public.ts) et toute
+ * tentative de souscription directe est rejetée côté serveur. N'a pas
+ * d'effet sur les partenaires à produit unique (Incendie/Accident historique,
+ * RelaxMoto/Auto/RelaxAccidents FM en QR dédié) — leur levier reste le statut
+ * Actif/Inactif global du partenaire. Incendie n'apparaît pas dans cette
+ * liste : il n'est pas piloté par le catalogue Produit dans le chooser
+ * (branche toujours proposée, cas particulier du parcours public).
+ */
+partenairesRouter.get(
+  "/:id/produits",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
+    const qrSelecteur = await prisma.qrCode.findFirst({
+      where: { partenaireId: p.id, agentDistributionId: null, produitId: null },
+      select: { sousBranche: true },
+    });
+    if (!qrSelecteur) {
+      return res.status(400).json({
+        error: "Ce partenaire n'a pas de QR sélecteur multi-produits — rien à gérer ici.",
+      });
+    }
+    const sousBranches = qrSelecteur.sousBranche
+      ? [qrSelecteur.sousBranche]
+      : ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"];
+
+    const [produits, avecDesactives] = await Promise.all([
+      prisma.produit.findMany({
+        where: { sousBranche: { in: sousBranches } },
+        orderBy: { ordre: "asc" },
+      }),
+      prisma.partenaire.findUnique({
+        where: { id: p.id },
+        select: { produitsDesactives: { select: { id: true } } },
+      }),
+    ]);
+    const desactivesIds = new Set((avecDesactives?.produitsDesactives ?? []).map((d) => d.id));
+
+    res.json(
+      produits.map((prod) => ({
+        id: prod.id,
+        code: prod.code,
+        libelle: prod.libelle,
+        sousBranche: prod.sousBranche,
+        actif: !desactivesIds.has(prod.id),
+      }))
+    );
+  })
+);
+
+partenairesRouter.post(
+  "/:id/produits/:produitId/statut",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
+    const { actif } = z.object({ actif: z.boolean() }).parse(req.body);
+    const produit = await prisma.produit.findUnique({ where: { id: req.params.produitId } });
+    if (!produit) return res.status(404).json({ error: "Produit introuvable" });
+
+    await prisma.partenaire.update({
+      where: { id: p.id },
+      data: {
+        produitsDesactives: actif
+          ? { disconnect: { id: produit.id } }
+          : { connect: { id: produit.id } },
+      },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "partenaire",
+      objetId: p.id,
+      valeurApres: { produit: produit.code, actif },
+    });
+    res.json({ ok: true });
+  })
+);

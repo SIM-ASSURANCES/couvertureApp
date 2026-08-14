@@ -166,6 +166,22 @@ const MESSAGE_DOUBLON =
   "Une souscription existe déjà pour ce nom et ce numéro sur ce produit. Le renouvellement se fait automatiquement 2 semaines avant l'échéance — contactez votre partenaire.";
 
 /**
+ * Défense en profondeur : le chooser public grise déjà les produits
+ * désactivés pour ce partenaire (voir construireChooserProduits), mais un
+ * appel direct à une route /initiate ne passe pas forcément par lui — vérifie
+ * ici aussi avant de créer la souscription.
+ */
+async function produitDesactivePourPartenaire(partenaireId: string, produitId: string): Promise<boolean> {
+  const p = await prisma.partenaire.findUnique({
+    where: { id: partenaireId },
+    select: { produitsDesactives: { where: { id: produitId }, select: { id: true } } },
+  });
+  return !!p && p.produitsDesactives.length > 0;
+}
+
+const MESSAGE_PRODUIT_DESACTIVE = "Ce produit n'est plus disponible chez ce partenaire.";
+
+/**
  * Construit la réponse "chooser" (liste des produits d'une sousBranche) —
  * partagée par le QR sélecteur classique (sousBranche figée sur le QrCode) et
  * le nouveau QR unique (sousBranche choisie dynamiquement via ?sousBranche=,
@@ -175,10 +191,19 @@ async function construireChooserProduits(
   sousBranche: string,
   partenaire: { id: string; nomCommerce: string }
 ) {
-  const produits = await prisma.produit.findMany({
-    where: { sousBranche },
-    orderBy: { ordre: "asc" },
-  });
+  const [produits, avecDesactives] = await Promise.all([
+    prisma.produit.findMany({
+      where: { sousBranche },
+      orderBy: { ordre: "asc" },
+    }),
+    // Produits désactivés spécifiquement pour CE partenaire (en plus de
+    // Produit.actif, qui est global) — voir POST /partenaires/:id/produits/:produitId/statut.
+    prisma.partenaire.findUnique({
+      where: { id: partenaire.id },
+      select: { produitsDesactives: { select: { id: true } } },
+    }),
+  ]);
+  const desactivesIds = new Set((avecDesactives?.produitsDesactives ?? []).map((d) => d.id));
   const items = await Promise.all(
     produits.map(async (p) => {
       const tarifDefaut = await prisma.tarifProduit.findFirst({
@@ -188,7 +213,7 @@ async function construireChooserProduits(
       return {
         code: p.code,
         libelle: p.libelle,
-        disponible: p.actif,
+        disponible: p.actif && !desactivesIds.has(p.id),
         montantPrime: tarifDefaut?.prime ?? null,
         capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
       };
@@ -1021,6 +1046,9 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
     if (await souscriptionDejaExistante(prod.id, data.raisonSociale, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
@@ -1173,6 +1201,9 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
@@ -1342,6 +1373,9 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
@@ -1458,6 +1492,9 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
@@ -1592,6 +1629,9 @@ publicRouter.post(
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
     const { produit: prod, qr } = resolu;
 
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
