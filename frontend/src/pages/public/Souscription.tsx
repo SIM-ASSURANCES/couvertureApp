@@ -2537,7 +2537,7 @@ export default function Souscription() {
                     <input value={numeroTicket} onChange={(e) => setNumeroTicket(e.target.value)} placeholder="N° du ticket de voyage" style={inputStyle} />
                   </FieldRow>
                   <FieldRow label="Date de départ *">
-                    <input value={dateDepart} onChange={(e) => setDateDepart(e.target.value)} type="date" style={inputStyle} />
+                    <DateNaissanceInput value={dateDepart} onChange={setDateDepart} label="de départ" maxToday={false} />
                   </FieldRow>
                   <FieldRow label="Numéro de la personne à contacter *">
                     <PhoneInput value={numeroPersonneContact} onChange={setNumeroPersonneContact} />
@@ -3489,6 +3489,7 @@ function FieldRow({
   label: string;
   children: React.ReactNode;
 }) {
+  const parts = label.split("*");
   return (
     <div style={{ marginBottom: 14 }}>
       <label
@@ -3500,7 +3501,12 @@ function FieldRow({
           marginBottom: 6,
         }}
       >
-        {label}
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && <span style={{ color: "#dc2626" }}>*</span>}
+          </span>
+        ))}
       </label>
       {children}
     </div>

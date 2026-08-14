@@ -211,9 +211,10 @@ export function PhoneInput({
 }
 
 /**
- * Date de naissance : trois champs JJ / MM / AAAA saisissables au clavier
- * (en plus du calendrier natif) — utile sur mobile où le calendrier seul est
- * lent pour une date ancienne (naviguer des dizaines d'années en arrière).
+ * Champ date (naissance, départ, etc.) : trois champs JJ / MM / AAAA
+ * saisissables au clavier (en plus du calendrier natif) — utile sur mobile
+ * où le calendrier seul est lent pour une date ancienne (naviguer des
+ * dizaines d'années en arrière) ou peu pratique pour une date précise.
  * `value`/`onChange` utilisent le format ISO `AAAA-MM-JJ` (comme
  * `<input type="date">`), pour rester compatible avec l'existant.
  */
@@ -221,10 +222,16 @@ export function DateNaissanceInput({
   value,
   onChange,
   required,
+  label = "de naissance",
+  maxToday = true,
 }: {
   value: string;
   onChange: (v: string) => void;
   required?: boolean;
+  /** Texte inséré dans les aria-label/title ("Jour {label}", etc.). */
+  label?: string;
+  /** Plafonne le calendrier à aujourd'hui (vrai pour une naissance, faux pour une date future comme un départ). */
+  maxToday?: boolean;
 }) {
   const [jour, setJour] = useState("");
   const [mois, setMois] = useState("");
@@ -282,7 +289,7 @@ export function DateNaissanceInput({
         inputMode="numeric"
         maxLength={2}
         style={segStyle}
-        aria-label="Jour de naissance"
+        aria-label={`Jour ${label}`}
       />
       <span style={{ color: "var(--text-3, #8fa2bd)" }}>/</span>
       <input
@@ -300,7 +307,7 @@ export function DateNaissanceInput({
         inputMode="numeric"
         maxLength={2}
         style={segStyle}
-        aria-label="Mois de naissance"
+        aria-label={`Mois ${label}`}
       />
       <span style={{ color: "var(--text-3, #8fa2bd)" }}>/</span>
       <input
@@ -316,7 +323,7 @@ export function DateNaissanceInput({
         inputMode="numeric"
         maxLength={4}
         style={{ ...segStyle, width: 68 }}
-        aria-label="Année de naissance"
+        aria-label={`Année ${label}`}
       />
       <div style={{ position: "relative", width: 42, height: 42, flex: "none" }}>
         <input
@@ -324,7 +331,7 @@ export function DateNaissanceInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           required={required && !value}
-          max={new Date().toISOString().slice(0, 10)}
+          max={maxToday ? new Date().toISOString().slice(0, 10) : undefined}
           style={{
             position: "absolute",
             inset: 0,
@@ -341,7 +348,7 @@ export function DateNaissanceInput({
             // invisible selon les navigateurs — remplacée par l'icône visible
             // ci-dessous, superposée mais neutre aux clics (pointerEvents none).
           }}
-          aria-label="Choisir la date de naissance dans le calendrier"
+          aria-label={`Choisir la date ${label} dans le calendrier`}
           title="Choisir dans le calendrier"
         />
         <Calendar

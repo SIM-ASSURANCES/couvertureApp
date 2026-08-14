@@ -55,10 +55,16 @@ function FieldRow({
   label: string;
   children: React.ReactNode;
 }) {
+  const parts = label.split("*");
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-        {label}
+        {parts.map((part, i) => (
+          <span key={i}>
+            {part}
+            {i < parts.length - 1 && <span style={{ color: "#dc2626" }}>*</span>}
+          </span>
+        ))}
       </div>
       {children}
     </div>
