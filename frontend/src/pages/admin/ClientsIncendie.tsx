@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send, Camera } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -15,7 +15,11 @@ import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
+import PhotoCarteModal from "../../components/PhotoCarteModal";
 import type { ClientIncendie, Partenaire, SouscriptionBranche } from "../../types";
+
+// Doit correspondre à CODE_INCENDIE_HISTORIQUE côté backend (assurancesBranche.ts).
+const CODE_INCENDIE_HISTORIQUE = "incendie_historique";
 
 function statutRenouvellement(c: { renouvellementEnCoursDepuis?: string | null; renouveleAt?: string | null }) {
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
@@ -88,6 +92,8 @@ export default function ClientsIncendie() {
 
   const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
   const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
+  const [photoForIncendie, setPhotoForIncendie] = useState<ClientIncendie | null>(null);
+  const [photoForGenerique, setPhotoForGenerique] = useState<SouscriptionBranche | null>(null);
   const [factureFor, setFactureFor] = useState<ClientIncendie | null>(null);
   const [factureVal, setFactureVal] = useState("");
   const [communeVal, setCommuneVal] = useState("");
@@ -532,6 +538,20 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>
+            {isSuper && (
+              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+                {detailFor.selfieUrl && (
+                  <img
+                    src={detailFor.selfieUrl}
+                    alt="Photo carte"
+                    style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1.5px solid var(--border, #e5e7eb)" }}
+                  />
+                )}
+                <button className="btn btn-ghost" onClick={() => setPhotoForIncendie(detailFor)}>
+                  <Camera size={15} /> {detailFor.selfieUrl ? "Modifier la photo de la carte" : "Ajouter une photo pour la carte"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -564,8 +584,37 @@ export default function ClientsIncendie() {
             <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
               Détail complet (garanties, montants) disponible dans <strong>Contrats</strong>.
             </p>
+            {isSuper && (
+              <button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={() => setPhotoForGenerique(detailGenerique)}>
+                <Camera size={15} /> Modifier la photo de la carte
+              </button>
+            )}
           </div>
         </div>
+      )}
+      {photoForIncendie && (
+        <PhotoCarteModal
+          souscriptionId={photoForIncendie.id}
+          produit={CODE_INCENDIE_HISTORIQUE}
+          onClose={() => setPhotoForIncendie(null)}
+          onSaved={() => {
+            notify("Photo mise à jour ✓");
+            reload();
+            setDetailFor(null);
+          }}
+        />
+      )}
+      {photoForGenerique && (
+        <PhotoCarteModal
+          souscriptionId={photoForGenerique.id}
+          produit={photoForGenerique.produit}
+          onClose={() => setPhotoForGenerique(null)}
+          onSaved={() => {
+            notify("Photo mise à jour ✓");
+            reloadGenerique();
+            setDetailGenerique(null);
+          }}
+        />
       )}
       {factureFor && (
         <div

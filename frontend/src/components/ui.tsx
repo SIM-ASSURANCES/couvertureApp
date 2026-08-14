@@ -240,8 +240,15 @@ export function DateNaissanceInput({
   const anneeRef = useRef<HTMLInputElement>(null);
 
   // Resynchronise depuis l'extérieur (calendrier natif, réinitialisation du
-  // formulaire, pré-remplissage) — sans écraser une saisie manuelle en cours.
+  // formulaire, pré-remplissage) — mais jamais quand `value` ne fait que
+  // refléter en écho ce que la saisie locale vient elle-même de produire
+  // (voir commit ci-dessous), sans quoi une édition partielle en cours (ex.
+  // jour effacé pour le corriger, mois/année encore remplis) serait effacée
+  // à chaque frappe dès que le parent renvoie la chaîne vide correspondante.
   useEffect(() => {
+    const localComplete = jour.length === 2 && mois.length === 2 && annee.length === 4;
+    const localIso = localComplete ? `${annee}-${mois}-${jour}` : "";
+    if (value === localIso) return;
     if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const [a, m, j] = value.split("-");
       setAnnee(a);
@@ -252,14 +259,18 @@ export function DateNaissanceInput({
       setMois("");
       setAnnee("");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
+  // Toujours propager l'état courant au parent — y compris "incomplet" —
+  // pour qu'une édition partielle (ex. jour effacé pour le corriger) ne
+  // laisse jamais une ancienne date complète silencieusement active tant que
+  // les trois segments ne sont pas de nouveau tous remplis. Sans ce cas
+  // général (avant : seul le cas jour+mois+année TOUS vides remettait la
+  // valeur à zéro), modifier un seul segment d'une date déjà complète ne
+  // notifiait jamais le formulaire englobant du changement.
   function commit(j: string, m: string, a: string) {
-    if (j.length === 2 && m.length === 2 && a.length === 4) {
-      onChange(`${a}-${m}-${j}`);
-    } else if (!j && !m && !a) {
-      onChange("");
-    }
+    onChange(j.length === 2 && m.length === 2 && a.length === 4 ? `${a}-${m}-${j}` : "");
   }
 
   const segStyle: CSSProperties = {

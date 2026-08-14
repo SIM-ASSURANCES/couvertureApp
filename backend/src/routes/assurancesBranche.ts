@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { sendSMS, initiateWavePayment, messageRelanceRenouvellement } from "../services/notify.js";
@@ -353,6 +354,62 @@ assurancesBrancheRouter.post(
       objetId: s.id,
     });
     res.json({ ok: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
+  })
+);
+
+// Même régime que les data URL image validées ailleurs (contrats.ts,
+// public.ts) : regex stricte (pas startsWith, qui ne borne que le début),
+// bornée en taille — voir la note de sécurité correspondante dans ces fichiers.
+const dataUrlImage = z
+  .string()
+  .max(2_000_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
+const photoCarteSchema = z.object({
+  selfieUrl: dataUrlImage,
+  produit: z.string().min(1),
+});
+
+/**
+ * Remplace la photo (selfie) utilisée sur la carte virtuelle de prise en
+ * charge d'un client — réservé au Super Administrateur (global ou de la
+ * branche Assurances Accidents/Dommages, déjà garanti par le montage du
+ * routeur dans index.ts), pour corriger une photo de mauvaise qualité ou
+ * incorrecte sans repasser par le parcours public (verrouillé côté client
+ * une fois la photo déposée, voir routes/public.ts).
+ */
+assurancesBrancheRouter.patch(
+  "/souscriptions/:id/photo-carte",
+  requireAnySuperAdmin,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { selfieUrl, produit } = photoCarteSchema.parse(req.body);
+
+    if (produit === CODE_INCENDIE_HISTORIQUE) {
+      const s = await prisma.souscriptionIncendie.findUnique({ where: { id: req.params.id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      await prisma.souscriptionIncendie.update({ where: { id: s.id }, data: { selfieUrl } });
+    } else if (produit === CODE_ACCIDENT_HISTORIQUE) {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.params.id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      await prisma.souscriptionAccident.update({ where: { id: s.id }, data: { selfieUrl } });
+    } else {
+      const s = await prisma.souscription.findUnique({ where: { id: req.params.id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      // Le modèle générique n'a pas de champ selfieUrl direct : la carte lit
+      // le document "Selfie" le plus récent (voir routes/cartes.ts) — en
+      // déposer un nouveau le remplace donc naturellement pour la carte.
+      await prisma.document.create({
+        data: { souscriptionId: s.id, type: "Selfie", url: selfieUrl },
+      });
+    }
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "souscription_photo_carte",
+      objetId: req.params.id,
+    });
+    res.json({ ok: true });
   })
 );
 

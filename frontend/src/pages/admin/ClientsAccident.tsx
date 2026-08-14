@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send } from "lucide-react";
+import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send, Camera } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -14,7 +14,11 @@ import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
+import PhotoCarteModal from "../../components/PhotoCarteModal";
 import type { ClientAccident, Partenaire } from "../../types";
+
+// Doit correspondre à CODE_ACCIDENT_HISTORIQUE côté backend (assurancesBranche.ts).
+const CODE_ACCIDENT_HISTORIQUE = "accident_historique";
 
 function statutRenouvellement(c: ClientAccident) {
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
@@ -69,6 +73,7 @@ export default function ClientsAccident() {
   }
 
   const [detailFor, setDetailFor] = useState<ClientAccident | null>(null);
+  const [photoFor, setPhotoFor] = useState<ClientAccident | null>(null);
 
   function exportXlsx() {
     exportExcel(
@@ -289,8 +294,34 @@ export default function ClientsAccident() {
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>
+            {isSuper && (
+              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
+                {detailFor.selfieUrl && (
+                  <img
+                    src={detailFor.selfieUrl}
+                    alt="Photo carte"
+                    style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1.5px solid var(--border, #e5e7eb)" }}
+                  />
+                )}
+                <button className="btn btn-ghost" onClick={() => setPhotoFor(detailFor)}>
+                  <Camera size={15} /> {detailFor.selfieUrl ? "Modifier la photo de la carte" : "Ajouter une photo pour la carte"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
+      )}
+      {photoFor && (
+        <PhotoCarteModal
+          souscriptionId={photoFor.id}
+          produit={CODE_ACCIDENT_HISTORIQUE}
+          onClose={() => setPhotoFor(null)}
+          onSaved={() => {
+            notify("Photo mise à jour ✓");
+            reload();
+            setDetailFor(null);
+          }}
+        />
       )}
       {toast && <div className="toast">{toast}</div>}
     </>

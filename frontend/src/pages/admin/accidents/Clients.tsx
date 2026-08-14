@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Trash2, Bell, Send } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
 import { useAuth } from "../../../auth";
+import PhotoCarteModal from "../../../components/PhotoCarteModal";
 
 interface SouscriptionAssurancesAccidents {
   id: string;
@@ -42,6 +43,7 @@ export default function AssurancesAccidentsClients() {
     "/assurances-accidents/souscriptions?renouvellementProche=1"
   );
   const [toast, setToast] = useState("");
+  const [photoFor, setPhotoFor] = useState<SouscriptionAssurancesAccidents | null>(null);
 
   function notify(m: string) {
     setToast(m);
@@ -193,9 +195,14 @@ export default function AssurancesAccidentsClients() {
                     <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
                     {isSuper && (
                       <td>
-                        <button className="btn btn-ghost" style={{ padding: 8 }} title="Supprimer" onClick={() => remove(c)}>
-                          <Trash2 size={15} color="var(--danger)" />
-                        </button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Modifier la photo de la carte" onClick={() => setPhotoFor(c)}>
+                            <Camera size={15} />
+                          </button>
+                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Supprimer" onClick={() => remove(c)}>
+                            <Trash2 size={15} color="var(--danger)" />
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -208,6 +215,17 @@ export default function AssurancesAccidentsClients() {
           </div>
         )}
       </Card>
+      {photoFor && (
+        <PhotoCarteModal
+          souscriptionId={photoFor.id}
+          produit={photoFor.produit.code}
+          onClose={() => setPhotoFor(null)}
+          onSaved={() => {
+            notify("Photo mise à jour ✓");
+            reload();
+          }}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </>
   );

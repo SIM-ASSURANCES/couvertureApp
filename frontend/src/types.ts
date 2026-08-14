@@ -139,6 +139,7 @@ export interface ClientIncendie {
   statut: StatutIncendie;
   relanceCount?: number;
   signature?: string | null;
+  selfieUrl?: string | null;
   createdAt: string;
   dateDebut?: string | null;
   dateFin?: string | null;
@@ -164,6 +165,7 @@ export interface ClientAccident {
   statutDossier: StatutAccident;
   relanceCount?: number;
   signature?: string | null;
+  selfieUrl?: string | null;
   createdAt: string;
   dateDebut?: string | null;
   dateFin?: string | null;
