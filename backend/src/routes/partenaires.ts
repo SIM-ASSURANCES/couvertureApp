@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
@@ -631,15 +631,15 @@ partenairesRouter.get(
  * Actif/Inactif global du partenaire. Incendie n'apparaît pas dans cette
  * liste : il n'est pas piloté par le catalogue Produit dans le chooser
  * (branche toujours proposée, cas particulier du parcours public).
+ * Réservé au Super Administrateur global (pas même un BRANCH_SUPER_ADMIN) —
+ * un levier volontairement plus restreint que les autres actions partenaire.
  */
 partenairesRouter.get(
   "/:id/produits",
+  requireSuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
-    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
-      return res.status(403).json({ error: "Accès refusé pour cette branche" });
-    }
     const qrSelecteur = await prisma.qrCode.findFirst({
       where: { partenaireId: p.id, agentDistributionId: null, produitId: null },
       select: { sousBranche: true },
@@ -679,12 +679,10 @@ partenairesRouter.get(
 
 partenairesRouter.post(
   "/:id/produits/:produitId/statut",
+  requireSuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
-    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
-      return res.status(403).json({ error: "Accès refusé pour cette branche" });
-    }
     const { actif } = z.object({ actif: z.boolean() }).parse(req.body);
     const produit = await prisma.produit.findUnique({ where: { id: req.params.produitId } });
     if (!produit) return res.status(404).json({ error: "Produit introuvable" });
