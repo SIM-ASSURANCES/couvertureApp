@@ -319,6 +319,8 @@ souscriptionsRouter.get(
     res.json(
       rows.map((r) => ({
         ...r,
+        clientPasswordHash: undefined,
+        espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
         partenaireResponsable: r.partenaire.nomResponsable,
         partenaireLocalisation: r.partenaire.localisation,
@@ -377,6 +379,8 @@ souscriptionsRouter.get(
     res.json(
       rows.map((r) => ({
         ...r,
+        clientPasswordHash: undefined,
+        espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
         partenaireResponsable: r.partenaire.nomResponsable,
         partenaireLocalisation: r.partenaire.localisation,

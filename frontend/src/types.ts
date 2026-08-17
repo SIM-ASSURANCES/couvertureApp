@@ -63,6 +63,7 @@ export interface SouscriptionBranche {
   renouvellementEnCoursDepuis?: string | null;
   renouveleAt?: string | null;
   cycleFacturation?: string | null;
+  espaceClientActif?: boolean;
 }
 
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---
@@ -146,6 +147,7 @@ export interface ClientIncendie {
   renouvellementEnCoursDepuis?: string | null;
   renouveleAt?: string | null;
   relanceRenouvellementCount?: number;
+  espaceClientActif?: boolean;
 }
 
 export interface ClientAccident {
@@ -172,6 +174,7 @@ export interface ClientAccident {
   renouvellementEnCoursDepuis?: string | null;
   renouveleAt?: string | null;
   relanceRenouvellementCount?: number;
+  espaceClientActif?: boolean;
 }
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---

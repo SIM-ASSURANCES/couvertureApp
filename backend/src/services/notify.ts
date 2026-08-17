@@ -180,6 +180,15 @@ export function messageClientRelax(
 }
 
 /**
+ * Réinitialisation du mot de passe client par un admin (à la demande du
+ * client, ou pour tout autre motif) — texte dédié, distinct de
+ * `messageClientRelax` dont le "contrat activé" serait trompeur ici.
+ */
+export function messageReinitialisationMotDePasse(numeroPolice: string, motDePasse: string, lien: string) {
+  return `SIM Assurances : nouveau mot de passe pour votre contrat N° ${numeroPolice} : ${motDePasse}. Connexion : ${lien}`;
+}
+
+/**
  * Rappel automatique d'échéance (relances programmées J-5 et jour J — voir
  * services/relances.ts), quel que soit le produit — pointe toujours vers
  * l'espace client (jamais un lien de paiement direct), le renouvellement se

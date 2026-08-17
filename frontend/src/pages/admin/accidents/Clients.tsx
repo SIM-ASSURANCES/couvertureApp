@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
 import { useAuth } from "../../../auth";
 import PhotoCarteModal from "../../../components/PhotoCarteModal";
+import AccesClientModal from "../../../components/AccesClientModal";
 
 interface SouscriptionAssurancesAccidents {
   id: string;
@@ -24,6 +25,7 @@ interface SouscriptionAssurancesAccidents {
   cycleFacturation?: string | null;
   renouvellementEnCoursDepuis?: string | null;
   renouveleAt?: string | null;
+  espaceClientActif?: boolean;
 }
 
 function statutRenouvellement(c: SouscriptionAssurancesAccidents) {
@@ -44,6 +46,7 @@ export default function AssurancesAccidentsClients() {
   );
   const [toast, setToast] = useState("");
   const [photoFor, setPhotoFor] = useState<SouscriptionAssurancesAccidents | null>(null);
+  const [detailFor, setDetailFor] = useState<SouscriptionAssurancesAccidents | null>(null);
 
   function notify(m: string) {
     setToast(m);
@@ -196,6 +199,9 @@ export default function AssurancesAccidentsClients() {
                     {isSuper && (
                       <td>
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Voir les détails" onClick={() => setDetailFor(c)}>
+                            <Eye size={15} />
+                          </button>
                           <button className="btn btn-ghost" style={{ padding: 8 }} title="Modifier la photo de la carte" onClick={() => setPhotoFor(c)}>
                             <Camera size={15} />
                           </button>
@@ -215,6 +221,48 @@ export default function AssurancesAccidentsClients() {
           </div>
         )}
       </Card>
+      {detailFor && (
+        <div
+          onClick={() => setDetailFor(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <strong style={{ fontSize: 17 }}>Détails du client</strong>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setDetailFor(null)}><X size={18} /></button>
+            </div>
+            <table className="tbl" style={{ width: "100%" }}>
+              <tbody>
+                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted">Produit</td><td>{detailFor.produit.libelle}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
+                <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
+                <tr><td className="muted">Statut</td><td>{waveBadge(detailFor.waveStatut ?? "en_attente")}</td></tr>
+                <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice ?? "—"}</td></tr>
+                <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
+                <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
+              </tbody>
+            </table>
+            {isSuper && (
+              <button className="btn btn-ghost" style={{ marginTop: 12 }} onClick={() => setPhotoFor(detailFor)}>
+                <Camera size={15} /> Modifier la photo de la carte
+              </button>
+            )}
+            {isSuper && (
+              <AccesClientModal
+                souscriptionId={detailFor.id}
+                produitType="generique"
+                espaceClientActif={!!detailFor.espaceClientActif}
+                onNotify={notify}
+              />
+            )}
+          </div>
+        </div>
+      )}
       {photoFor && (
         <PhotoCarteModal
           souscriptionId={photoFor.id}

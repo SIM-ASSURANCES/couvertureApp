@@ -21,6 +21,7 @@ import {
   LifeBuoy,
   Banknote,
   HeartPulse,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -69,6 +70,7 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/accident", label: "Clients Accident (historique)", icon: ShieldCheck },
           { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
           { to: "/admin/contrats", label: "Contrats", icon: FileText },
+          { to: "/admin/sinistres", label: "Sinistres", icon: AlertTriangle },
         ],
       },
       {

@@ -1,10 +1,19 @@
 import { Router } from "express";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { requireAuth, requireAnySuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
-import { sendSMS, initiateWavePayment, messageRelanceRenouvellement } from "../services/notify.js";
+import {
+  sendSMS,
+  initiateWavePayment,
+  messageRelanceRenouvellement,
+  genererMotDePasseClient,
+  lienClientRelax,
+  messageReinitialisationMotDePasse,
+  numeroPoliceIncendieSynthetique,
+} from "../services/notify.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -48,6 +57,9 @@ export interface SouscriptionBranche {
   renouvellementEnCoursDepuis?: string | null;
   renouveleAt?: string | null;
   cycleFacturation?: string | null;
+  // Espace client (voir refonte "espace client universel") — permet à l'admin
+  // de savoir si une réinitialisation de mot de passe est pertinente.
+  espaceClientActif?: boolean;
 }
 
 export interface Filtres {
@@ -189,6 +201,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
     renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis ? r.renouvellementEnCoursDepuis.toISOString() : null,
     renouveleAt: r.renouveleAt ? r.renouveleAt.toISOString() : null,
     cycleFacturation: r.cycleFacturation,
+    espaceClientActif: !!r.clientPasswordHash,
   }));
 }
 
@@ -228,6 +241,7 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
     dateFin: r.dateFin ? r.dateFin.toISOString() : null,
     renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis ? r.renouvellementEnCoursDepuis.toISOString() : null,
     renouveleAt: r.renouveleAt ? r.renouveleAt.toISOString() : null,
+    espaceClientActif: !!r.clientPasswordHash,
   }));
 }
 
@@ -262,6 +276,7 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
     createdAt: r.createdAt.toISOString(),
+    espaceClientActif: !!r.clientPasswordHash,
   }));
 }
 
@@ -427,5 +442,208 @@ assurancesBrancheRouter.delete(
       objetId: req.params.id,
     });
     res.status(204).end();
+  })
+);
+
+// ─── Sinistres (SinistreRelax, tous produits confondus) ───
+
+type ProduitTypeClient = "generique" | "incendie" | "accident";
+
+async function enrichirSinistres(
+  rows: Awaited<ReturnType<typeof prisma.sinistreRelax.findMany>>
+) {
+  const idsIncendie = rows.filter((r) => r.produitType === "incendie").map((r) => r.souscriptionIncendieId!);
+  const idsAccident = rows.filter((r) => r.produitType === "accident").map((r) => r.souscriptionAccidentId!);
+  const idsGenerique = rows.filter((r) => r.produitType === "generique").map((r) => r.souscriptionId!);
+
+  const [incendies, accidents, generiques] = await Promise.all([
+    idsIncendie.length ? prisma.souscriptionIncendie.findMany({ where: { id: { in: idsIncendie } } }) : [],
+    idsAccident.length ? prisma.souscriptionAccident.findMany({ where: { id: { in: idsAccident } } }) : [],
+    idsGenerique.length
+      ? prisma.souscription.findMany({
+          where: { id: { in: idsGenerique } },
+          include: { produit: { select: { libelle: true } } },
+        })
+      : [],
+  ]);
+  const mapInc = new Map(incendies.map((s) => [s.id, s]));
+  const mapAcc = new Map(accidents.map((s) => [s.id, s]));
+  const mapGen = new Map(generiques.map((s) => [s.id, s]));
+
+  return rows.map((r) => {
+    const souscriptionId = r.souscriptionIncendieId ?? r.souscriptionAccidentId ?? r.souscriptionId ?? "";
+    let clientNom: string | null = null;
+    let clientPrenom: string | null = null;
+    let clientTelephone = "";
+    let numeroPolice: string | null = null;
+    let produitLibelle = r.produitType;
+    let pieceIdentiteUrl: string | null = null;
+
+    if (r.produitType === "incendie") {
+      const s = mapInc.get(souscriptionId);
+      if (s) {
+        clientNom = s.nom;
+        clientPrenom = s.prenom;
+        clientTelephone = s.telephone;
+        numeroPolice = numeroPoliceIncendieSynthetique(s.id, s.dateDebut ?? s.createdAt);
+        pieceIdentiteUrl = s.pieceIdentiteUrl;
+      }
+      produitLibelle = "Incendie Habitation en Inclusion";
+    } else if (r.produitType === "accident") {
+      const s = mapAcc.get(souscriptionId);
+      if (s) {
+        clientNom = s.nom;
+        clientPrenom = s.prenom;
+        clientTelephone = s.telephone;
+        numeroPolice = s.numeroPolice;
+        pieceIdentiteUrl = s.pieceIdentiteUrl;
+      }
+      produitLibelle = "Accident (historique)";
+    } else {
+      const s = mapGen.get(souscriptionId);
+      if (s) {
+        clientNom = s.nom;
+        clientPrenom = s.prenom;
+        clientTelephone = s.telephone;
+        numeroPolice = s.numeroPolice;
+        produitLibelle = s.produit.libelle;
+        pieceIdentiteUrl = s.pieceIdentiteUrl;
+      }
+    }
+
+    return {
+      id: r.id,
+      produitType: r.produitType,
+      souscriptionId,
+      numeroSinistre: r.numeroSinistre,
+      typeEvenement: r.typeEvenement,
+      dateSurvenance: r.dateSurvenance,
+      description: r.description,
+      photosAccidentUrls: r.photosAccidentUrls,
+      statut: r.statut,
+      motifRejet: r.motifRejet,
+      analyseIA: r.analyseIA,
+      analyseIAAt: r.analyseIAAt,
+      createdAt: r.createdAt,
+      clientNom,
+      clientPrenom,
+      clientTelephone,
+      numeroPolice,
+      produitLibelle,
+      pieceIdentiteUrl,
+    };
+  });
+}
+
+/** Liste unifiée des sinistres, tous produits confondus (filtrable statut/produitType/souscriptionId). */
+assurancesBrancheRouter.get(
+  "/sinistres",
+  asyncHandler(async (req, res) => {
+    const { statut, produitType, souscriptionId } = req.query as {
+      statut?: string;
+      produitType?: string;
+      souscriptionId?: string;
+    };
+    const rows = await prisma.sinistreRelax.findMany({
+      where: {
+        statut: (statut as "declare" | "en_cours" | "traite" | "rejete") || undefined,
+        produitType: produitType || undefined,
+        ...(souscriptionId
+          ? {
+              OR: [
+                { souscriptionId },
+                { souscriptionIncendieId: souscriptionId },
+                { souscriptionAccidentId: souscriptionId },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(await enrichirSinistres(rows));
+  })
+);
+
+/** Transition manuelle du statut d'un sinistre — l'analyse IA (voir services/fraudeIA.ts) est purement indicative, jamais automatisée. */
+const statutSinistreSchema = z.object({
+  statut: z.enum(["traite", "rejete"]),
+  motifRejet: z.string().min(1).max(1000).optional(),
+});
+assurancesBrancheRouter.patch(
+  "/sinistres/:id/statut",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = statutSinistreSchema.parse(req.body);
+    if (data.statut === "rejete" && !data.motifRejet?.trim()) {
+      return res.status(400).json({ error: "Le motif de rejet est obligatoire." });
+    }
+    const sinistre = await prisma.sinistreRelax.findUnique({ where: { id: req.params.id } });
+    if (!sinistre) return res.status(404).json({ error: "Introuvable" });
+    const updated = await prisma.sinistreRelax.update({
+      where: { id: sinistre.id },
+      data: {
+        statut: data.statut,
+        motifRejet: data.statut === "rejete" ? data.motifRejet!.trim() : null,
+      },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "sinistre",
+      objetId: updated.id,
+      valeurApres: { statut: updated.statut, motifRejet: updated.motifRejet },
+    });
+    res.json(updated);
+  })
+);
+
+// ─── Accès client (réinitialisation de mot de passe) ───
+
+/**
+ * Réinitialise le mot de passe de l'espace client d'une souscription, à la
+ * demande du client ou à tout moment — envoyé par SMS, jamais affiché à
+ * l'admin (voir services/notify.ts::messageReinitialisationMotDePasse).
+ * Réservé au Super Administrateur (global ou de cette branche), même niveau
+ * que PATCH .../photo-carte.
+ */
+assurancesBrancheRouter.post(
+  "/clients/:produitType/:id/reinitialiser-mot-de-passe",
+  requireAnySuperAdmin,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const produitType = req.params.produitType as ProduitTypeClient;
+    const id = req.params.id;
+    const motDePasse = genererMotDePasseClient();
+    const hash = await bcrypt.hash(motDePasse, 10);
+
+    let telephone: string;
+    let numeroPolice: string | null;
+
+    if (produitType === "incendie") {
+      const s = await prisma.souscriptionIncendie.findUnique({ where: { id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      await prisma.souscriptionIncendie.update({ where: { id }, data: { clientPasswordHash: hash } });
+      telephone = s.telephone;
+      numeroPolice = numeroPoliceIncendieSynthetique(s.id, s.dateDebut ?? s.createdAt);
+    } else if (produitType === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      await prisma.souscriptionAccident.update({ where: { id }, data: { clientPasswordHash: hash } });
+      telephone = s.telephone;
+      numeroPolice = s.numeroPolice;
+    } else {
+      const s = await prisma.souscription.findUnique({ where: { id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      await prisma.souscription.update({ where: { id }, data: { clientPasswordHash: hash } });
+      telephone = s.telephone;
+      numeroPolice = s.numeroPolice;
+    }
+
+    await sendSMS(telephone, messageReinitialisationMotDePasse(numeroPolice ?? "—", motDePasse, lienClientRelax()));
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "client_mot_de_passe",
+      objetId: id,
+    });
+    res.json({ ok: true });
   })
 );

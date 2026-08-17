@@ -698,8 +698,14 @@ model SinistreRelax {
   typeEvenement          String
   dateSurvenance         DateTime
   description            String?
-  photoUrl               String?
+  photosAccidentUrls     String[]              @default([])
   statut                 StatutSinistreRelax   @default(declare)
+  motifRejet             String?
+  // Analyse anti-fraude IA (OpenRouter) — voir services/fraudeIA.ts. Purement
+  // indicative : ne bloque jamais, ni n'automatise la décision finale (voir
+  // PATCH .../sinistres/:id/statut, toujours déclenché manuellement par l'admin).
+  analyseIA              Json?
+  analyseIAAt            DateTime?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 }

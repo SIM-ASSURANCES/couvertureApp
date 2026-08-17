@@ -116,7 +116,14 @@ relaxRouter.get(
       },
       orderBy: { createdAt: "desc" },
     });
-    res.json(rows.map((r) => ({ ...r, partenaireNom: r.partenaire.nomCommerce })));
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        clientPasswordHash: undefined,
+        espaceClientActif: !!r.clientPasswordHash,
+        partenaireNom: r.partenaire.nomCommerce,
+      }))
+    );
   })
 );
 

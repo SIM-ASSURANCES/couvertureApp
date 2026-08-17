@@ -17,6 +17,7 @@ import ClientsIncendie from "./pages/admin/ClientsIncendie";
 import ClientsAccident from "./pages/admin/ClientsAccident";
 import PaiementsEnAttente from "./pages/admin/PaiementsEnAttente";
 import Contrats from "./pages/admin/Contrats";
+import Sinistres from "./pages/admin/Sinistres";
 import Performance from "./pages/admin/Performance";
 import Journal from "./pages/admin/Journal";
 import Administrateurs from "./pages/admin/Administrateurs";
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="accident" element={<ClientsAccident />} />
             <Route path="paiements-en-attente" element={<PaiementsEnAttente />} />
             <Route path="contrats" element={<Contrats />} />
+            <Route path="sinistres" element={<Sinistres />} />
             <Route path="performance" element={<Performance />} />
             <Route path="journal" element={<Journal />} />
             <Route path="administrateurs" element={<Administrateurs />} />

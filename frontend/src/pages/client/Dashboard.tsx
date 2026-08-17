@@ -91,7 +91,7 @@ export default function ClientDashboard() {
   const [typeEvenement, setTypeEvenement] = useState("");
   const [dateSurvenance, setDateSurvenance] = useState("");
   const [description, setDescription] = useState("");
-  const [photoSinistre, setPhotoSinistre] = useState<string | null>(null);
+  const [photosAccident, setPhotosAccident] = useState<string[]>([]);
   const [envoiSinistre, setEnvoiSinistre] = useState(false);
 
   function notify(m: string) {
@@ -198,13 +198,13 @@ export default function ClientDashboard() {
         typeEvenement,
         dateSurvenance,
         description: description || undefined,
-        photoUrl: photoSinistre || undefined,
+        photosAccidentUrls: photosAccident.length ? photosAccident : undefined,
       });
       notify("Sinistre déclaré ✓");
       setTypeEvenement("");
       setDateSurvenance("");
       setDescription("");
-      setPhotoSinistre(null);
+      setPhotosAccident([]);
       setAfficherFormSinistre(false);
       charger();
     } catch (err) {
@@ -376,7 +376,33 @@ export default function ClientDashboard() {
                       style={{ ...inputStyle, height: "auto", padding: 12, resize: "vertical" }}
                     />
                   </div>
-                  <PhotoCapture label="Photo justificative" value={photoSinistre} onChange={setPhotoSinistre} capture="environment" />
+                  <div style={{ marginBottom: 12 }}>
+                    {photosAccident.map((photo, i) => (
+                      <PhotoCapture
+                        key={i}
+                        label={`Photo accident ${i + 1}`}
+                        value={photo}
+                        onChange={(dataUrl) => {
+                          if (dataUrl) {
+                            setPhotosAccident((prev) => prev.map((p, idx) => (idx === i ? dataUrl : p)));
+                          } else {
+                            setPhotosAccident((prev) => prev.filter((_, idx) => idx !== i));
+                          }
+                        }}
+                        capture="environment"
+                      />
+                    ))}
+                    {photosAccident.length < 5 && (
+                      <PhotoCapture
+                        label={photosAccident.length === 0 ? "Photos de l'accident" : "+ Ajouter une photo"}
+                        value={null}
+                        onChange={(dataUrl) => {
+                          if (dataUrl) setPhotosAccident((prev) => [...prev, dataUrl]);
+                        }}
+                        capture="environment"
+                      />
+                    )}
+                  </div>
                   <button
                     disabled={envoiSinistre || !typeEvenement || !dateSurvenance}
                     style={{

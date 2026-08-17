@@ -14,6 +14,7 @@ import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiemen
 import { confirmerAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
+import { analyserSinistreIA } from "../services/fraudeIA.js";
 
 /**
  * Espace client, tous produits confondus (modèle générique, Incendie,
@@ -434,11 +435,17 @@ clientRouter.get(
   })
 );
 
+// Même régime que les data URL image validées ailleurs (contrats.ts, public.ts).
+const dataUrlImage = z
+  .string()
+  .max(2_000_000)
+  .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
 const sinistreSchema = z.object({
   typeEvenement: z.string().min(1).max(120),
   dateSurvenance: z.coerce.date(),
   description: z.string().max(2000).optional(),
-  photoUrl: z.string().max(2_000_000).optional(),
+  photosAccidentUrls: z.array(dataUrlImage).max(5).optional(),
 });
 
 clientRouter.post(
@@ -476,13 +483,19 @@ clientRouter.post(
         typeEvenement: data.typeEvenement,
         dateSurvenance: data.dateSurvenance,
         description: data.description,
-        photoUrl: data.photoUrl,
+        photosAccidentUrls: data.photosAccidentUrls ?? [],
       },
     });
     const updated = await prisma.sinistreRelax.update({
       where: { id: created.id },
       data: { numeroSinistre: numeroSinistre(produitCode, created.id) },
     });
+
+    // Analyse anti-fraude IA — fire-and-forget, ne bloque jamais la réponse
+    // au client (voir services/fraudeIA.ts) ; le résultat sera prêt au
+    // moment où l'admin consulte le sinistre.
+    analyserSinistreIA(updated.id).catch((e) => console.error("[fraudeIA]", e));
+
     res.status(201).json(updated);
   })
 );

@@ -15,6 +15,7 @@ import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
+import AccesClientModal from "../../components/AccesClientModal";
 import type { ClientAccident, Partenaire } from "../../types";
 
 // Doit correspondre à CODE_ACCIDENT_HISTORIQUE côté backend (assurancesBranche.ts).
@@ -307,6 +308,14 @@ export default function ClientsAccident() {
                   <Camera size={15} /> {detailFor.selfieUrl ? "Modifier la photo de la carte" : "Ajouter une photo pour la carte"}
                 </button>
               </div>
+            )}
+            {isSuper && (
+              <AccesClientModal
+                souscriptionId={detailFor.id}
+                produitType="accident"
+                espaceClientActif={!!detailFor.espaceClientActif}
+                onNotify={notify}
+              />
             )}
           </div>
         </div>
