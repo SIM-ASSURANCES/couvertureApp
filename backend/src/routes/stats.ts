@@ -125,8 +125,14 @@ statsRouter.get(
       tarifsAcc,
       tarifsInc,
     ] = await Promise.all([
-      prisma.partenaire.count(),
-      prisma.partenaire.count({ where: { statut: "actif" } }),
+      // Ce tableau de bord ne porte que sur la branche Assurances Accidents
+      // et Dommages (voir requireBranche("INCENDIE_ACCIDENT") sur ce routeur
+      // dans index.ts) — sans ce filtre, ce total comptait aussi les
+      // partenaires RELAX (et les rares partenaires historiques sans branche
+      // renseignée), incohérent avec la page Partenaires qui, elle, filtre
+      // déjà sur les branches auxquelles l'admin connecté a accès.
+      prisma.partenaire.count({ where: { branche: "INCENDIE_ACCIDENT" } }),
+      prisma.partenaire.count({ where: { branche: "INCENDIE_ACCIDENT", statut: "actif" } }),
       prisma.souscriptionIncendie.count({ where: dateWhere }),
       // Un accident n'est compté comme souscription qu'une fois le paiement confirmé.
       prisma.souscriptionAccident.count({ where: { ...dateWhere, waveStatut: "confirme" } }),
