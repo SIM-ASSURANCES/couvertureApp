@@ -197,21 +197,20 @@ export default function AdminDashboard() {
 
           <div className="stat-grid stat-grid-compact" style={{ marginTop: 16 }}>
             {accidents && (
-              <>
-                <StatCard
-                  icon={<Store size={20} />}
-                  label="Partenaires Assurances Accidents & Dommages"
-                  value={nb(accidents.partenaires)}
-                />
-                <StatCard
-                  icon={<HeartPulse size={20} />}
-                  label="Souscriptions confirmées totales"
-                  value={nb(data.accidentTotal + data.incendieTotal + generiqueConfirmesTotal)}
-                  color="#15803d"
-                  bg="#e8f6ec"
-                />
-              </>
+              <StatCard
+                icon={<Store size={20} />}
+                label="Partenaires Assurances Accidents & Dommages"
+                value={nb(accidents.partenaires)}
+              />
             )}
+            <StatCard
+              icon={<HeartPulse size={20} />}
+              label="Souscriptions Assurances Accidents et Dommages"
+              value={nb(data.accidentTotal + data.incendieTotal + generiqueConfirmesTotal)}
+              trend="Toutes confirmées, Accidents + Dommages"
+              color="#15803d"
+              bg="#e8f6ec"
+            />
             <StatCard
               icon={<Coins size={20} />}
               label="FG totale"
