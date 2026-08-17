@@ -109,16 +109,17 @@ function branchesAutorisees(req: AuthedRequest): BrancheAcces[] {
   return (["INCENDIE_ACCIDENT", "RELAX"] as BrancheAcces[]).filter((b) => hasBranche(req.user, b));
 }
 
-// Compte TOUTE souscription liée au partenaire, quel que soit son statut de
-// paiement (même en attente/échouée) — un partenaire ayant déjà fait l'objet
-// d'une souscription, même non confirmée, ne doit jamais pouvoir être
-// supprimé (cohérent avec les compteurs affichés dans la liste des
-// partenaires, qui ne filtrent pas non plus sur le statut — voir GET "/").
+// Ne bloque la suppression d'un partenaire que pour une souscription déjà
+// confirmée (paiement Wave confirmé pour Accident/générique ; formulaire
+// complet pour Incendie, qui n'a pas de paiement Wave à proprement parler —
+// voir le commentaire équivalent dans routes/assurancesBranche.ts) — une
+// tentative en attente/échouée ou un formulaire Incendie inachevé, jamais
+// devenu un client réel, ne doit pas empêcher la suppression.
 async function withCounts(id: string) {
   const [incendie, accident, relax] = await Promise.all([
-    prisma.souscriptionIncendie.count({ where: { partenaireId: id } }),
-    prisma.souscriptionAccident.count({ where: { partenaireId: id } }),
-    prisma.souscription.count({ where: { partenaireId: id } }),
+    prisma.souscriptionIncendie.count({ where: { partenaireId: id, statut: "complet" } }),
+    prisma.souscriptionAccident.count({ where: { partenaireId: id, waveStatut: "confirme" } }),
+    prisma.souscription.count({ where: { partenaireId: id, waveStatut: "confirme" } }),
   ]);
   return { clientsIncendie: incendie, clientsAccident: accident, clientsRelax: relax };
 }
