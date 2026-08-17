@@ -213,7 +213,7 @@ export default function AdminDashboard() {
             />
             <StatCard
               icon={<Coins size={20} />}
-              label="FG totale"
+              label="Accessoires"
               value={fcfa(data.fgTotal)}
               color="#7c3aed"
               bg="#f3eefe"
