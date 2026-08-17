@@ -13,6 +13,7 @@ import {
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { confirmerAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
+import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 
 /**
  * Espace client, tous produits confondus (modèle générique, Incendie,
@@ -112,6 +113,141 @@ clientRouter.get(
       statutAbonnement: s.statutAbonnement,
       dateDebut: s.dateDebut,
       dateFin: s.dateFin,
+    });
+  })
+);
+
+/**
+ * Données aplaties du contrat, dans le même format que celui utilisé par la
+ * page admin Contrats (`GET /souscriptions/contrats`, souscriptions.ts) et
+ * son transformateur frontend `genererContratDepuisDonnees` (frontend/src/
+ * contract.ts) — pour que le client puisse générer exactement le même PDF
+ * (texte réel, rendu serveur) que l'admin. RelaxMoto/RelaxAuto n'ont pas de
+ * contrat PDF séparé (seulement une carte) — le frontend n'appelle pas cette
+ * route pour ces deux produits.
+ */
+clientRouter.get(
+  "/contrat",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const type = produitType(req);
+    const id = req.user!.sub;
+
+    if (type === "incendie") {
+      const s = await prisma.souscriptionIncendie.findUnique({
+        where: { id },
+        include: { partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } } },
+      });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      const debut = s.dateDebut ?? s.createdAt;
+      const fin =
+        s.dateFin ??
+        (() => {
+          const d = new Date(debut);
+          d.setMonth(d.getMonth() + 3);
+          return d;
+        })();
+      return res.json({
+        id: s.id,
+        type: "incendie",
+        numeroPolice: numeroPoliceIncendieSynthetique(s.id, debut),
+        nom: s.nom ?? "",
+        prenom: s.prenom ?? "",
+        telephone: s.telephone,
+        montant: s.montantPrime,
+        capitalGaranti: s.capitalGaranti,
+        partenaire: s.partenaire.nomCommerce,
+        partenaireResponsable: s.partenaire.nomResponsable,
+        partenaireLocalisation: s.partenaire.localisation,
+        dateDebut: debut,
+        dateFin: fin,
+        date: s.createdAt,
+        refFacture: s.refFacture,
+        commune: s.commune,
+        quartier: s.quartier,
+        numeroMaison: s.numeroMaison,
+        signature: s.signature,
+      });
+    }
+
+    if (type === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({
+        where: { id },
+        include: { partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } } },
+      });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      if (s.waveStatut !== "confirme") return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+      return res.json({
+        id: s.id,
+        type: "accident",
+        numeroPolice: s.numeroPolice ?? "",
+        nom: s.nom,
+        prenom: s.prenom,
+        telephone: s.telephone,
+        montant: s.montantPrime,
+        capitalGaranti: s.capitalGaranti,
+        partenaire: s.partenaire.nomCommerce,
+        partenaireResponsable: s.partenaire.nomResponsable,
+        partenaireLocalisation: s.partenaire.localisation,
+        dateDebut: s.dateDebut,
+        dateFin: s.dateFin,
+        date: s.createdAt,
+        dateNaissance: s.dateNaissance,
+        signature: s.signature,
+      });
+    }
+
+    const s = await prisma.souscription.findUnique({
+      where: { id },
+      include: {
+        partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+        produit: { select: { code: true, libelle: true } },
+      },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.waveStatut !== "confirme") return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+    const d = await mapperSouscriptionGenerique(s);
+    res.json({
+      id: d.id,
+      type: d.produit,
+      numeroPolice: d.numeroPolice ?? "",
+      nom: d.nom ?? "",
+      prenom: d.prenom ?? "",
+      telephone: d.telephone,
+      montant: d.montant,
+      capitalGaranti: d.capitalGaranti,
+      partenaire: d.partenaire,
+      partenaireResponsable: d.partenaireResponsable,
+      partenaireLocalisation: d.partenaireLocalisation,
+      dateDebut: d.dateDebut,
+      dateFin: d.dateFin,
+      date: d.createdAt,
+      dateNaissance: d.dateNaissance,
+      signature: d.signature,
+      produitLibelle: d.produitLibelle,
+      compagnie: d.compagnie,
+      lieuDepart: d.lieuDepart,
+      lieuArrivee: d.lieuArrivee,
+      numeroTicket: d.numeroTicket,
+      dateDepart: d.dateDepart,
+      numeroPersonneContact: d.numeroPersonneContact,
+      fraisSante: d.fraisSante,
+      bagages: d.bagages,
+      raisonSociale: d.raisonSociale,
+      profession: d.profession,
+      classe: d.classe,
+      typeCouverture: d.typeCouverture,
+      effectif: d.effectif,
+      nomCommercial: d.nomCommercial,
+      ville: d.ville,
+      communeQuartier: d.communeQuartier,
+      refFacture: d.refFacture,
+      statutOccupation: d.statutOccupation,
+      valeurBatiment: d.valeurBatiment,
+      loyerMensuel: d.loyerMensuel,
+      contenu: d.contenu,
+      dansMarche: d.dansMarche,
+      nombrePieces: d.nombrePieces,
+      resultat: d.resultat,
     });
   })
 );

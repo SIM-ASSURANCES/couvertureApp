@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
 import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
+import { genererContratDepuisDonnees, TYPES_SANS_CONTRAT_TELECHARGEABLE, type DonneesContrat } from "../../contract";
 
 function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
@@ -83,6 +84,7 @@ export default function ClientDashboard() {
   const [renouvellement, setRenouvellement] = useState(false);
   const [confirmationRenouvellement, setConfirmationRenouvellement] = useState(false);
   const [telechargementCarte, setTelechargementCarte] = useState(false);
+  const [telechargementContrat, setTelechargementContrat] = useState(false);
   const [autresProduits, setAutresProduits] = useState<{ qrToken: string | null; produits: ProduitDisponible[] } | null>(null);
 
   const [afficherFormSinistre, setAfficherFormSinistre] = useState(false);
@@ -173,6 +175,18 @@ export default function ClientDashboard() {
       notify(err instanceof Error ? err.message : "Erreur");
     } finally {
       setTelechargementCarte(false);
+    }
+  }
+
+  async function telechargerContrat() {
+    setTelechargementContrat(true);
+    try {
+      const c = await clientApi.get<DonneesContrat>("/contrat");
+      genererContratDepuisDonnees(c);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setTelechargementContrat(false);
     }
   }
 
@@ -269,6 +283,19 @@ export default function ClientDashboard() {
               >
                 {telechargementCarte ? "Génération…" : "🪪 Voir ma carte de prise en charge"}
               </button>
+              {!TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(moi.carteType as "relaxmoto" | "relaxauto") && (
+                <button
+                  onClick={telechargerContrat}
+                  disabled={telechargementContrat}
+                  style={{
+                    marginTop: 10, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                    border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    opacity: telechargementContrat ? 0.5 : 1,
+                  }}
+                >
+                  {telechargementContrat ? "Génération…" : "📄 Télécharger mon contrat (PDF)"}
+                </button>
+              )}
               <button
                 onClick={renouveler}
                 disabled={renouvellement}

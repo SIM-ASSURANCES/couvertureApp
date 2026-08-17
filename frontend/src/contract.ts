@@ -7,6 +7,7 @@
 
 import { API_BASE } from "./api";
 import type { SouscriptionImf } from "./types";
+import { telechargerCarte } from "./carte";
 
 export interface LigneGarantie {
   garantie: string;
@@ -249,6 +250,242 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
   4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
 };
+
+// Assurances Accidents/Dommages (pas IMF) — RelaxMoto/Auto n'ont qu'une carte
+// (abonnement récurrent, pas de police à durée fixe), pas de contrat PDF séparé.
+export const TYPES_SANS_CONTRAT_TELECHARGEABLE = ["relaxmoto", "relaxauto"] as const;
+
+/**
+ * Champs aplatis d'un contrat (Assurances Accidents/Dommages), quel que soit
+ * le produit — même format renvoyé par `GET /souscriptions/contrats` (admin,
+ * backend/src/routes/souscriptions.ts) et `GET /client/contrat` (espace
+ * client, backend/src/routes/client.ts), pour que les deux réutilisent
+ * exactement le même transformateur ci-dessous.
+ */
+export interface DonneesContrat {
+  id: string;
+  type: string;
+  numeroPolice: string;
+  nom: string;
+  prenom: string;
+  telephone: string;
+  montant: number;
+  capitalGaranti: number;
+  partenaire: string;
+  partenaireResponsable?: string | null;
+  partenaireLocalisation?: string | null;
+  dateDebut: string | null;
+  dateFin: string | null;
+  date: string;
+  refFacture?: string | null;
+  commune?: string | null;
+  quartier?: string | null;
+  numeroMaison?: string | null;
+  dateNaissance?: string | null;
+  signature?: string | null;
+  produitLibelle?: string;
+  compagnie?: string | null;
+  lieuDepart?: string | null;
+  lieuArrivee?: string | null;
+  numeroTicket?: string | null;
+  dateDepart?: string | null;
+  numeroPersonneContact?: string | null;
+  fraisSante?: number | null;
+  bagages?: string | null;
+  raisonSociale?: string | null;
+  profession?: string | null;
+  classe?: number | null;
+  typeCouverture?: string | null;
+  effectif?: number | null;
+  nomCommercial?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  statutOccupation?: "proprietaire" | "locataire" | null;
+  valeurBatiment?: number | null;
+  loyerMensuel?: number | null;
+  contenu?: number | null;
+  dansMarche?: boolean | null;
+  nombrePieces?: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resultat?: any;
+}
+
+/** Génère (et télécharge) le contrat PDF adapté au produit — ou la carte pour RelaxMoto/Auto, qui n'ont pas de contrat séparé. */
+export function genererContratDepuisDonnees(c: DonneesContrat): void {
+  const debut = c.dateDebut ?? c.date;
+  const fin =
+    c.dateFin ??
+    new Date(
+      new Date(c.date).setMonth(new Date(c.date).getMonth() + (c.type === "accident" ? 3 : 12))
+    ).toISOString();
+
+  if (TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto")) {
+    telechargerCarte(c.type, c.id);
+    return;
+  }
+  if (c.type === "accident") {
+    genererContratAccident({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "incendie") {
+    genererContratIncendie({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      refFacture: c.refFacture ?? null,
+      commune: c.commune ?? null,
+      quartier: c.quartier ?? null,
+      numeroMaison: c.numeroMaison ?? null,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "relaxaccidents_fraismedicaux") {
+    genererContratRelaxAccidentsFraisMedicaux({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "relaxvoyage") {
+    genererContratRelaxVoyage({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      compagnie: c.compagnie ?? null,
+      lieuDepart: c.lieuDepart ?? null,
+      lieuArrivee: c.lieuArrivee ?? null,
+      numeroTicket: c.numeroTicket ?? null,
+      dateDepart: c.dateDepart ?? null,
+      numeroPersonneContact: c.numeroPersonneContact ?? null,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      fraisSante: c.fraisSante ?? null,
+      bagages: c.bagages ?? null,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "relaxaccidents") {
+    const r = c.resultat ?? {};
+    genererContratRelaxAccidentsGenerale({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      telephone: c.telephone,
+      raisonSociale: c.raisonSociale ?? null,
+      profession: c.profession ?? null,
+      classe: c.classe ?? r.classe ?? 1,
+      typeCouverture: (c.typeCouverture ?? "vie_privee") as
+        | "vie_privee"
+        | "vie_professionnelle"
+        | "vie_privee_professionnelle",
+      effectif: c.effectif ?? 1,
+      lignes: (r.lignes ?? []).map((l: { garantie: string; montant: number; prime: number }) => ({
+        garantie: l.garantie,
+        capital: l.montant,
+        prime: l.prime,
+      })),
+      primeNetteHT1: r.primeNetteHT1 ?? 0,
+      reductionPct: r.reductionPct ?? 0,
+      primeNetteHT2: r.primeNetteHT2 ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "securhome_dommages") {
+    const r = c.resultat ?? {};
+    const statutFinal = c.statutOccupation ?? "proprietaire";
+    genererContratSecurhome({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      ville: c.ville ?? null,
+      communeQuartier: c.communeQuartier ?? null,
+      referenceCIE: c.refFacture ?? null,
+      nombrePieces: c.nombrePieces ?? null,
+      statutOccupation: statutFinal,
+      valeurBatimentOuLoyer: statutFinal === "locataire" ? c.loyerMensuel ?? 0 : c.valeurBatiment ?? 0,
+      contenu: c.contenu ?? 0,
+      lignes: r.lignes ?? [],
+      primeNetteHT: r.primeNetteHT ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "securpro_dommages") {
+    const r = c.resultat ?? {};
+    const statutFinal = c.statutOccupation ?? "proprietaire";
+    genererContratSecurproDommages({
+      numeroPolice: c.numeroPolice,
+      intermediaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateSouscription: c.date,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      nomCommercial: c.nomCommercial ?? null,
+      referenceCIE: c.refFacture ?? null,
+      ville: c.ville ?? null,
+      communeQuartier: c.communeQuartier ?? null,
+      classeLabel: c.classe ? SECURPRO_CLASSE_LABELS[c.classe] ?? `Classe ${c.classe}` : "—",
+      statutOccupation: statutFinal,
+      valeurBatimentOuLoyer: statutFinal === "locataire" ? c.loyerMensuel ?? 0 : c.valeurBatiment ?? 0,
+      contenu: c.contenu ?? 0,
+      dansMarche: !!c.dansMarche,
+      lignes: r.lignes ?? [],
+      primeNetteHT: r.primeNetteHT ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+  }
+}
 
 /** true si un contrat PDF est disponible pour ce produit IMF. */
 export function contratImfDisponible(produitCode: string): boolean {
