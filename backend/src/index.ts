@@ -2,8 +2,10 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import cron from "node-cron";
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
+import { envoyerRelancesEcheance } from "./services/relances.js";
 
 import { authRouter } from "./routes/auth.js";
 import { partenairesRouter } from "./routes/partenaires.js";
@@ -171,6 +173,17 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
   res.status(500).json({ error: "Erreur serveur" });
 });
+
+// Relances SMS automatiques d'échéance (J-5/jour J) — une fois par jour, voir
+// services/relances.ts. Déclenchement manuel possible via
+// POST /parametres/relances/executer (SUPER_ADMIN).
+cron.schedule(
+  "0 8 * * *",
+  () => {
+    envoyerRelancesEcheance().catch((e) => console.error("[relances] erreur", e));
+  },
+  { timezone: "Africa/Abidjan" }
+);
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => console.log(`API SIM Assurances sur http://localhost:${PORT}`));

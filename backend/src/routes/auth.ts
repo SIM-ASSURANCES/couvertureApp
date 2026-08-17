@@ -5,6 +5,7 @@ import { prisma } from "../db.js";
 import { signToken, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
+import { numeroPoliceIncendieSynthetique } from "../services/notify.js";
 
 export const authRouter = Router();
 
@@ -184,10 +185,13 @@ authRouter.post(
 );
 
 /**
- * Connexion de l'espace client RelaxMoto/RelaxAuto (téléphone + mot de passe
- * reçu par SMS à l'activation du contrat). Un client peut avoir plusieurs
- * contrats sur le même téléphone (ex. moto puis auto) — la connexion cible
- * le plus récent contrat activé pour ce numéro.
+ * Connexion de l'espace client, tous produits confondus (téléphone + mot de
+ * passe reçu par SMS à la première confirmation du contrat — voir refonte
+ * "espace client universel", paiementWave.ts/services/accident.ts/routes/
+ * public.ts). Un client peut avoir plusieurs contrats sur le même téléphone,
+ * y compris sur des produits/modèles différents (ex. moto puis Incendie) —
+ * la connexion cible le plus récent contrat activé pour ce numéro, tous
+ * modèles confondus.
  */
 authRouter.post(
   "/client/login",
@@ -196,25 +200,59 @@ authRouter.post(
     if (!telephone || !motDePasse) {
       return res.status(400).json({ error: "Téléphone et mot de passe requis" });
     }
-    const s = await prisma.souscription.findFirst({
-      where: { telephone, clientPasswordHash: { not: null } },
-      orderBy: { createdAt: "desc" },
-      include: { produit: { select: { code: true, libelle: true } } },
-    });
-    if (!s || !s.clientPasswordHash || !(await bcrypt.compare(motDePasse, s.clientPasswordHash))) {
+    const [generique, incendie, accident] = await Promise.all([
+      prisma.souscription.findFirst({
+        where: { telephone, clientPasswordHash: { not: null } },
+        orderBy: { createdAt: "desc" },
+        include: { produit: { select: { code: true, libelle: true } } },
+      }),
+      prisma.souscriptionIncendie.findFirst({
+        where: { telephone, clientPasswordHash: { not: null } },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.souscriptionAccident.findFirst({
+        where: { telephone, clientPasswordHash: { not: null } },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+    const candidats = [
+      generique && { produitType: "generique" as const, row: generique, hash: generique.clientPasswordHash },
+      incendie && { produitType: "incendie" as const, row: incendie, hash: incendie.clientPasswordHash },
+      accident && { produitType: "accident" as const, row: accident, hash: accident.clientPasswordHash },
+    ].filter((c): c is NonNullable<typeof c> => !!c);
+    candidats.sort((a, b) => b.row.createdAt.getTime() - a.row.createdAt.getTime());
+    const plusRecent = candidats[0];
+
+    if (!plusRecent || !plusRecent.hash || !(await bcrypt.compare(motDePasse, plusRecent.hash))) {
       return res.status(401).json({ error: "Identifiants invalides" });
     }
-    const token = signToken({ sub: s.id, type: "client", nom: `${s.prenom ?? ""} ${s.nom ?? ""}`.trim() });
+
+    const { produitType, row } = plusRecent;
+    const nom = `${row.prenom ?? ""} ${row.nom ?? ""}`.trim();
+    const produitCode = produitType === "generique" ? generique!.produit.code : produitType;
+    const produitLibelle =
+      produitType === "generique"
+        ? generique!.produit.libelle
+        : produitType === "incendie"
+        ? "Incendie Habitation en Inclusion"
+        : "Accident (historique)";
+    const numeroPolice =
+      produitType === "incendie"
+        ? numeroPoliceIncendieSynthetique(row.id, (row as { dateDebut: Date | null }).dateDebut ?? row.createdAt)
+        : (row as { numeroPolice: string | null }).numeroPolice;
+
+    const token = signToken({ sub: row.id, type: "client", produitType, nom });
     res.json({
       token,
       user: {
-        id: s.id,
-        nom: `${s.prenom ?? ""} ${s.nom ?? ""}`.trim(),
-        telephone: s.telephone,
+        id: row.id,
+        nom,
+        telephone: row.telephone,
         type: "client",
-        produit: s.produit.code,
-        produitLibelle: s.produit.libelle,
-        numeroPolice: s.numeroPolice,
+        produitType,
+        produit: produitCode,
+        produitLibelle,
+        numeroPolice,
       },
     });
   })

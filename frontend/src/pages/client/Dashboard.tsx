@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
 import PhotoCapture from "../../components/PhotoCapture";
+import { telechargerCarte } from "../../carte";
 
 function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
@@ -12,6 +13,8 @@ interface Moi {
   nom: string | null;
   prenom: string | null;
   telephone: string;
+  produitType: "generique" | "incendie" | "accident";
+  carteType: string;
   produitLibelle: string;
   partenaire: string;
   numeroPolice: string | null;
@@ -21,6 +24,12 @@ interface Moi {
   statutAbonnement: "actif" | "suspendu" | "expire" | "resilie" | null;
   dateDebut: string | null;
   dateFin: string | null;
+}
+
+interface ProduitDisponible {
+  code: string;
+  libelle: string;
+  montantPrime: number | null;
 }
 
 interface Sinistre {
@@ -73,6 +82,8 @@ export default function ClientDashboard() {
   const [toast, setToast] = useState("");
   const [renouvellement, setRenouvellement] = useState(false);
   const [confirmationRenouvellement, setConfirmationRenouvellement] = useState(false);
+  const [telechargementCarte, setTelechargementCarte] = useState(false);
+  const [autresProduits, setAutresProduits] = useState<{ qrToken: string | null; produits: ProduitDisponible[] } | null>(null);
 
   const [afficherFormSinistre, setAfficherFormSinistre] = useState(false);
   const [typeEvenement, setTypeEvenement] = useState("");
@@ -88,12 +99,14 @@ export default function ClientDashboard() {
 
   async function charger() {
     try {
-      const [m, s] = await Promise.all([
+      const [m, s, p] = await Promise.all([
         clientApi.get<Moi>("/moi"),
         clientApi.get<Sinistre[]>("/sinistres"),
+        clientApi.get<{ qrToken: string | null; produits: ProduitDisponible[] }>("/produits-disponibles"),
       ]);
       setMoi(m);
       setSinistres(s);
+      setAutresProduits(p);
     } catch (err) {
       setErreur(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
@@ -138,11 +151,28 @@ export default function ClientDashboard() {
   async function renouveler() {
     setRenouvellement(true);
     try {
-      const r = await clientApi.post<{ checkoutUrl: string }>("/renouveler");
-      window.location.href = r.checkoutUrl;
+      const r = await clientApi.post<{ checkoutUrl?: string; sms?: boolean }>("/renouveler");
+      if (r.sms) {
+        notify("SMS envoyé — rendez-vous en boutique avec une nouvelle réf.facture pour finaliser le renouvellement.");
+        setRenouvellement(false);
+        return;
+      }
+      window.location.href = r.checkoutUrl!;
     } catch (err) {
       notify(err instanceof Error ? err.message : "Erreur");
       setRenouvellement(false);
+    }
+  }
+
+  async function voirCarte() {
+    if (!moi) return;
+    setTelechargementCarte(true);
+    try {
+      await telechargerCarte(moi.carteType, moi.id);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setTelechargementCarte(false);
     }
   }
 
@@ -196,7 +226,7 @@ export default function ClientDashboard() {
         {confirmationRenouvellement && (
           <div style={{ ...card, background: "#e8f6ec", border: "1px solid #bbf7d0" }}>
             <div style={{ fontWeight: 700, color: "#15803d" }}>
-              ✓ Contrat renouvelé pour {moi?.cycleFacturation === "mensuel" ? "un mois" : "un an"} de plus
+              ✓ Contrat renouvelé{moi?.cycleFacturation ? ` pour ${moi.cycleFacturation === "mensuel" ? "un mois" : "un an"} de plus` : ""}
             </div>
           </div>
         )}
@@ -206,10 +236,18 @@ export default function ClientDashboard() {
             <div style={card}>
               <div style={{ fontSize: 13, color: "#5b6b80", fontWeight: 600, marginBottom: 4 }}>{moi.produitLibelle}</div>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 1, marginBottom: 12 }}>{moi.numeroPolice}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
-                <span>Formule</span>
-                <strong style={{ color: "#0f1b2d" }}>{moi.cycleFacturation === "annuel" ? "Annuelle" : "Mensuelle"} — {fcfa(moi.montantPrime)}</strong>
-              </div>
+              {moi.cycleFacturation && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
+                  <span>Formule</span>
+                  <strong style={{ color: "#0f1b2d" }}>{moi.cycleFacturation === "annuel" ? "Annuelle" : "Mensuelle"} — {fcfa(moi.montantPrime)}</strong>
+                </div>
+              )}
+              {!moi.cycleFacturation && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
+                  <span>Prime</span>
+                  <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.montantPrime)}</strong>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                 <span>Capital garanti</span>
                 <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
@@ -221,19 +259,54 @@ export default function ClientDashboard() {
                 </div>
               )}
               <button
+                onClick={voirCarte}
+                disabled={telechargementCarte}
+                style={{
+                  marginTop: 14, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                  border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                  opacity: telechargementCarte ? 0.5 : 1,
+                }}
+              >
+                {telechargementCarte ? "Génération…" : "🪪 Voir ma carte de prise en charge"}
+              </button>
+              <button
                 onClick={renouveler}
                 disabled={renouvellement}
                 style={{
-                  marginTop: 14, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
+                  marginTop: 10, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
                   border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
                   opacity: renouvellement ? 0.5 : 1,
                 }}
               >
                 {renouvellement
-                  ? "Redirection…"
-                  : `🔄 Renouveler mon contrat (${moi.cycleFacturation === "mensuel" ? "1 mois" : "1 an"})`}
+                  ? "Veuillez patienter…"
+                  : moi.produitType === "incendie"
+                  ? "🔄 Renouveler (nouvelle réf.facture en boutique)"
+                  : `🔄 Renouveler mon contrat${moi.cycleFacturation ? ` (${moi.cycleFacturation === "mensuel" ? "1 mois" : "1 an"})` : ""}`}
               </button>
             </div>
+
+            {autresProduits && autresProduits.produits.length > 0 && (
+              <div style={card}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Autres produits disponibles</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {autresProduits.produits.map((p) => (
+                    <a
+                      key={p.code}
+                      href={autresProduits.qrToken ? `/s/${p.code}/${autresProduits.qrToken}` : undefined}
+                      style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        background: "#f5f8fc", borderRadius: 10, padding: "12px 14px",
+                        textDecoration: "none", color: "#0f1b2d",
+                      }}
+                    >
+                      <span style={{ fontSize: 13.5, fontWeight: 600 }}>{p.libelle}</span>
+                      <span style={{ fontSize: 12.5, color: "#004b9c", fontWeight: 700 }}>Souscrire →</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: afficherFormSinistre ? 16 : 0 }}>

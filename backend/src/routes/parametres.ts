@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
+import { envoyerRelancesEcheance } from "../services/relances.js";
 
 export const parametresRouter = Router();
 // Paramètres et tarifs sont une fonctionnalité d'administration générale —
@@ -112,5 +113,25 @@ parametresRouter.patch(
       valeurApres: data,
     });
     res.json(updated);
+  })
+);
+
+/**
+ * Déclenchement manuel des relances automatiques d'échéance (J-5/jour J,
+ * normalement exécutées une fois par jour — voir services/relances.ts et
+ * l'enregistrement du planificateur dans index.ts). Utile pour vérifier le
+ * comportement sans attendre le prochain déclenchement, et en exploitation.
+ */
+parametresRouter.post(
+  "/relances/executer",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const resultat = await envoyerRelancesEcheance();
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "relance",
+      objetType: "relances_echeance",
+      objetId: "manuel",
+    });
+    res.json(resultat);
   })
 );

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { getWaveSession, newNumeroPolice, genererMotDePasseClient, lienClientRelax, messageClientRelax, sendSMS } from "./notify.js";
+import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, sendSMS } from "./notify.js";
 import { genererCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
@@ -53,6 +53,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
       where: { id: s.id },
       data: {
         dateFin,
+        numeroPolice: numeroPoliceRenouvellement(s.numeroPolice, s.dateFin),
         statutAbonnement: s.cycleFacturation ? "actif" : s.statutAbonnement,
         renouvellementEnCoursDepuis: null,
         renouveleAt: new Date(),
@@ -74,18 +75,26 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
       const dateFin = new Date(dateDebut);
       dateFin.setMonth(dateFin.getMonth() + 3);
+      const numeroPolice = newNumeroPolice();
+
+      // Accès espace client (voir branche abonnement ci-dessous) — désormais
+      // ouvert à tous les produits, pas seulement RelaxMoto/Auto.
+      const motDePasse = genererMotDePasseClient();
+
       await prisma.souscription.update({
         where: { id: s.id },
         data: {
           waveStatut: "confirme",
-          numeroPolice: newNumeroPolice(),
+          numeroPolice,
           dateDebut,
           dateFin,
           statut: "complet",
           commissionCalculee: tarif?.commission ?? null,
+          clientPasswordHash: await bcrypt.hash(motDePasse, 10),
         },
       });
       await genererCarte(s.id);
+      await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
       return;
     }
 

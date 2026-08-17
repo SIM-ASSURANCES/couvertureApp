@@ -24,6 +24,10 @@ export interface AuthUser {
   role?: "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
   nom?: string;
   branches?: BrancheAcces[];
+  // Modèle sous-jacent d'un client (type === "client") — `sub` est l'id de la
+  // ligne dans ce modèle : Souscription générique, SouscriptionIncendie ou
+  // SouscriptionAccident (voir refonte "espace client universel").
+  produitType?: "generique" | "incendie" | "accident";
   // Rattachement d'un agent IMF (uniquement pour type === "agent_imf").
   agenceId?: string;
   // Zone(s) gérée(s) : une seule pour un RESPONSABLE_ZONE, plusieurs pour un

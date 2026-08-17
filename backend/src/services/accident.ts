@@ -1,5 +1,13 @@
+import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { getWaveSession, newNumeroPolice } from "./notify.js";
+import {
+  getWaveSession,
+  numeroPoliceRenouvellement,
+  genererMotDePasseClient,
+  lienClientRelax,
+  messageClientRelax,
+  sendSMS,
+} from "./notify.js";
 import type { SouscriptionAccident } from "@prisma/client";
 
 /**
@@ -8,9 +16,12 @@ import type { SouscriptionAccident } from "@prisma/client";
  * qu'aucun renouvellement n'est en cours, ne fait rien) ; sert aussi à
  * confirmer un paiement de RENOUVELLEMENT sur la même ligne (numeroPolice déjà
  * présent = c'est un renouvellement, pas une première souscription) : la
- * police est conservée, la couverture est prolongée de 3 mois à partir de
- * l'échéance précédente (ou d'aujourd'hui si déjà expirée), et `renouveleAt`
- * est renseigné pour que l'admin voie le statut "Renouvelé".
+ * police est conservée SAUF si le renouvellement intervient plus de 2 jours
+ * après l'échéance précédente (voir numeroPoliceRenouvellement) ; la
+ * couverture est prolongée de 3 mois à partir de l'échéance précédente (ou
+ * d'aujourd'hui si déjà expirée), et `renouveleAt` est renseigné pour que
+ * l'admin voie le statut "Renouvelé". Ouvre aussi l'espace client (mot de
+ * passe envoyé par SMS) à la toute première confirmation.
  */
 export async function confirmerAccident(s: SouscriptionAccident): Promise<void> {
   if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) return;
@@ -22,12 +33,15 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
     estRenouvellement && s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
   const dateFin = new Date(dateDebut);
   dateFin.setMonth(dateFin.getMonth() + 3);
+  const numeroPolice = numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);
+
+  const motDePasse = estRenouvellement ? null : genererMotDePasseClient();
 
   await prisma.souscriptionAccident.update({
     where: { id: s.id },
     data: {
       waveStatut: "confirme",
-      numeroPolice: s.numeroPolice ?? newNumeroPolice(),
+      numeroPolice,
       dateDebut,
       dateFin,
       statutDossier: "complet",
@@ -36,9 +50,13 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
       renouvellementEnCoursDepuis: null,
       ...(estRenouvellement
         ? { renouveleAt: new Date(), nombrePaiements: { increment: 1 } }
-        : {}),
+        : { clientPasswordHash: await bcrypt.hash(motDePasse!, 10) }),
     },
   });
+
+  if (motDePasse) {
+    await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+  }
 }
 
 /**

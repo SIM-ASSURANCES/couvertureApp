@@ -14,6 +14,38 @@ export function newFormulaireToken() {
   return randomUUID();
 }
 
+const DELAI_GRACE_RENOUVELLEMENT_MS = 2 * 24 * 60 * 60 * 1000;
+
+/**
+ * Numéro de police à appliquer lors d'une confirmation (première activation
+ * OU renouvellement) : reconduit l'ancien numéro si le renouvellement est
+ * confirmé au plus 2 jours après l'ancienne échéance (grâce), sinon (ou à la
+ * première activation, où `ancienNumeroPolice`/`ancienneDateFin` sont null)
+ * génère un numéro neuf. Centralise la règle pour rester cohérente entre le
+ * modèle générique (paiementWave.ts) et Accident historique (accident.ts).
+ */
+export function numeroPoliceRenouvellement(
+  ancienNumeroPolice: string | null,
+  ancienneDateFin: Date | null
+): string {
+  const horsDelai = ancienneDateFin
+    ? Date.now() - ancienneDateFin.getTime() > DELAI_GRACE_RENOUVELLEMENT_MS
+    : false;
+  if (!horsDelai && ancienNumeroPolice) return ancienNumeroPolice;
+  return newNumeroPolice();
+}
+
+/**
+ * Numéro de police synthétique Incendie (ce modèle n'a pas de champ
+ * `numeroPolice` stocké — la prime étant payée à l'achat, sans paiement Wave
+ * à confirmer). Recalculé à la volée partout où il est affiché/envoyé —
+ * gardé identique aux 3 endroits qui en ont besoin (aperçu public, carte
+ * PNG, SMS d'activation de l'espace client).
+ */
+export function numeroPoliceIncendieSynthetique(id: string, dateDebut: Date): string {
+  return `POL-INC-${dateDebut.getFullYear()}-${id.slice(0, 8).toUpperCase()}`;
+}
+
 /**
  * Mot de passe client (RelaxMoto/RelaxAuto) — généré à l'activation du
  * contrat, envoyé en clair par SMS une seule fois puis jamais reconstitué
@@ -145,6 +177,18 @@ export function messageClientRelax(
   lien: string
 ) {
   return `SIM Assurances : contrat activé, N° ${numeroPolice}. Accès espace client : mot de passe ${motDePasse} sur ${lien}`;
+}
+
+/**
+ * Rappel automatique d'échéance (relances programmées J-5 et jour J — voir
+ * services/relances.ts), quel que soit le produit — pointe toujours vers
+ * l'espace client (jamais un lien de paiement direct), le renouvellement se
+ * faisant depuis là.
+ */
+export function messageRappelEcheance(prenom: string, joursRestants: number, lien: string) {
+  return joursRestants <= 0
+    ? `SIM Assurances : ${prenom}, votre contrat arrive à échéance aujourd'hui. Renouvelez depuis votre espace : ${lien}`
+    : `SIM Assurances : ${prenom}, votre contrat arrive à échéance dans ${joursRestants} jours. Renouvelez depuis votre espace : ${lien}`;
 }
 
 /**

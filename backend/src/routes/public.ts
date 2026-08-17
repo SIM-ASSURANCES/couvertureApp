@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../util.js";
 import {
   initiateWavePayment,
   newNumeroPolice,
   newFormulaireToken,
+  numeroPoliceIncendieSynthetique,
+  genererMotDePasseClient,
+  lienClientRelax,
+  messageClientRelax,
   sendSMS,
   messageIncendie,
   lienFormulaire,
@@ -186,7 +191,7 @@ const MESSAGE_PRODUIT_DESACTIVE = "Ce produit n'est plus disponible chez ce part
  * le nouveau QR unique (sousBranche choisie dynamiquement via ?sousBranche=,
  * voir GET /qr/:token).
  */
-async function construireChooserProduits(
+export async function construireChooserProduits(
   sousBranche: string,
   partenaire: { id: string; nomCommerce: string }
 ) {
@@ -584,6 +589,12 @@ publicRouter.patch(
       dateFin.setMonth(dateFin.getMonth() + 3);
     }
 
+    // Première complétion réussie (jamais "complet" auparavant) : ouvre
+    // l'espace client, comme pour tous les autres produits désormais — voir
+    // paiementWave.ts::confirmerEcheance / services/accident.ts::confirmerAccident.
+    const premiereCompletion = tenteCompletion && !estRenouvellement;
+    const motDePasse = premiereCompletion ? genererMotDePasseClient() : null;
+
     const updated = await prisma.souscriptionIncendie.update({
       where: { id: s.id },
       data: {
@@ -606,8 +617,15 @@ publicRouter.patch(
         ...(estRenouvellement && tenteCompletion
           ? { renouveleAt: new Date(), nombrePaiements: { increment: 1 } }
           : {}),
+        ...(motDePasse ? { clientPasswordHash: await bcrypt.hash(motDePasse, 10) } : {}),
       },
     });
+
+    if (motDePasse && dateDebut) {
+      const numeroPolice = numeroPoliceIncendieSynthetique(updated.id, dateDebut);
+      await sendSMS(updated.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+    }
+
     res.json({
       id: updated.id,
       statut: updated.statut,

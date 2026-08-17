@@ -9,7 +9,8 @@ export interface ClientUser {
   nom: string;
   telephone: string;
   type: "client";
-  produit: "relaxmoto" | "relaxauto";
+  produitType: "generique" | "incendie" | "accident";
+  produit: string;
   produitLibelle: string;
   numeroPolice: string | null;
 }

@@ -4,7 +4,12 @@
 
 import { API_BASE } from "./api";
 
-export type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
+// "incendie"/"accident" pour les modèles historiques, sinon le code produit
+// du modèle générique (relaxmoto, relaxauto, relaxaccidents_fraismedicaux,
+// relaxvoyage, relaxaccidents, securhome_dommages, securpro_dommages...) —
+// le backend (routes/cartes.ts) traite tout code non-incendie/accident de
+// façon générique, donc ce type reste volontairement large.
+export type TypeCarte = string;
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
