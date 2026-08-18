@@ -5,6 +5,8 @@
 // Port côté serveur de l'ancien frontend/src/contract.ts (qui générait le PDF
 // dans le navigateur). La mise en page (CSS, structure) reste identique.
 
+import { prisma } from "../db.js";
+
 const APP_PUBLIC_URL = process.env.APP_PUBLIC_URL || "http://localhost:5173";
 
 export interface LigneGarantie {
@@ -374,15 +376,41 @@ function signatures(sig?: string | null) {
   return `<div class="sign"><div>${gauche}</div><div style="text-align:right;">${droite}</div></div>`;
 }
 
-async function loadCG(file: string): Promise<string> {
+/**
+ * Conditions Générales à insérer dans un contrat, par clé de famille
+ * ("accident", "incendie"...). Priorité au texte saisi par l'administrateur
+ * (table ConditionsGenerales) ; à défaut, on sert le fichier statique
+ * historique `frontend/public/cg-<cle>.html`, de sorte que les contrats
+ * restent inchangés tant que rien n'a été saisi.
+ */
+async function loadCG(cle: string, fichierRepli = `cg-${cle}.html`): Promise<string> {
   try {
-    const r = await fetch(`${APP_PUBLIC_URL}/${file}`);
+    const saisie = await prisma.conditionsGenerales.findUnique({ where: { cle } });
+    if (saisie?.contenuHtml.trim()) return saisie.contenuHtml;
+  } catch {
+    /* base indisponible : on retombe sur le fichier statique */
+  }
+  try {
+    const r = await fetch(`${APP_PUBLIC_URL}/${fichierRepli}`);
     if (r.ok) return await r.text();
   } catch {
     /* ignore */
   }
   return "<p>Conditions Générales momentanément indisponibles.</p>";
 }
+
+/**
+ * Clés éditables depuis l'admin et produits couverts par chacune. Les clés
+ * dont le repli n'est pas leur propre fichier retombent sur les CG de la
+ * famille Accidents, faute de fichier statique dédié.
+ */
+export const CLES_CONDITIONS_GENERALES = [
+  { cle: "accident", libelle: "Accidents (Accident historique, RelaxAccidents Frais Médicaux)" },
+  { cle: "incendie", libelle: "Dommages (Incendie, SecurHome+, SecurPro, SecurStock)" },
+  { cle: "relaxmoto", libelle: "RelaxMoto / RelaxAuto" },
+  { cle: "relaxvoyage", libelle: "RelaxVoyage" },
+  { cle: "relaxaccidents", libelle: "RelaxAccidents générale" },
+] as const;
 
 function document_(title: string, inner: string): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -422,7 +450,7 @@ export async function renderContratIncendie(c: ContratIncendie): Promise<string>
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-incendie.html");
+  const cg = await loadCG("incendie");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECURDOMMAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -457,7 +485,7 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-accident.html");
+  const cg = await loadCG("accident");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -499,7 +527,7 @@ export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promi
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-accident.html");
+  const cg = await loadCG("relaxmoto", "cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — ${esc(c.produitLibelle.toUpperCase())}</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -545,7 +573,7 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
   // RelaxVoyage n'a pas de fichier de CG propre : on sert celles de la famille
   // Accidents plutôt que d'imprimer « momentanément indisponibles », ce que
   // faisait le renvoi vers un cg-relaxvoyage.html qui n'a jamais existé.
-  const cg = await loadCG("cg-accident.html");
+  const cg = await loadCG("relaxvoyage", "cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXVOYAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -598,7 +626,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-accident.html");
+  const cg = await loadCG("relaxaccidents", "cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXACCIDENTS</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -646,7 +674,7 @@ export async function renderContratSecurpro(c: ContratSecurpro): Promise<string>
   </div>
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-incendie.html");
+  const cg = await loadCG("incendie");
   const cgSection = `
   <div class="pagebreak"></div>
   <h1>Conditions Générales — SECUR DOMMAGE</h1>
@@ -702,7 +730,7 @@ export async function renderContratSecurhome(c: ContratSecurhome): Promise<strin
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-incendie.html");
+  const cg = await loadCG("incendie");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
@@ -800,7 +828,7 @@ export async function renderContratSecurstock(c: ContratSecurstock): Promise<str
   </div>
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-incendie.html");
+  const cg = await loadCG("incendie");
   const cgSection = `
   <div class="pagebreak"></div>
   <h1>Conditions Générales — SECUR DOMMAGE</h1>

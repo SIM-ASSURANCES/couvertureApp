@@ -26,6 +26,7 @@ import AdminProfil from "./pages/admin/Profil";
 
 import AssurancesAccidentsClients from "./pages/admin/accidents/Clients";
 import AssurancesAccidentsTarifs from "./pages/admin/accidents/Tarifs";
+import ConditionsGenerales from "./pages/admin/ConditionsGenerales";
 import RelaxDashboard from "./pages/admin/relax/Dashboard";
 import RelaxPartenaires from "./pages/admin/relax/Partenaires";
 import ClientsRelaxMoto from "./pages/admin/relax/ClientsRelaxMoto";
@@ -92,6 +93,7 @@ export default function App() {
 
             <Route path="clients-accidents" element={<AssurancesAccidentsClients />} />
             <Route path="tarifs-accidents" element={<AssurancesAccidentsTarifs />} />
+            <Route path="conditions-generales" element={<ConditionsGenerales />} />
 
             <Route path="relax" element={<RelaxDashboard />} />
             <Route path="relax/partenaires" element={<RelaxPartenaires />} />

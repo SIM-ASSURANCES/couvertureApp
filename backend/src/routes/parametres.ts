@@ -5,6 +5,7 @@ import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../au
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { envoyerRelancesEcheance } from "../services/relances.js";
+import { CLES_CONDITIONS_GENERALES } from "../services/contractHtml.js";
 
 export const parametresRouter = Router();
 // Paramètres et tarifs sont une fonctionnalité d'administration générale —
@@ -133,5 +134,68 @@ parametresRouter.post(
       objetId: "manuel",
     });
     res.json(resultat);
+  })
+);
+
+/* ── Conditions Générales des contrats ── */
+
+const conditionsGeneralesSchema = z.object({
+  // HTML de confiance (saisi par un super-admin) mais injecté dans le rendu
+  // Puppeteer : l'interception des schémas dangereux reste en place côté
+  // services/pdf.ts, qui n'autorise que data:/http/https.
+  contenuHtml: z.string().max(400_000),
+});
+
+/**
+ * Liste des jeux de Conditions Générales éditables, avec le texte déjà saisi
+ * s'il existe. `personnalise: false` signifie que le contrat sert encore le
+ * fichier statique livré avec l'application.
+ */
+parametresRouter.get(
+  "/conditions-generales",
+  asyncHandler(async (_req, res) => {
+    const saisies = await prisma.conditionsGenerales.findMany();
+    const parCle = new Map(saisies.map((s) => [s.cle, s]));
+    res.json(
+      CLES_CONDITIONS_GENERALES.map((c) => {
+        const saisie = parCle.get(c.cle);
+        return {
+          cle: c.cle,
+          libelle: c.libelle,
+          contenuHtml: saisie?.contenuHtml ?? "",
+          personnalise: !!saisie?.contenuHtml.trim(),
+          updatedAt: saisie?.updatedAt ?? null,
+        };
+      })
+    );
+  })
+);
+
+/** Enregistre (ou réinitialise, si le contenu est vide) les CG d'une clé. */
+parametresRouter.put(
+  "/conditions-generales/:cle",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const cle = req.params.cle;
+    const entree = CLES_CONDITIONS_GENERALES.find((c) => c.cle === cle);
+    if (!entree) return res.status(404).json({ error: "Conditions Générales inconnues" });
+
+    const { contenuHtml } = conditionsGeneralesSchema.parse(req.body);
+
+    if (!contenuHtml.trim()) {
+      // Retour au texte livré avec l'application : on supprime la ligne
+      // plutôt que d'enregistrer une chaîne vide, pour que loadCG retombe
+      // naturellement sur le fichier statique.
+      await prisma.conditionsGenerales.deleteMany({ where: { cle } });
+      await logAction({ adminId: req.user!.sub, typeAction: "suppression", objetType: "conditions_generales", objetId: cle });
+      return res.json({ cle, personnalise: false });
+    }
+
+    const saisie = await prisma.conditionsGenerales.upsert({
+      where: { cle },
+      create: { cle, libelle: entree.libelle, contenuHtml, modifieParAdminId: req.user?.sub ?? null },
+      update: { libelle: entree.libelle, contenuHtml, modifieParAdminId: req.user?.sub ?? null },
+    });
+    await logAction({ adminId: req.user!.sub, typeAction: "modification", objetType: "conditions_generales", objetId: cle, valeurApres: { taille: contenuHtml.length } });
+    res.json({ cle, personnalise: true, updatedAt: saisie.updatedAt });
   })
 );

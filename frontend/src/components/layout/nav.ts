@@ -77,6 +77,7 @@ export const adminNav: AdminNavEntry[] = [
         section: "Pilotage",
         items: [
           { to: "/admin/tarifs-accidents", label: "Tarifs", icon: Percent },
+          { to: "/admin/conditions-generales", label: "Conditions Générales", icon: FileText },
           { to: "/admin/performance", label: "Performance & Commissions", icon: TrendingUp },
         ],
       },

@@ -979,3 +979,21 @@ model BordereauImf {
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 }
+
+/**
+ * Conditions Générales d'un produit (ou d'une famille de produits), éditables
+ * depuis l'espace admin et injectées dans les contrats PDF.
+ *
+ * `cle` reprend le nom des fichiers statiques historiques ("accident",
+ * "incendie"...) : tant qu'aucune ligne n'existe pour une clé, le rendu
+ * retombe sur `frontend/public/cg-<cle>.html`. Aucune reprise de données
+ * n'est donc nécessaire, et les contrats restent identiques tant que
+ * l'administrateur n'a rien saisi (voir services/contractHtml.ts::loadCG).
+ */
+model ConditionsGenerales {
+  cle              String   @id
+  libelle          String
+  contenuHtml      String
+  modifieParAdminId String?
+  updatedAt        DateTime @updatedAt
+}

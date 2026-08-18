@@ -45,6 +45,7 @@ interface Contrat extends DonneesContrat {
   // (frais de gestion) est déjà compris dedans (produits à tarif fixe).
   fg?: number | null;
   accessoires?: number | null;
+  referenceWave?: string | null;
 }
 
 function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
@@ -114,6 +115,18 @@ export default function Contrats() {
     }
   }
 
+  /**
+   * Nom du fichier exporté : celui du partenaire dès lors que l'export ne
+   * concerne qu'un seul partenaire (cas d'une recherche filtrée sur son nom),
+   * sinon un nom générique — plusieurs partenaires dans un même fichier ne
+   * pouvant pas être résumés par l'un d'eux.
+   */
+  function nomFichierExport() {
+    const partenaires = [...new Set((data ?? []).map((c) => c.partenaire).filter(Boolean))];
+    if (partenaires.length !== 1) return "contrats";
+    return partenaires[0].replace(/[^a-zA-Z0-9-_ ]+/g, "").trim().replace(/\s+/g, "_") || "contrats";
+  }
+
   function exportXlsx() {
     exportExcel(
       (data ?? []).map((c) => ({
@@ -123,6 +136,7 @@ export default function Contrats() {
         "Nom": c.nom,
         "Téléphone": c.telephone,
         "Partenaire": c.partenaire,
+        "Référence Wave": c.referenceWave ?? "",
         "Prime nette": c.primeHT ?? "",
         "Accessoires": c.accessoires ?? "",
         "Frais de gestion (inclus)": c.fg ?? "",
@@ -132,7 +146,7 @@ export default function Contrats() {
         "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
         "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
       })),
-      "contrats.xlsx"
+      `${nomFichierExport()}.xlsx`
     );
   }
 
@@ -230,6 +244,7 @@ export default function Contrats() {
                   <th>N° police</th>
                   <th>Assuré</th>
                   <th>Partenaire</th>
+                  <th>Référence Wave</th>
                   <th>Prime</th>
                   <th>Capital garanti</th>
                   <th>Échéance</th>
@@ -257,6 +272,9 @@ export default function Contrats() {
                       {c.partenaireLocalisation && (
                         <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
                       )}
+                    </td>
+                    <td className="muted">
+                      {c.referenceWave ?? "—"}
                     </td>
                     <td>
                       <strong>{fcfa(c.montant)}</strong>

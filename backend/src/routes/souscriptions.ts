@@ -94,6 +94,9 @@ souscriptionsRouter.get(
       nombrePieces?: number | null;
       /** RelaxMoto/RelaxAuto : périodicité mentionnée sur le contrat PDF. */
       cycleFacturation?: "mensuel" | "annuel" | null;
+      // Référence de la transaction Wave, uniquement quand le paiement est
+      // confirmé. Incendie se règle par facture en boutique : pas de référence.
+      referenceWave?: string | null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       resultat?: any;
     };
@@ -159,6 +162,7 @@ souscriptionsRouter.get(
       for (const s of acc) {
         const t = accTarifMap.get(s.montantPrime);
         out.push({
+          referenceWave: s.waveStatut === "confirme" ? s.waveTransactionId : null,
           id: s.id,
           type: "accident",
           numeroPolice: s.numeroPolice ?? "",
@@ -222,6 +226,14 @@ souscriptionsRouter.get(
           include: {
             partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
             produit: { select: { code: true, libelle: true } },
+            // Dernière échéance réglée : porte la référence Wave quand elle
+            // n'a pas été recopiée sur la souscription (cas des abonnements).
+            paiements: {
+              where: { statut: "paye" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { waveTransactionId: true },
+            },
           },
           orderBy: { createdAt: "desc" },
         });
@@ -311,6 +323,10 @@ souscriptionsRouter.get(
             nombrePieces: d.nombrePieces,
             resultat: d.resultat,
             cycleFacturation: s.cycleFacturation,
+            referenceWave:
+              s.waveStatut === "confirme"
+                ? s.waveTransactionId ?? s.paiements[0]?.waveTransactionId ?? null
+                : null,
           });
         }
       }
