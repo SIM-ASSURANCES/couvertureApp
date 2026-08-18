@@ -136,7 +136,6 @@ export default function Contrats() {
         "Nom": c.nom,
         "Téléphone": c.telephone,
         "Partenaire": c.partenaireResponsable || c.partenaire,
-        "Commerce": c.partenaire,
         "Référence Wave": c.referenceWave ?? "",
         "Prime nette": c.primeHT ?? "",
         "Accessoires": c.accessoires ?? "",
