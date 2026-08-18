@@ -53,6 +53,17 @@ function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
 
+// Sous-branche d'un code produit — utilisé pour sauter directement le niveau
+// "choisir votre Assurance" (QR unique) quand l'URL vise déjà un produit
+// précis (lien "Souscrire" depuis l'espace client, voir Dashboard.tsx).
+const PRODUITS_ACCIDENTS = ["relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents"];
+const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages"];
+function sousBrancheDuProduit(code: string): "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null {
+  if (PRODUITS_ACCIDENTS.includes(code)) return "ASSURANCES_ACCIDENTS";
+  if (PRODUITS_DOMMAGES.includes(code)) return "ASSURANCES_DOMMAGES";
+  return null;
+}
+
 // RelaxAccidents générale (police collective, devis calculé dynamiquement) —
 // distincte de RelaxAccidents Frais Médicaux (formule fixe au catalogue).
 function isRelaxAccidentsGenerale(p?: string): p is "relaxaccidents" {
@@ -1454,15 +1465,44 @@ export default function Souscription() {
 
         // QR unique par partenaire (refonte 2026-08-07) : premier niveau,
         // le prospect choisit d'abord son Assurance (Accidents ou Dommages).
+        // Exception : lien "Souscrire" depuis l'espace client (Dashboard.tsx)
+        // — l'URL embarque déjà le produit précis visé, donc on saute les
+        // écrans de sélection et on va directement au formulaire pré-rempli.
         if (qr.type === "chooser-branche") {
+          const branche = produitParam ? sousBrancheDuProduit(produitParam) : null;
+          if (branche) {
+            try {
+              const r2 = await fetch(`${BASE}/public/qr/${token}?sousBranche=${branche}`);
+              const qr2 = await r2.json();
+              if (!qr2.error && qr2.type === "chooser") {
+                const cible = (qr2.produits as ChooserProduit[]).find((p) => p.code === produitParam && p.disponible);
+                if (cible) {
+                  await selectionnerProduit(cible, qr2.partenaire);
+                  return;
+                }
+                setChooserInfo(qr2);
+                setStep("choose-produit");
+                return;
+              }
+            } catch {
+              /* repli sur l'écran de choix normal ci-dessous */
+            }
+          }
           setChooserBrancheInfo(qr);
           setStep("choose-branche");
           return;
         }
 
         // QR "sélecteur" : affiche la liste des produits de la sous-branche,
-        // le prospect en choisit un.
+        // le prospect en choisit un (sauf lien "Souscrire" espace client, cf. ci-dessus).
         if (qr.type === "chooser") {
+          const cible = produitParam
+            ? (qr.produits as ChooserProduit[]).find((p) => p.code === produitParam && p.disponible)
+            : undefined;
+          if (cible) {
+            await selectionnerProduit(cible, qr.partenaire);
+            return;
+          }
           setChooserInfo(qr);
           setStep("choose-produit");
           return;
@@ -1596,20 +1636,22 @@ export default function Souscription() {
     setStep("choose-branche");
   }
 
-  /** Choix d'un produit depuis l'écran sélecteur (QR "sélecteur" — Assurance Accidents/Dommages). */
-  async function choisirProduit(p: ChooserProduit) {
-    if (!p.disponible) return;
-    // Incendie reste sur le modèle historique : redirige vers son propre
-    // token dédié plutôt que de continuer avec celui du sélecteur.
+  /** Bascule directement vers le formulaire du produit choisi (Incendie redirige vers son propre token dédié). */
+  async function selectionnerProduit(p: ChooserProduit, partenaire: { id: string; nomCommerce: string }) {
     if (p.token) {
       navigate(`/s/incendie/${p.token}`, { replace: true });
       return;
     }
-    if (!chooserInfo) return;
-    setQrInfo({ produit: p.code as QrInfo["produit"], partenaire: chooserInfo.partenaire });
+    setQrInfo({ produit: p.code as QrInfo["produit"], partenaire });
     setStep("loading");
     await chargerTarifsProduit(p.code);
     setStep("infos");
+  }
+
+  /** Choix d'un produit depuis l'écran sélecteur (QR "sélecteur" — Assurance Accidents/Dommages). */
+  async function choisirProduit(p: ChooserProduit) {
+    if (!p.disponible || !chooserInfo) return;
+    await selectionnerProduit(p, chooserInfo.partenaire);
   }
 
   /** Retour à l'écran sélecteur (uniquement possible si on y est arrivé via un QR "sélecteur"). */
