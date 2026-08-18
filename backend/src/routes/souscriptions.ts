@@ -55,11 +55,11 @@ souscriptionsRouter.get(
       primeHT?: number | null;
       primeTTC: number;
       taxes?: number | null;
-      // `fg` (frais de gestion) est DÉJÀ COMPRIS dans primeHT sur les produits à
-      // tarif fixe : prime TTC = primeHT + taxes. `accessoires` au contraire
-      // s'ajoute (produits à devis calculé : TTC = primeHT + accessoires +
-      // taxes). Les deux sont donc exclusifs et ne doivent pas être additionnés
-      // ensemble — voir l'affichage dans pages/admin/Contrats.tsx.
+      // Tous deux affichés sous le libellé « Accessoires », mais exclusifs :
+      // `fg` est DÉJÀ COMPRIS dans primeHT sur les produits à tarif fixe
+      // (prime TTC = primeHT + taxes), tandis que `accessoires` s'ajoute sur
+      // les produits à devis calculé (TTC = primeHT + accessoires + taxes).
+      // Ne jamais les additionner — voir pages/admin/Contrats.tsx.
       fg?: number | null;
       accessoires?: number | null;
       signature?: string | null;

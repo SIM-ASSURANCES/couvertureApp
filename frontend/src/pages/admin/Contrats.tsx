@@ -40,9 +40,10 @@ interface Contrat extends DonneesContrat {
   primeHT?: number | null;
   primeTTC?: number | null;
   taxes?: number | null;
-  // Exclusifs l'un de l'autre (voir routes/souscriptions.ts) : `accessoires`
-  // s'ajoute à la prime nette (produits à devis calculé), tandis que `fg`
-  // (frais de gestion) est déjà compris dedans (produits à tarif fixe).
+  // Deux sources pour un même libellé « Accessoires » (voir
+  // routes/souscriptions.ts), exclusives l'une de l'autre : `accessoires`
+  // s'ajoute à la prime nette (produits à devis calculé), tandis que `fg` est
+  // déjà compris dedans (produits à tarif fixe).
   fg?: number | null;
   accessoires?: number | null;
   referenceWave?: string | null;
@@ -138,8 +139,7 @@ export default function Contrats() {
         "Partenaire": c.partenaireResponsable || c.partenaire,
         "Référence Wave": c.referenceWave ?? "",
         "Prime nette": c.primeHT ?? "",
-        "Accessoires": c.accessoires ?? "",
-        "Frais de gestion (inclus)": c.fg ?? "",
+        "Accessoires": c.accessoires ?? c.fg ?? "",
         "Taxes": c.taxes ?? "",
         "Prime TTC": c.primeTTC ?? c.montant,
         "Capital garanti": c.capitalGaranti,
@@ -402,7 +402,7 @@ export default function Contrats() {
                 </div>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
-                    {detail.accessoires != null ? "Accessoires" : "Frais de gestion"}
+                    Accessoires
                   </div>
                   <div style={{ fontWeight: 800, fontSize: 18 }}>
                     {detail.accessoires != null

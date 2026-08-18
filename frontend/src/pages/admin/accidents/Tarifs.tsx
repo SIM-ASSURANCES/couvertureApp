@@ -202,7 +202,7 @@ function ProduitTarifsTable({ code, libelle }: { code: string; libelle: string }
               <th>Formule</th>
               <th>Prime TTC (FCFA)</th>
               <th>Prime HT (FCFA)</th>
-              <th>FG (FCFA)</th>
+              <th>Accessoires (FCFA)</th>
               <th>Taxes (FCFA)</th>
               <th>Capital garanti</th>
               <th>Commission (FCFA)</th>

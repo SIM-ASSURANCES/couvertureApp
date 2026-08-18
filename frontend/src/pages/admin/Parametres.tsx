@@ -134,7 +134,7 @@ function TarifTable({
             <tr>
               <th>Prime TTC (FCFA)</th>
               <th>Prime HT (FCFA)</th>
-              <th>FG (FCFA)</th>
+              <th>Accessoires (FCFA)</th>
               <th>Taxes (FCFA)</th>
               <th>Capital garanti</th>
               <th>Commission</th>
