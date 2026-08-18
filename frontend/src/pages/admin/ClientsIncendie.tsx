@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send, Camera } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send, Camera, Search } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -54,6 +54,15 @@ export default function ClientsIncendie() {
     `/assurances-branche/souscriptions?${dommagesParams.toString()}`
   );
   const generiqueSeul = (dommagesGenerique ?? []).filter((r) => r.produit !== "incendie_historique");
+
+  const [recherche, setRecherche] = useState("");
+  const rechercheMatch = (...valeurs: (string | null | undefined)[]) => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return true;
+    return valeurs.filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
+  };
+  const dataFiltree = (data ?? []).filter((c) => rechercheMatch(c.nom, c.prenom, c.telephone, c.refFacture, c.partenaireNom));
+  const generiqueFiltre = generiqueSeul.filter((r) => rechercheMatch(r.nom, r.prenom, r.telephone, r.partenaireNom, r.produitLibelle));
 
   // Alerte renouvellement (échéance ≤ 2 semaines) — Incendie historique +
   // SecurHome+/SecurPro (modèle générique), toutes deux à formule unique de 3
@@ -227,7 +236,7 @@ export default function ClientsIncendie() {
     );
   }
 
-  const total = (data?.length ?? 0) + generiqueSeul.length;
+  const total = dataFiltree.length + generiqueFiltre.length;
 
   return (
     <>
@@ -314,6 +323,16 @@ export default function ClientsIncendie() {
         style={{ marginTop: 24 }}
         extra={
           <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ position: "relative" }}>
+              <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-2)" }} />
+              <input
+                className="input"
+                style={{ width: 240, height: 40, paddingLeft: 34 }}
+                placeholder="Rechercher (nom, téléphone...)"
+                value={recherche}
+                onChange={(e) => setRecherche(e.target.value)}
+              />
+            </div>
             <select className="select" style={{ width: 180, height: 40 }} value={part} onChange={(e) => setPart(e.target.value)}>
               <option value="">Tous partenaires</option>
               {partenaires?.map((p) => (
@@ -333,7 +352,7 @@ export default function ClientsIncendie() {
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
         {data && (
-          <div className="table-wrap">
+          <div className="table-wrap table-wrap-scroll">
             <table className="tbl">
               <thead>
                 <tr>
@@ -351,7 +370,7 @@ export default function ClientsIncendie() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((c) => (
+                {dataFiltree.map((c) => (
                   <tr key={`inc-${c.id}`}>
                     <td><Badge kind="warning"><Flame size={12} /> Incendie</Badge></td>
                     <td><strong>{c.telephone}</strong></td>
@@ -451,7 +470,7 @@ export default function ClientsIncendie() {
                     </td>
                   </tr>
                 ))}
-                {generiqueSeul.map((r) => (
+                {generiqueFiltre.map((r) => (
                   <tr key={`gen-${r.id}`}>
                     <td><Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge></td>
                     <td><strong>{r.telephone}</strong></td>
@@ -494,7 +513,7 @@ export default function ClientsIncendie() {
                   </tr>
                 ))}
                 {total === 0 && (
-                  <tr><td colSpan={11}><div className="empty">Aucune souscription.</div></td></tr>
+                  <tr><td colSpan={11}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucune souscription."}</div></td></tr>
                 )}
               </tbody>
             </table>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
@@ -47,6 +47,15 @@ export default function AssurancesAccidentsClients() {
   const [toast, setToast] = useState("");
   const [photoFor, setPhotoFor] = useState<SouscriptionAssurancesAccidents | null>(null);
   const [detailFor, setDetailFor] = useState<SouscriptionAssurancesAccidents | null>(null);
+  const [recherche, setRecherche] = useState("");
+
+  const donneesFiltrees = (data ?? []).filter((c) => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return true;
+    return [c.nom, c.prenom, c.telephone, c.numeroPolice, c.partenaireNom, c.produit.libelle]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q));
+  });
 
   function notify(m: string) {
     setToast(m);
@@ -161,11 +170,27 @@ export default function AssurancesAccidentsClients() {
         </div>
       </Card>
 
-      <Card title={data ? `${data.length} contrats` : "Contrats"} noBody style={{ marginTop: 24 }}>
+      <Card
+        title={data ? `${donneesFiltrees.length} contrats` : "Contrats"}
+        noBody
+        style={{ marginTop: 24 }}
+        extra={
+          <div style={{ position: "relative" }}>
+            <Search size={15} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-2)" }} />
+            <input
+              className="input"
+              style={{ width: 260, height: 40, paddingLeft: 34 }}
+              placeholder="Rechercher (nom, téléphone, N° police...)"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+            />
+          </div>
+        }
+      >
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
         {data && (
-          <div className="table-wrap">
+          <div className="table-wrap table-wrap-scroll">
             <table className="tbl">
               <thead>
                 <tr>
@@ -182,7 +207,7 @@ export default function AssurancesAccidentsClients() {
                 </tr>
               </thead>
               <tbody>
-                {data.map((c) => (
+                {donneesFiltrees.map((c) => (
                   <tr key={c.id}>
                     <td>
                       <strong>{c.prenom} {c.nom}</strong>
@@ -213,8 +238,8 @@ export default function AssurancesAccidentsClients() {
                     )}
                   </tr>
                 ))}
-                {data.length === 0 && (
-                  <tr><td colSpan={isSuper ? 10 : 9}><div className="empty">Aucun client pour l'instant.</div></td></tr>
+                {donneesFiltrees.length === 0 && (
+                  <tr><td colSpan={isSuper ? 10 : 9}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
                 )}
               </tbody>
             </table>

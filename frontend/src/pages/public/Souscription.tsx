@@ -1507,6 +1507,7 @@ export default function Souscription() {
       if (p.nom) setNomRx(p.nom);
       if (p.prenom) setPrenomRx(p.prenom);
       if (telephoneClient) setTelephoneRx(telephoneClient);
+      if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
       if (p.sexe) setSexe(p.sexe);
       if (p.typePiece) setTypePieceRx(p.typePiece);
       if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
@@ -1849,6 +1850,7 @@ export default function Souscription() {
             nom: nomRx,
             prenom: prenomRx,
             telephone: telephoneRx,
+            dateNaissance: dateNaissance || undefined,
             sexe: sexe || undefined,
             cycle,
           }),
@@ -2704,6 +2706,9 @@ export default function Souscription() {
                   <FieldRow label="Téléphone * (pour recevoir vos accès par SMS)">
                     <PhoneInput value={telephoneRx} onChange={setTelephoneRx} />
                   </FieldRow>
+                  <FieldRow label="Date de naissance *">
+                    <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
+                  </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
                   <FieldRow label="Pièce d'identité *">
                     <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
@@ -2891,7 +2896,7 @@ export default function Souscription() {
                         ? !selectedTarifId
                         : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx)
                     : qrInfo && isRelax(qrInfo.produit)
-                    ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !sexe || !piecePhotoRx || !selfiePhotoRx
+                    ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : isSecurproDommages(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||

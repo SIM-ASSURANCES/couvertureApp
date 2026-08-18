@@ -617,6 +617,20 @@ button {
 .table-wrap {
   overflow-x: auto;
 }
+/* Variante pour les tables potentiellement longues : borne la hauteur pour
+   que le défilement vertical des lignes reste interne à la table, garantissant
+   que la barre de défilement horizontale (en bas de cette zone) reste toujours
+   atteignable sans avoir à faire défiler toute la page jusqu'en bas. L'en-tête
+   reste visible (sticky) pendant le défilement interne. */
+.table-wrap-scroll {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+.table-wrap-scroll .tbl thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
 table.tbl {
   width: 100%;
   border-collapse: collapse;
