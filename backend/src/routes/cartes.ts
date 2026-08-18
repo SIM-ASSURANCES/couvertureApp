@@ -87,12 +87,27 @@ cartesRouter.post(
       if (!selfie) {
         return res.status(400).json({ error: "Photo selfie introuvable pour cette souscription." });
       }
+      // Repli : certains produits (ex. RelaxMoto/RelaxAuto avant l'ajout du
+      // champ à leur formulaire) n'ont pas collecté la date de naissance sur
+      // CETTE souscription — on la reprend d'un autre contrat confirmé du
+      // même client (même téléphone) si elle y est disponible, plutôt que de
+      // laisser la carte sans date de naissance alors que l'info est connue.
+      let dateNaissance = s.dateNaissance;
+      if (!dateNaissance) {
+        const autre = await prisma.souscription.findFirst({
+          where: { telephone: s.telephone, dateNaissance: { not: null } },
+          orderBy: { createdAt: "desc" },
+          select: { dateNaissance: true },
+        });
+        dateNaissance = autre?.dateNaissance ?? null;
+      }
+
       const { label, montant } = garantieAffichee(s.produit.code, s.capitalGaranti);
       carte = {
         matricule: s.numeroPolice ?? "",
         nom: s.nom ?? "",
         prenom: s.prenom ?? "",
-        dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateNaissance: dateNaissance ? dateNaissance.toISOString() : null,
         dateDebut: s.dateDebut ? s.dateDebut.toISOString() : null,
         sexeLabel: s.sexe ? SEXE_LABELS[s.sexe] ?? null : null,
         garantieLabel: label,
