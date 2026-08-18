@@ -30,6 +30,44 @@ function garantieAffichee(produitCode: string, capitalGaranti: number): { label:
   return { label: "CAPITAL GARANTI", montant: capitalGaranti };
 }
 
+/**
+ * Date de naissance à afficher sur la carte. Certains contrats n'en portent
+ * pas (RelaxMoto/RelaxAuto avant l'ajout du champ à leur formulaire, Incendie
+ * dont la complétion facultative n'a jamais été remplie) — on la reprend
+ * alors d'un AUTRE contrat du même client (même téléphone), tous modèles
+ * confondus, plutôt que de laisser le champ vide alors que l'information est
+ * déjà connue quelque part.
+ */
+async function resoudreDateNaissance(propre: Date | null, telephone: string): Promise<Date | null> {
+  if (propre) return propre;
+
+  // Les numéros sont stockés tantôt avec l'indicatif ("+2250700000012"),
+  // tantôt sans ("0700000012") selon l'ancienneté du formulaire d'origine —
+  // on cherche donc sur les deux formes pour ne pas rater un contrat du même
+  // client enregistré dans l'autre format.
+  const local = telephone.startsWith("+225") ? telephone.slice(4) : telephone;
+  const telephones = [...new Set([telephone, local, `+225${local}`])];
+
+  const [gen, acc, inc] = await Promise.all([
+    prisma.souscription.findFirst({
+      where: { telephone: { in: telephones }, dateNaissance: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { dateNaissance: true },
+    }),
+    prisma.souscriptionAccident.findFirst({
+      where: { telephone: { in: telephones }, dateNaissance: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { dateNaissance: true },
+    }),
+    prisma.souscriptionIncendie.findFirst({
+      where: { telephone: { in: telephones }, dateNaissance: { not: null } },
+      orderBy: { createdAt: "desc" },
+      select: { dateNaissance: true },
+    }),
+  ]);
+  return gen?.dateNaissance ?? acc?.dateNaissance ?? inc?.dateNaissance ?? null;
+}
+
 /** Génère la carte virtuelle de prise en charge (PNG) — texte réel + photo du souscripteur. */
 cartesRouter.post(
   "/png",
@@ -50,7 +88,7 @@ cartesRouter.post(
         matricule: `POL-INC-${debut.getFullYear()}-${s.id.slice(0, 8).toUpperCase()}`,
         nom: s.nom ?? "",
         prenom: s.prenom ?? "",
-        dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateNaissance: (await resoudreDateNaissance(s.dateNaissance, s.telephone))?.toISOString() ?? null,
         dateDebut: debut.toISOString(),
         sexeLabel: null,
         garantieLabel: label,
@@ -68,7 +106,7 @@ cartesRouter.post(
         matricule: s.numeroPolice ?? "",
         nom: s.nom,
         prenom: s.prenom,
-        dateNaissance: s.dateNaissance ? s.dateNaissance.toISOString() : null,
+        dateNaissance: (await resoudreDateNaissance(s.dateNaissance, s.telephone))?.toISOString() ?? null,
         dateDebut: s.dateDebut ? s.dateDebut.toISOString() : null,
         sexeLabel: null,
         garantieLabel: label,
@@ -87,27 +125,12 @@ cartesRouter.post(
       if (!selfie) {
         return res.status(400).json({ error: "Photo selfie introuvable pour cette souscription." });
       }
-      // Repli : certains produits (ex. RelaxMoto/RelaxAuto avant l'ajout du
-      // champ à leur formulaire) n'ont pas collecté la date de naissance sur
-      // CETTE souscription — on la reprend d'un autre contrat confirmé du
-      // même client (même téléphone) si elle y est disponible, plutôt que de
-      // laisser la carte sans date de naissance alors que l'info est connue.
-      let dateNaissance = s.dateNaissance;
-      if (!dateNaissance) {
-        const autre = await prisma.souscription.findFirst({
-          where: { telephone: s.telephone, dateNaissance: { not: null } },
-          orderBy: { createdAt: "desc" },
-          select: { dateNaissance: true },
-        });
-        dateNaissance = autre?.dateNaissance ?? null;
-      }
-
       const { label, montant } = garantieAffichee(s.produit.code, s.capitalGaranti);
       carte = {
         matricule: s.numeroPolice ?? "",
         nom: s.nom ?? "",
         prenom: s.prenom ?? "",
-        dateNaissance: dateNaissance ? dateNaissance.toISOString() : null,
+        dateNaissance: (await resoudreDateNaissance(s.dateNaissance, s.telephone))?.toISOString() ?? null,
         dateDebut: s.dateDebut ? s.dateDebut.toISOString() : null,
         sexeLabel: s.sexe ? SEXE_LABELS[s.sexe] ?? null : null,
         garantieLabel: label,
