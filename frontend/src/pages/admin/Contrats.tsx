@@ -13,7 +13,7 @@ import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
-import { genererContratDepuisDonnees, TYPES_SANS_CONTRAT_TELECHARGEABLE, type DonneesContrat } from "../../contract";
+import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 import { telechargerCarte } from "../../carte";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
@@ -278,14 +278,10 @@ export default function Contrats() {
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}
-                          title={
-                            TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto")
-                              ? "Télécharger la carte de prise en charge"
-                              : "Télécharger le contrat"
-                          }
+                          title="Télécharger le contrat"
                           onClick={() => genererContrat(c)}
                         >
-                          <Download size={15} /> {TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto") ? "Carte" : "PDF"}
+                          <Download size={15} /> PDF
                         </button>
                         {TYPES_AVEC_CARTE.includes(c.type as (typeof TYPES_AVEC_CARTE)[number]) && (
                           <button
@@ -477,10 +473,7 @@ export default function Contrats() {
                 style={{ marginTop: 18 }}
                 onClick={() => genererContrat(detail)}
               >
-                <Download size={16} />{" "}
-                {TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(detail.type as "relaxmoto" | "relaxauto")
-                  ? "Télécharger la carte de prise en charge"
-                  : "Télécharger le contrat"}
+                <Download size={16} /> Télécharger le contrat
               </button>
               {TYPES_AVEC_CARTE.includes(detail.type as (typeof TYPES_AVEC_CARTE)[number]) && (
                 <button

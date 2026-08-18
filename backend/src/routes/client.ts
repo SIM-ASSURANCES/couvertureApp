@@ -249,6 +249,9 @@ clientRouter.get(
       dansMarche: d.dansMarche,
       nombrePieces: d.nombrePieces,
       resultat: d.resultat,
+      // RelaxMoto/RelaxAuto : le contrat PDF mentionne la périodicité de la
+      // prime (abonnement reconductible) — voir renderContratRelaxMotoAuto.
+      cycleFacturation: s.cycleFacturation,
     });
   })
 );

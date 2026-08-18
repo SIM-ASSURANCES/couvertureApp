@@ -45,6 +45,28 @@ export interface ContratAccident {
   signature?: string | null;
 }
 
+/**
+ * RelaxMoto / RelaxAuto — mêmes conditions particulières que RelaxAccidents,
+ * avec en plus le cycle de facturation : ces deux produits sont des
+ * abonnements reconductibles (mensuel ou annuel) et non des polices à durée
+ * fixe, d'où la mention explicite de la périodicité de la prime.
+ */
+export interface ContratRelaxMotoAuto {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  dateNaissance?: string | null;
+  montant: number;
+  capitalGaranti: number;
+  produitLibelle: string;
+  cycleFacturation?: "mensuel" | "annuel" | null;
+  signature?: string | null;
+}
+
 export interface ContratRelaxVoyage {
   numeroPolice: string;
   partenaire: string;
@@ -440,6 +462,48 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
+export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promise<string> {
+  const periodicite = c.cycleFacturation === "mensuel" ? "mensuelle" : "annuelle";
+  const reconduction =
+    c.cycleFacturation === "mensuel"
+      ? "Le contrat est souscrit pour un mois et se renouvelle au même tarif depuis l'espace client."
+      : "Le contrat est souscrit pour un an et se renouvelle au même tarif depuis l'espace client.";
+
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — ${esc(c.produitLibelle.toUpperCase())}</h1>
+  <div class="sub">Assurance Individuelle Accident · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Prime TTC ${periodicite}</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales police RELAXACCIDENTS (MFB/DGTCP/DA/N° 01507 du 19 JUIN 2025) et les présentes Conditions Particulières.
+    ${reconduction}
+    <br/><br/>
+    <b>En cas de sinistre :</b> le déclarer à SIM ASSURANCES (e-mail info@simassurances.com, 08 BP M4141 ABIDJAN 08,
+    ou tél/WhatsApp 07 99 44 57 57), muni de la CNI, des ordonnances et factures médicales et du numéro Wave.
+    Le paiement intervient sous 10 jours maximum après réception des pièces.
+    Le souscripteur reconnaît avoir pris connaissance des Conditions Générales.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("cg-accident.html");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — ${esc(c.produitLibelle.toUpperCase())}</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
 export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<string> {
   const trajet = [c.lieuDepart, c.lieuArrivee].filter(Boolean).join(" → ");
   const cp = `
@@ -478,7 +542,10 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
   ${RECLAMATION}
   ${signatures(c.signature)}`;
 
-  const cg = await loadCG("cg-relaxvoyage.html");
+  // RelaxVoyage n'a pas de fichier de CG propre : on sert celles de la famille
+  // Accidents plutôt que d'imprimer « momentanément indisponibles », ce que
+  // faisait le renvoi vers un cg-relaxvoyage.html qui n'a jamais existé.
+  const cg = await loadCG("cg-accident.html");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — RELAXVOYAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }

@@ -92,6 +92,8 @@ souscriptionsRouter.get(
       camera?: boolean | null;
       volContenu?: boolean | null;
       nombrePieces?: number | null;
+      /** RelaxMoto/RelaxAuto : périodicité mentionnée sur le contrat PDF. */
+      cycleFacturation?: "mensuel" | "annuel" | null;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       resultat?: any;
     };
@@ -308,6 +310,7 @@ souscriptionsRouter.get(
             volContenu: d.volContenu,
             nombrePieces: d.nombrePieces,
             resultat: d.resultat,
+            cycleFacturation: s.cycleFacturation,
           });
         }
       }

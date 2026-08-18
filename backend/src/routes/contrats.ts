@@ -6,6 +6,7 @@ import {
   renderContratIncendie,
   renderContratAccident,
   renderContratRelaxVoyage,
+  renderContratRelaxMotoAuto,
   renderContratRelaxAccidentsGenerale,
   renderContratSecurpro,
   renderContratSecurhome,
@@ -91,6 +92,27 @@ const relaxaccidentsFraisMedicauxSchema = z.object({
     dateNaissance: texteOpt(40),
     montant,
     capitalGaranti: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
+// RelaxMoto / RelaxAuto — abonnements reconductibles, d'où le cycle en plus
+// des champs communs aux produits Accidents (voir renderContratRelaxMotoAuto).
+const relaxMotoAutoSchema = z.object({
+  type: z.literal("relaxmoto_relaxauto"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    dateNaissance: texteOpt(40),
+    montant,
+    capitalGaranti: montant,
+    produitLibelle: texte(120),
+    cycleFacturation: z.enum(["mensuel", "annuel"]).nullish(),
     signature: dataUrlSignature,
   }),
 });
@@ -350,6 +372,7 @@ const bodySchema = z.discriminatedUnion("type", [
   incendieSchema,
   accidentSchema,
   relaxaccidentsFraisMedicauxSchema,
+  relaxMotoAutoSchema,
   relaxvoyageSchema,
   relaxaccidentsGeneraleSchema,
   securproSchema,
@@ -376,6 +399,9 @@ contratsRouter.post(
         break;
       case "relaxaccidents_fraismedicaux":
         html = await renderContratAccident(body.data);
+        break;
+      case "relaxmoto_relaxauto":
+        html = await renderContratRelaxMotoAuto(body.data);
         break;
       case "relaxvoyage":
         html = await renderContratRelaxVoyage(body.data);

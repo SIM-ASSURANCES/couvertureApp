@@ -7,7 +7,6 @@
 
 import { API_BASE } from "./api";
 import type { SouscriptionImf } from "./types";
-import { telechargerCarte } from "./carte";
 
 export interface LigneGarantie {
   garantie: string;
@@ -44,6 +43,23 @@ export interface ContratAccident {
   dateNaissance?: string | null;
   montant: number;
   capitalGaranti: number;
+  signature?: string | null;
+}
+
+/** RelaxMoto / RelaxAuto — abonnements reconductibles, d'où le cycle en plus. */
+export interface ContratRelaxMotoAuto {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  dateNaissance?: string | null;
+  montant: number;
+  capitalGaranti: number;
+  produitLibelle: string;
+  cycleFacturation?: "mensuel" | "annuel" | null;
   signature?: string | null;
 }
 
@@ -251,9 +267,12 @@ const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
 };
 
-// Assurances Accidents/Dommages (pas IMF) — RelaxMoto/Auto n'ont qu'une carte
-// (abonnement récurrent, pas de police à durée fixe), pas de contrat PDF séparé.
-export const TYPES_SANS_CONTRAT_TELECHARGEABLE = ["relaxmoto", "relaxauto"] as const;
+// Tous les produits Assurances Accidents/Dommages disposent désormais d'un
+// contrat PDF (conditions particulières + conditions générales), y compris
+// RelaxMoto/RelaxAuto qui n'avaient qu'une carte. Conservé (vide) parce que
+// la liste reste le point d'extension naturel si un produit devait à nouveau
+// n'être servi que par une carte.
+export const TYPES_SANS_CONTRAT_TELECHARGEABLE = [] as const;
 
 /**
  * Champs aplatis d'un contrat (Assurances Accidents/Dommages), quel que soit
@@ -284,6 +303,8 @@ export interface DonneesContrat {
   dateNaissance?: string | null;
   signature?: string | null;
   produitLibelle?: string;
+  /** RelaxMoto/RelaxAuto uniquement (abonnements reconductibles). */
+  cycleFacturation?: "mensuel" | "annuel" | null;
   compagnie?: string | null;
   lieuDepart?: string | null;
   lieuArrivee?: string | null;
@@ -319,8 +340,22 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       new Date(c.date).setMonth(new Date(c.date).getMonth() + (c.type === "accident" ? 3 : 12))
     ).toISOString();
 
-  if (TYPES_SANS_CONTRAT_TELECHARGEABLE.includes(c.type as "relaxmoto" | "relaxauto")) {
-    telechargerCarte(c.type, c.id);
+  if (c.type === "relaxmoto" || c.type === "relaxauto") {
+    genererContratRelaxMotoAuto({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      produitLibelle: c.produitLibelle ?? (c.type === "relaxmoto" ? "RelaxMoto" : "RelaxAuto"),
+      cycleFacturation: c.cycleFacturation ?? null,
+      signature: c.signature ?? null,
+    });
     return;
   }
   if (c.type === "accident") {
@@ -711,6 +746,7 @@ type ContratType =
   | "incendie"
   | "accident"
   | "relaxaccidents_fraismedicaux"
+  | "relaxmoto_relaxauto"
   | "relaxvoyage"
   | "relaxaccidents_generale"
   | "securpro"
@@ -762,6 +798,10 @@ export async function genererContratAccident(c: ContratAccident) {
 // (dont il remplace les souscriptions) — mêmes champs (voir ContratAccident).
 export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident) {
   await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c);
+}
+
+export async function genererContratRelaxMotoAuto(c: ContratRelaxMotoAuto) {
+  await telechargerContratPdf("relaxmoto_relaxauto", c.numeroPolice, c);
 }
 
 export async function genererContratRelaxVoyage(c: ContratRelaxVoyage) {
