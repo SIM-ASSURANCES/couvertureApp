@@ -1247,6 +1247,9 @@ export default function Souscription() {
   const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
   const [piecePhotoRx, setPiecePhotoRx] = useState<string | null>(null);
   const [selfiePhotoRx, setSelfiePhotoRx] = useState<string | null>(null);
+  // RelaxAccidents Frais Médicaux : le produit exclut les livreurs, le
+  // souscripteur doit le déclarer explicitement avant de pouvoir payer.
+  const [declarePasLivreur, setDeclarePasLivreur] = useState(false);
 
   // Résultat souscription
   const [result, setResult] = useState<{
@@ -2729,6 +2732,27 @@ export default function Souscription() {
                     capture="user"
                     required
                   />
+                  <div
+                    style={{
+                      background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12,
+                      padding: "12px 14px", marginTop: 4, marginBottom: 12,
+                    }}
+                  >
+                    <div style={{ fontSize: 12.5, color: "#7c2d12", lineHeight: 1.5, marginBottom: 10 }}>
+                      <strong>Important :</strong> RelaxAccidents Frais Médicaux ne couvre pas les livreurs.
+                      Si vous exercez une activité de livraison, ce contrat ne pourra pas vous indemniser
+                      en cas de sinistre.
+                    </div>
+                    <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={declarePasLivreur}
+                        onChange={(e) => setDeclarePasLivreur(e.target.checked)}
+                        style={{ marginTop: 2, width: 18, height: 18, flex: "none" }}
+                      />
+                      <span>Je déclare ne pas exercer d'activité de livreur. *</span>
+                    </label>
+                  </div>
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
                 <>
@@ -2939,7 +2963,7 @@ export default function Souscription() {
                       !dateNaissance ||
                       (qrInfo?.produit === "accident"
                         ? !selectedTarifId
-                        : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx)
+                        : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx || !declarePasLivreur)
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : isSecurproDommages(qrInfo?.produit)

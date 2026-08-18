@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
 import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
+import ReseauSoins from "../../components/ReseauSoins";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 
 function fcfa(n: number) {
@@ -93,6 +94,7 @@ export default function ClientDashboard() {
   const [description, setDescription] = useState("");
   const [photosAccident, setPhotosAccident] = useState<string[]>([]);
   const [envoiSinistre, setEnvoiSinistre] = useState(false);
+  const [onglet, setOnglet] = useState<"contrat" | "reseau">("contrat");
 
   function notify(m: string) {
     setToast(m);
@@ -234,6 +236,27 @@ export default function ClientDashboard() {
       </div>
 
       <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px" }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          {([["contrat", "Mon contrat"], ["reseau", "Réseau de soins"]] as const).map(([cle, libelle]) => (
+            <button
+              key={cle}
+              onClick={() => setOnglet(cle)}
+              style={{
+                flex: 1, padding: "11px 0", borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: "pointer",
+                border: onglet === cle ? "none" : "1.5px solid #dde3ec",
+                background: onglet === cle ? "#004b9c" : "#fff",
+                color: onglet === cle ? "#fff" : "#5b6b80",
+              }}
+            >
+              {libelle}
+            </button>
+          ))}
+        </div>
+
+        {onglet === "reseau" && <ReseauSoins />}
+
+        {onglet === "contrat" && (
+          <>
         {loading && <div style={{ textAlign: "center", padding: 40, color: "#5b6b80" }}>Chargement…</div>}
         {erreur && <div style={{ color: "#dc2626", textAlign: "center", padding: 20 }}>{erreur}</div>}
 
@@ -434,6 +457,8 @@ export default function ClientDashboard() {
                 </div>
               )}
             </div>
+          </>
+        )}
           </>
         )}
       </div>

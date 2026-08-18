@@ -383,6 +383,14 @@ clientRouter.get(
   })
 );
 
+/**
+ * Produits volontairement absents de l'espace client : SecurHome+ et SecurPro
+ * assurent un local ou un bâtiment et supposent une évaluation (valeur du
+ * bâtiment, contenu, garanties optionnelles) qui se fait avec le partenaire,
+ * pas en libre-service. Ils restent souscriptibles via le QR du partenaire.
+ */
+const PRODUITS_HORS_ESPACE_CLIENT = new Set(["securhome_dommages", "securpro_dommages"]);
+
 /** Autres produits actifs du partenaire d'origine, non encore souscrits (confirmés) par ce même numéro chez ce partenaire. */
 clientRouter.get(
   "/produits-disponibles",
@@ -427,7 +435,7 @@ clientRouter.get(
 
     const codesDejaSouscrits = new Set(dejaSouscrits.map((d) => d.produit.code));
     const produits = [...accidentsChooser.produits, ...dommagesChooser.produits].filter(
-      (p) => p.disponible && !codesDejaSouscrits.has(p.code)
+      (p) => p.disponible && !codesDejaSouscrits.has(p.code) && !PRODUITS_HORS_ESPACE_CLIENT.has(p.code)
     );
 
     res.json({
