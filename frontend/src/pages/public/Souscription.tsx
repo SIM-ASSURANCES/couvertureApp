@@ -1409,7 +1409,7 @@ export default function Souscription() {
           // Utilise directement `data.souscriptionId` (pas `result.souscriptionId`,
           // pas encore à jour dans cette fermeture au moment de l'appel).
           if (produitEffectif === "relaxaccidents_fraismedicaux" && data.souscriptionId) {
-            telechargerCarte("relaxaccidents_fraismedicaux", data.souscriptionId).catch((e) =>
+            telechargerCarte("relaxaccidents_fraismedicaux", data.souscriptionId, paidId ?? undefined).catch((e) =>
               setCarteErreur(e instanceof Error ? e.message : "Erreur lors de la génération de la carte.")
             );
           }
@@ -2141,7 +2141,10 @@ export default function Souscription() {
         isRelax(qrInfo.produit) || qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage"
           ? qrInfo.produit
           : "accident";
-      await telechargerCarte(type, souscriptionId);
+      // `paidId` sert ici de preuve de paiement pour la route carte (parcours
+      // public, sans session) — ignoré côté serveur pour l'ancien Accident, où
+      // il désigne la souscription elle-même et non une échéance.
+      await telechargerCarte(type, souscriptionId, paidId ?? undefined);
     } catch (e) {
       setCarteErreur(e instanceof Error ? e.message : "Erreur");
     } finally {

@@ -17,6 +17,8 @@ import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
 import AccesClientModal from "../../components/AccesClientModal";
+import PhotosClientModal from "../../components/PhotosClientModal";
+import ActionsDocumentsClient from "../../components/ActionsDocumentsClient";
 import type { ClientIncendie, Partenaire, SouscriptionBranche } from "../../types";
 
 // Doit correspondre à CODE_INCENDIE_HISTORIQUE côté backend (assurancesBranche.ts).
@@ -572,6 +574,17 @@ export default function ClientsIncendie() {
                 </button>
               </div>
             )}
+            <ActionsDocumentsClient
+              souscriptionId={detailFor.id}
+              type="incendie"
+              numeroPolice={detailFor.refFacture}
+              onNotify={notify}
+            />
+            <PhotosClientModal
+              souscriptionId={detailFor.id}
+              produitType="incendie"
+              referenceFichier={detailFor.refFacture}
+            />
             {isSuper && (
               <AccesClientModal
                 souscriptionId={detailFor.id}
@@ -617,6 +630,17 @@ export default function ClientsIncendie() {
                 <Camera size={15} /> Modifier la photo de la carte
               </button>
             )}
+            <ActionsDocumentsClient
+              souscriptionId={detailGenerique.id}
+              type={detailGenerique.produit}
+              numeroPolice={detailGenerique.telephone}
+              onNotify={notify}
+            />
+            <PhotosClientModal
+              souscriptionId={detailGenerique.id}
+              produitType="generique"
+              referenceFichier={detailGenerique.telephone}
+            />
             {isSuper && (
               <AccesClientModal
                 souscriptionId={detailGenerique.id}

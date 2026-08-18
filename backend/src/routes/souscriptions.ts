@@ -55,7 +55,13 @@ souscriptionsRouter.get(
       primeHT?: number | null;
       primeTTC: number;
       taxes?: number | null;
+      // `fg` (frais de gestion) est DÉJÀ COMPRIS dans primeHT sur les produits à
+      // tarif fixe : prime TTC = primeHT + taxes. `accessoires` au contraire
+      // s'ajoute (produits à devis calculé : TTC = primeHT + accessoires +
+      // taxes). Les deux sont donc exclusifs et ne doivent pas être additionnés
+      // ensemble — voir l'affichage dans pages/admin/Contrats.tsx.
       fg?: number | null;
+      accessoires?: number | null;
       signature?: string | null;
       // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale,
       // RelaxVoyage, SecurHome+, SecurPro Dommages) — voir services/contratGenerique.ts
@@ -185,6 +191,26 @@ souscriptionsRouter.get(
         },
       });
       if (produitsGeneriques.length > 0) {
+        // Décomposition de la prime (nette / accessoires / taxes / TTC) — deux
+        // sources selon le produit : le barème TarifProduit pour les produits à
+        // formule fixe, le devis stocké dans Souscription.resultat pour ceux à
+        // calcul dynamique (RelaxAccidents générale, SecurHome+, SecurPro).
+        const tarifsProduit = await prisma.tarifProduit.findMany({
+          where: { produitId: { in: produitsGeneriques.map((p) => p.id) } },
+        });
+        // L'identité d'un tarif est (produitId, libelleVariante) et non le prix
+        // (deux formules d'un même produit peuvent coûter pareil) — on indexe
+        // donc sur le libellé, avec un repli par prime quand la souscription ne
+        // mémorise pas la formule choisie.
+        const tarifParVariante = new Map(
+          tarifsProduit.filter((t) => t.libelleVariante).map((t) => [`${t.produitId}|${t.libelleVariante}`, t])
+        );
+        const tarifParPrime = new Map<string, (typeof tarifsProduit)[number]>();
+        for (const t of tarifsProduit) {
+          const cle = `${t.produitId}|${t.prime}`;
+          if (!tarifParPrime.has(cle)) tarifParPrime.set(cle, t);
+        }
+
         const generiques = await prisma.souscription.findMany({
           where: {
             produitId: { in: produitsGeneriques.map((p) => p.id) },
@@ -199,6 +225,38 @@ souscriptionsRouter.get(
         });
         for (const s of generiques) {
           const d = await mapperSouscriptionGenerique(s);
+
+          // Produits à devis calculé : les totaux sont déjà figés dans
+          // `resultat` (voir services/relaxAccidentsGenerale.ts et
+          // securhomeDommages.ts), même lecture que services/commission.ts.
+          const r = s.resultat as
+            | { primeNetteHT?: number; primeNetteHT2?: number; accessoires?: number; taxes?: number; primeTTC?: number }
+            | null;
+          let primeHT: number | null = r?.primeNetteHT2 ?? r?.primeNetteHT ?? null;
+          let accessoires: number | null = r?.accessoires ?? null;
+          let taxes: number | null = r?.taxes ?? null;
+          let primeTTC: number = r?.primeTTC ?? d.montant;
+          let fg: number | null = null;
+
+          if (primeHT === null) {
+            const tarif =
+              (s.cycleFacturation ? tarifParVariante.get(`${s.produitId}|${s.cycleFacturation}`) : undefined) ??
+              tarifParPrime.get(`${s.produitId}|${s.montantPrime}`);
+            primeHT = tarif?.primeHT ?? null;
+            taxes = tarif?.taxes ?? null;
+            fg = tarif?.fg ?? null;
+            accessoires = null;
+            primeTTC = d.montant;
+          }
+
+          // Le franc CFA n'a pas de subdivision : les barèmes stockent des
+          // flottants (issus d'un calcul de taux), on n'affiche que des entiers.
+          const arrondir = (v: number | null) => (v === null ? null : Math.round(v));
+          primeHT = arrondir(primeHT);
+          taxes = arrondir(taxes);
+          fg = arrondir(fg);
+          accessoires = arrondir(accessoires);
+
           out.push({
             id: d.id,
             type: d.produit,
@@ -215,7 +273,11 @@ souscriptionsRouter.get(
             dateFin: d.dateFin,
             date: d.createdAt,
             dateNaissance: d.dateNaissance,
-            primeTTC: d.montant,
+            primeHT,
+            primeTTC,
+            taxes,
+            fg,
+            accessoires,
             signature: d.signature,
             produitLibelle: d.produitLibelle,
             compagnie: d.compagnie,

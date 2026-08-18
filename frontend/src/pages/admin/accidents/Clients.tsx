@@ -7,6 +7,8 @@ import { exportExcel } from "../../../xlsx";
 import { useAuth } from "../../../auth";
 import PhotoCarteModal from "../../../components/PhotoCarteModal";
 import AccesClientModal from "../../../components/AccesClientModal";
+import PhotosClientModal from "../../../components/PhotosClientModal";
+import ActionsDocumentsClient from "../../../components/ActionsDocumentsClient";
 
 interface SouscriptionAssurancesAccidents {
   id: string;
@@ -277,6 +279,17 @@ export default function AssurancesAccidentsClients() {
                 <Camera size={15} /> Modifier la photo de la carte
               </button>
             )}
+            <ActionsDocumentsClient
+              souscriptionId={detailFor.id}
+              type={detailFor.produit.code}
+              numeroPolice={detailFor.numeroPolice}
+              onNotify={notify}
+            />
+            <PhotosClientModal
+              souscriptionId={detailFor.id}
+              produitType="generique"
+              referenceFichier={detailFor.numeroPolice}
+            />
             {isSuper && (
               <AccesClientModal
                 souscriptionId={detailFor.id}

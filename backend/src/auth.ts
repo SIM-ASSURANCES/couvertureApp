@@ -44,6 +44,21 @@ export interface AuthedRequest extends Request {
   user?: AuthUser;
 }
 
+/**
+ * Décode un en-tête `Authorization` sans imposer l'authentification : rend
+ * `null` si absent ou invalide. Pour les routes ouvertes à plusieurs profils
+ * (voir routes/cartes.ts, accessible à un admin, au client propriétaire ou au
+ * parcours public muni d'une preuve de paiement).
+ */
+export function lireTokenOptionnel(header: string | undefined): AuthUser | null {
+  if (!header?.startsWith("Bearer ")) return null;
+  try {
+    return jwt.verify(header.slice(7), SECRET) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
 export function requireAuth(...types: ActorType[]) {
   return (req: AuthedRequest, res: Response, next: NextFunction) => {
     const header = req.headers.authorization;

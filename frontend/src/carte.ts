@@ -13,11 +13,21 @@ export type TypeCarte = string;
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
-export async function telechargerCarte(type: TypeCarte, souscriptionId: string) {
+/**
+ * `paiementId` : à fournir dans le parcours public juste après paiement (le
+ * client n'a pas encore de session) — c'est la preuve d'accès attendue par le
+ * backend, voir routes/cartes.ts::autoriserAcces. Depuis l'admin ou l'espace
+ * client, le jeton de session suffit et est transmis automatiquement.
+ */
+export async function telechargerCarte(type: TypeCarte, souscriptionId: string, paiementId?: string) {
+  const token = localStorage.getItem("sim_token") || localStorage.getItem("sim_client_token");
   const res = await fetch(`${API_BASE}/cartes/png`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, souscriptionId }),
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ type, souscriptionId, paiementId }),
   });
   if (!res.ok) {
     let message = "Erreur lors de la génération de la carte.";

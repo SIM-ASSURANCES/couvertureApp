@@ -17,11 +17,17 @@ import { genererContratDepuisDonnees, TYPES_SANS_CONTRAT_TELECHARGEABLE, type Do
 import { telechargerCarte } from "../../carte";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
-// quatre, d'un contrat PDF distinct) — RelaxAccidents générale, SecurHome+ et
-// SecurPro Dommages n'en ont pas (police collective/pro, pas d'identité
-// individuelle capturée). RelaxMoto/Auto ont une carte mais pas de contrat
-// PDF séparé, déjà couverts par TYPES_SANS_CONTRAT_TELECHARGEABLE ci-dessus.
-const TYPES_AVEC_CARTE = ["incendie", "accident", "relaxaccidents_fraismedicaux", "relaxvoyage"] as const;
+// six, d'un contrat PDF distinct) — RelaxAccidents générale, SecurHome+ et
+// SecurPro Dommages n'en ont pas (police collective/pro ou assurance de biens,
+// pas d'identité individuelle capturée).
+const TYPES_AVEC_CARTE = [
+  "incendie",
+  "accident",
+  "relaxaccidents_fraismedicaux",
+  "relaxvoyage",
+  "relaxmoto",
+  "relaxauto",
+] as const;
 type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
 
 interface CatalogueEntry {
@@ -34,7 +40,11 @@ interface Contrat extends DonneesContrat {
   primeHT?: number | null;
   primeTTC?: number | null;
   taxes?: number | null;
+  // Exclusifs l'un de l'autre (voir routes/souscriptions.ts) : `accessoires`
+  // s'ajoute à la prime nette (produits à devis calculé), tandis que `fg`
+  // (frais de gestion) est déjà compris dedans (produits à tarif fixe).
   fg?: number | null;
+  accessoires?: number | null;
 }
 
 function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
@@ -113,10 +123,11 @@ export default function Contrats() {
         "Nom": c.nom,
         "Téléphone": c.telephone,
         "Partenaire": c.partenaire,
-        "Prime HT": c.primeHT ?? "",
-        "Prime TTC": c.primeTTC ?? c.montant,
+        "Prime nette": c.primeHT ?? "",
+        "Accessoires": c.accessoires ?? "",
+        "Frais de gestion (inclus)": c.fg ?? "",
         "Taxes": c.taxes ?? "",
-        "FG": c.fg ?? "",
+        "Prime TTC": c.primeTTC ?? c.montant,
         "Capital garanti": c.capitalGaranti,
         "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
         "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
@@ -370,14 +381,25 @@ export default function Contrats() {
               </div>
               <div className="grid-2" style={{ gap: 12, marginBottom: 12 }}>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime HT</div>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime nette</div>
                   <div style={{ fontWeight: 800, fontSize: 18 }}>
                     {detail.primeHT != null ? fcfa(detail.primeHT) : "—"}
                   </div>
                 </div>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime TTC</div>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>{fcfa(detail.primeTTC ?? detail.montant)}</div>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
+                    {detail.accessoires != null ? "Accessoires" : "Frais de gestion"}
+                  </div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>
+                    {detail.accessoires != null
+                      ? fcfa(detail.accessoires)
+                      : detail.fg != null
+                      ? fcfa(detail.fg)
+                      : "—"}
+                  </div>
+                  {detail.accessoires == null && detail.fg != null && (
+                    <div className="muted" style={{ fontSize: 10.5, marginTop: 2 }}>compris dans la prime nette</div>
+                  )}
                 </div>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
                   <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Taxes</div>
@@ -386,10 +408,8 @@ export default function Contrats() {
                   </div>
                 </div>
                 <div style={{ border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px" }}>
-                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>FG</div>
-                  <div style={{ fontWeight: 800, fontSize: 18 }}>
-                    {detail.fg != null ? fcfa(detail.fg) : "—"}
-                  </div>
+                  <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>Prime TTC</div>
+                  <div style={{ fontWeight: 800, fontSize: 18 }}>{fcfa(detail.primeTTC ?? detail.montant)}</div>
                 </div>
               </div>
 

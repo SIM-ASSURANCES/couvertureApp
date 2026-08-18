@@ -596,6 +596,50 @@ assurancesBrancheRouter.patch(
   })
 );
 
+// ─── Pièces justificatives déposées par le client ───
+
+/**
+ * Photos fournies par le client à la souscription (pièce d'identité + selfie),
+ * pour consultation/téléchargement par l'admin. Non incluses dans les listes
+ * de clients : ce sont des data URL volumineuses, on ne les charge qu'à la
+ * demande, contrat par contrat. Résolution identique à
+ * services/fraudeIA.ts::resoudreIdentite (colonne dédiée sur les modèles
+ * historiques, colonne puis table Document sur le modèle générique).
+ */
+assurancesBrancheRouter.get(
+  "/clients/:produitType/:id/photos",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const produitType = req.params.produitType as ProduitTypeClient;
+    const id = req.params.id;
+
+    if (produitType === "incendie") {
+      const s = await prisma.souscriptionIncendie.findUnique({ where: { id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      return res.json({ pieceIdentiteUrl: s.pieceIdentiteUrl, selfieUrl: s.selfieUrl, typePiece: null });
+    }
+
+    if (produitType === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      return res.json({ pieceIdentiteUrl: s.pieceIdentiteUrl, selfieUrl: s.selfieUrl, typePiece: null });
+    }
+
+    const s = await prisma.souscription.findUnique({ where: { id } });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    const documents = await prisma.document.findMany({
+      where: { souscriptionId: id, type: { in: ["CNI", "Permis", "Selfie"] } },
+      orderBy: { createdAt: "desc" },
+    });
+    const piece = documents.find((d) => d.type === "CNI" || d.type === "Permis");
+    const selfie = documents.find((d) => d.type === "Selfie");
+    res.json({
+      pieceIdentiteUrl: s.pieceIdentiteUrl ?? piece?.url ?? null,
+      selfieUrl: selfie?.url ?? null,
+      typePiece: s.pieceIdentiteUrl ? null : piece?.type ?? null,
+    });
+  })
+);
+
 // ─── Accès client (réinitialisation de mot de passe) ───
 
 /**

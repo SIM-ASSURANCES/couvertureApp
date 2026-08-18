@@ -16,6 +16,8 @@ import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
 import AccesClientModal from "../../components/AccesClientModal";
+import PhotosClientModal from "../../components/PhotosClientModal";
+import ActionsDocumentsClient from "../../components/ActionsDocumentsClient";
 import type { ClientAccident, Partenaire } from "../../types";
 
 // Doit correspondre à CODE_ACCIDENT_HISTORIQUE côté backend (assurancesBranche.ts).
@@ -309,6 +311,17 @@ export default function ClientsAccident() {
                 </button>
               </div>
             )}
+            <ActionsDocumentsClient
+              souscriptionId={detailFor.id}
+              type="accident"
+              numeroPolice={detailFor.numeroPolice}
+              onNotify={notify}
+            />
+            <PhotosClientModal
+              souscriptionId={detailFor.id}
+              produitType="accident"
+              referenceFichier={detailFor.numeroPolice}
+            />
             {isSuper && (
               <AccesClientModal
                 souscriptionId={detailFor.id}
