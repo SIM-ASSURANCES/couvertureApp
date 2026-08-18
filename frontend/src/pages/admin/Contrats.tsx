@@ -122,7 +122,7 @@ export default function Contrats() {
    * pouvant pas être résumés par l'un d'eux.
    */
   function nomFichierExport() {
-    const partenaires = [...new Set((data ?? []).map((c) => c.partenaire).filter(Boolean))];
+    const partenaires = [...new Set((data ?? []).map((c) => c.partenaireResponsable || c.partenaire).filter(Boolean))];
     if (partenaires.length !== 1) return "contrats";
     return partenaires[0].replace(/[^a-zA-Z0-9-_ ]+/g, "").trim().replace(/\s+/g, "_") || "contrats";
   }
@@ -135,7 +135,8 @@ export default function Contrats() {
         "Prénom": c.prenom,
         "Nom": c.nom,
         "Téléphone": c.telephone,
-        "Partenaire": c.partenaire,
+        "Partenaire": c.partenaireResponsable || c.partenaire,
+        "Commerce": c.partenaire,
         "Référence Wave": c.referenceWave ?? "",
         "Prime nette": c.primeHT ?? "",
         "Accessoires": c.accessoires ?? "",
