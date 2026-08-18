@@ -435,6 +435,97 @@ clientRouter.get(
   })
 );
 
+/**
+ * Identité/photos déjà connues du client (parmi ses souscriptions confirmées,
+ * même téléphone) — utilisé pour pré-remplir le formulaire de souscription à
+ * un nouveau produit depuis l'espace client, afin de ne pas lui redemander ce
+ * qu'on sait déjà. Purement informatif : tous les champs restent modifiables
+ * côté formulaire. Voir frontend/src/pages/public/Souscription.tsx.
+ */
+clientRouter.get(
+  "/profil-identite",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const type = produitType(req);
+    const id = req.user!.sub;
+
+    let telephone: string;
+    if (type === "incendie") {
+      const s = await prisma.souscriptionIncendie.findUnique({ where: { id }, select: { telephone: true } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      telephone = s.telephone;
+    } else if (type === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id }, select: { telephone: true } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      telephone = s.telephone;
+    } else {
+      const s = await prisma.souscription.findUnique({ where: { id }, select: { telephone: true } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      telephone = s.telephone;
+    }
+
+    const mesSouscriptions = await prisma.souscription.findMany({
+      where: { telephone },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, nom: true, prenom: true, dateNaissance: true, sexe: true, pieceIdentiteUrl: true },
+    });
+
+    let nom: string | null = null;
+    let prenom: string | null = null;
+    let dateNaissance: Date | null = null;
+    let sexe: string | null = null;
+    let pieceIdentiteUrl: string | null = null;
+    for (const s of mesSouscriptions) {
+      nom ??= s.nom;
+      prenom ??= s.prenom;
+      dateNaissance ??= s.dateNaissance;
+      sexe ??= s.sexe;
+      pieceIdentiteUrl ??= s.pieceIdentiteUrl;
+    }
+
+    let typePiece: string | null = null;
+    let selfieUrl: string | null = null;
+    if (mesSouscriptions.length > 0) {
+      const documents = await prisma.document.findMany({
+        where: { souscriptionId: { in: mesSouscriptions.map((s) => s.id) }, type: { in: ["CNI", "Permis", "Selfie"] } },
+        orderBy: { createdAt: "desc" },
+      });
+      const selfieDoc = documents.find((d) => d.type === "Selfie");
+      const pieceDoc = documents.find((d) => d.type === "CNI" || d.type === "Permis");
+      selfieUrl = selfieDoc?.url ?? null;
+      if (pieceDoc) {
+        typePiece = pieceDoc.type;
+        pieceIdentiteUrl ??= pieceDoc.url;
+      }
+    }
+
+    // Repli : client dont l'unique contrat connu est un ancien Accident (pas
+    // encore de ligne dans le modèle générique sous ce téléphone).
+    if (!nom && !prenom) {
+      const legacy = await prisma.souscriptionAccident.findFirst({
+        where: { telephone },
+        orderBy: { createdAt: "desc" },
+        select: { nom: true, prenom: true, dateNaissance: true, pieceIdentiteUrl: true },
+      });
+      if (legacy) {
+        nom = legacy.nom;
+        prenom = legacy.prenom;
+        dateNaissance ??= legacy.dateNaissance;
+        pieceIdentiteUrl ??= legacy.pieceIdentiteUrl;
+      }
+    }
+
+    res.json({
+      nom,
+      prenom,
+      dateNaissance,
+      sexe,
+      typePiece,
+      pieceIdentiteUrl,
+      selfieUrl,
+    });
+  })
+);
+
 // Même régime que les data URL image validées ailleurs (contrats.ts, public.ts).
 const dataUrlImage = z
   .string()

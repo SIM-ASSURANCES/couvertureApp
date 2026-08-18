@@ -13,6 +13,7 @@ import {
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
+import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
 import {
   calculerRelaxAccidentsGenerale,
   MONTANTS_IJ,
@@ -1476,6 +1477,65 @@ export default function Souscription() {
         setStep("error");
       });
   }, [token, paidId, retryId, paiementEchec, produitEffectif]);
+
+  // Souscription à un nouveau produit depuis l'espace client (lien
+  // "Souscrire" du Dashboard, avec ?client=1) : charge une seule fois ce
+  // qu'on sait déjà de ce client, sans jamais bloquer l'affichage du
+  // formulaire ni rediriger (best-effort, voir getClientProfilIdentite).
+  const [clientProfil, setClientProfil] = useState<ClientProfilIdentite | null>(null);
+  useEffect(() => {
+    if (searchParams.get("client") === "1" && getClientToken()) {
+      getClientProfilIdentite().then(setClientProfil);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Applique le pré-remplissage dès que le produit ET les données client sont
+  // connus — couvre à la fois un QR pointant directement sur un produit et le
+  // cas où le client passe par l'écran sélecteur avant de choisir un produit
+  // (choisirProduit ci-dessous, qui fixe qrInfo lui aussi).
+  useEffect(() => {
+    if (qrInfo?.produit && clientProfil) prefillDepuisClient(qrInfo.produit, clientProfil);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrInfo?.produit, clientProfil]);
+
+  /** Pré-remplit les champs déjà connus du client (voir tableau de correspondance dans le plan) — tout reste modifiable. */
+  function prefillDepuisClient(produit: QrInfo["produit"], p: ClientProfilIdentite) {
+    const dateNaissanceStr = p.dateNaissance ? String(p.dateNaissance).slice(0, 10) : "";
+    const telephoneClient = getClientUser()?.telephone;
+    if (isRelax(produit)) {
+      if (p.nom) setNomRx(p.nom);
+      if (p.prenom) setPrenomRx(p.prenom);
+      if (telephoneClient) setTelephoneRx(telephoneClient);
+      if (p.sexe) setSexe(p.sexe);
+      if (p.typePiece) setTypePieceRx(p.typePiece);
+      if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
+      if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
+      return;
+    }
+    if (isRelaxAccidentsFraisMedicaux(produit) || isRelaxVoyage(produit)) {
+      if (p.nom) setNom(p.nom);
+      if (p.prenom) setPrenom(p.prenom);
+      if (telephoneClient) setTelephone(telephoneClient);
+      if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
+      if (p.sexe) setSexe(p.sexe);
+      if (isRelaxAccidentsFraisMedicaux(produit)) {
+        if (p.typePiece) setTypePieceRx(p.typePiece);
+        if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
+        if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
+      }
+      return;
+    }
+    if (isSecurproDommages(produit) || isSecurhomeDommages(produit)) {
+      if (p.nom) setNom(p.nom);
+      if (p.prenom) setPrenom(p.prenom);
+      if (telephoneClient) setTelephone(telephoneClient);
+      return;
+    }
+    if (isRelaxAccidentsGenerale(produit)) {
+      if (telephoneClient) setTelephone(telephoneClient);
+    }
+  }
 
   /** Charge les tarifs/formules du produit choisi (QR précis, ou après sélection depuis un QR sélecteur). */
   async function chargerTarifsProduit(produit: string) {

@@ -320,7 +320,7 @@ export default function ClientDashboard() {
                   {autresProduits.produits.map((p) => (
                     <a
                       key={p.code}
-                      href={autresProduits.qrToken ? `/s/${p.code}/${autresProduits.qrToken}` : undefined}
+                      href={autresProduits.qrToken ? `/s/${p.code}/${autresProduits.qrToken}?client=1` : undefined}
                       style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                         background: "#f5f8fc", borderRadius: 10, padding: "12px 14px",

@@ -42,6 +42,37 @@ export function clientLogout() {
   localStorage.removeItem(USER_KEY);
 }
 
+export interface ClientProfilIdentite {
+  nom: string | null;
+  prenom: string | null;
+  dateNaissance: string | null;
+  sexe: "masculin" | "feminin" | null;
+  typePiece: "CNI" | "Permis" | null;
+  pieceIdentiteUrl: string | null;
+  selfieUrl: string | null;
+}
+
+/**
+ * Identité déjà connue du client, pour pré-remplir la souscription à un
+ * nouveau produit (voir pages/public/Souscription.tsx). Ne passe volontairement
+ * PAS par `clientApi` : celle-ci redirige vers /client/connexion sur 401, ce
+ * qui casserait la page publique si le token est absent/expiré — ici on veut
+ * un best-effort silencieux, jamais bloquant.
+ */
+export async function getClientProfilIdentite(): Promise<ClientProfilIdentite | null> {
+  const token = getClientToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${BASE}/client/profil-identite`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export class ClientApiError extends Error {}
 
 async function clientRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
