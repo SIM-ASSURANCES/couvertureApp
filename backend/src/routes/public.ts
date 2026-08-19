@@ -343,8 +343,16 @@ publicRouter.get(
     if (!isProduitGenerique(code)) return res.status(404).json({ error: "Produit inconnu" });
     const prod = await prisma.produit.findUnique({ where: { code } });
     if (!prod) return res.status(404).json({ error: "Produit inconnu" });
+    // RelaxMoto/RelaxAuto se souscrivent par cycle : le tarif retenu au
+    // paiement est cherché par `libelleVariante` ("annuel"/"mensuel"). Une
+    // ligne sans variante — reliquat d'avant les cycles — s'afficherait donc
+    // comme une formule que le client peut choisir mais qui ne sera jamais
+    // facturée. On ne sert que les variantes réellement souscriptibles.
     const tarifs = await prisma.tarifProduit.findMany({
-      where: { produitId: prod.id },
+      where: {
+        produitId: prod.id,
+        ...(isProduitRelax(code) ? { libelleVariante: { in: ["annuel", "mensuel"] } } : {}),
+      },
       orderBy: { prime: "asc" },
     });
     res.json(tarifs);

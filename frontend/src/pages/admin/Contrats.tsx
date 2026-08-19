@@ -15,6 +15,7 @@ import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 import { telechargerCarte } from "../../carte";
+import PhotosClientModal from "../../components/PhotosClientModal";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
 // six, d'un contrat PDF distinct) — RelaxAccidents générale, SecurHome+ et
@@ -485,6 +486,12 @@ export default function Contrats() {
                   </tr>
                 </tbody>
               </table>
+
+              <PhotosClientModal
+                souscriptionId={detail.id}
+                produitType={detail.type === "incendie" ? "incendie" : detail.type === "accident" ? "accident" : "generique"}
+                referenceFichier={detail.numeroPolice}
+              />
 
               <button
                 className="btn btn-primary btn-block"
