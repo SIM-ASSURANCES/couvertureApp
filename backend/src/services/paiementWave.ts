@@ -4,11 +4,16 @@ import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMot
 import { genererCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
-/** Avance `date` de la durée d'un cycle RelaxMoto/RelaxAuto ("mensuel" = 1 mois, "annuel" = 1 an). */
-function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel"): Date {
+/**
+ * Avance `date` de `nombrePeriodes` cycles RelaxMoto/RelaxAuto ("mensuel" =
+ * 1 mois, "annuel" = 1 an). Le nombre de périodes correspond aux cycles payés
+ * d'avance à la souscription (voir Souscription.nombrePeriodes).
+ */
+function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel", nombrePeriodes = 1): Date {
+  const n = Math.max(1, nombrePeriodes);
   const d = new Date(date);
-  if (cycle === "mensuel") d.setMonth(d.getMonth() + 1);
-  else d.setFullYear(d.getFullYear() + 1);
+  if (cycle === "mensuel") d.setMonth(d.getMonth() + n);
+  else d.setFullYear(d.getFullYear() + n);
   return d;
 }
 
@@ -43,7 +48,9 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     const base = s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
     const dateFin =
       s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel"
-        ? avancerDateCycle(base, s.cycleFacturation)
+        ? // Un renouvellement reconduit la même durée que la souscription
+          // initiale : un contrat pris pour 3 mois se renouvelle par 3 mois.
+          avancerDateCycle(base, s.cycleFacturation, s.nombrePeriodes)
         : (() => {
             const d = new Date(base);
             d.setMonth(d.getMonth() + 3);
@@ -67,9 +74,17 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     const s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId } });
     if (!s || s.statutAbonnement || s.waveStatut === "confirme") return; // déjà activé (idempotence)
 
-    const tarif = await prisma.tarifProduit.findFirst({
-      where: { produitId: s.produitId, prime: s.montantPrime },
-    });
+    // Pour un abonnement, la prime enregistrée est le total payé (tarif du
+    // cycle × nombrePeriodes) : on retrouve le tarif par son cycle, pas par le
+    // montant, qui ne correspond plus à aucune ligne dès deux périodes.
+    const tarif =
+      s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel"
+        ? await prisma.tarifProduit.findFirst({
+            where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
+          })
+        : await prisma.tarifProduit.findFirst({
+            where: { produitId: s.produitId, prime: s.montantPrime },
+          });
     const dateDebut = new Date();
 
     if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
@@ -98,7 +113,8 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
       return;
     }
 
-    const dateFin = avancerDateCycle(dateDebut, s.cycleFacturation);
+    // Couverture sur toute la durée payée d'avance (ex. 3 × mensuel = 3 mois).
+    const dateFin = avancerDateCycle(dateDebut, s.cycleFacturation, s.nombrePeriodes);
 
     // Crée l'accès de l'espace client (identifiant = téléphone) à l'activation.
     const motDePasse = genererMotDePasseClient();

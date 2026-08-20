@@ -586,6 +586,11 @@ model Souscription {
   cycleFacturation CycleFacturation?
   statutAbonnement StatutAbonnement?
   nombreEcheances  Int?
+  // RelaxMoto/RelaxAuto : nombre de cycles souscrits d'avance (2 = deux mois
+  // ou deux ans selon `cycleFacturation`). La prime enregistrée est déjà le
+  // total payé (tarif du cycle × nombrePeriodes) et la couverture court sur
+  // toute la durée — voir services/paiementWave.ts::confirmerEcheance.
+  nombrePeriodes   Int               @default(1)
   paiements        Paiement[]
   documents        Document[]
   carte            Carte?

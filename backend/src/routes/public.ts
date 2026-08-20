@@ -31,6 +31,15 @@ function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
   return (PRODUITS_RELAX as readonly string[]).includes(p);
 }
 
+/**
+ * RelaxMoto/RelaxAuto peuvent être souscrits pour plusieurs cycles d'avance.
+ * Plafond volontaire : 12 mois ou 12 ans, au-delà la couverture n'aurait plus
+ * de sens commercial et le montant deviendrait aberrant en cas de saisie
+ * erronée. Doit rester aligné sur le curseur du formulaire
+ * (frontend/src/pages/public/Souscription.tsx).
+ */
+const MAX_PERIODES_RELAX = 12;
+
 // Data URL image (signature, pièce d'identité, selfie) : régime commun à tous
 // les schémas publics ci-dessous — bornée en taille et validée par regex
 // stricte (et non startsWith, qui ne borne que le début de la chaîne), pour
@@ -1033,6 +1042,10 @@ const relaxSchema = z.object({
   // Affiché sur la carte de prise en charge (refonte Novelia).
   sexe: z.enum(["masculin", "feminin"]).optional(),
   cycle: z.enum(["mensuel", "annuel"]),
+  // Nombre de cycles souscrits d'avance (2 = deux mois ou deux ans). Borné
+  // ici : la prime et la durée de couverture en découlent directement, on ne
+  // fait donc jamais confiance à une valeur arbitraire venue du client.
+  nombrePeriodes: z.number().int().min(1).max(MAX_PERIODES_RELAX).optional(),
   // Photo CNI/Permis + selfie (data URL), capturées depuis le téléphone du
   // souscripteur — voir documentSchema pour le dépôt effectif après création
   // de la souscription (id requis).
@@ -1527,14 +1540,19 @@ publicRouter.post(
     // Le tarif est déterminé par la formule choisie (libelleVariante = cycle),
     // jamais par un id envoyé par le client. Un seul paiement est dû
     // maintenant (comme tous les autres produits à formule) — le contrat dure
-    // exactement la durée du cycle choisi (1 mois ou 1 an, voir
-    // services/paiementWave.ts::confirmerEcheance) et se renouvelle ensuite
-    // au même cycle, au même tarif, depuis l'espace client
+    // le cycle choisi multiplié par le nombre de périodes souscrites d'avance
+    // (voir services/paiementWave.ts::confirmerEcheance) et se renouvelle
+    // ensuite pour la même durée, au même montant, depuis l'espace client
     // (POST /client/renouveler).
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: prod.id, libelleVariante: data.cycle },
     });
     if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
+
+    // Le total est recalculé ici à partir du tarif en base : le client n'envoie
+    // que le nombre de périodes, jamais un montant.
+    const nombrePeriodes = data.nombrePeriodes ?? 1;
+    const montantTotal = tarif.prime * nombrePeriodes;
 
     const s = await prisma.souscription.create({
       data: {
@@ -1546,13 +1564,14 @@ publicRouter.post(
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
         sexe: data.sexe ?? null,
-        montantPrime: tarif.prime,
+        montantPrime: montantTotal,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
         cycleFacturation: data.cycle,
         nombreEcheances: 1,
+        nombrePeriodes,
         paiements: {
-          create: { numeroEcheance: 1, montant: tarif.prime, dateEcheance: new Date() },
+          create: { numeroEcheance: 1, montant: montantTotal, dateEcheance: new Date() },
         },
       },
     });

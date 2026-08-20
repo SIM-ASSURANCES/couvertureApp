@@ -53,6 +53,17 @@ function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
 
+// RelaxMoto/RelaxAuto : nombre maximum de cycles souscriptibles d'avance.
+// Doit rester aligné sur MAX_PERIODES_RELAX côté serveur (backend/src/routes/
+// public.ts), qui borne la valeur reçue.
+const MAX_PERIODES_RELAX = 12;
+
+/** "mois" / "an(s)" selon le cycle et le nombre de périodes choisies. */
+function libellePeriode(cycle: "mensuel" | "annuel", n: number): string {
+  if (cycle === "mensuel") return "mois";
+  return n > 1 ? "ans" : "an";
+}
+
 // Sous-branche d'un code produit — utilisé pour sauter directement le niveau
 // "choisir votre Assurance" (QR unique) quand l'URL vise déjà un produit
 // précis (lien "Souscrire" depuis l'espace client, voir Dashboard.tsx).
@@ -1241,6 +1252,8 @@ export default function Souscription() {
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
   const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
+  // Nombre de cycles payés d'avance (curseur) — 1 par défaut, comme avant.
+  const [nombrePeriodes, setNombrePeriodes] = useState(1);
   const [nomRx, setNomRx] = useState("");
   const [prenomRx, setPrenomRx] = useState("");
   const [telephoneRx, setTelephoneRx] = useState(PHONE_PREFIX);
@@ -1295,6 +1308,11 @@ export default function Souscription() {
     nombrePieces?: number | null;
     resultat?: ResultatRelaxAccidentsGenerale | ResultatTarifImf | ResultatSecurhome | null;
   } | null>(null);
+
+  // Prime d'UN cycle pour la formule RelaxMoto/RelaxAuto sélectionnée — sert
+  // à afficher le total (× nombrePeriodes). Le montant réellement facturé est
+  // toujours recalculé côté serveur à partir du tarif en base.
+  const primeRelaxUnitaire = tarifsRelax.find((t) => t.libelleVariante === cycle)?.prime ?? null;
 
   // Carte virtuelle de prise en charge — collecte pièce d'identité + selfie
   // après confirmation du paiement (accident), ou téléchargement direct
@@ -1664,6 +1682,159 @@ export default function Souscription() {
     setStep("choose-produit");
   }
 
+  /**
+   * Montant que le client s'apprête à payer, pour l'écran de vérification.
+   * Purement indicatif : le serveur recalcule toujours la prime à partir des
+   * tarifs en base. `null` quand le montant n'est pas connu à ce stade
+   * (Incendie, réglé en boutique) ou pas encore calculable.
+   */
+  function montantAPayer(): number | null {
+    const p = qrInfo?.produit;
+    if (!p) return null;
+    try {
+      if (p === "accident") return tarifsAcc.find((t) => t.id === selectedTarifId)?.prime ?? null;
+      if (isRelaxAccidentsFraisMedicaux(p) || isRelaxVoyage(p))
+        return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
+      if (isRelax(p)) return primeRelaxUnitaire != null ? primeRelaxUnitaire * nombrePeriodes : null;
+      if (isRelaxAccidentsGenerale(p))
+        return calculerRelaxAccidentsGenerale({
+          profession,
+          typeCouverture: typeCouverture as TypeCouverture,
+          effectif: Number(effectif),
+          montantIJ: Number(montantIJ),
+          montantFraisMedicaux: Number(montantFraisMedicaux),
+          montantIPT: Number(montantIPT),
+          montantDecesAccidentel: Number(montantDecesAccidentel),
+        }).primeTTC;
+      if (isSecurproDommages(p)) {
+        const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
+        if (!bar) return null;
+        return calculerSecurpro(
+          {
+            classe: classeSp as 1 | 2 | 3 | 4,
+            statutOccupation: statutOccupationSp,
+            valeurBatiment: statutOccupationSp === "proprietaire" ? Number(valeurBatimentSp || 0) : undefined,
+            loyerMensuel: statutOccupationSp === "locataire" ? Number(loyerMensuelSp || 0) : undefined,
+            contenu: Number(contenuSp || 0),
+            dansMarche: dansMarcheSp,
+            gardien: gardienSp,
+            extincteur: extincteurSp,
+            volContenu: volContenuSp,
+            majorationVolContenu: volContenuSp ? majorationVolContenuSp : undefined,
+            volCaisseCapital: volCaisseCapitalSp ? Number(volCaisseCapitalSp) : undefined,
+            majorationVolCaisse: volCaisseCapitalSp ? majorationVolCaisseSp : undefined,
+            ddeCapital: ddeCapitalSp ? Number(ddeCapitalSp) : undefined,
+            deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
+            bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
+          },
+          bar
+        ).primeTTC;
+      }
+      if (isSecurhomeDommages(p))
+        return calculerSecurhome({
+          statutOccupation: statutOccupationSh,
+          valeurBatiment: statutOccupationSh === "proprietaire" ? Number(valeurBatimentSh || 0) : undefined,
+          loyerMensuel: statutOccupationSh === "locataire" ? Number(loyerMensuelSh || 0) : undefined,
+          contenu: Number(contenuSh || 0),
+          gardien: gardienSh,
+          extincteur: extincteurSh,
+          camera: cameraSh,
+          volContenu: volContenuSh,
+          ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
+          deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
+          bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
+        }).primeTTC;
+    } catch {
+      // Saisie encore incomplète : on n'affiche simplement pas de montant.
+    }
+    return null;
+  }
+
+  /** Informations saisies, telles qu'elles seront enregistrées — écran de vérification. */
+  function lignesRecapitulatif(): { label: string; valeur: string }[] {
+    const p = qrInfo?.produit;
+    const dfr = (v: string) => (v ? new Date(v).toLocaleDateString("fr-FR") : "—");
+    const oui = (b: boolean) => (b ? "Oui" : "Non");
+    const sexeLabel = sexe === "masculin" ? "Masculin" : sexe === "feminin" ? "Féminin" : "—";
+    const l: { label: string; valeur: string }[] = [];
+
+    if (isRelax(p)) {
+      l.push({ label: "Prénom", valeur: prenomRx });
+      l.push({ label: "Nom", valeur: nomRx });
+      l.push({ label: "Téléphone", valeur: telephoneRx });
+      l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
+      l.push({ label: "Sexe", valeur: sexeLabel });
+      l.push({ label: "Formule", valeur: cycle === "annuel" ? "Annuelle" : "Mensuelle" });
+      l.push({ label: "Durée souscrite", valeur: `${nombrePeriodes} ${libellePeriode(cycle, nombrePeriodes)}` });
+      l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
+      return l;
+    }
+
+    if (isRelaxAccidentsGenerale(p)) {
+      l.push({ label: "Raison sociale", valeur: raisonSociale });
+      l.push({ label: "Profession", valeur: profession });
+      l.push({ label: "Type de couverture", valeur: typeCouverture ? TYPE_COUVERTURE_LABELS[typeCouverture] : "—" });
+      l.push({ label: "Effectif", valeur: `${effectif} personne(s)` });
+      l.push({ label: "Indemnité journalière", valeur: fcfa(Number(montantIJ)) });
+      l.push({ label: "Frais médicaux", valeur: fcfa(Number(montantFraisMedicaux)) });
+      l.push({ label: "IPT", valeur: fcfa(Number(montantIPT)) });
+      l.push({ label: "Décès accidentel", valeur: fcfa(Number(montantDecesAccidentel)) });
+      l.push({ label: "Téléphone", valeur: telephone });
+      return l;
+    }
+
+    if (isSecurproDommages(p) || isSecurhomeDommages(p)) {
+      const pro = isSecurproDommages(p);
+      const statut = pro ? statutOccupationSp : statutOccupationSh;
+      l.push({ label: "Prénom", valeur: prenom });
+      l.push({ label: "Nom", valeur: nom });
+      if (pro && nomCommercialSp) l.push({ label: "Nom commercial", valeur: nomCommercialSp });
+      l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Ville", valeur: pro ? villeSp : villeSh });
+      l.push({ label: "Commune / quartier", valeur: pro ? communeSp : communeSh });
+      l.push({ label: "Référence CIE", valeur: pro ? refFactureSp : refFactureSh });
+      if (pro && classeSp) l.push({ label: "Classe d'activité", valeur: `Classe ${classeSp}` });
+      if (!pro && nombrePiecesSh) l.push({ label: "Nombre de pièces", valeur: nombrePiecesSh });
+      l.push({ label: "Statut d'occupation", valeur: statut === "proprietaire" ? "Propriétaire" : "Locataire" });
+      l.push({
+        label: statut === "proprietaire" ? "Valeur du bâtiment" : "Loyer mensuel",
+        valeur: fcfa(Number((statut === "proprietaire" ? (pro ? valeurBatimentSp : valeurBatimentSh) : pro ? loyerMensuelSp : loyerMensuelSh) || 0)),
+      });
+      l.push({ label: "Contenu", valeur: fcfa(Number((pro ? contenuSp : contenuSh) || 0)) });
+      l.push({ label: "Vol du contenu", valeur: oui(pro ? volContenuSp : volContenuSh) });
+      return l;
+    }
+
+    if (p === "incendie") {
+      l.push({ label: "Prénom", valeur: prenomInc });
+      l.push({ label: "Nom", valeur: nomInc });
+      l.push({ label: "Téléphone", valeur: telephoneInc });
+      l.push({ label: "Ville", valeur: villeInc });
+      l.push({ label: "Commune", valeur: communeInc });
+      l.push({ label: "Référence facture", valeur: refFactureInc });
+      return l;
+    }
+
+    // Accident historique, RelaxAccidents Frais Médicaux et RelaxVoyage
+    l.push({ label: "Prénom", valeur: prenom });
+    l.push({ label: "Nom", valeur: nom });
+    l.push({ label: "Téléphone", valeur: telephone });
+    l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
+    l.push({ label: "Sexe", valeur: sexeLabel });
+    if (isRelaxAccidentsFraisMedicaux(p)) {
+      l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
+      l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
+    }
+    if (isRelaxVoyage(p)) {
+      l.push({ label: "Compagnie", valeur: compagnie });
+      l.push({ label: "Trajet", valeur: [lieuDepart, lieuArrivee].filter(Boolean).join(" → ") || "—" });
+      l.push({ label: "N° de ticket", valeur: numeroTicket });
+      l.push({ label: "Date de départ", valeur: dfr(dateDepart) });
+      l.push({ label: "Personne à contacter", valeur: numeroPersonneContact });
+    }
+    return l;
+  }
+
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
@@ -1898,6 +2069,7 @@ export default function Souscription() {
             dateNaissance: dateNaissance || undefined,
             sexe: sexe || undefined,
             cycle,
+            nombrePeriodes,
           }),
         });
         const data = await res.json();
@@ -1942,8 +2114,10 @@ export default function Souscription() {
         setStep("success");
       }
     } catch (e: unknown) {
+      // On reste sur l'écran de vérification : la saisie est conservée et le
+      // client peut corriger puis réessayer, plutôt que d'être renvoyé vers
+      // une page d'erreur sans issue (ex. doublon, tarif indisponible).
       setErrorMsg(e instanceof Error ? e.message : "Erreur inattendue");
-      setStep("error");
     } finally {
       setSubmitting(false);
     }
@@ -2480,6 +2654,53 @@ export default function Souscription() {
                           </div>
                         </button>
                       ))}
+                  </div>
+
+                  {/* Souscription pour plusieurs cycles d'avance : le montant
+                      et la durée de couverture suivent le curseur. */}
+                  <div style={{ marginTop: 18 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80" }}>
+                        Durée de couverture
+                      </span>
+                      <span style={{ fontWeight: 800, fontSize: 15, color: "var(--sim-primary)" }}>
+                        {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={MAX_PERIODES_RELAX}
+                      step={1}
+                      value={nombrePeriodes}
+                      onChange={(e) => setNombrePeriodes(Number(e.target.value))}
+                      style={{ width: "100%", accentColor: "var(--sim-primary)" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#8fa2bd" }}>
+                      <span>1</span>
+                      <span>{MAX_PERIODES_RELAX}</span>
+                    </div>
+
+                    {primeRelaxUnitaire != null && (
+                      <div
+                        style={{
+                          marginTop: 12,
+                          background: "var(--sim-primary-50, #e6f1fb)",
+                          borderRadius: 10,
+                          padding: "12px 16px",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
+                          {fcfa(primeRelaxUnitaire)} × {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
+                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--sim-primary)" }}>
+                          {fcfa(primeRelaxUnitaire * nombrePeriodes)}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -3032,7 +3253,13 @@ export default function Souscription() {
                     : phoneInvalid(telephoneInc) || !villeInc || !communeInc || !refFactureInc);
                 return (
                   <button
-                    onClick={handleSubmit}
+                    // Ne soumet plus directement : le client vérifie d'abord
+                    // ses informations sur l'écran récapitulatif, d'où il peut
+                    // revenir corriger avant de payer.
+                    onClick={() => {
+                      setErrorMsg("");
+                      setStep("confirm");
+                    }}
                     disabled={bloque}
                     style={{
                       marginTop: 8,
@@ -3048,19 +3275,96 @@ export default function Souscription() {
                       opacity: bloque ? 0.5 : 1,
                     }}
                   >
-                    {submitting
-                      ? "Traitement…"
-                      : isAccidentLike(qrInfo?.produit) ||
-                        isRelaxVoyage(qrInfo?.produit) ||
-                        isRelaxAccidentsGenerale(qrInfo?.produit) ||
-                        isSecurproDommages(qrInfo?.produit) ||
-                        isSecurhomeDommages(qrInfo?.produit) ||
-                        (qrInfo && isRelax(qrInfo.produit))
-                      ? "Passer au paiement →"
-                      : "Confirmer la souscription →"}
+                    Vérifier mes informations →
                   </button>
                 );
               })()}
+            </div>
+          )}
+
+          {/* ── VÉRIFICATION AVANT PAIEMENT ── */}
+          {step === "confirm" && qrInfo && (
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Vérifiez vos informations</div>
+              <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 18 }}>
+                Relisez attentivement : ces informations figureront sur votre contrat. Vous pouvez encore les corriger.
+              </div>
+
+              <div style={{ border: "1px solid var(--border-strong, #dde3ec)", borderRadius: 14, overflow: "hidden" }}>
+                {lignesRecapitulatif().map((ligne, i) => (
+                  <div
+                    key={ligne.label}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 16,
+                      padding: "11px 14px",
+                      background: i % 2 ? "#fff" : "#f7f9fc",
+                      fontSize: 13.5,
+                    }}
+                  >
+                    <span style={{ color: "#5b6b80", flex: "none" }}>{ligne.label}</span>
+                    <span style={{ fontWeight: 700, textAlign: "right", wordBreak: "break-word" }}>
+                      {ligne.valeur || "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {(() => {
+                const montant = montantAPayer();
+                if (montant == null) return null;
+                return (
+                  <div
+                    style={{
+                      marginTop: 14,
+                      background: "var(--sim-primary-50, #e6f1fb)",
+                      borderRadius: 12,
+                      padding: "14px 16px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontSize: 13.5, color: "#5b6b80", fontWeight: 600 }}>Montant à payer</span>
+                    <span style={{ fontSize: 21, fontWeight: 800, color: "var(--sim-primary)" }}>{fcfa(montant)}</span>
+                  </div>
+                );
+              })()}
+
+              {errorMsg && (
+                <div style={{ marginTop: 14, color: "#dc2626", fontSize: 13.5, textAlign: "center" }}>{errorMsg}</div>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                style={{
+                  marginTop: 18, width: "100%", padding: "13px 0", background: "#004b9c", color: "#fff",
+                  border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer",
+                  opacity: submitting ? 0.5 : 1,
+                }}
+              >
+                {submitting
+                  ? "Traitement…"
+                  : qrInfo.produit === "incendie"
+                  ? "Confirmer la souscription →"
+                  : "Confirmer et payer →"}
+              </button>
+              <button
+                onClick={() => {
+                  setErrorMsg("");
+                  setStep("infos");
+                }}
+                disabled={submitting}
+                style={{
+                  marginTop: 10, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                  border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14,
+                  cursor: "pointer", opacity: submitting ? 0.5 : 1,
+                }}
+              >
+                ← Modifier mes informations
+              </button>
             </div>
           )}
 

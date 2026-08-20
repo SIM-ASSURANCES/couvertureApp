@@ -363,7 +363,11 @@ clientRouter.post(
         where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
       });
       if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
-      return res.status(201).json(await creerEcheanceRenouvellement(s.id, tarif.prime));
+      // Reconduction à l'identique : même durée que la souscription initiale
+      // (un contrat pris pour 3 mois se renouvelle par 3 mois), au tarif
+      // courant du cycle — voir confirmerEcheance, qui prolonge dateFin
+      // d'autant de cycles.
+      return res.status(201).json(await creerEcheanceRenouvellement(s.id, tarif.prime * s.nombrePeriodes));
     }
 
     if (s.waveStatut !== "confirme") {
