@@ -2634,7 +2634,13 @@ export default function Souscription() {
                         <button
                           key={t.id}
                           type="button"
-                          onClick={() => setCycle(t.libelleVariante)}
+                          onClick={() => {
+                            setCycle(t.libelleVariante);
+                            // Le curseur de durée ne s'applique qu'au mensuel
+                            // (souscrire "N mois d'avance") — la formule
+                            // annuelle reste à un an, sans multiplication.
+                            if (t.libelleVariante === "annuel") setNombrePeriodes(1);
+                          }}
                           style={{
                             width: "100%",
                             padding: "16px 20px",
@@ -2656,52 +2662,54 @@ export default function Souscription() {
                       ))}
                   </div>
 
-                  {/* Souscription pour plusieurs cycles d'avance : le montant
-                      et la durée de couverture suivent le curseur. */}
-                  <div style={{ marginTop: 18 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80" }}>
-                        Durée de couverture
-                      </span>
-                      <span style={{ fontWeight: 800, fontSize: 15, color: "var(--sim-primary)" }}>
-                        {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={MAX_PERIODES_RELAX}
-                      step={1}
-                      value={nombrePeriodes}
-                      onChange={(e) => setNombrePeriodes(Number(e.target.value))}
-                      style={{ width: "100%", accentColor: "var(--sim-primary)" }}
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#8fa2bd" }}>
-                      <span>1</span>
-                      <span>{MAX_PERIODES_RELAX}</span>
-                    </div>
-
-                    {primeRelaxUnitaire != null && (
-                      <div
-                        style={{
-                          marginTop: 12,
-                          background: "var(--sim-primary-50, #e6f1fb)",
-                          borderRadius: 10,
-                          padding: "12px 16px",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
-                          {fcfa(primeRelaxUnitaire)} × {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
-                        </div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: "var(--sim-primary)" }}>
-                          {fcfa(primeRelaxUnitaire * nombrePeriodes)}
-                        </div>
+                  {/* Souscription pour plusieurs cycles d'avance — mensuel
+                      uniquement : la formule annuelle reste fixée à un an. */}
+                  {cycle === "mensuel" && (
+                    <div style={{ marginTop: 18 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80" }}>
+                          Durée de couverture
+                        </span>
+                        <span style={{ fontWeight: 800, fontSize: 15, color: "var(--sim-primary)" }}>
+                          {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={MAX_PERIODES_RELAX}
+                        step={1}
+                        value={nombrePeriodes}
+                        onChange={(e) => setNombrePeriodes(Number(e.target.value))}
+                        style={{ width: "100%", accentColor: "var(--sim-primary)" }}
+                      />
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "#8fa2bd" }}>
+                        <span>1</span>
+                        <span>{MAX_PERIODES_RELAX}</span>
+                      </div>
+
+                      {primeRelaxUnitaire != null && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            background: "var(--sim-primary-50, #e6f1fb)",
+                            borderRadius: 10,
+                            padding: "12px 16px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
+                            {fcfa(primeRelaxUnitaire)} × {nombrePeriodes} {libellePeriode(cycle, nombrePeriodes)}
+                          </div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--sim-primary)" }}>
+                            {fcfa(primeRelaxUnitaire * nombrePeriodes)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
