@@ -391,7 +391,15 @@ assurancesBrancheRouter.post(
       orderBy: { numeroEcheance: "desc" },
     });
     if (!echeance) return res.status(404).json({ error: "Aucune échéance pour cette souscription" });
+    const dejaPayeeAvant = echeance.statut === "paye";
     const statut = await verifierPaiementEcheance(echeance);
+    // Si la dernière échéance n'est pas un renouvellement (c'est la prime
+    // initiale, déjà confirmée depuis longtemps), le dire explicitement :
+    // sinon "paye" laisse croire à tort qu'un renouvellement vient d'être
+    // confirmé, alors qu'aucun n'est même en cours.
+    if (statut === "paye" && !echeance.estRenouvellement) {
+      return res.json({ statut, estRenouvellement: false, dejaPayeeAvant });
+    }
     if (statut === "paye" && echeance.statut !== "paye") {
       await logAction({
         adminId: req.user!.sub,

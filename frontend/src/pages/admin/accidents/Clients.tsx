@@ -94,8 +94,13 @@ export default function AssurancesAccidentsClients() {
   async function verifier(id: string) {
     setVerifId(id);
     try {
-      const r = await api.post<{ statut: string }>(`/assurances-branche/souscriptions/${id}/verifier`, {});
-      if (r.statut === "paye") notify("Paiement confirmé ✓");
+      const r = await api.post<{ statut: string; estRenouvellement?: boolean }>(
+        `/assurances-branche/souscriptions/${id}/verifier`,
+        {}
+      );
+      if (r.statut === "paye" && r.estRenouvellement === false) {
+        notify("Aucun renouvellement en cours — seule la prime initiale est enregistrée pour ce client.");
+      } else if (r.statut === "paye") notify("Paiement confirmé ✓");
       else if (r.statut === "echoue") notify("Paiement échoué côté Wave.");
       else notify("Toujours en attente — paiement non abouti chez Wave.");
       reloadAlertes();
