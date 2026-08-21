@@ -278,9 +278,9 @@ export default function Performance() {
               {(demandes ?? []).map((d) => (
                 <tr key={d.id}>
                   <td>
-                    <strong>{d.partenaireNom}</strong>
+                    <strong>{d.responsable}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>
-                      {d.agentNom ? `Agent : ${d.agentNom} (${d.agentTelephone})` : d.responsable}
+                      {d.agentNom ? `Agent : ${d.agentNom} (${d.agentTelephone})` : d.partenaireNom}
                     </div>
                   </td>
                   <td><strong style={{ color: "var(--sim-primary)" }}>{fcfa(d.montant)}</strong></td>

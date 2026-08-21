@@ -706,7 +706,7 @@ souscriptionsRouter.get(
   "/incendie/export.csv",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.souscriptionIncendie.findMany({
-      include: { partenaire: { select: { nomCommerce: true } } },
+      include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       orderBy: { createdAt: "desc" },
     });
     await logAction({
@@ -728,7 +728,7 @@ souscriptionsRouter.get(
           commune: r.commune ?? "",
           quartier: r.quartier ?? "",
           numeroMaison: r.numeroMaison ?? "",
-          partenaire: r.partenaire.nomCommerce,
+          partenaire: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
           statut: r.statut,
           date: r.createdAt.toISOString(),
         }))
@@ -783,7 +783,7 @@ souscriptionsRouter.get(
   "/accident/export.csv",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.souscriptionAccident.findMany({
-      include: { partenaire: { select: { nomCommerce: true } } },
+      include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       orderBy: { createdAt: "desc" },
     });
     await logAction({
@@ -805,7 +805,7 @@ souscriptionsRouter.get(
           montantPrime: r.montantPrime,
           waveStatut: r.waveStatut,
           numeroPolice: r.numeroPolice ?? "",
-          partenaire: r.partenaire.nomCommerce,
+          partenaire: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
           statutDossier: r.statutDossier,
           date: r.createdAt.toISOString(),
         }))

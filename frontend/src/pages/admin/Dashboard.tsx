@@ -302,7 +302,7 @@ export default function AdminDashboard() {
                         <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>
                         <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
                       </td>
-                      <td>{r.partenaireNom}</td>
+                      <td>{r.partenaireResponsable || r.partenaireNom}</td>
                       <td><strong>{fcfa(r.montantPrime)}</strong></td>
                       <td>{r.produit === "incendie_historique" ? statutIncendieBadge(r.statut) : waveBadge(r.statut)}</td>
                       <td className="muted">{new Date(r.createdAt).toLocaleDateString("fr-FR")}</td>

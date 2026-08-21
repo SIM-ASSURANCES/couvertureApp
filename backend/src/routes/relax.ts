@@ -43,7 +43,7 @@ relaxRouter.get(
       where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },
       take: 5,
       orderBy: { createdAt: "desc" },
-      include: { partenaire: { select: { nomCommerce: true } }, produit: { select: { code: true, libelle: true } } },
+      include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, produit: { select: { code: true, libelle: true } } },
     });
     res.json({ partenairesRelax, produits: counts, derniers });
   })
@@ -77,7 +77,7 @@ relaxRouter.get(
             nom: true,
             prenom: true,
             telephone: true,
-            partenaire: { select: { nomCommerce: true } },
+            partenaire: { select: { nomCommerce: true, nomResponsable: true } },
             produit: { select: { code: true, libelle: true } },
           },
         },
@@ -111,7 +111,7 @@ relaxRouter.get(
         partenaireId: partenaireId || undefined,
       },
       include: {
-        partenaire: { select: { nomCommerce: true } },
+        partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
       },
       orderBy: { createdAt: "desc" },
@@ -121,7 +121,7 @@ relaxRouter.get(
         ...r,
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
-        partenaireNom: r.partenaire.nomCommerce,
+        partenaireNom: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
       }))
     );
   })

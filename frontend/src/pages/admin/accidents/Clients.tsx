@@ -20,6 +20,7 @@ interface SouscriptionAssurancesAccidents {
   waveStatut: string | null;
   numeroPolice?: string | null;
   partenaireNom: string;
+  partenaireResponsable?: string | null;
   produit: { code: string; libelle: string };
   createdAt: string;
   dateDebut?: string | null;
@@ -93,7 +94,7 @@ export default function AssurancesAccidentsClients() {
         "Nom": c.nom ?? "",
         "Téléphone": c.telephone,
         "Produit": c.produit.libelle,
-        "Partenaire": c.partenaireNom,
+        "Partenaire": c.partenaireResponsable || c.partenaireNom,
         "Prime": c.montantPrime,
         "Capital garanti": c.capitalGaranti,
         "Statut": c.waveStatut ?? "",
@@ -148,7 +149,7 @@ export default function AssurancesAccidentsClients() {
                     <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                   </td>
                   <td>{c.produit.libelle}</td>
-                  <td>{c.partenaireNom}</td>
+                  <td>{c.partenaireResponsable || c.partenaireNom}</td>
                   <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
@@ -216,7 +217,7 @@ export default function AssurancesAccidentsClients() {
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
                     <td>{c.produit.libelle}</td>
-                    <td>{c.partenaireNom}</td>
+                    <td>{c.partenaireResponsable || c.partenaireNom}</td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{waveBadge(c.waveStatut ?? "en_attente")}</td>
                     <td className="muted">{c.numeroPolice ?? "—"}</td>
@@ -263,7 +264,7 @@ export default function AssurancesAccidentsClients() {
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Produit</td><td>{detailFor.produit.libelle}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireResponsable || detailFor.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailFor.waveStatut ?? "en_attente")}</td></tr>

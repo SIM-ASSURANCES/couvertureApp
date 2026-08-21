@@ -46,6 +46,7 @@ export interface SouscriptionBranche {
   statut: string;
   partenaireId: string;
   partenaireNom: string;
+  partenaireResponsable?: string | null;
   createdAt: string;
   // Échéance/renouvellement — voir services/paiementWave.ts::confirmerEcheance
   // (générique, cycleFacturation null) et routes/public.ts (Incendie). null
@@ -178,7 +179,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
         : {}),
     },
     include: {
-      partenaire: { select: { nomCommerce: true } },
+      partenaire: { select: { nomCommerce: true, nomResponsable: true } },
       produit: { select: { code: true, libelle: true, sousBranche: true } },
     },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
@@ -195,6 +196,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
     statut: r.waveStatut ?? "confirme",
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
+    partenaireResponsable: r.partenaire.nomResponsable,
     createdAt: r.createdAt.toISOString(),
     dateDebut: r.dateDebut ? r.dateDebut.toISOString() : null,
     dateFin: r.dateFin ? r.dateFin.toISOString() : null,
@@ -221,7 +223,7 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
         ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
         : {}),
     },
-    include: { partenaire: { select: { nomCommerce: true } } },
+    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
   });
   return rows.map((r) => ({
@@ -236,6 +238,7 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
     statut: r.statut,
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
+    partenaireResponsable: r.partenaire.nomResponsable,
     createdAt: r.createdAt.toISOString(),
     dateDebut: r.dateDebut ? r.dateDebut.toISOString() : null,
     dateFin: r.dateFin ? r.dateFin.toISOString() : null,
@@ -260,7 +263,7 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
       partenaireId: f.partenaireId,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
     },
-    include: { partenaire: { select: { nomCommerce: true } } },
+    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
     orderBy: { createdAt: "desc" },
   });
   return rows.map((r) => ({
@@ -275,6 +278,7 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
     statut: r.waveStatut ?? "confirme",
     partenaireId: r.partenaireId,
     partenaireNom: r.partenaire.nomCommerce,
+    partenaireResponsable: r.partenaire.nomResponsable,
     createdAt: r.createdAt.toISOString(),
     espaceClientActif: !!r.clientPasswordHash,
   }));

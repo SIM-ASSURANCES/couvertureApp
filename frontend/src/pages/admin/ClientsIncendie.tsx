@@ -82,7 +82,7 @@ export default function ClientsIncendie() {
       nom: [c.prenom, c.nom].filter(Boolean).join(" ") || "Non renseigné",
       telephone: c.telephone,
       produitLibelle: "Incendie Habitation en Inclusion",
-      partenaireNom: c.partenaireNom,
+      partenaireNom: c.partenaireResponsable || c.partenaireNom,
       dateFin: c.dateFin,
       renouvellementEnCoursDepuis: c.renouvellementEnCoursDepuis,
       renouveleAt: c.renouveleAt,
@@ -95,7 +95,7 @@ export default function ClientsIncendie() {
       nom: [r.prenom, r.nom].filter(Boolean).join(" ") || "Non renseigné",
       telephone: r.telephone,
       produitLibelle: r.produitLibelle,
-      partenaireNom: r.partenaireNom,
+      partenaireNom: r.partenaireResponsable || r.partenaireNom,
       dateFin: r.dateFin,
       renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis,
       renouveleAt: r.renouveleAt,
@@ -204,7 +204,7 @@ export default function ClientsIncendie() {
           "Téléphone": c.telephone,
           "Prénom": c.prenom ?? "",
           "Nom": c.nom ?? "",
-          "Partenaire": c.partenaireNom,
+          "Partenaire": c.partenaireResponsable || c.partenaireNom,
           "Prime": c.montantPrime,
           "Capital garanti": c.capitalGaranti,
           "Réf. facture": c.refFacture ?? "",
@@ -221,7 +221,7 @@ export default function ClientsIncendie() {
           "Téléphone": r.telephone,
           "Prénom": r.prenom ?? "",
           "Nom": r.nom ?? "",
-          "Partenaire": r.partenaireNom,
+          "Partenaire": r.partenaireResponsable || r.partenaireNom,
           "Prime": r.montantPrime,
           "Capital garanti": "",
           "Réf. facture": "",
@@ -384,9 +384,9 @@ export default function ClientsIncendie() {
                       )}
                     </td>
                     <td>
-                      <strong>{c.partenaireNom}</strong>
+                      <strong>{c.partenaireResponsable || c.partenaireNom}</strong>
                       {c.partenaireResponsable && (
-                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireNom}</div>
                       )}
                       {c.partenaireLocalisation && (
                         <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
@@ -483,7 +483,7 @@ export default function ClientsIncendie() {
                         <span className="muted">Non renseigné</span>
                       )}
                     </td>
-                    <td><strong>{r.partenaireNom}</strong></td>
+                    <td><strong>{r.partenaireResponsable || r.partenaireNom}</strong></td>
                     <td><strong>{fcfa(r.montantPrime)}</strong></td>
                     <td><span className="muted">—</span></td>
                     <td>{waveBadge(r.statut)}</td>
@@ -538,9 +538,9 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Email</td><td>{detailFor.email || "—"}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>
-                  {detailFor.partenaireNom}
+                  {detailFor.partenaireResponsable || detailFor.partenaireNom}
                   {detailFor.partenaireResponsable && (
-                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireResponsable}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireNom}</div>
                   )}
                   {detailFor.partenaireLocalisation && (
                     <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireLocalisation}</div>
@@ -613,7 +613,7 @@ export default function ClientsIncendie() {
               <tbody>
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireResponsable || detailGenerique.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailGenerique.dateDebut ? fmtDate(detailGenerique.dateDebut) : "—"}</td></tr>

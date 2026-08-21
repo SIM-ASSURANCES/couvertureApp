@@ -103,7 +103,7 @@ assurancesAccidentsRouter.get(
           : {}),
       },
       include: {
-        partenaire: { select: { nomCommerce: true } },
+        partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
       },
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
@@ -114,6 +114,7 @@ assurancesAccidentsRouter.get(
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
+        partenaireResponsable: r.partenaire.nomResponsable,
       }))
     );
   })
@@ -125,7 +126,7 @@ assurancesAccidentsRouter.get(
     const produits = await produitsSousBranche();
     const rows = await prisma.souscription.findMany({
       where: { produitId: { in: produits.map((p) => p.id) } },
-      include: { partenaire: { select: { nomCommerce: true } }, produit: { select: { libelle: true } } },
+      include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, produit: { select: { libelle: true } } },
       orderBy: { createdAt: "desc" },
     });
     await logAction({
@@ -147,7 +148,7 @@ assurancesAccidentsRouter.get(
           montantPrime: r.montantPrime,
           waveStatut: r.waveStatut ?? "",
           numeroPolice: r.numeroPolice ?? "",
-          partenaire: r.partenaire.nomCommerce,
+          partenaire: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
           date: r.createdAt.toISOString(),
         }))
       )

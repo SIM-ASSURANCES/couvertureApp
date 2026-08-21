@@ -15,7 +15,7 @@ interface EcheanceEnAttente {
     nom?: string | null;
     prenom?: string | null;
     telephone: string;
-    partenaire: { nomCommerce: string };
+    partenaire: { nomCommerce: string; nomResponsable?: string | null };
     produit: { code: string; libelle: string };
   };
 }
@@ -89,7 +89,7 @@ export default function RelaxPaiementsEnAttente() {
                       <div className="muted" style={{ fontSize: 12 }}>{e.souscription.telephone}</div>
                     </td>
                     <td>{e.souscription.produit.libelle}</td>
-                    <td>{e.souscription.partenaire.nomCommerce}</td>
+                    <td>{e.souscription.partenaire.nomResponsable || e.souscription.partenaire.nomCommerce}</td>
                     <td className="muted">N° {e.numeroEcheance}</td>
                     <td><strong>{fcfa(e.montant)}</strong></td>
                     <td className="muted">{fmtDate(e.dateEcheance)}</td>

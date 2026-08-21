@@ -63,7 +63,12 @@ export default function RelaxPerformance() {
             <tbody>
               {(partenaires ?? []).map((p) => (
                 <tr key={p.id}>
-                  <td><strong>{p.nomCommerce}</strong></td>
+                  <td>
+                    <strong>{p.nomResponsable || p.nomCommerce}</strong>
+                    {p.nomResponsable && (
+                      <div className="muted" style={{ fontSize: 12 }}>{p.nomCommerce}</div>
+                    )}
+                  </td>
                   <td className="muted">{p.localisation}</td>
                   <td className="muted">{p.clientsRelax ?? 0}</td>
                   <td><strong>{fcfa(commissionParPartenaire.get(p.id) ?? 0)}</strong></td>

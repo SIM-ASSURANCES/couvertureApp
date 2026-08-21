@@ -110,7 +110,7 @@ export default function PaiementsEnAttente() {
         "Prénom": c.prenom,
         "Nom": c.nom,
         "Téléphone": c.telephone,
-        "Partenaire": c.partenaireNom,
+        "Partenaire": c.partenaireResponsable || c.partenaireNom,
         "Prime": c.montantPrime,
         "Paiement Wave": c.waveStatut,
         "Date": fmtDate(c.createdAt),
@@ -166,9 +166,9 @@ export default function PaiementsEnAttente() {
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
                     <td>
-                      <strong>{c.partenaireNom}</strong>
+                      <strong>{c.partenaireResponsable || c.partenaireNom}</strong>
                       {c.partenaireResponsable && (
-                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireNom}</div>
                       )}
                       {c.partenaireLocalisation && (
                         <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
@@ -290,7 +290,7 @@ export default function PaiementsEnAttente() {
                       <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
                     </td>
-                    <td>{r.partenaireNom}</td>
+                    <td>{r.partenaireResponsable || r.partenaireNom}</td>
                     <td><strong>{fcfa(r.montantPrime)}</strong></td>
                     <td>{waveBadge(r.statut)}</td>
                     <td className="muted">{fmtDate(r.createdAt)}</td>
@@ -341,7 +341,7 @@ export default function PaiementsEnAttente() {
               <tbody>
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireResponsable || detailGenerique.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Paiement Wave</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailGenerique.createdAt)}</td></tr>
@@ -366,7 +366,7 @@ export default function PaiementsEnAttente() {
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{detailFor.prenom} {detailFor.nom}</strong></td></tr>
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Date de naissance</td><td>{detailFor.dateNaissance ? fmtDate(detailFor.dateNaissance) : "—"}</td></tr>
-                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireNom}</td></tr>
+                <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireResponsable || detailFor.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
                 <tr><td className="muted">Paiement Wave</td><td>{waveBadge(detailFor.waveStatut)}</td></tr>

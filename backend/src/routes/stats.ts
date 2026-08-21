@@ -141,13 +141,13 @@ statsRouter.get(
         take: 5,
         where: { ...dateWhere, waveStatut: "confirme" },
         orderBy: { createdAt: "desc" },
-        include: { partenaire: { select: { nomCommerce: true } } },
+        include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       }),
       prisma.souscriptionIncendie.findMany({
         take: 5,
         where: dateWhere,
         orderBy: { createdAt: "desc" },
-        include: { partenaire: { select: { nomCommerce: true } } },
+        include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       }),
       prisma.souscriptionIncendie.groupBy({
         by: ["montantPrime"],
@@ -235,11 +235,15 @@ statsRouter.get(
       params,
       derniersAccident: derniersAccident.map((r) => ({
         ...r,
-        partenaireNom: r.partenaire.nomCommerce,
+        // Le spread ci-dessus reprend la ligne Prisma brute, dont le hash de
+        // mot de passe de l'espace client — jamais exposé au frontend.
+        clientPasswordHash: undefined,
+        partenaireNom: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
       })),
       derniersIncendie: derniersIncendie.map((r) => ({
         ...r,
-        partenaireNom: r.partenaire.nomCommerce,
+        clientPasswordHash: undefined,
+        partenaireNom: r.partenaire.nomResponsable || r.partenaire.nomCommerce,
       })),
     });
   })
@@ -543,7 +547,7 @@ statsRouter.get(
       "performance_partenaires.csv",
       toCsv(
         rows.map((r) => ({
-          partenaire: r.nomCommerce,
+          partenaire: r.nomResponsable || r.nomCommerce,
           localisation: r.localisation,
           clientsDommages: r.clientsIncendie,
           clientsAccidents: r.clientsAccident,

@@ -14,7 +14,7 @@ interface Overview {
     montantPrime: number;
     waveStatut: string | null;
     numeroPolice?: string | null;
-    partenaire: { nomCommerce: string };
+    partenaire: { nomCommerce: string; nomResponsable?: string | null };
     produit: { code: string; libelle: string };
     createdAt: string;
   }[];
@@ -93,7 +93,7 @@ export default function RelaxDashboard() {
                         <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                       </td>
                       <td>{c.produit.libelle}</td>
-                      <td>{c.partenaire.nomCommerce}</td>
+                      <td>{c.partenaire.nomResponsable || c.partenaire.nomCommerce}</td>
                       <td><strong>{fcfa(c.montantPrime)}</strong></td>
                       <td>{waveBadge(c.waveStatut ?? "en_attente")}</td>
                       <td className="muted">{c.numeroPolice ?? "—"}</td>

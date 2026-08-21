@@ -57,6 +57,7 @@ export interface SouscriptionBranche {
   statut: string;
   partenaireId: string;
   partenaireNom: string;
+  partenaireResponsable?: string | null;
   createdAt: string;
   dateDebut?: string | null;
   dateFin?: string | null;

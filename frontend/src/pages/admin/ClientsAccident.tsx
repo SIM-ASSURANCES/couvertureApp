@@ -85,7 +85,7 @@ export default function ClientsAccident() {
         "Nom": c.nom,
         "Téléphone": c.telephone,
         "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
-        "Partenaire": c.partenaireNom,
+        "Partenaire": c.partenaireResponsable || c.partenaireNom,
         "Prime": c.montantPrime,
         "Capital garanti": c.capitalGaranti,
         "Paiement Wave": c.waveStatut,
@@ -138,7 +138,7 @@ export default function ClientsAccident() {
                     <strong>{c.prenom} {c.nom}</strong>
                     <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                   </td>
-                  <td>{c.partenaireNom}</td>
+                  <td>{c.partenaireResponsable || c.partenaireNom}</td>
                   <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
@@ -206,9 +206,9 @@ export default function ClientsAccident() {
                     </td>
                     <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                     <td>
-                      <strong>{c.partenaireNom}</strong>
+                      <strong>{c.partenaireResponsable || c.partenaireNom}</strong>
                       {c.partenaireResponsable && (
-                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
+                        <div className="muted" style={{ fontSize: 12 }}>{c.partenaireNom}</div>
                       )}
                       {c.partenaireLocalisation && (
                         <div className="muted" style={{ fontSize: 12 }}>{c.partenaireLocalisation}</div>
@@ -275,9 +275,9 @@ export default function ClientsAccident() {
                 <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Date de naissance</td><td>{detailFor.dateNaissance ? fmtDate(detailFor.dateNaissance) : "—"}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>
-                  {detailFor.partenaireNom}
+                  {detailFor.partenaireResponsable || detailFor.partenaireNom}
                   {detailFor.partenaireResponsable && (
-                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireResponsable}</div>
+                    <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireNom}</div>
                   )}
                   {detailFor.partenaireLocalisation && (
                     <div className="muted" style={{ fontSize: 12 }}>{detailFor.partenaireLocalisation}</div>
