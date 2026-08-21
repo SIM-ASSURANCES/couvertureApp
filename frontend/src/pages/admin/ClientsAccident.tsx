@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send, Camera } from "lucide-react";
+import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send, Camera, RefreshCcw } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -77,6 +77,26 @@ export default function ClientsAccident() {
 
   const [detailFor, setDetailFor] = useState<ClientAccident | null>(null);
   const [photoFor, setPhotoFor] = useState<ClientAccident | null>(null);
+  const [verifId, setVerifId] = useState("");
+
+  // Re-vérifie directement auprès de Wave l'état d'un paiement (souscription ou
+  // renouvellement) — filet de sécurité manuel quand le webhook Wave n'a pas
+  // abouti (ex. renouvellement resté sans statut alors que le client a payé).
+  async function verifier(id: string) {
+    setVerifId(id);
+    try {
+      const r = await api.post<{ statut: string }>(`/souscriptions/accident/${id}/verifier`, {});
+      if (r.statut === "confirme") notify("Paiement confirmé ✓");
+      else if (r.statut === "echoue") notify("Paiement échoué côté Wave.");
+      else notify("Toujours en attente — paiement non abouti chez Wave.");
+      reloadAlertes();
+      reload();
+    } catch (e) {
+      notify((e as Error).message);
+    } finally {
+      setVerifId("");
+    }
+  }
 
   function exportXlsx() {
     exportExcel(
@@ -142,15 +162,26 @@ export default function ClientsAccident() {
                   <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: "7px 12px" }}
-                      disabled={!!c.renouvellementEnCoursDepuis}
-                      onClick={() => relancerRenouvellement(c.id)}
-                      title="Envoyer un SMS avec lien de paiement pour le renouvellement"
-                    >
-                      <Send size={14} /> Relance
-                    </button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: "7px 12px" }}
+                        disabled={!!c.renouvellementEnCoursDepuis}
+                        onClick={() => relancerRenouvellement(c.id)}
+                        title="Envoyer un SMS avec lien de paiement pour le renouvellement"
+                      >
+                        <Send size={14} /> Relance
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: "7px 10px" }}
+                        disabled={verifId === c.id}
+                        onClick={() => verifier(c.id)}
+                        title="Vérifier le paiement Wave"
+                      >
+                        <RefreshCcw size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -237,6 +268,15 @@ export default function ClientsAccident() {
                         >
                           <Eye size={15} />
                         </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Vérifier le paiement Wave (souscription ou renouvellement)"
+                          disabled={verifId === c.id}
+                          onClick={() => verifier(c.id)}
+                        >
+                          <RefreshCcw size={15} />
+                        </button>
                         {isSuper && c.waveStatut !== "confirme" && (
                           <button
                             className="btn btn-ghost"
@@ -293,7 +333,21 @@ export default function ClientsAccident() {
                 </tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
                 <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
-                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
+                <tr>
+                  <td className="muted">Renouvellement</td>
+                  <td style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {statutRenouvellement(detailFor)}
+                    <button
+                      className="btn btn-ghost"
+                      style={{ padding: "4px 8px", fontSize: 12 }}
+                      disabled={verifId === detailFor.id}
+                      onClick={() => verifier(detailFor.id)}
+                      title="Vérifier le paiement Wave auprès de Wave"
+                    >
+                      <RefreshCcw size={12} /> Vérifier
+                    </button>
+                  </td>
+                </tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>

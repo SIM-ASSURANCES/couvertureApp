@@ -11,7 +11,7 @@ import {
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
-import { confirmerAccident } from "../services/accident.js";
+import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 import { analyserSinistreIA } from "../services/fraudeIA.js";
@@ -380,6 +380,23 @@ clientRouter.post(
 clientRouter.get(
   "/renouveler/:paiementId/verify",
   asyncHandler(async (req: AuthedRequest, res) => {
+    // Accident historique (SouscriptionAccident) : pas de ligne Paiement, l'état
+    // du renouvellement vit directement sur la souscription (voir POST
+    // /renouveler ci-dessus, qui redirige vers Wave avec son propre id, pas
+    // un id de Paiement) — sans cette branche, le filet de sécurité restait
+    // bloqué en 404 dès que le webhook Wave n'aboutissait pas, laissant
+    // renouvellementEnCoursDepuis/dateFin jamais mis à jour.
+    if (produitType(req) === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.user!.sub } });
+      if (!s) return res.status(404).json({ error: "Introuvable" });
+      const statutAccident = await verifierPaiementAccident(s);
+      // Le frontend (client/Dashboard.tsx) attend la même convention que
+      // verifierPaiementEcheance ("paye"/"echoue"/en attente), commune aux
+      // deux modèles.
+      const statut = statutAccident === "confirme" ? "paye" : statutAccident;
+      return res.json({ statut });
+    }
+
     const p = await prisma.paiement.findUnique({ where: { id: req.params.paiementId } });
     if (!p || p.souscriptionId !== req.user!.sub) return res.status(404).json({ error: "Introuvable" });
     const statut = await verifierPaiementEcheance(p);
