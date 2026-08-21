@@ -10,6 +10,7 @@ import {
   Badge,
   fcfa,
   fmtDate,
+  fmtDateHeure,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
@@ -26,7 +27,7 @@ const CODE_INCENDIE_HISTORIQUE = "incendie_historique";
 
 function statutRenouvellement(c: { renouvellementEnCoursDepuis?: string | null; renouveleAt?: string | null }) {
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
-  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDate(c.renouveleAt)}</Badge>;
+  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDateHeure(c.renouveleAt)}</Badge>;
   return <span className="muted">—</span>;
 }
 

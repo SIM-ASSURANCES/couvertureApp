@@ -9,6 +9,7 @@ import {
   Badge,
   fcfa,
   fmtDate,
+  fmtDateHeure,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
@@ -25,7 +26,7 @@ const CODE_ACCIDENT_HISTORIQUE = "accident_historique";
 
 function statutRenouvellement(c: ClientAccident) {
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
-  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDate(c.renouveleAt)}</Badge>;
+  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDateHeure(c.renouveleAt)}</Badge>;
   return <span className="muted">—</span>;
 }
 

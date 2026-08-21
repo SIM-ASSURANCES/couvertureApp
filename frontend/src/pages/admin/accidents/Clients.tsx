@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, waveBadge } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
@@ -36,7 +36,7 @@ function statutRenouvellement(c: SouscriptionAssurancesAccidents) {
   // côté espace client — pas de statut admin à afficher ici.
   if (c.cycleFacturation) return <span className="muted">—</span>;
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
-  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDate(c.renouveleAt)}</Badge>;
+  if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDateHeure(c.renouveleAt)}</Badge>;
   return <span className="muted">—</span>;
 }
 

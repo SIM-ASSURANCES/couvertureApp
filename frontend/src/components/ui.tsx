@@ -387,3 +387,11 @@ export function fmtDate(d: string) {
     minute: "2-digit",
   });
 }
+
+/** Date et heure séparées par "à", pour les libellés du type "Renouvelé le … à …". */
+export function fmtDateHeure(d: string) {
+  const date = new Date(d);
+  const jour = date.toLocaleDateString("fr-FR");
+  const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return `${jour} à ${heure}`;
+}
