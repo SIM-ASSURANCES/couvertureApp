@@ -118,7 +118,7 @@ export default function PartenaireQr() {
             icon={<ShieldCheck size={20} />}
             color="#15803d"
             bg="#e8f6ec"
-            label="QR Accident"
+            label="QR Accidents"
             sublabel="Souscription + paiement Wave"
           />
         )}

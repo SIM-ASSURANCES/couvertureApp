@@ -136,7 +136,7 @@ assurancesBrancheRouter.get(
       orderBy: { ordre: "asc" },
     });
     res.json([
-      { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accident (historique)" },
+      { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accidents (historique)" },
       { sousBranche: "ASSURANCES_DOMMAGES", code: CODE_INCENDIE_HISTORIQUE, libelle: "Incendie Habitation en Inclusion" },
       ...produits.map((p) => ({ sousBranche: p.sousBranche as SousBranche, code: p.code, libelle: p.libelle })),
     ]);
@@ -267,7 +267,7 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
     id: r.id,
     sousBranche: "ASSURANCES_ACCIDENTS",
     produit: CODE_ACCIDENT_HISTORIQUE,
-    produitLibelle: "Accident (historique)",
+    produitLibelle: "Accidents (historique)",
     telephone: r.telephone,
     nom: r.nom,
     prenom: r.prenom,
@@ -498,7 +498,7 @@ async function enrichirSinistres(
         numeroPolice = s.numeroPolice;
         pieceIdentiteUrl = s.pieceIdentiteUrl;
       }
-      produitLibelle = "Accident (historique)";
+      produitLibelle = "Accidents (historique)";
     } else {
       const s = mapGen.get(souscriptionId);
       if (s) {

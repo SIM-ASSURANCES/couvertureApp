@@ -100,7 +100,7 @@ export default function ClientsAccident() {
   return (
     <>
       <PageHeader
-        title="Clients — Assurance Accident"
+        title="Clients — Assurance Accidents"
         subtitle="Souscriptions confirmées après paiement Wave."
         actions={
           <>

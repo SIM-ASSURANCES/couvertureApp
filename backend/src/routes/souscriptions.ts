@@ -489,7 +489,7 @@ souscriptionsRouter.post(
       return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
     }
     if (!s.partenaire.qrAccidentToken) {
-      return res.status(400).json({ error: "QR Accident introuvable pour ce partenaire." });
+      return res.status(400).json({ error: "QR Accidents introuvable pour ce partenaire." });
     }
 
     const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
@@ -539,7 +539,7 @@ souscriptionsRouter.post(
       return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
     }
     if (!s.partenaire.qrAccidentToken) {
-      return res.status(400).json({ error: "QR Accident introuvable pour ce partenaire." });
+      return res.status(400).json({ error: "QR Accidents introuvable pour ce partenaire." });
     }
 
     const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";

@@ -80,7 +80,7 @@ clientRouter.get(
         telephone: s.telephone,
         produitType: type,
         carteType: "accident",
-        produitLibelle: "Accident (historique)",
+        produitLibelle: "Accidents (historique)",
         partenaire: s.partenaire.nomCommerce,
         numeroPolice: s.numeroPolice,
         montantPrime: s.montantPrime,

@@ -235,7 +235,7 @@ authRouter.post(
         ? generique!.produit.libelle
         : produitType === "incendie"
         ? "Incendie Habitation en Inclusion"
-        : "Accident (historique)";
+        : "Accidents (historique)";
     const numeroPolice =
       produitType === "incendie"
         ? numeroPoliceIncendieSynthetique(row.id, (row as { dateDebut: Date | null }).dateDebut ?? row.createdAt)

@@ -52,7 +52,7 @@ interface Contrat extends DonneesContrat {
 
 function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
   const entree = catalogue?.find((p) => p.code === c.type);
-  const libelle = c.produitLibelle ?? entree?.libelle ?? (c.type === "accident" ? "Accident (historique)" : c.type);
+  const libelle = c.produitLibelle ?? entree?.libelle ?? (c.type === "accident" ? "Accidents (historique)" : c.type);
   const estDommages = entree ? entree.sousBranche === "ASSURANCES_DOMMAGES" : c.type === "incendie";
   return estDommages ? (
     <Badge kind="warning">
@@ -132,7 +132,7 @@ export default function Contrats() {
   function exportXlsx() {
     exportExcel(
       (data ?? []).map((c) => ({
-        "Produit": c.produitLibelle ?? (c.type === "accident" ? "Accident (historique)" : c.type === "incendie" ? "Incendie Habitation en Inclusion" : c.type),
+        "Produit": c.produitLibelle ?? (c.type === "accident" ? "Accidents (historique)" : c.type === "incendie" ? "Incendie Habitation en Inclusion" : c.type),
         "N° police": c.numeroPolice,
         "Prénom": c.prenom,
         "Nom": c.nom,

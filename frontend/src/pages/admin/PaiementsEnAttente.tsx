@@ -123,7 +123,7 @@ export default function PaiementsEnAttente() {
     <>
       <PageHeader
         title="Paiement en attente"
-        subtitle="Souscriptions Accident dont le paiement Wave n'a pas encore abouti."
+        subtitle="Souscriptions Accidents dont le paiement Wave n'a pas encore abouti."
         actions={
           <button className="btn btn-danger-soft" onClick={exportXlsx}>
             <FileSpreadsheet size={16} /> Export Excel

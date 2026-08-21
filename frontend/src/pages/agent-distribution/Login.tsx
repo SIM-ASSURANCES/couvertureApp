@@ -53,7 +53,7 @@ export default function AgentDistributionLogin() {
         <div style={{ background: "linear-gradient(135deg, #004b9c 0%, #16215e 100%)", padding: "28px 32px 24px", color: "#fff" }}>
           <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 48, marginBottom: 16, display: "block" }} />
           <div style={{ fontSize: 18, fontWeight: 800 }}>Espace agent</div>
-          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Incendie / Accident</div>
+          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Incendie / Accidents</div>
         </div>
         <form onSubmit={handleSubmit} style={{ padding: "28px 32px" }}>
           <div style={{ marginBottom: 14 }}>

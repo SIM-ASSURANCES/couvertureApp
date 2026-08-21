@@ -155,7 +155,7 @@ meRouter.get(
       orderBy: { ordre: "asc" },
     });
     res.json([
-      { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accident (historique)" },
+      { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accidents (historique)" },
       { sousBranche: "ASSURANCES_DOMMAGES", code: CODE_INCENDIE_HISTORIQUE, libelle: "Incendie Habitation en Inclusion" },
       ...produits.map((p) => ({ sousBranche: p.sousBranche, code: p.code, libelle: p.libelle })),
     ]);

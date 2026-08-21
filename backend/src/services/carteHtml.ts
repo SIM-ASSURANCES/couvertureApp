@@ -95,7 +95,7 @@ export function renderCarteHtml(c: CarteData): string {
       <div class="logo-novelia"><img src="${APP_PUBLIC_URL}/logo_novelia.png" alt="Novelia Assurances" /></div>
       <div class="titre">
         <div class="petit">CARTE</div>
-        <div class="grand">INDIVIDUELLE ACCIDENT</div>
+        <div class="grand">INDIVIDUELLE ACCIDENTS</div>
       </div>
       <div class="banniere">${esc(c.garantieLabel)} ${fcfa(c.garantieMontant)}</div>
     </div>

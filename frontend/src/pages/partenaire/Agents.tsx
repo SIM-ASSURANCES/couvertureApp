@@ -285,7 +285,7 @@ export default function PartenaireAgents() {
                   <QrMini agentId={agentDetail.id} produit="incendie2000" label="QR — au-dessus de 250 000 FCFA" />
                 </>
               ) : (
-                <QrMini agentId={agentDetail.id} produit="accident" label="QR Accident" />
+                <QrMini agentId={agentDetail.id} produit="accident" label="QR Accidents" />
               )}
             </div>
 
@@ -314,7 +314,7 @@ export default function PartenaireAgents() {
                           {s.produit === "incendie" ? (
                             <Badge kind="warning"><Flame size={12} style={{ verticalAlign: -2 }} /> Incendie</Badge>
                           ) : (
-                            <Badge kind="info"><ShieldCheck size={12} style={{ verticalAlign: -2 }} /> Accident</Badge>
+                            <Badge kind="info"><ShieldCheck size={12} style={{ verticalAlign: -2 }} /> Accidents</Badge>
                           )}
                         </td>
                         <td>{fcfa(s.montantPrime)}</td>

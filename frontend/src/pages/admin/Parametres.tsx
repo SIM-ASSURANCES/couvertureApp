@@ -232,7 +232,7 @@ export default function Parametres() {
         {/* ── Tarification Accident ── */}
         {tarifsAcc ? (
           <TarifTable
-            title="Barème Assurance Accident"
+            title="Barème Assurance Accidents"
             produit="accident"
             tarifs={tarifsAcc}
             isSuper={isSuper}

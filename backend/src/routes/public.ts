@@ -670,7 +670,7 @@ publicRouter.post(
     const data = accSchema.parse(req.body);
     const resolu = await resoudrePartenaireOuAgent(data.qrToken);
     if (!resolu || resolu.qrChamp !== "qrAccidentToken") {
-      return res.status(404).json({ error: "QR Accident invalide" });
+      return res.status(404).json({ error: "QR Accidents invalide" });
     }
 
     // Une personne (nom + date de naissance) ne peut souscrire qu'une seule
@@ -774,7 +774,7 @@ publicRouter.post(
     await notifyPartenaire(
       resolu.partenaireId,
       "souscription",
-      "Nouvelle souscription Accident",
+      "Nouvelle souscription Accidents",
       `Nouveau client accident (${montant} FCFA) via votre QR code.`,
       "/partenaire/souscriptions"
     );
@@ -1046,6 +1046,10 @@ const relaxSchema = z.object({
   // ici : la prime et la durée de couverture en découlent directement, on ne
   // fait donc jamais confiance à une valeur arbitraire venue du client.
   nombrePeriodes: z.number().int().min(1).max(MAX_PERIODES_RELAX).optional(),
+  // Signée avant le paiement Wave — stockée dans `donneesSpecifiques` comme
+  // pour RelaxAccidents Frais Médicaux/RelaxVoyage (le modèle générique n'a
+  // pas de colonne `signature` dédiée), lue par mapperSouscriptionGenerique.
+  signature: dataUrlImage.optional(),
   // Photo CNI/Permis + selfie (data URL), capturées depuis le téléphone du
   // souscripteur — voir documentSchema pour le dépôt effectif après création
   // de la souscription (id requis).
@@ -1570,6 +1574,7 @@ publicRouter.post(
         cycleFacturation: data.cycle,
         nombreEcheances: 1,
         nombrePeriodes,
+        donneesSpecifiques: data.signature ? { signature: data.signature } : undefined,
         paiements: {
           create: { numeroEcheance: 1, montant: montantTotal, dateEcheance: new Date() },
         },

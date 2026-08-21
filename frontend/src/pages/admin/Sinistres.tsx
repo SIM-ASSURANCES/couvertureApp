@@ -128,7 +128,7 @@ export default function Sinistres() {
               <option value="">Tous produits</option>
               <option value="generique">Produits génériques</option>
               <option value="incendie">Incendie</option>
-              <option value="accident">Accident (historique)</option>
+              <option value="accident">Accidents (historique)</option>
             </select>
           </div>
         }

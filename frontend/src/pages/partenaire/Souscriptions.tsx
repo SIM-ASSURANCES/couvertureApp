@@ -94,7 +94,7 @@ export default function PartenaireSouscriptions() {
                     </tr>
                   ))}
                   {data.accident.length === 0 && (
-                    <tr><td colSpan={5}><div className="empty">Aucune souscription Accident.</div></td></tr>
+                    <tr><td colSpan={5}><div className="empty">Aucune souscription Accidents.</div></td></tr>
                   )}
                 </tbody>
               </table>

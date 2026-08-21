@@ -405,7 +405,7 @@ async function loadCG(cle: string, fichierRepli = `cg-${cle}.html`): Promise<str
  * famille Accidents, faute de fichier statique dédié.
  */
 export const CLES_CONDITIONS_GENERALES = [
-  { cle: "accident", libelle: "Accidents (Accident historique, RelaxAccidents Frais Médicaux)" },
+  { cle: "accident", libelle: "Accidents (Accidents historique, RelaxAccidents Frais Médicaux)" },
   { cle: "incendie", libelle: "Dommages (Incendie, SecurHome+, SecurPro, SecurStock)" },
   { cle: "relaxmoto", libelle: "RelaxMoto / RelaxAuto" },
   { cle: "relaxvoyage", libelle: "RelaxVoyage" },
@@ -459,7 +459,7 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
-  <div class="sub">Assurance Accident · Distribué via ${val(c.partenaire)}</div>
+  <div class="sub">Assurance Accidents · Distribué via ${val(c.partenaire)}</div>
 
   <h2>Conditions Particulières</h2>
   <table>
@@ -588,7 +588,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
-  <div class="sub">Assurance Accident (police collective) · Distribué via ${val(c.partenaire)}</div>
+  <div class="sub">Assurance Accidents (police collective) · Distribué via ${val(c.partenaire)}</div>
 
   <h2>Conditions Particulières</h2>
   <table>

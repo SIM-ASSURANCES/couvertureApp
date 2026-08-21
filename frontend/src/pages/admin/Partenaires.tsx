@@ -98,8 +98,8 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
               "Commission générée (période)": data.commissionGenereePeriode,
               "CA HT Incendie (31j)": data.commissionMensuelle.incendie.caHT,
               "Commission mensuelle Incendie": data.commissionMensuelle.incendie.commission,
-              "CA HT Accident (31j)": data.commissionMensuelle.accident.caHT,
-              "Commission mensuelle Accident": data.commissionMensuelle.accident.commission,
+              "CA HT Accidents (31j)": data.commissionMensuelle.accident.caHT,
+              "Commission mensuelle Accidents": data.commissionMensuelle.accident.commission,
             },
           ],
         },
@@ -482,7 +482,7 @@ function EditModal({
               </label>
               <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
                 <input type="radio" name="editProduit" value="accident" checked={form.produit === "accident"} onChange={() => setForm({ ...form, produit: "accident" })} />
-                <span>Accident</span>
+                <span>Accidents</span>
               </label>
             </div>
           </div>
@@ -629,7 +629,7 @@ export default function Partenaires() {
       const label =
         produit === "incendie1000" ? "Incendie 1 000 FCFA"
         : produit === "incendie2000" ? "Incendie 2 000 FCFA"
-        : produit === "accident" ? "Accident"
+        : produit === "accident" ? "Accidents"
         : produit === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents"
         : produit === "ASSURANCES_DOMMAGES" ? "Assurances Dommages"
         : "Assurances Accidents et Dommages";
@@ -651,10 +651,10 @@ export default function Partenaires() {
           ? "Assurances Accidents et Dommages"
           : p.sousBranche
           ? p.sousBranche === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"
-          : p.produitIncendie ? "Incendie (historique)" : "Accident (historique)",
+          : p.produitIncendie ? "Incendie (historique)" : "Accidents (historique)",
         "Statut": p.statut,
         "Clients Incendie": p.clientsIncendie,
-        "Clients Accident": p.clientsAccident,
+        "Clients Accidents": p.clientsAccident,
         "Clients (autres produits)": p.clientsRelax ?? 0,
         "Email": p.email ?? "",
         "Créé le": fmtDate(p.createdAt),
@@ -747,7 +747,7 @@ export default function Partenaires() {
                             <Badge kind="warning">Incendie (historique)</Badge>
                           )}
                           {!p.sousBranche && !p.qrUnifie && p.produitAccident && (
-                            <Badge kind="success">Accident (historique)</Badge>
+                            <Badge kind="success">Accidents (historique)</Badge>
                           )}
                         </div>
                       </td>
@@ -833,7 +833,7 @@ export default function Partenaires() {
                             <button
                               className="btn btn-ghost"
                               style={{ padding: 8 }}
-                              title="QR Accident"
+                              title="QR Accidents"
                               onClick={() => showQr(p, "accident")}
                             >
                               <QrCode size={15} color="#15803d" />

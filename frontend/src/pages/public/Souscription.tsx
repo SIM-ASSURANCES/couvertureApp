@@ -1847,7 +1847,9 @@ export default function Souscription() {
       isRelaxVoyage(qrInfo.produit) ||
       isRelaxAccidentsGenerale(qrInfo.produit) ||
       isSecurproDommages(qrInfo.produit) ||
-      isSecurhomeDommages(qrInfo.produit)
+      isSecurhomeDommages(qrInfo.produit) ||
+      isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
+      isRelax(qrInfo.produit)
         ? sigRef.current?.toDataURL() ?? undefined
         : undefined;
     setSubmitting(true);
@@ -2070,6 +2072,7 @@ export default function Souscription() {
             sexe: sexe || undefined,
             cycle,
             nombrePeriodes,
+            signature,
           }),
         });
         const data = await res.json();
@@ -2982,6 +2985,7 @@ export default function Souscription() {
                       <span>Je déclare ne pas exercer d'activité de livreur. *</span>
                     </label>
                   </div>
+                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
                 <>
@@ -3034,6 +3038,7 @@ export default function Souscription() {
                     capture="user"
                     required
                   />
+                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : chooserInfo && !montantAchatIncConfirme ? (
                 <FieldRow label="Montant de votre achat (FCFA) *">
