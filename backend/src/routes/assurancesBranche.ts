@@ -14,6 +14,7 @@ import {
   messageReinitialisationMotDePasse,
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
+import { verifierPaiementEcheance } from "../services/paiementWave.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -373,6 +374,34 @@ assurancesBrancheRouter.post(
       objetId: s.id,
     });
     res.json({ ok: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
+  })
+);
+
+/**
+ * Re-vérifie auprès de Wave l'échéance la plus récente d'une souscription
+ * (première prime ou renouvellement) — filet de sécurité manuel quand le
+ * webhook Wave n'a pas abouti, symétrique de POST /accident/:id/verifier
+ * (souscriptions.ts) pour ce modèle générique.
+ */
+assurancesBrancheRouter.post(
+  "/souscriptions/:id/verifier",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const echeance = await prisma.paiement.findFirst({
+      where: { souscriptionId: req.params.id },
+      orderBy: { numeroEcheance: "desc" },
+    });
+    if (!echeance) return res.status(404).json({ error: "Aucune échéance pour cette souscription" });
+    const statut = await verifierPaiementEcheance(echeance);
+    if (statut === "paye" && echeance.statut !== "paye") {
+      await logAction({
+        adminId: req.user!.sub,
+        typeAction: "modification",
+        objetType: "paiement_echeance",
+        objetId: echeance.id,
+        valeurApres: { statut: "paye", source: "verification_wave" },
+      });
+    }
+    res.json({ statut });
   })
 );
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
@@ -51,6 +51,7 @@ export default function AssurancesAccidentsClients() {
   const [photoFor, setPhotoFor] = useState<SouscriptionAssurancesAccidents | null>(null);
   const [detailFor, setDetailFor] = useState<SouscriptionAssurancesAccidents | null>(null);
   const [recherche, setRecherche] = useState("");
+  const [verifId, setVerifId] = useState("");
 
   const donneesFiltrees = (data ?? []).filter((c) => {
     const q = recherche.trim().toLowerCase();
@@ -84,6 +85,25 @@ export default function AssurancesAccidentsClients() {
       reload();
     } catch (err) {
       notify((err as Error).message);
+    }
+  }
+
+  // Re-vérifie directement auprès de Wave l'échéance la plus récente (première
+  // prime ou renouvellement) — filet de sécurité manuel quand le webhook Wave
+  // n'a pas abouti.
+  async function verifier(id: string) {
+    setVerifId(id);
+    try {
+      const r = await api.post<{ statut: string }>(`/assurances-branche/souscriptions/${id}/verifier`, {});
+      if (r.statut === "paye") notify("Paiement confirmé ✓");
+      else if (r.statut === "echoue") notify("Paiement échoué côté Wave.");
+      else notify("Toujours en attente — paiement non abouti chez Wave.");
+      reloadAlertes();
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setVerifId("");
     }
   }
 
@@ -153,15 +173,26 @@ export default function AssurancesAccidentsClients() {
                   <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: "7px 12px" }}
-                      disabled={!!c.renouvellementEnCoursDepuis}
-                      onClick={() => relancerRenouvellement(c.id)}
-                      title="Envoyer un SMS avec lien de paiement pour le renouvellement"
-                    >
-                      <Send size={14} /> Relance
-                    </button>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: "7px 12px" }}
+                        disabled={!!c.renouvellementEnCoursDepuis}
+                        onClick={() => relancerRenouvellement(c.id)}
+                        title="Envoyer un SMS avec lien de paiement pour le renouvellement"
+                      >
+                        <Send size={14} /> Relance
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: "7px 10px" }}
+                        disabled={verifId === c.id}
+                        onClick={() => verifier(c.id)}
+                        title="Vérifier le paiement Wave"
+                      >
+                        <RefreshCcw size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -230,6 +261,15 @@ export default function AssurancesAccidentsClients() {
                           <button className="btn btn-ghost" style={{ padding: 8 }} title="Voir les détails" onClick={() => setDetailFor(c)}>
                             <Eye size={15} />
                           </button>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            title="Vérifier le paiement Wave (souscription ou renouvellement)"
+                            disabled={verifId === c.id}
+                            onClick={() => verifier(c.id)}
+                          >
+                            <RefreshCcw size={15} />
+                          </button>
                           <button className="btn btn-ghost" style={{ padding: 8 }} title="Modifier la photo de la carte" onClick={() => setPhotoFor(c)}>
                             <Camera size={15} />
                           </button>
@@ -271,7 +311,21 @@ export default function AssurancesAccidentsClients() {
                 <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice ?? "—"}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
                 <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
-                <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
+                <tr>
+                  <td className="muted">Renouvellement</td>
+                  <td style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {statutRenouvellement(detailFor)}
+                    <button
+                      className="btn btn-ghost"
+                      style={{ padding: "4px 8px", fontSize: 12 }}
+                      disabled={verifId === detailFor.id}
+                      onClick={() => verifier(detailFor.id)}
+                      title="Vérifier le paiement Wave auprès de Wave"
+                    >
+                      <RefreshCcw size={12} /> Vérifier
+                    </button>
+                  </td>
+                </tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
               </tbody>
             </table>
