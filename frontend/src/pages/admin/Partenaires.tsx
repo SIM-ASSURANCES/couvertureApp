@@ -515,7 +515,6 @@ const empty = {
   nomResponsable: "",
   telephone: "",
   localisation: "",
-  typeCommerce: "Electronique",
   email: "",
 };
 
@@ -567,7 +566,6 @@ export default function Partenaires() {
         nomResponsable: form.nomResponsable,
         telephone: form.telephone,
         localisation: form.localisation,
-        typeCommerce: form.typeCommerce,
         // Ni `produit` ni `sousBranche` : un seul QR unique est généré, le
         // client choisit son Assurance (Accidents/Dommages) puis son produit
         // après le scan (refonte 2026-08-07).
@@ -906,19 +904,6 @@ export default function Partenaires() {
                 value={form.localisation}
                 onChange={(e) => setForm({ ...form, localisation: e.target.value })}
               />
-            </div>
-            <div className="field">
-              <label className="label">Type de commerce <span className="req">*</span></label>
-              <select
-                className="select"
-                value={form.typeCommerce}
-                onChange={(e) => setForm({ ...form, typeCommerce: e.target.value })}
-              >
-                <option value="Electronique">Electronique</option>
-                <option value="Vulcanisateur">Vulcanisateur</option>
-                <option value="MecaniqueGarage">Mécanique / garage</option>
-                <option value="AccessoireAuto">Accessoire auto</option>
-              </select>
             </div>
             <div className="field">
               <label className="label">Assurance</label>
