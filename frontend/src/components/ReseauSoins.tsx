@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 interface Prestataire {
-  zone: string;
-  reseau: string;
   categorie: string;
   commune: string;
   nom: string;
   telephone: string;
-  specialites: string;
   situation: string;
 }
 
@@ -26,11 +23,13 @@ function lienTel(t: string) {
 const PAR_PAGE = 40;
 
 /**
- * Réseau de soins global (Novelia Assurances) — annuaire des prestataires
- * conventionnés, consultable depuis l'espace client. Les données viennent du
- * document fourni par l'assureur, converti en `public/reseau-soins.json` :
- * elles sont chargées à la demande (≈360 Ko) et non incluses dans le bundle,
- * et affichées par tranches pour rester fluide sur mobile.
+ * Réseau de soins (Novelia Assurances) — annuaire des établissements publics
+ * et pharmacies conventionnés, consultable depuis l'espace client. Les
+ * données viennent du fichier "Réseau public et pharmacies" fourni par
+ * l'assureur, converti en `public/reseau-soins.json` (2 catégories :
+ * Établissements publics, Pharmacies) : elles sont chargées à la demande
+ * (≈140 Ko) et non incluses dans le bundle, et affichées par tranches pour
+ * rester fluide sur mobile.
  */
 export default function ReseauSoins() {
   const [tout, setTout] = useState<Prestataire[] | null>(null);
@@ -62,7 +61,7 @@ export default function ReseauSoins() {
       if (categorie && p.categorie !== categorie) return false;
       if (commune && p.commune !== commune) return false;
       if (!q) return true;
-      return [p.nom, p.commune, p.situation, p.specialites, p.telephone]
+      return [p.nom, p.commune, p.situation, p.telephone]
         .some((v) => v && v.toLocaleLowerCase("fr").includes(q));
     });
   }, [tout, recherche, categorie, commune]);
@@ -127,7 +126,6 @@ export default function ReseauSoins() {
                       </span>
                     )}
                   </div>
-                  {p.specialites && <div style={{ fontSize: 12.5, color: "#3d4b5e", marginBottom: 3 }}>{p.specialites}</div>}
                   {p.situation && <div style={{ fontSize: 12.5, color: "#5b6b80", marginBottom: 6 }}>📍 {p.situation}</div>}
                   {p.telephone && (
                     tel ? (
