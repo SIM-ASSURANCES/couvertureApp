@@ -35,6 +35,17 @@ function produitType(req: AuthedRequest): "generique" | "incendie" | "accident" 
   return req.user!.produitType ?? "generique";
 }
 
+/** Téléphone du contrat sur lequel le client est connecté — sert de clé pour retrouver ses autres contrats (même numéro). */
+async function telephoneDuClient(type: ReturnType<typeof produitType>, id: string): Promise<string | null> {
+  if (type === "incendie") {
+    return (await prisma.souscriptionIncendie.findUnique({ where: { id }, select: { telephone: true } }))?.telephone ?? null;
+  }
+  if (type === "accident") {
+    return (await prisma.souscriptionAccident.findUnique({ where: { id }, select: { telephone: true } }))?.telephone ?? null;
+  }
+  return (await prisma.souscription.findUnique({ where: { id }, select: { telephone: true } }))?.telephone ?? null;
+}
+
 clientRouter.get(
   "/moi",
   asyncHandler(async (req: AuthedRequest, res) => {
@@ -573,6 +584,52 @@ clientRouter.get(
   })
 );
 
+/**
+ * Contrats "Assurances Accidents" du client (même numéro de téléphone,
+ * tous produits confondus : générique — RelaxMoto/Auto, RelaxAccidents
+ * Frais Médicaux/générale, RelaxVoyage — et modèle historique Accident) —
+ * lui permet de choisir sur quel numéro de police porte une déclaration de
+ * sinistre quand il en détient plusieurs. Exclut les produits Dommages
+ * (Incendie, SecurHome+, SecurPro), hors périmètre de cette sélection.
+ */
+clientRouter.get(
+  "/mes-contrats-accidents",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const telephone = await telephoneDuClient(produitType(req), req.user!.sub);
+    if (!telephone) return res.status(404).json({ error: "Introuvable" });
+
+    const [generiques, accidents] = await Promise.all([
+      prisma.souscription.findMany({
+        where: { telephone, waveStatut: "confirme", produit: { sousBranche: "ASSURANCES_ACCIDENTS" } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, numeroPolice: true, produit: { select: { code: true, libelle: true } } },
+      }),
+      prisma.souscriptionAccident.findMany({
+        where: { telephone, waveStatut: "confirme" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, numeroPolice: true },
+      }),
+    ]);
+
+    res.json([
+      ...generiques.map((s) => ({
+        produitType: "generique" as const,
+        id: s.id,
+        produitCode: s.produit.code,
+        produitLibelle: s.produit.libelle,
+        numeroPolice: s.numeroPolice,
+      })),
+      ...accidents.map((s) => ({
+        produitType: "accident" as const,
+        id: s.id,
+        produitCode: "accident",
+        produitLibelle: "Accidents (historique)",
+        numeroPolice: s.numeroPolice,
+      })),
+    ]);
+  })
+);
+
 // Même régime que les data URL image validées ailleurs (contrats.ts, public.ts).
 const dataUrlImage = z
   .string()
@@ -584,14 +641,35 @@ const sinistreSchema = z.object({
   dateSurvenance: z.coerce.date(),
   description: z.string().max(2000).optional(),
   photosAccidentUrls: z.array(dataUrlImage).max(5).optional(),
+  // Contrat Accidents concerné, si le client en détient plusieurs (voir GET
+  // /mes-contrats-accidents) — par défaut (omis), le contrat sur lequel il
+  // est connecté.
+  cible: z.object({ produitType: z.enum(["generique", "accident"]), id: z.string().min(1) }).optional(),
 });
 
 clientRouter.post(
   "/sinistres",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = sinistreSchema.parse(req.body);
-    const type = produitType(req);
-    const id = req.user!.sub;
+    let type = produitType(req);
+    let id = req.user!.sub;
+
+    if (data.cible) {
+      // Vérifie que le contrat visé appartient bien à ce client (même
+      // numéro de téléphone que son propre contrat) avant d'accepter d'y
+      // rattacher la déclaration — sans quoi n'importe quel client connecté
+      // pourrait déclarer un sinistre sur la police d'un autre.
+      const monTelephone = await telephoneDuClient(type, id);
+      const cibleTelephone =
+        data.cible.produitType === "accident"
+          ? (await prisma.souscriptionAccident.findUnique({ where: { id: data.cible.id }, select: { telephone: true } }))?.telephone
+          : (await prisma.souscription.findUnique({ where: { id: data.cible.id }, select: { telephone: true } }))?.telephone;
+      if (!cibleTelephone || !monTelephone || cibleTelephone !== monTelephone) {
+        return res.status(403).json({ error: "Ce contrat ne vous appartient pas." });
+      }
+      type = data.cible.produitType;
+      id = data.cible.id;
+    }
 
     let produitCode: string;
     if (type === "incendie") {
@@ -643,13 +721,44 @@ clientRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const type = produitType(req);
     const id = req.user!.sub;
-    const where =
-      type === "incendie"
-        ? { souscriptionIncendieId: id }
-        : type === "accident"
-        ? { souscriptionAccidentId: id }
-        : { souscriptionId: id };
-    const rows = await prisma.sinistreRelax.findMany({ where, orderBy: { createdAt: "desc" } });
+
+    if (type === "incendie") {
+      const rows = await prisma.sinistreRelax.findMany({
+        where: { souscriptionIncendieId: id },
+        orderBy: { createdAt: "desc" },
+      });
+      return res.json(rows);
+    }
+
+    // Un client peut avoir déclaré un sinistre sur un AUTRE de ses contrats
+    // Accidents que celui sur lequel il est connecté (voir POST /sinistres
+    // et GET /mes-contrats-accidents) — on agrège donc tous ses contrats
+    // (même numéro de téléphone) pour qu'il retrouve chaque déclaration.
+    const telephone = await telephoneDuClient(type, id);
+    const [autresGeneriques, autresAccidents] = telephone
+      ? await Promise.all([
+          prisma.souscription.findMany({
+            where: { telephone, produit: { sousBranche: "ASSURANCES_ACCIDENTS" } },
+            select: { id: true },
+          }),
+          prisma.souscriptionAccident.findMany({ where: { telephone }, select: { id: true } }),
+        ])
+      : [[], []];
+
+    const souscriptionIds = new Set(autresGeneriques.map((s) => s.id));
+    const souscriptionAccidentIds = new Set(autresAccidents.map((s) => s.id));
+    if (type === "generique") souscriptionIds.add(id);
+    else souscriptionAccidentIds.add(id);
+
+    const rows = await prisma.sinistreRelax.findMany({
+      where: {
+        OR: [
+          ...(souscriptionIds.size ? [{ souscriptionId: { in: [...souscriptionIds] } }] : []),
+          ...(souscriptionAccidentIds.size ? [{ souscriptionAccidentId: { in: [...souscriptionAccidentIds] } }] : []),
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
     res.json(rows);
   })
 );

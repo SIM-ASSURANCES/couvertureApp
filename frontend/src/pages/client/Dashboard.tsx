@@ -35,6 +35,14 @@ interface ProduitDisponible {
   montantPrime: number | null;
 }
 
+interface ContratAccident {
+  produitType: "generique" | "accident";
+  id: string;
+  produitCode: string;
+  produitLibelle: string;
+  numeroPolice: string | null;
+}
+
 interface Sinistre {
   id: string;
   numeroSinistre: string;
@@ -90,6 +98,10 @@ export default function ClientDashboard() {
   const [autresProduits, setAutresProduits] = useState<{ qrToken: string | null; produits: ProduitDisponible[] } | null>(null);
 
   const [afficherFormSinistre, setAfficherFormSinistre] = useState(false);
+  const [contratsAccidents, setContratsAccidents] = useState<ContratAccident[] | null>(null);
+  // Clé composite "produitType:id" — identifie le contrat sur lequel porte
+  // la déclaration en cours, quand le client en détient plusieurs.
+  const [cibleSinistre, setCibleSinistre] = useState("");
   const [typeEvenement, setTypeEvenement] = useState("");
   const [dateSurvenance, setDateSurvenance] = useState("");
   const [description, setDescription] = useState("");
@@ -104,14 +116,20 @@ export default function ClientDashboard() {
 
   async function charger() {
     try {
-      const [m, s, p] = await Promise.all([
+      const [m, s, p, c] = await Promise.all([
         clientApi.get<Moi>("/moi"),
         clientApi.get<Sinistre[]>("/sinistres"),
         clientApi.get<{ qrToken: string | null; produits: ProduitDisponible[] }>("/produits-disponibles"),
+        clientApi.get<ContratAccident[]>("/mes-contrats-accidents"),
       ]);
       setMoi(m);
       setSinistres(s);
       setAutresProduits(p);
+      setContratsAccidents(c);
+      // Présélectionne le contrat sur lequel le client est connecté, s'il
+      // figure dans la liste (cas le plus fréquent) — il reste modifiable.
+      const clePropreContrat = `${m.produitType === "incendie" ? "generique" : m.produitType}:${m.id}`;
+      setCibleSinistre(c.some((k) => `${k.produitType}:${k.id}` === clePropreContrat) ? clePropreContrat : c[0] ? `${c[0].produitType}:${c[0].id}` : "");
     } catch (err) {
       setErreur(err instanceof Error ? err.message : "Erreur de chargement");
     } finally {
@@ -197,11 +215,13 @@ export default function ClientDashboard() {
     e.preventDefault();
     setEnvoiSinistre(true);
     try {
+      const contratChoisi = contratsAccidents?.find((c) => `${c.produitType}:${c.id}` === cibleSinistre);
       await clientApi.post("/sinistres", {
         typeEvenement,
         dateSurvenance,
         description: description || undefined,
         photosAccidentUrls: photosAccident.length ? photosAccident : undefined,
+        cible: contratChoisi ? { produitType: contratChoisi.produitType, id: contratChoisi.id } : undefined,
       });
       notify("Sinistre déclaré ✓");
       setTypeEvenement("");
@@ -375,6 +395,28 @@ export default function ClientDashboard() {
 
               {afficherFormSinistre && (
                 <form onSubmit={declarerSinistre} style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #eef1f5" }}>
+                  {/* Assurances Accidents uniquement (RelaxMoto/Auto, RelaxAccidents
+                      Frais Médicaux/générale, RelaxVoyage, Accident historique) — un
+                      client Incendie/Dommages n'a pas ce choix, sa déclaration reste
+                      rattachée à son unique contrat comme avant. */}
+                  {contratsAccidents && contratsAccidents.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
+                        Police concernée *
+                      </label>
+                      <select
+                        value={cibleSinistre}
+                        onChange={(e) => setCibleSinistre(e.target.value)}
+                        style={inputStyle}
+                      >
+                        {contratsAccidents.map((c) => (
+                          <option key={`${c.produitType}:${c.id}`} value={`${c.produitType}:${c.id}`}>
+                            {c.numeroPolice ?? "N° en attente"} — {c.produitLibelle}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <div style={{ marginBottom: 12 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
                       Type d'événement *
@@ -430,16 +472,22 @@ export default function ClientDashboard() {
                       />
                     )}
                   </div>
-                  <button
-                    disabled={envoiSinistre || !typeEvenement || !dateSurvenance}
-                    style={{
-                      marginTop: 8, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
-                      border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                      opacity: envoiSinistre || !typeEvenement || !dateSurvenance ? 0.5 : 1,
-                    }}
-                  >
-                    {envoiSinistre ? "Envoi…" : "Envoyer la déclaration"}
-                  </button>
+                  {(() => {
+                    const bloque =
+                      envoiSinistre || !typeEvenement || !dateSurvenance || (!!contratsAccidents?.length && !cibleSinistre);
+                    return (
+                      <button
+                        disabled={bloque}
+                        style={{
+                          marginTop: 8, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
+                          border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                          opacity: bloque ? 0.5 : 1,
+                        }}
+                      >
+                        {envoiSinistre ? "Envoi…" : "Envoyer la déclaration"}
+                      </button>
+                    );
+                  })()}
                 </form>
               )}
 
