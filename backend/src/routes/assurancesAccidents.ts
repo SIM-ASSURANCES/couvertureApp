@@ -99,7 +99,14 @@ assurancesAccidentsRouter.get(
         waveStatut: attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
         partenaireId: partenaireId || undefined,
         ...(procheDeLecheance
-          ? { cycleFacturation: null, dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
+          ? {
+              cycleFacturation: null,
+              // RelaxVoyage (trajet ponctuel de 24h) ne se renouvelle jamais —
+              // ne doit donc jamais apparaître dans l'alerte "renouvellements
+              // à venir" (voir aussi POST .../relance-renouvellement).
+              produit: { code: { not: "relaxvoyage" } },
+              dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
+            }
           : {}),
       },
       include: {

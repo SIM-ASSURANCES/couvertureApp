@@ -355,8 +355,18 @@ clientRouter.post(
       return res.status(201).json({ checkoutUrl: wave.checkoutUrl });
     }
 
-    const s = await prisma.souscription.findUnique({ where: { id } });
+    const s = await prisma.souscription.findUnique({
+      where: { id },
+      include: { produit: { select: { code: true } } },
+    });
     if (!s) return res.status(404).json({ error: "Introuvable" });
+
+    // Le trajet couvert par RelaxVoyage est ponctuel (24h) : rien à
+    // reconduire — une nouvelle couverture suppose un nouveau voyage, donc
+    // une nouvelle souscription, pas un renouvellement.
+    if (s.produit.code === "relaxvoyage") {
+      return res.status(400).json({ error: "RelaxVoyage ne se renouvelle pas : souscrivez un nouveau contrat pour votre prochain trajet." });
+    }
 
     if (s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel") {
       const tarif = await prisma.tarifProduit.findFirst({
@@ -405,12 +415,17 @@ clientRouter.get(
 );
 
 /**
- * Produits volontairement absents de l'espace client : SecurHome+ et SecurPro
- * assurent un local ou un bâtiment et supposent une évaluation (valeur du
- * bâtiment, contenu, garanties optionnelles) qui se fait avec le partenaire,
- * pas en libre-service. Ils restent souscriptibles via le QR du partenaire.
+ * Produits volontairement absents de l'espace client :
+ * - SecurHome+ et SecurPro assurent un local ou un bâtiment et supposent une
+ *   évaluation (valeur du bâtiment, contenu, garanties optionnelles) qui se
+ *   fait avec le partenaire, pas en libre-service. Ils restent souscriptibles
+ *   via le QR du partenaire.
+ * - "incendie" (Incendie Habitation en Inclusion) n'est qu'une ligne
+ *   présentationnelle du catalogue générique (voir seed.ts) — le flux réel
+ *   passe par le modèle historique SouscriptionIncendie (achat en boutique
+ *   avec réf. facture), pas par ce chooser/cette souscription générique.
  */
-const PRODUITS_HORS_ESPACE_CLIENT = new Set(["securhome_dommages", "securpro_dommages"]);
+const PRODUITS_HORS_ESPACE_CLIENT = new Set(["securhome_dommages", "securpro_dommages", "incendie"]);
 
 /** Autres produits actifs du partenaire d'origine, non encore souscrits (confirmés) par ce même numéro chez ce partenaire. */
 clientRouter.get(

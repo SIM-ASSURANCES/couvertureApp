@@ -331,6 +331,11 @@ assurancesBrancheRouter.post(
     if (s.cycleFacturation) {
       return res.status(400).json({ error: "Ce produit se renouvelle depuis l'espace client, pas via l'admin." });
     }
+    // Trajet ponctuel de 24h : rien à reconduire, un nouveau voyage suppose
+    // une nouvelle souscription (voir aussi POST /client/renouveler).
+    if (s.produit.code === "relaxvoyage") {
+      return res.status(400).json({ error: "RelaxVoyage ne se renouvelle pas." });
+    }
     if (s.waveStatut !== "confirme" || !s.numeroPolice) {
       return res.status(400).json({ error: "Cette souscription n'est pas encore confirmée." });
     }

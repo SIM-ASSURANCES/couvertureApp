@@ -16,6 +16,7 @@ interface Moi {
   prenom: string | null;
   telephone: string;
   produitType: "generique" | "incendie" | "accident";
+  produitCode?: string;
   carteType: string;
   produitLibelle: string;
   partenaire: string;
@@ -317,21 +318,26 @@ export default function ClientDashboard() {
               >
                 {telechargementContrat ? "Génération…" : "📄 Télécharger mon contrat (PDF)"}
               </button>
-              <button
-                onClick={renouveler}
-                disabled={renouvellement}
-                style={{
-                  marginTop: 10, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
-                  border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                  opacity: renouvellement ? 0.5 : 1,
-                }}
-              >
-                {renouvellement
-                  ? "Veuillez patienter…"
-                  : moi.produitType === "incendie"
-                  ? "🔄 Renouveler (nouvelle réf.facture en boutique)"
-                  : `🔄 Renouveler mon contrat${moi.cycleFacturation ? ` (${moi.cycleFacturation === "mensuel" ? "1 mois" : "1 an"})` : ""}`}
-              </button>
+              {/* RelaxVoyage ne couvre qu'un trajet ponctuel (24h) : rien à
+                  reconduire, une nouvelle couverture suppose un nouveau
+                  voyage, donc une nouvelle souscription. */}
+              {moi.produitCode !== "relaxvoyage" && (
+                <button
+                  onClick={renouveler}
+                  disabled={renouvellement}
+                  style={{
+                    marginTop: 10, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
+                    border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    opacity: renouvellement ? 0.5 : 1,
+                  }}
+                >
+                  {renouvellement
+                    ? "Veuillez patienter…"
+                    : moi.produitType === "incendie"
+                    ? "🔄 Renouveler (nouvelle réf.facture en boutique)"
+                    : `🔄 Renouveler mon contrat${moi.cycleFacturation ? ` (${moi.cycleFacturation === "mensuel" ? "1 mois" : "1 an"})` : ""}`}
+                </button>
+              )}
             </div>
 
             {autresProduits && autresProduits.produits.length > 0 && (

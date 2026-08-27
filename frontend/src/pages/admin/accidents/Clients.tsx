@@ -33,8 +33,9 @@ interface SouscriptionAssurancesAccidents {
 
 function statutRenouvellement(c: SouscriptionAssurancesAccidents) {
   // RelaxMoto/Auto (cycleFacturation non-null) ont leur propre renouvellement
-  // côté espace client — pas de statut admin à afficher ici.
-  if (c.cycleFacturation) return <span className="muted">—</span>;
+  // côté espace client — pas de statut admin à afficher ici. RelaxVoyage
+  // (trajet ponctuel de 24h) ne se renouvelle jamais.
+  if (c.cycleFacturation || c.produit.code === "relaxvoyage") return <span className="muted">—</span>;
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
   if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDateHeure(c.renouveleAt)}</Badge>;
   return <span className="muted">—</span>;

@@ -71,7 +71,10 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
   }
 
   if (p.numeroEcheance === 1) {
-    const s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId } });
+    const s = await prisma.souscription.findUnique({
+      where: { id: p.souscriptionId },
+      include: { produit: { select: { code: true } } },
+    });
     if (!s || s.statutAbonnement || s.waveStatut === "confirme") return; // déjà activé (idempotence)
 
     // Pour un abonnement, la prime enregistrée est le total payé (tarif du
@@ -89,7 +92,15 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
 
     if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
       const dateFin = new Date(dateDebut);
-      dateFin.setMonth(dateFin.getMonth() + 3);
+      // RelaxVoyage ne couvre que le trajet déclaré (24h), jamais 3 mois — et
+      // n'est donc jamais renouvelable (voir POST /client/renouveler et
+      // /assurances-branche/souscriptions/:id/relance-renouvellement, qui
+      // rejettent ce produit).
+      if (s.produit.code === "relaxvoyage") {
+        dateFin.setHours(dateFin.getHours() + 24);
+      } else {
+        dateFin.setMonth(dateFin.getMonth() + 3);
+      }
       const numeroPolice = newNumeroPolice();
 
       // Accès espace client (voir branche abonnement ci-dessous) — désormais
