@@ -490,12 +490,36 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
+// Garanties RelaxMoto/RelaxAuto — fixes par produit, indépendantes du cycle
+// annuel/mensuel souscrit. À garder synchronisé avec la constante miroir
+// GARANTIES_RELAX_MOTO_AUTO côté frontend (pages/public/Souscription.tsx),
+// qui affiche les mêmes montants pendant la souscription.
+const GARANTIES_RELAX_MOTO_AUTO = {
+  relaxmoto: {
+    indemniteJournaliere: 3_500,
+    dureeMaxJours: 30,
+    carenceJours: 3,
+    fraisMedicaux: 250_000,
+    invaliditePermanenteTotale: 500_000,
+    deces: 500_000,
+  },
+  relaxauto: {
+    indemniteJournaliere: 5_000,
+    dureeMaxJours: 30,
+    carenceJours: 3,
+    fraisMedicaux: 300_000,
+    invaliditePermanenteTotale: 1_000_000,
+    deces: 1_000_000,
+  },
+} as const;
+
 export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promise<string> {
   const periodicite = c.cycleFacturation === "mensuel" ? "mensuelle" : "annuelle";
   const reconduction =
     c.cycleFacturation === "mensuel"
       ? "Le contrat est souscrit pour un mois et se renouvelle au même tarif depuis l'espace client."
       : "Le contrat est souscrit pour un an et se renouvelle au même tarif depuis l'espace client.";
+  const g = GARANTIES_RELAX_MOTO_AUTO[c.produitLibelle.toLowerCase() === "relaxauto" ? "relaxauto" : "relaxmoto"];
 
   const cp = `
   ${header(c.numeroPolice)}
@@ -512,6 +536,14 @@ export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promi
   <table>
     <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+  </table>
+
+  <h2>Garanties</h2>
+  <table>
+    <tr><td class="k">Indemnité journalière</td><td>${fcfa(g.indemniteJournaliere)} / jour, ${g.dureeMaxJours} jours max (${g.carenceJours} jours de délai de carence)</td></tr>
+    <tr><td class="k">Frais médicaux et pharmaceutiques</td><td>${fcfa(g.fraisMedicaux)}</td></tr>
+    <tr><td class="k">Invalidité permanente totale</td><td>${fcfa(g.invaliditePermanenteTotale)}</td></tr>
+    <tr><td class="k">Décès</td><td>${fcfa(g.deces)}</td></tr>
   </table>
 
   <div class="note">

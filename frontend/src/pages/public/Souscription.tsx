@@ -58,6 +58,29 @@ function isRelaxVoyage(p?: string): p is "relaxvoyage" {
 // public.ts), qui borne la valeur reçue.
 const MAX_PERIODES_RELAX = 12;
 
+// Garanties RelaxMoto/RelaxAuto — fixes par produit (indépendantes du cycle
+// annuel/mensuel choisi), affichées ici et reprises telles quelles dans le
+// contrat PDF (backend/src/services/contractHtml.ts::GARANTIES_RELAX_MOTO_AUTO,
+// à garder synchronisé si ces montants changent).
+const GARANTIES_RELAX_MOTO_AUTO = {
+  relaxmoto: {
+    indemniteJournaliere: 3_500,
+    dureeMaxJours: 30,
+    carenceJours: 3,
+    fraisMedicaux: 250_000,
+    invaliditePermanenteTotale: 500_000,
+    deces: 500_000,
+  },
+  relaxauto: {
+    indemniteJournaliere: 5_000,
+    dureeMaxJours: 30,
+    carenceJours: 3,
+    fraisMedicaux: 300_000,
+    invaliditePermanenteTotale: 1_000_000,
+    deces: 1_000_000,
+  },
+} as const;
+
 /** "mois" / "an(s)" selon le cycle et le nombre de périodes choisies. */
 function libellePeriode(cycle: "mensuel" | "annuel", n: number): string {
   if (cycle === "mensuel") return "mois";
@@ -2721,6 +2744,44 @@ export default function Souscription() {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* Garanties RelaxMoto/RelaxAuto — fixes, indépendantes du cycle choisi. */}
+              {qrInfo && isRelax(qrInfo.produit) && (
+                <div
+                  style={{
+                    background: "var(--sim-primary-50, #e6f1fb)",
+                    borderRadius: 14,
+                    padding: "16px 18px",
+                    marginBottom: 24,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>
+                    Garanties incluses
+                  </div>
+                  {(() => {
+                    const g = GARANTIES_RELAX_MOTO_AUTO[qrInfo.produit];
+                    const lignes: [string, string][] = [
+                      [
+                        "Indemnité journalière",
+                        `${fcfa(g.indemniteJournaliere)} / jour, ${g.dureeMaxJours} jours max (${g.carenceJours} jours de délai de carence)`,
+                      ],
+                      ["Frais médicaux et pharmaceutiques", fcfa(g.fraisMedicaux)],
+                      ["Invalidité permanente totale", fcfa(g.invaliditePermanenteTotale)],
+                      ["Décès", fcfa(g.deces)],
+                    ];
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {lignes.map(([label, valeur]) => (
+                          <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                            <span style={{ color: "#5b6b80" }}>{label}</span>
+                            <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{valeur}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
