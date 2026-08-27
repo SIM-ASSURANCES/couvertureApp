@@ -28,6 +28,7 @@ import {
 import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
 import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
 import { DateNaissanceInput } from "../../components/ui";
+import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
 const BASE = API_BASE;
 
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
@@ -57,29 +58,6 @@ function isRelaxVoyage(p?: string): p is "relaxvoyage" {
 // Doit rester aligné sur MAX_PERIODES_RELAX côté serveur (backend/src/routes/
 // public.ts), qui borne la valeur reçue.
 const MAX_PERIODES_RELAX = 12;
-
-// Garanties RelaxMoto/RelaxAuto — fixes par produit (indépendantes du cycle
-// annuel/mensuel choisi), affichées ici et reprises telles quelles dans le
-// contrat PDF (backend/src/services/contractHtml.ts::GARANTIES_RELAX_MOTO_AUTO,
-// à garder synchronisé si ces montants changent).
-const GARANTIES_RELAX_MOTO_AUTO = {
-  relaxmoto: {
-    indemniteJournaliere: 3_500,
-    dureeMaxJours: 30,
-    carenceJours: 3,
-    fraisMedicaux: 250_000,
-    invaliditePermanenteTotale: 500_000,
-    deces: 500_000,
-  },
-  relaxauto: {
-    indemniteJournaliere: 5_000,
-    dureeMaxJours: 30,
-    carenceJours: 3,
-    fraisMedicaux: 300_000,
-    invaliditePermanenteTotale: 1_000_000,
-    deces: 1_000_000,
-  },
-} as const;
 
 /** "mois" / "an(s)" selon le cycle et le nombre de périodes choisies. */
 function libellePeriode(cycle: "mensuel" | "annuel", n: number): string {

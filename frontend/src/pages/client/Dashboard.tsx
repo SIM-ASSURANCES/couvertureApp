@@ -4,6 +4,7 @@ import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
 import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
 import ReseauSoins from "../../components/ReseauSoins";
+import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 
 function fcfa(n: number) {
@@ -316,6 +317,33 @@ export default function ClientDashboard() {
                   <strong style={{ color: "#0f1b2d" }}>{new Date(moi.dateFin).toLocaleDateString("fr-FR")}</strong>
                 </div>
               )}
+
+              {(moi.produitCode === "relaxmoto" || moi.produitCode === "relaxauto") && (() => {
+                const g = GARANTIES_RELAX_MOTO_AUTO[moi.produitCode as "relaxmoto" | "relaxauto"];
+                const lignes: [string, string][] = [
+                  [
+                    "Indemnité journalière",
+                    `${fcfa(g.indemniteJournaliere)} / jour, ${g.dureeMaxJours} jours max (${g.carenceJours} jours de délai de carence)`,
+                  ],
+                  ["Frais médicaux et pharmaceutiques", fcfa(g.fraisMedicaux)],
+                  ["Invalidité permanente totale", fcfa(g.invaliditePermanenteTotale)],
+                  ["Décès", fcfa(g.deces)],
+                ];
+                return (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Garanties incluses</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {lignes.map(([label, valeur]) => (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                          <span style={{ color: "#5b6b80" }}>{label}</span>
+                          <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{valeur}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <button
                 onClick={voirCarte}
                 disabled={telechargementCarte}
