@@ -1168,6 +1168,12 @@ export default function Souscription() {
   // les branches accident-like, RelaxVoyage et RelaxMoto/RelaxAuto.
   const [sexe, setSexe] = useState<"masculin" | "feminin" | "">("");
   const sigRef = useRef<SignaturePadHandle>(null);
+  // Capturée au moment de quitter l'étape "infos" (avant l'écran de
+  // récapitulatif) : le pavé de signature est démonté dès que step passe à
+  // "confirm" (rendu conditionnel), ce qui vide sigRef.current — sans cette
+  // capture, handleSubmit lirait un ref nul et enverrait toujours "pas de
+  // signature", quoi que le client ait dessiné.
+  const [signatureCapturee, setSignatureCapturee] = useState<string | null>(null);
   const [retrySignature, setRetrySignature] = useState<string | null>(null);
 
   // Champs incendie
@@ -1839,9 +1845,11 @@ export default function Souscription() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
-    // Signature facultative : envoyée si le client a signé, sinon on continue sans.
-    // RelaxAccidents Frais Médicaux n'a plus de pavé de signature (photos
-    // pièce/selfie avant paiement à la place) — exclu volontairement ici.
+    // Signature facultative : envoyée si le client a signé, sinon on continue
+    // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
+    // "infos", voir le bouton "Vérifier mes informations") et non depuis
+    // sigRef.current, qui est nul ici : le pavé est démonté une fois sur
+    // l'écran de récapitulatif.
     const signature =
       qrInfo.produit === "accident" ||
       isRelaxVoyage(qrInfo.produit) ||
@@ -1850,7 +1858,7 @@ export default function Souscription() {
       isSecurhomeDommages(qrInfo.produit) ||
       isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
       isRelax(qrInfo.produit)
-        ? sigRef.current?.toDataURL() ?? undefined
+        ? signatureCapturee ?? undefined
         : undefined;
     setSubmitting(true);
     try {
@@ -3268,9 +3276,16 @@ export default function Souscription() {
                   <button
                     // Ne soumet plus directement : le client vérifie d'abord
                     // ses informations sur l'écran récapitulatif, d'où il peut
-                    // revenir corriger avant de payer.
+                    // revenir corriger avant de payer. On capture la signature
+                    // ici, tant que le pavé est encore monté (voir
+                    // signatureCapturee) — sans écraser une signature déjà
+                    // capturée si le client revient corriger un champ sans
+                    // re-signer (le pavé, remonté vierge, serait sinon lu
+                    // comme "vide" et effacerait la signature d'origine).
                     onClick={() => {
                       setErrorMsg("");
+                      const nouvelleSignature = sigRef.current?.toDataURL() ?? null;
+                      if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
                       setStep("confirm");
                     }}
                     disabled={bloque}
