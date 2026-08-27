@@ -307,10 +307,15 @@ export default function ClientDashboard() {
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.montantPrime)}</strong>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
-                <span>Capital garanti</span>
-                <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
-              </div>
+              {/* RelaxMoto/Auto détaillent déjà Décès/IPT dans le bloc
+                  "Garanties incluses" ci-dessous — cette ligne unique y
+                  ferait doublon. */}
+              {moi.produitCode !== "relaxmoto" && moi.produitCode !== "relaxauto" && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
+                  <span>Capital garanti</span>
+                  <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
+                </div>
+              )}
               {moi.dateFin && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                   <span>Valable jusqu'au</span>
