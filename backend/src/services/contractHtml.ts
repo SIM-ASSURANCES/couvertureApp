@@ -535,9 +535,12 @@ export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promi
 
   <table>
     <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
-    <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+    <tr><td class="k">Date de naissance</td><td colspan="3">${dfr(c.dateNaissance)}</td></tr>
   </table>
 
+  <!-- Le capital garanti (décès/IPT) n'est plus affiché ici en une ligne
+       unique : il est détaillé, avec les autres garanties, dans la section
+       ci-dessous. -->
   <h2>Garanties</h2>
   <table>
     <tr><td class="k">Indemnité journalière</td><td>${fcfa(g.indemniteJournaliere)} / jour, ${g.dureeMaxJours} jours max (${g.carenceJours} jours de délai de carence)</td></tr>
