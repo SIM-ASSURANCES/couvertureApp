@@ -74,6 +74,7 @@ souscriptionsRouter.get(
       numeroPersonneContact?: string | null;
       fraisSante?: number | null;
       bagages?: string | null;
+      optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
       raisonSociale?: string | null;
       profession?: string | null;
       classe?: number | null;
@@ -302,6 +303,7 @@ souscriptionsRouter.get(
             numeroPersonneContact: d.numeroPersonneContact,
             fraisSante: d.fraisSante,
             bagages: d.bagages,
+            optionDeces: d.optionDeces,
             raisonSociale: d.raisonSociale,
             profession: d.profession,
             classe: d.classe,

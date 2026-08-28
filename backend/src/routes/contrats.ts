@@ -93,6 +93,11 @@ const relaxaccidentsFraisMedicauxSchema = z.object({
     montant,
     capitalGaranti: montant,
     signature: dataUrlSignature,
+    // Option Décès facultative (voir formuleSchema, routes/public.ts) —
+    // durée propre (2 mois), distincte de la durée du contrat principal.
+    optionDeces: z
+      .object({ capital: montant, prime: montant, dureeMois: z.number().int().positive().max(24) })
+      .nullish(),
   }),
 });
 

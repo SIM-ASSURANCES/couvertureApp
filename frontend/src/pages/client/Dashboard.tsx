@@ -32,6 +32,9 @@ interface Moi {
   // formule choisie (250/400/600/1000 FCFA).
   fraisSante?: number | null;
   bagages?: string | null;
+  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
+  // choisie à la souscription.
+  optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
 }
 
 interface ProduitDisponible {
@@ -381,6 +384,18 @@ export default function ClientDashboard() {
                   </div>
                 );
               })()}
+
+              {moi.optionDeces && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Option Décès</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                    <span style={{ color: "#5b6b80" }}>Capital garanti</span>
+                    <strong style={{ textAlign: "right", color: "#0f1b2d" }}>
+                      {fcfa(moi.optionDeces.capital)} pendant {moi.optionDeces.dureeMois} mois
+                    </strong>
+                  </div>
+                </div>
+              )}
 
               <button
                 onClick={voirCarte}

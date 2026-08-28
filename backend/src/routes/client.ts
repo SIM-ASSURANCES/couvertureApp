@@ -124,6 +124,15 @@ clientRouter.get(
       bagages = infos?.bagages ?? null;
     }
 
+    // RelaxAccidents Frais Médicaux : option Décès facultative, choisie à la
+    // souscription (voir formuleSchema, routes/public.ts) — stockée
+    // directement sur la souscription, contrairement à RelaxVoyage ci-dessus.
+    const optionDeces =
+      s.produit.code === "relaxaccidents_fraismedicaux"
+        ? ((s.donneesSpecifiques as { optionDeces?: { capital: number; prime: number; dureeMois: number } } | null)
+            ?.optionDeces ?? null)
+        : null;
+
     res.json({
       id: s.id,
       nom: s.nom,
@@ -143,6 +152,7 @@ clientRouter.get(
       dateFin: s.dateFin,
       fraisSante,
       bagages,
+      optionDeces,
     });
   })
 );
@@ -262,6 +272,7 @@ clientRouter.get(
       numeroPersonneContact: d.numeroPersonneContact,
       fraisSante: d.fraisSante,
       bagages: d.bagages,
+      optionDeces: d.optionDeces,
       raisonSociale: d.raisonSociale,
       profession: d.profession,
       classe: d.classe,

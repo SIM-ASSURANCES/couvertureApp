@@ -10,6 +10,13 @@ import type { Souscription } from "@prisma/client";
  * a reçu après paiement, sans dupliquer la logique de désérialisation de
  * `donneesSpecifiques`.
  */
+/** Option Décès en supplément de RelaxAccidents Frais Médicaux (voir formuleSchema, routes/public.ts). */
+export interface OptionDecesFraisMedicaux {
+  capital: number;
+  prime: number;
+  dureeMois: number;
+}
+
 export interface DonneesContratGenerique {
   id: string;
   produit: string;
@@ -37,6 +44,7 @@ export interface DonneesContratGenerique {
   numeroPersonneContact: string | null;
   fraisSante: number | null;
   bagages: string | null;
+  optionDeces: OptionDecesFraisMedicaux | null;
   raisonSociale: string | null;
   profession: string | null;
   classe: number | null;
@@ -85,6 +93,18 @@ export async function mapperSouscriptionGenerique(
   const num = (k: string) => (typeof d?.[k] === "number" ? (d[k] as number) : null);
   const bool = (k: string) => (typeof d?.[k] === "boolean" ? (d[k] as boolean) : null);
 
+  // Option Décès en supplément de RelaxAccidents Frais Médicaux — voir
+  // formuleSchema (routes/public.ts), qui la stocke sous cette même forme.
+  const optionDecesRaw = d?.optionDeces as Partial<OptionDecesFraisMedicaux> | null | undefined;
+  const optionDeces: OptionDecesFraisMedicaux | null =
+    optionDecesRaw && typeof optionDecesRaw.capital === "number"
+      ? {
+          capital: optionDecesRaw.capital,
+          prime: typeof optionDecesRaw.prime === "number" ? optionDecesRaw.prime : 0,
+          dureeMois: typeof optionDecesRaw.dureeMois === "number" ? optionDecesRaw.dureeMois : 2,
+        }
+      : null;
+
   return {
     id: s.id,
     produit: s.produit.code,
@@ -112,6 +132,7 @@ export async function mapperSouscriptionGenerique(
     numeroPersonneContact: str("numeroPersonneContact"),
     fraisSante,
     bagages,
+    optionDeces,
     raisonSociale: str("raisonSociale"),
     profession: str("profession"),
     classe: num("classe"),

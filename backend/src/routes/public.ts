@@ -1634,7 +1634,24 @@ const formuleSchema = z.object({
   numeroTicket: z.string().min(1).max(60).optional(),
   dateDepart: z.coerce.date().optional(),
   numeroPersonneContact: z.string().min(6).max(40).optional(),
+  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
+  // proposée seulement si le souscripteur déclare ne pas être livreur (voir
+  // OPTIONS_DECES_FRAIS_MEDICAUX ci-dessous). La clé identifie le capital
+  // garanti choisi.
+  declarePasLivreur: z.boolean().optional(),
+  optionDeces: z.enum(["200000", "100000"]).optional(),
 });
+
+/**
+ * Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
+ * prix de la formule choisie, garantie pour une durée propre de 2 mois
+ * (distincte de la durée du contrat principal). Réservée aux souscripteurs
+ * non-livreurs, comme le reste du produit.
+ */
+const OPTIONS_DECES_FRAIS_MEDICAUX: Record<"200000" | "100000", { prime: number; capital: number; dureeMois: number }> = {
+  "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
+  "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
+};
 
 const RELAXVOYAGE_CHAMPS_REQUIS = [
   "compagnie",
@@ -1655,6 +1672,13 @@ publicRouter.post(
     if (code === "relaxvoyage" && RELAXVOYAGE_CHAMPS_REQUIS.some((champ) => !data[champ])) {
       return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
     }
+    // Option Décès : réservée à RelaxAccidents Frais Médicaux, et seulement
+    // si le souscripteur a bien déclaré ne pas être livreur (comme le reste
+    // du produit) — jamais de confiance dans le seul fait que le client l'ait
+    // envoyée.
+    if (data.optionDeces && (code !== "relaxaccidents_fraismedicaux" || !data.declarePasLivreur)) {
+      return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
+    }
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -1672,6 +1696,11 @@ publicRouter.post(
     });
     if (!tarif) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
 
+    // Le total payé recalculé ici, jamais confié au client : prime de la
+    // formule + prime de l'option Décès si choisie.
+    const optionDeces = data.optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces] : null;
+    const montantTotal = tarif.prime + (optionDeces?.prime ?? 0);
+
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
@@ -1682,7 +1711,7 @@ publicRouter.post(
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
         sexe: data.sexe ?? null,
-        montantPrime: tarif.prime,
+        montantPrime: montantTotal,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
         nombreEcheances: 1,
@@ -1698,11 +1727,14 @@ publicRouter.post(
                 dateDepart: data.dateDepart,
                 numeroPersonneContact: data.numeroPersonneContact,
               }
-            : data.signature
-            ? { signature: data.signature }
+            : data.signature || optionDeces
+            ? {
+                signature: data.signature ?? null,
+                ...(optionDeces ? { declarePasLivreur: true, optionDeces } : {}),
+              }
             : undefined,
         paiements: {
-          create: { numeroEcheance: 1, montant: tarif.prime, dateEcheance: new Date() },
+          create: { numeroEcheance: 1, montant: montantTotal, dateEcheance: new Date() },
         },
       },
     });
@@ -1734,14 +1766,14 @@ publicRouter.post(
       qr.partenaireId,
       "souscription",
       `Nouvelle souscription ${prod.libelle}`,
-      `Nouveau client ${prod.libelle} (${tarif.prime} FCFA) via votre QR code.`,
+      `Nouveau client ${prod.libelle} (${montantTotal} FCFA) via votre QR code.`,
       "/partenaire/souscriptions"
     );
 
     res.status(201).json({
       souscriptionId: s.id,
       echeanceId: echeance.id,
-      montant: tarif.prime,
+      montant: montantTotal,
       capitalGaranti: tarif.capitalGaranti,
       checkoutUrl,
       transactionId,

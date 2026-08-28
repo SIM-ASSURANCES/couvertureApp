@@ -44,6 +44,8 @@ export interface ContratAccident {
   montant: number;
   capitalGaranti: number;
   signature?: string | null;
+  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative.
+  optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
 }
 
 /** RelaxMoto / RelaxAuto — abonnements reconductibles, d'où le cycle en plus. */
@@ -313,6 +315,7 @@ export interface DonneesContrat {
   numeroPersonneContact?: string | null;
   fraisSante?: number | null;
   bagages?: string | null;
+  optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
   raisonSociale?: string | null;
   profession?: string | null;
   classe?: number | null;
@@ -406,6 +409,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
+      optionDeces: c.optionDeces ?? null,
     });
     return;
   }

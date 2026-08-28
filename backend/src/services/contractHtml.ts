@@ -45,6 +45,10 @@ export interface ContratAccident {
   montant: number;
   capitalGaranti: number;
   signature?: string | null;
+  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
+  // garantie pour une durée propre (2 mois), distincte de la durée du
+  // contrat principal (3 mois).
+  optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
 }
 
 /**
@@ -472,6 +476,16 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
     <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Frais médicaux &amp; pharmaceutiques</td><td>${fcfa(c.capitalGaranti)}</td></tr>
   </table>
+
+  ${
+    c.optionDeces
+      ? `<h2>Option Décès</h2>
+  <table>
+    <tr><td class="k">Capital garanti</td><td>${fcfa(c.optionDeces.capital)}</td><td class="k">Prime</td><td>${fcfa(c.optionDeces.prime)}</td></tr>
+    <tr><td class="k">Durée de la garantie</td><td colspan="3">${c.optionDeces.dureeMois} mois à compter de la date d'effet ci-dessus</td></tr>
+  </table>`
+      : ""
+  }
 
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par

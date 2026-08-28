@@ -50,6 +50,15 @@ function isRelaxAccidentsFraisMedicaux(p?: string): p is "relaxaccidents_fraisme
   return p === "relaxaccidents_fraismedicaux";
 }
 
+// Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
+// prix de la formule choisie, garantie pour une durée propre de 2 mois.
+// À garder synchronisé avec OPTIONS_DECES_FRAIS_MEDICAUX côté serveur
+// (routes/public.ts), qui recalcule toujours le montant réel côté serveur.
+const OPTIONS_DECES_FRAIS_MEDICAUX = {
+  "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
+  "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
+} as const;
+
 function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
@@ -1279,6 +1288,9 @@ export default function Souscription() {
   // RelaxAccidents Frais Médicaux : le produit exclut les livreurs, le
   // souscripteur doit le déclarer explicitement avant de pouvoir payer.
   const [declarePasLivreur, setDeclarePasLivreur] = useState(false);
+  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
+  // proposée seulement si non-livreur est déclaré. "" = aucune option.
+  const [optionDeces, setOptionDeces] = useState<"" | "200000" | "100000">("");
 
   // Résultat souscription
   const [result, setResult] = useState<{
@@ -1709,7 +1721,12 @@ export default function Souscription() {
     if (!p) return null;
     try {
       if (p === "accident") return tarifsAcc.find((t) => t.id === selectedTarifId)?.prime ?? null;
-      if (isRelaxAccidentsFraisMedicaux(p) || isRelaxVoyage(p))
+      if (isRelaxAccidentsFraisMedicaux(p)) {
+        const base = tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
+        if (base == null) return null;
+        return base + (optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].prime : 0);
+      }
+      if (isRelaxVoyage(p))
         return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
       if (isRelax(p)) return primeRelaxUnitaire != null ? primeRelaxUnitaire * nombrePeriodes : null;
       if (isRelaxAccidentsGenerale(p))
@@ -1840,6 +1857,12 @@ export default function Souscription() {
     if (isRelaxAccidentsFraisMedicaux(p)) {
       l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
       l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
+      l.push({
+        label: "Option Décès",
+        valeur: optionDeces
+          ? `${fcfa(OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].capital)} pendant ${OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].dureeMois} mois`
+          : "Aucune",
+      });
     }
     if (isRelaxVoyage(p)) {
       l.push({ label: "Compagnie", valeur: compagnie });
@@ -2047,6 +2070,8 @@ export default function Souscription() {
             sexe: sexe || undefined,
             formule: selectedFormule,
             signature,
+            declarePasLivreur,
+            optionDeces: optionDeces || undefined,
           }),
         });
         const data = await res.json();
@@ -3070,12 +3095,52 @@ export default function Souscription() {
                       <input
                         type="checkbox"
                         checked={declarePasLivreur}
-                        onChange={(e) => setDeclarePasLivreur(e.target.checked)}
+                        onChange={(e) => {
+                          setDeclarePasLivreur(e.target.checked);
+                          if (!e.target.checked) setOptionDeces("");
+                        }}
                         style={{ marginTop: 2, width: 18, height: 18, flex: "none" }}
                       />
                       <span>Je déclare ne pas exercer d'activité de livreur. *</span>
                     </label>
                   </div>
+
+                  {/* Option Décès — proposée seulement une fois non-livreur déclaré. */}
+                  {declarePasLivreur && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
+                        Option Décès (facultative)
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                        <label
+                          style={{
+                            display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                            border: `2px solid ${optionDeces === "" ? "var(--sim-primary)" : "var(--border-strong)"}`,
+                            borderRadius: 12, cursor: "pointer", fontSize: 13,
+                          }}
+                        >
+                          <input type="radio" checked={optionDeces === ""} onChange={() => setOptionDeces("")} />
+                          Aucune option
+                        </label>
+                        {(Object.entries(OPTIONS_DECES_FRAIS_MEDICAUX) as [keyof typeof OPTIONS_DECES_FRAIS_MEDICAUX, typeof OPTIONS_DECES_FRAIS_MEDICAUX[keyof typeof OPTIONS_DECES_FRAIS_MEDICAUX]][]).map(([cle, opt]) => (
+                          <label
+                            key={cle}
+                            style={{
+                              display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+                              border: `2px solid ${optionDeces === cle ? "var(--sim-primary)" : "var(--border-strong)"}`,
+                              borderRadius: 12, cursor: "pointer", fontSize: 13,
+                            }}
+                          >
+                            <input type="radio" checked={optionDeces === cle} onChange={() => setOptionDeces(cle)} />
+                            <span>
+                              <strong>{fcfa(opt.prime)}</strong> — Décès garanti {fcfa(opt.capital)} pendant {opt.dureeMois} mois
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
