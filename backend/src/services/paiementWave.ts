@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, sendSMS } from "./notify.js";
+import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, sendSMS, dateDebutPremiereActivation } from "./notify.js";
 import { genererCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
@@ -88,7 +88,10 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
         : await prisma.tarifProduit.findFirst({
             where: { produitId: s.produitId, prime: s.montantPrime },
           });
-    const dateDebut = new Date();
+    // Délai d'attente de 72h avant prise d'effet pour les produits Accidents
+    // (voir dateDebutPremiereActivation) — RelaxVoyage et les produits
+    // Dommages (SecurHome+, SecurPro) restent à effet immédiat.
+    const dateDebut = dateDebutPremiereActivation(s.produit.code);
 
     if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
       const dateFin = new Date(dateDebut);

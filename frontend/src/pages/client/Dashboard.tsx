@@ -320,6 +320,14 @@ export default function ClientDashboard() {
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
                 </div>
               )}
+              {moi.dateDebut && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
+                  <span>Prise d'effet</span>
+                  <strong style={{ color: "#0f1b2d" }}>
+                    {new Date(moi.dateDebut).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                  </strong>
+                </div>
+              )}
               {moi.dateFin && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                   <span>Valable jusqu'au</span>

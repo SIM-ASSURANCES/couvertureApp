@@ -16,6 +16,33 @@ export function newFormulaireToken() {
 
 const DELAI_GRACE_RENOUVELLEMENT_MS = 2 * 24 * 60 * 60 * 1000;
 
+// Délai d'attente entre la souscription et la prise d'effet du contrat,
+// pour les produits Assurances Accidents — RelaxMoto, RelaxAuto,
+// RelaxAccidents Frais Médicaux/générale et Accident historique. RelaxVoyage
+// (trajet ponctuel, couverture nécessairement immédiate) et les produits
+// Dommages (Incendie, SecurHome+, SecurPro) n'ont pas ce délai.
+const DELAI_ATTENTE_PRISE_EFFET_MS = 72 * 60 * 60 * 1000;
+const PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE = new Set([
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents",
+  "accident",
+]);
+
+/**
+ * Date de prise d'effet d'un contrat Accidents à sa PREMIÈRE activation
+ * (jamais au renouvellement, qui prolonge une couverture déjà en cours sans
+ * nouvelle attente) — décalée de 72h après la confirmation du paiement pour
+ * les produits concernés (voir PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE),
+ * immédiate sinon. Centralise la règle pour rester cohérente entre le
+ * modèle générique (paiementWave.ts) et Accident historique (accident.ts).
+ */
+export function dateDebutPremiereActivation(produitCode: string): Date {
+  if (!PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE.has(produitCode)) return new Date();
+  return new Date(Date.now() + DELAI_ATTENTE_PRISE_EFFET_MS);
+}
+
 /**
  * Numéro de police à appliquer lors d'une confirmation (première activation
  * OU renouvellement) : reconduit l'ancien numéro si le renouvellement est

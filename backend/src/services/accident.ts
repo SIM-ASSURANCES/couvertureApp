@@ -7,6 +7,7 @@ import {
   lienClientRelax,
   messageClientRelax,
   sendSMS,
+  dateDebutPremiereActivation,
 } from "./notify.js";
 import type { SouscriptionAccident } from "@prisma/client";
 
@@ -21,7 +22,10 @@ import type { SouscriptionAccident } from "@prisma/client";
  * couverture est prolongée de 3 mois à partir de l'échéance précédente (ou
  * d'aujourd'hui si déjà expirée), et `renouveleAt` est renseigné pour que
  * l'admin voie le statut "Renouvelé". Ouvre aussi l'espace client (mot de
- * passe envoyé par SMS) à la toute première confirmation.
+ * passe envoyé par SMS) à la toute première confirmation. À la première
+ * activation (jamais au renouvellement, qui prolonge une couverture déjà en
+ * cours), la prise d'effet est décalée de 72h après la confirmation du
+ * paiement (délai d'attente, voir dateDebutPremiereActivation).
  */
 export async function confirmerAccident(s: SouscriptionAccident): Promise<void> {
   if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) return;
@@ -29,8 +33,11 @@ export async function confirmerAccident(s: SouscriptionAccident): Promise<void> 
   const tarifAcc = await prisma.tarifAccident.findFirst({
     where: { prime: s.montantPrime },
   });
-  const dateDebut =
-    estRenouvellement && s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
+  const dateDebut = estRenouvellement
+    ? s.dateFin && s.dateFin > new Date()
+      ? s.dateFin
+      : new Date()
+    : dateDebutPremiereActivation("accident");
   const dateFin = new Date(dateDebut);
   dateFin.setMonth(dateFin.getMonth() + 3);
   const numeroPolice = numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);

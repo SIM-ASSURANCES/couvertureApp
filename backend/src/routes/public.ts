@@ -5,7 +5,6 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../util.js";
 import {
   initiateWavePayment,
-  newNumeroPolice,
   newFormulaireToken,
   numeroPoliceIncendieSynthetique,
   genererMotDePasseClient,
@@ -740,25 +739,12 @@ publicRouter.post(
     let transactionId: string;
 
     if (!process.env.WAVE_API_KEY) {
-      // Mode stub (dev / pas encore de clé) : confirmer immédiatement
-      const numeroPolice = newNumeroPolice();
-      const dateDebut = new Date();
-      const dateFin = new Date(dateDebut);
-      dateFin.setMonth(dateFin.getMonth() + 3);
+      // Mode stub (dev / pas encore de clé) : confirmer immédiatement, via
+      // confirmerAccident (comme le webhook Wave réel) plutôt qu'une
+      // réimplémentation locale — sans quoi ce chemin divergeait du délai
+      // d'attente de 72h et n'envoyait jamais les identifiants espace client.
       transactionId = `STUB-${s.id.slice(0, 8)}`;
-      await prisma.souscriptionAccident.update({
-        where: { id: s.id },
-        data: {
-          waveStatut: "confirme",
-          waveTransactionId: transactionId,
-          numeroPolice,
-          dateDebut,
-          dateFin,
-          statutDossier: "complet",
-          whatsappEnvoyeAt: new Date(),
-          commissionCalculee: tarifAcc?.commission ?? null,
-        },
-      });
+      await confirmerAccident({ ...s, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
     } else {
       // Mode Wave réel
