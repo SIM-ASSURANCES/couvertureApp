@@ -108,6 +108,22 @@ clientRouter.get(
       include: { produit: { select: { code: true, libelle: true } }, partenaire: { select: { nomCommerce: true } } },
     });
     if (!s) return res.status(404).json({ error: "Introuvable" });
+
+    // RelaxVoyage : Frais de Santé et Bagages varient selon la formule
+    // choisie (250/400/600/1000 FCFA) — portés par TarifProduit.donneesSpecifiques,
+    // pas par la souscription elle-même (même lookup que services/contratGenerique.ts,
+    // utilisé pour le contrat PDF).
+    let fraisSante: number | null = null;
+    let bagages: string | null = null;
+    if (s.produit.code === "relaxvoyage") {
+      const tarif = await prisma.tarifProduit.findFirst({
+        where: { produitId: s.produitId, prime: s.montantPrime },
+      });
+      const infos = tarif?.donneesSpecifiques as { fraisSante?: number; bagages?: string } | null;
+      fraisSante = infos?.fraisSante ?? null;
+      bagages = infos?.bagages ?? null;
+    }
+
     res.json({
       id: s.id,
       nom: s.nom,
@@ -125,6 +141,8 @@ clientRouter.get(
       statutAbonnement: s.statutAbonnement,
       dateDebut: s.dateDebut,
       dateFin: s.dateFin,
+      fraisSante,
+      bagages,
     });
   })
 );

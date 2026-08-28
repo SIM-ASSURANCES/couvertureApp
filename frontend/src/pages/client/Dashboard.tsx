@@ -28,6 +28,10 @@ interface Moi {
   statutAbonnement: "actif" | "suspendu" | "expire" | "resilie" | null;
   dateDebut: string | null;
   dateFin: string | null;
+  // RelaxVoyage uniquement — Frais de Santé et Bagages varient selon la
+  // formule choisie (250/400/600/1000 FCFA).
+  fraisSante?: number | null;
+  bagages?: string | null;
 }
 
 interface ProduitDisponible {
@@ -307,10 +311,10 @@ export default function ClientDashboard() {
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.montantPrime)}</strong>
                 </div>
               )}
-              {/* RelaxMoto/Auto détaillent déjà Décès/IPT dans le bloc
-                  "Garanties incluses" ci-dessous — cette ligne unique y
-                  ferait doublon. */}
-              {moi.produitCode !== "relaxmoto" && moi.produitCode !== "relaxauto" && (
+              {/* RelaxMoto/Auto et RelaxVoyage détaillent déjà Décès/IPT dans
+                  le bloc "Garanties incluses" ci-dessous — cette ligne
+                  unique y ferait doublon. */}
+              {moi.produitCode !== "relaxmoto" && moi.produitCode !== "relaxauto" && moi.produitCode !== "relaxvoyage" && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                   <span>Capital garanti</span>
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
@@ -333,6 +337,27 @@ export default function ClientDashboard() {
                   ["Frais médicaux et pharmaceutiques", fcfa(g.fraisMedicaux)],
                   ["Invalidité permanente totale", fcfa(g.invaliditePermanenteTotale)],
                   ["Décès", fcfa(g.deces)],
+                ];
+                return (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Garanties incluses</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {lignes.map(([label, valeur]) => (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                          <span style={{ color: "#5b6b80" }}>{label}</span>
+                          <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{valeur}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {moi.produitCode === "relaxvoyage" && (() => {
+                const lignes: [string, string][] = [
+                  ["Décès / IPT", fcfa(moi.capitalGaranti)],
+                  ["Frais de Santé", moi.fraisSante != null ? fcfa(moi.fraisSante) : "—"],
+                  ["Bagages", moi.bagages || "—"],
                 ];
                 return (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>

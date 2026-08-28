@@ -180,6 +180,8 @@ interface TarifFormule {
   libelleVariante: string | null;
   prime: number;
   capitalGaranti: number;
+  // RelaxVoyage uniquement — { fraisSante?: number; bagages?: string }.
+  donneesSpecifiques?: { fraisSante?: number; bagages?: string } | null;
 }
 
 type Step = "loading" | "choose-branche" | "choose-produit" | "infos" | "confirm" | "retry" | "success" | "error";
@@ -2630,6 +2632,40 @@ export default function Souscription() {
                       />
                     ))}
                   </div>
+
+                  {/* Garanties de la formule sélectionnée — RelaxVoyage
+                      uniquement (Décès/IPT/Frais de Santé/Bagages varient
+                      selon la formule, contrairement à RelaxAccidents Frais
+                      Médicaux). */}
+                  {qrInfo?.produit === "relaxvoyage" && (() => {
+                    const t = tarifsFormule.find((x) => x.libelleVariante === selectedFormule);
+                    if (!t) return null;
+                    const lignes: [string, string][] = [
+                      ["Décès / IPT", fcfa(t.capitalGaranti)],
+                      ["Frais de Santé", t.donneesSpecifiques?.fraisSante != null ? fcfa(t.donneesSpecifiques.fraisSante) : "—"],
+                      ["Bagages", t.donneesSpecifiques?.bagages || "—"],
+                    ];
+                    return (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          background: "var(--sim-primary-50, #e6f1fb)",
+                          borderRadius: 14,
+                          padding: "16px 18px",
+                        }}
+                      >
+                        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Garanties incluses</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {lignes.map(([label, valeur]) => (
+                            <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                              <span style={{ color: "#5b6b80" }}>{label}</span>
+                              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{valeur}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
