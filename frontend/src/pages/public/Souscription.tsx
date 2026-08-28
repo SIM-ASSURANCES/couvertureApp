@@ -272,11 +272,16 @@ function TarifCard({
   capitalGaranti,
   selected,
   onSelect,
+  masquerCapitalGaranti,
 }: {
   prime: number;
   capitalGaranti: number;
   selected: boolean;
   onSelect: () => void;
+  // RelaxVoyage : le détail des garanties (Décès/IPT/Frais de Santé/Bagages)
+  // est déjà affiché juste en dessous du sélecteur — cette ligne y ferait
+  // doublon.
+  masquerCapitalGaranti?: boolean;
 }) {
   return (
     <button
@@ -300,10 +305,12 @@ function TarifCard({
         <div style={{ fontSize: 22, fontWeight: 800, color: "var(--sim-primary)" }}>
           {fcfa(prime)}
         </div>
-        <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 13 }}>
-          Capital garanti :{" "}
-          <strong style={{ color: "var(--text)" }}>{fcfa(capitalGaranti)}</strong>
-        </div>
+        {!masquerCapitalGaranti && (
+          <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 13 }}>
+            Capital garanti :{" "}
+            <strong style={{ color: "var(--text)" }}>{fcfa(capitalGaranti)}</strong>
+          </div>
+        )}
       </div>
       <div
         style={{
@@ -2629,6 +2636,7 @@ export default function Souscription() {
                         capitalGaranti={t.capitalGaranti}
                         selected={selectedFormule === t.libelleVariante}
                         onSelect={() => setSelectedFormule(t.libelleVariante)}
+                        masquerCapitalGaranti={qrInfo?.produit === "relaxvoyage"}
                       />
                     ))}
                   </div>
