@@ -2639,19 +2639,33 @@ export default function Souscription() {
               )}
 
               {/* Accroche marketing par produit, entre le bouton retour et le
-                  choix de formule. */}
+                  choix de formule — même carte que "Garanties incluses",
+                  avec une bordure qui pulse légèrement pour attirer l'œil. */}
               {qrInfo?.produit && TAGLINES_PRODUITS[qrInfo.produit] && (
-                <div
-                  style={{
-                    fontSize: 14.5,
-                    fontWeight: 600,
-                    color: "var(--sim-primary, #004b9c)",
-                    lineHeight: 1.4,
-                    marginBottom: 20,
-                  }}
-                >
-                  {TAGLINES_PRODUITS[qrInfo.produit]}
-                </div>
+                <>
+                  <style>{`
+                    @keyframes pulseAccroche {
+                      0%, 100% { box-shadow: 0 0 0 0 rgba(0, 75, 156, 0.28); }
+                      50% { box-shadow: 0 0 0 5px rgba(0, 75, 156, 0); }
+                    }
+                  `}</style>
+                  <div
+                    style={{
+                      background: "var(--sim-primary-50, #e6f1fb)",
+                      border: "1.5px solid var(--sim-primary, #004b9c)",
+                      borderRadius: 14,
+                      padding: "16px 18px",
+                      marginBottom: 24,
+                      fontSize: 14.5,
+                      fontWeight: 600,
+                      color: "var(--sim-primary, #004b9c)",
+                      lineHeight: 1.4,
+                      animation: "pulseAccroche 2.5s ease-in-out infinite",
+                    }}
+                  >
+                    {TAGLINES_PRODUITS[qrInfo.produit]}
+                  </div>
+                </>
               )}
 
               {/* Sélecteur de tarif pour l'accident (ancien modèle, en transition) */}
