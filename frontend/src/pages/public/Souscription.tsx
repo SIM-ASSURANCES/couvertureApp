@@ -51,7 +51,7 @@ function isRelaxAccidentsFraisMedicaux(p?: string): p is "relaxaccidents_fraisme
 }
 
 // Accroche marketing affichée en tête du formulaire, entre le bouton retour
-// et le choix de formule — une par produit Accidents.
+// et le choix de formule — une par produit (Accidents et Dommages).
 const TAGLINES_PRODUITS: Record<string, string> = {
   relaxmoto: "Livreurs, faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxauto:
@@ -59,6 +59,9 @@ const TAGLINES_PRODUITS: Record<string, string> = {
   relaxaccidents: "Faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents_fraismedicaux: "Travailleurs de tous secteurs, faites-vous soigner sans stress en cas d'accident.",
   relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident et garantissez vos proches en cas de décès.",
+  securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
+  securpro_dommages:
+    "Entrepreneur, commerçant, protégez votre local contre l'incendie, les vols et bien d'autres dommages.",
 };
 
 // Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
