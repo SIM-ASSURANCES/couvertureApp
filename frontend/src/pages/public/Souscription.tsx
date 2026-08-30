@@ -50,6 +50,17 @@ function isRelaxAccidentsFraisMedicaux(p?: string): p is "relaxaccidents_fraisme
   return p === "relaxaccidents_fraismedicaux";
 }
 
+// Accroche marketing affichée en tête du formulaire, entre le bouton retour
+// et le choix de formule — une par produit Accidents.
+const TAGLINES_PRODUITS: Record<string, string> = {
+  relaxmoto: "Livreurs, faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
+  relaxauto:
+    "Chauffeurs de VTC, cargo, Gbaka, taxis, camions, faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
+  relaxaccidents: "Faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
+  relaxaccidents_fraismedicaux: "Travailleurs de tous secteurs, faites-vous soigner sans stress en cas d'accident.",
+  relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident et garantissez vos proches en cas de décès.",
+};
+
 // Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
 // prix de la formule choisie, garantie pour une durée propre de 2 mois.
 // À garder synchronisé avec OPTIONS_DECES_FRAIS_MEDICAUX côté serveur
@@ -2625,6 +2636,22 @@ export default function Souscription() {
                 >
                   ← Retour à la liste des produits
                 </button>
+              )}
+
+              {/* Accroche marketing par produit, entre le bouton retour et le
+                  choix de formule. */}
+              {qrInfo?.produit && TAGLINES_PRODUITS[qrInfo.produit] && (
+                <div
+                  style={{
+                    fontSize: 14.5,
+                    fontWeight: 600,
+                    color: "var(--sim-primary, #004b9c)",
+                    lineHeight: 1.4,
+                    marginBottom: 20,
+                  }}
+                >
+                  {TAGLINES_PRODUITS[qrInfo.produit]}
+                </div>
               )}
 
               {/* Sélecteur de tarif pour l'accident (ancien modèle, en transition) */}
