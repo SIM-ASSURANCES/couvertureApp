@@ -81,6 +81,25 @@ export default function AdminDashboard() {
   const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
   const [produitFiltre, setProduitFiltre] = useState("");
   const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
+
+  // Production (nombre de souscriptions confirmées + chiffre d'affaires) par
+  // produit — filtre indépendant de celui des "Dernières souscriptions"
+  // ci-dessous, et respecte la même période (from/to) que le reste du
+  // tableau de bord. "" = tous produits confondus.
+  const [produitProduction, setProduitProduction] = useState("");
+  const productionParams = new URLSearchParams();
+  productionParams.set("statut", "confirme");
+  if (produitProduction) productionParams.set("produit", produitProduction);
+  if (from) productionParams.set("from", from);
+  if (to) productionParams.set("to", to);
+  const { data: production, loading: productionLoading } = useFetch<SouscriptionBranche[]>(
+    `/assurances-branche/souscriptions?${productionParams.toString()}`
+  );
+  const productionNombre = production?.length ?? 0;
+  const productionCa = (production ?? []).reduce((somme, r) => somme + r.montantPrime, 0);
+  const produitProductionLabel =
+    (catalogue ?? []).find((p) => p.code === produitProduction)?.libelle || "Tous produits";
+
   const recentParams = new URLSearchParams();
   // Seules les souscriptions confirmées apparaissent ici — celles en attente
   // de paiement se retrouvent sur la page dédiée "Paiement en attente".
@@ -141,6 +160,44 @@ export default function AdminDashboard() {
             {periodeLabel}
           </span>
         </div>
+      </Card>
+
+      {/* Production par produit — même période que ci-dessus */}
+      <Card
+        title="Production par produit"
+        style={{ marginTop: 16 }}
+        extra={
+          <select
+            className="select"
+            style={{ width: 260, height: 40 }}
+            value={produitProduction}
+            onChange={(e) => setProduitProduction(e.target.value)}
+          >
+            <option value="">Tous produits</option>
+            {(catalogue ?? []).map((p) => (
+              <option key={p.code} value={p.code}>{p.libelle}</option>
+            ))}
+          </select>
+        }
+      >
+        {productionLoading ? (
+          <Loader />
+        ) : (
+          <div className="stat-grid stat-grid-compact">
+            <StatCard
+              icon={<HeartPulse size={20} />}
+              label={`Souscriptions confirmées — ${produitProductionLabel}`}
+              value={nb(productionNombre)}
+              color="#15803d"
+              bg="#e8f6ec"
+            />
+            <StatCard
+              icon={<TrendingUp size={20} />}
+              label={`Chiffre d'affaires — ${produitProductionLabel}`}
+              value={fcfa(productionCa)}
+            />
+          </div>
+        )}
       </Card>
 
       {loading && <Loader />}
