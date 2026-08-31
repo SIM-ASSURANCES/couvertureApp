@@ -409,9 +409,9 @@ export default function AssurancesAccidentsTarifs() {
         <ProduitTarifsTable code="relaxmoto" libelle="RelaxMoto" />
         <ProduitTarifsTable code="relaxauto" libelle="RelaxAuto" />
         <ProduitTarifsTable code="relaxvoyage" libelle="RelaxVoyage" />
+        <ProduitTarifsTable code="relaxaccidents" libelle="RelaxAccidents générale (formule = classe_statutCNPS, ex. 1_declare)" />
 
-        <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Accidents & Dommages)</h3>
-        <CommissionTauxUniqueCard code="relaxaccidents" libelle="RelaxAccidents générale" />
+        <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Assurances Dommages)</h3>
         <CommissionTauxUniqueCard code="securhome_dommages" libelle="SecurHome+" />
         <CommissionSecurproTable />
       </div>

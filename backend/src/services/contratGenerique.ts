@@ -45,11 +45,8 @@ export interface DonneesContratGenerique {
   fraisSante: number | null;
   bagages: string | null;
   optionDeces: OptionDecesFraisMedicaux | null;
-  raisonSociale: string | null;
-  profession: string | null;
   classe: number | null;
-  typeCouverture: string | null;
-  effectif: number | null;
+  cnpsDeclare: boolean | null;
   nomCommercial: string | null;
   ville: string | null;
   communeQuartier: string | null;
@@ -133,11 +130,8 @@ export async function mapperSouscriptionGenerique(
     fraisSante,
     bagages,
     optionDeces,
-    raisonSociale: str("raisonSociale"),
-    profession: str("profession"),
     classe: num("classe"),
-    typeCouverture: str("typeCouverture"),
-    effectif: num("effectif"),
+    cnpsDeclare: bool("cnpsDeclare"),
     nomCommercial: str("nomCommercial"),
     ville: str("ville"),
     communeQuartier: str("communeQuartier"),

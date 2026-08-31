@@ -92,19 +92,13 @@ export interface ContratRelaxAccidentsGenerale {
   partenaire: string;
   dateDebut: string;
   dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
   telephone: string;
-  raisonSociale?: string | null;
-  profession?: string | null;
-  classe: number;
-  typeCouverture: "vie_privee" | "vie_professionnelle" | "vie_privee_professionnelle";
-  effectif: number;
-  lignes: LigneGarantie[];
-  primeNetteHT1: number;
-  reductionPct: number;
-  primeNetteHT2: number;
-  accessoires: number;
-  taxes: number;
-  primeTTC: number;
+  dateNaissance?: string | null;
+  montant: number;
+  classe: 1 | 2 | 3 | 4;
+  cnpsDeclare: boolean;
   signature?: string | null;
 }
 
@@ -316,11 +310,8 @@ export interface DonneesContrat {
   fraisSante?: number | null;
   bagages?: string | null;
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
-  raisonSociale?: string | null;
-  profession?: string | null;
   classe?: number | null;
-  typeCouverture?: string | null;
-  effectif?: number | null;
+  cnpsDeclare?: boolean | null;
   nomCommercial?: string | null;
   ville?: string | null;
   communeQuartier?: string | null;
@@ -438,32 +429,18 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
     return;
   }
   if (c.type === "relaxaccidents") {
-    const r = c.resultat ?? {};
     genererContratRelaxAccidentsGenerale({
       numeroPolice: c.numeroPolice,
       partenaire: c.partenaire,
       dateDebut: debut,
       dateFin: fin,
+      dateNaissance: c.dateNaissance ?? null,
+      nom: c.nom,
+      prenom: c.prenom,
       telephone: c.telephone,
-      raisonSociale: c.raisonSociale ?? null,
-      profession: c.profession ?? null,
-      classe: c.classe ?? r.classe ?? 1,
-      typeCouverture: (c.typeCouverture ?? "vie_privee") as
-        | "vie_privee"
-        | "vie_professionnelle"
-        | "vie_privee_professionnelle",
-      effectif: c.effectif ?? 1,
-      lignes: (r.lignes ?? []).map((l: { garantie: string; montant: number; prime: number }) => ({
-        garantie: l.garantie,
-        capital: l.montant,
-        prime: l.prime,
-      })),
-      primeNetteHT1: r.primeNetteHT1 ?? 0,
-      reductionPct: r.reductionPct ?? 0,
-      primeNetteHT2: r.primeNetteHT2 ?? 0,
-      accessoires: r.accessoires ?? 0,
-      taxes: r.taxes ?? 0,
-      primeTTC: r.primeTTC ?? c.montant,
+      montant: c.montant,
+      classe: (c.classe ?? 1) as 1 | 2 | 3 | 4,
+      cnpsDeclare: c.cnpsDeclare ?? false,
       signature: c.signature ?? null,
     });
     return;

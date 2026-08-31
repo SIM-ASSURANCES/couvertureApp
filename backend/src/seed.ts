@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { formuleRelaxAccidentsGenerale, type Classe } from "./services/relaxAccidentsGenerale.js";
 
 const prisma = new PrismaClient();
 
@@ -384,12 +385,13 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     create: { produitId: incendieProduit.id, libelleVariante: "1000", prime: 1000, capitalGaranti: 500_000, commission: 0 },
   });
 
-  // RelaxAccidents générale (police collective, devis calculé dynamiquement,
-  // voir services/relaxAccidentsGenerale.ts) — activée au sélecteur.
+  // RelaxAccidents générale — activée au sélecteur. Passée à un tarif fixe
+  // (refonte 2026-08-31, voir services/relaxAccidentsGenerale.ts) : 8
+  // formules (4 classes × déclaré/non déclaré CNPS), seedées juste en dessous.
   // `update: { actif: true, ... }` (et non `update: {}`) car ce produit avait
   // été seedé comme placeholder `actif: false` en Phase 2 : sans ça, les
   // bases déjà seedées ne seraient jamais corrigées au redémarrage.
-  await prisma.produit.upsert({
+  const relaxAccidentsGenerale = await prisma.produit.upsert({
     where: { code: "relaxaccidents" },
     update: { actif: true, libelle: "RelaxAccidents" },
     create: {
@@ -403,6 +405,47 @@ async function seedCatalogueAssurancesAccidentsDommages() {
       actif: true,
     },
   });
+  // Tableau de primes fourni par l'utilisateur (2026-08-31) — capitalGaranti
+  // = Décès Accidentel = Invalidité Permanente Totale (identiques, voir
+  // garantiesRelaxAccidentsGenerale), 1 000 000 pour les classes 1-2, 500 000
+  // pour les classes 3-4.
+  const PRIX_RELAXACCIDENTS_GENERALE: Record<
+    "non_declare" | "declare",
+    Record<Classe, { ttc: number; taxes: number; accessoiresHT: number; primeHT: number }>
+  > = {
+    non_declare: {
+      1: { ttc: 16_500, taxes: 1_115, accessoiresHT: 2_500, primeHT: 12_885 },
+      2: { ttc: 19_000, taxes: 1_284, accessoiresHT: 2_500, primeHT: 15_216 },
+      3: { ttc: 25_000, taxes: 1_690, accessoiresHT: 2_500, primeHT: 20_810 },
+      4: { ttc: 28_500, taxes: 1_927, accessoiresHT: 2_500, primeHT: 24_073 },
+    },
+    declare: {
+      1: { ttc: 14_000, taxes: 946, accessoiresHT: 2_500, primeHT: 10_554 },
+      2: { ttc: 14_500, taxes: 980, accessoiresHT: 2_500, primeHT: 11_020 },
+      3: { ttc: 15_000, taxes: 1_014, accessoiresHT: 2_500, primeHT: 11_486 },
+      4: { ttc: 17_500, taxes: 1_183, accessoiresHT: 2_500, primeHT: 13_817 },
+    },
+  };
+  for (const cnpsDeclare of [false, true]) {
+    for (const classe of [1, 2, 3, 4] as const) {
+      const prix = PRIX_RELAXACCIDENTS_GENERALE[cnpsDeclare ? "declare" : "non_declare"][classe];
+      const libelleVariante = formuleRelaxAccidentsGenerale(classe, cnpsDeclare);
+      await prisma.tarifProduit.upsert({
+        where: { produitId_libelleVariante: { produitId: relaxAccidentsGenerale.id, libelleVariante } },
+        update: {},
+        create: {
+          produitId: relaxAccidentsGenerale.id,
+          libelleVariante,
+          prime: prix.ttc,
+          primeHT: prix.primeHT,
+          taxes: prix.taxes,
+          fg: prix.accessoiresHT,
+          capitalGaranti: classe <= 2 ? 1_000_000 : 500_000,
+          commission: 0,
+        },
+      });
+    }
+  }
 
   // SecurHome+ et SecurPro (Assurances Dommages) — mécanisme de prime livré
   // (services/securhomeDommages.ts, et routes/public.ts qui réutilise

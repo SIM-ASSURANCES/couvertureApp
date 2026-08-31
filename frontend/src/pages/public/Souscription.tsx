@@ -15,15 +15,11 @@ import SignaturePad, { type SignaturePadHandle } from "../../components/Signatur
 import PhotoCapture from "../../components/PhotoCapture";
 import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
 import {
-  calculerRelaxAccidentsGenerale,
-  MONTANTS_IJ,
-  MONTANTS_FRAIS_MEDICAUX,
-  MONTANT_IPT_MAX,
-  MONTANT_DECES_ACCIDENTEL_MAX,
-  NOMENCLATURE_PROFESSIONS,
-  TYPE_COUVERTURE_LABELS,
-  type TypeCouverture,
-  type ResultatRelaxAccidentsGenerale,
+  ACTIVITES_RELAXACCIDENTS_GENERALE,
+  garantiesRelaxAccidentsGenerale,
+  formuleRelaxAccidentsGenerale,
+  INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE,
+  type Classe,
 } from "../../relaxAccidentsGenerale";
 import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
 import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
@@ -357,193 +353,149 @@ function TarifCard({
   );
 }
 
-// RelaxAccidents générale : formulaire d'entreprise (police collective) +
-// aperçu du devis recalculé en direct à chaque changement de champ (même
-// formule que le service backend, voir ../../relaxAccidentsGenerale — jamais
-// envoyé tel quel au serveur, qui recalcule systématiquement à la soumission).
+// RelaxAccidents générale : police individuelle à tarif fixe (refonte
+// 2026-08-31, voir ../../relaxAccidentsGenerale) — l'activité choisie fixe la
+// classe de risque, le statut CNPS fixe les garanties (avec ou sans
+// Indemnité Journalière) ; les deux ensemble déterminent la formule
+// (TarifProduit.libelleVariante) et donc le prix, lu dans `tarifsFormule`
+// (jamais recalculé côté client — voir GET /public/tarifs/relaxaccidents).
 function RelaxAccidentsGeneraleForm({
-  raisonSociale,
-  setRaisonSociale,
-  profession,
-  setProfession,
-  typeCouverture,
-  setTypeCouverture,
-  effectif,
-  setEffectif,
-  montantIJ,
-  setMontantIJ,
-  montantFraisMedicaux,
-  setMontantFraisMedicaux,
-  montantIPT,
-  setMontantIPT,
-  montantDecesAccidentel,
-  setMontantDecesAccidentel,
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
   telephone,
   setTelephone,
+  dateNaissance,
+  setDateNaissance,
+  sexe,
+  setSexe,
+  classe,
+  setClasse,
+  cnpsDeclare,
+  setCnpsDeclare,
+  tarifsFormule,
   sigRef,
 }: {
-  raisonSociale: string;
-  setRaisonSociale: (v: string) => void;
-  profession: string;
-  setProfession: (v: string) => void;
-  typeCouverture: TypeCouverture | "";
-  setTypeCouverture: (v: TypeCouverture | "") => void;
-  effectif: string;
-  setEffectif: (v: string) => void;
-  montantIJ: string;
-  setMontantIJ: (v: string) => void;
-  montantFraisMedicaux: string;
-  setMontantFraisMedicaux: (v: string) => void;
-  montantIPT: string;
-  setMontantIPT: (v: string) => void;
-  montantDecesAccidentel: string;
-  setMontantDecesAccidentel: (v: string) => void;
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
   telephone: string;
   setTelephone: (v: string) => void;
+  dateNaissance: string;
+  setDateNaissance: (v: string) => void;
+  sexe: "masculin" | "feminin" | "";
+  setSexe: (v: "masculin" | "feminin" | "") => void;
+  classe: Classe | "";
+  setClasse: (v: Classe | "") => void;
+  cnpsDeclare: boolean | null;
+  setCnpsDeclare: (v: boolean) => void;
+  tarifsFormule: TarifFormule[];
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
-  let resultat: ResultatRelaxAccidentsGenerale | null = null;
-  let erreur = "";
-  if (profession && typeCouverture && effectif) {
-    try {
-      resultat = calculerRelaxAccidentsGenerale({
-        profession,
-        typeCouverture,
-        effectif: Number(effectif),
-        montantIJ: Number(montantIJ),
-        montantFraisMedicaux: Number(montantFraisMedicaux),
-        montantIPT: Number(montantIPT),
-        montantDecesAccidentel: Number(montantDecesAccidentel),
-      });
-    } catch (e) {
-      erreur = e instanceof Error ? e.message : "Entrées invalides.";
-    }
-  }
+  const garanties = classe ? garantiesRelaxAccidentsGenerale(classe) : null;
+  const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
+  const formule = classe && cnpsDeclare !== null ? formuleRelaxAccidentsGenerale(classe, cnpsDeclare) : null;
+  const tarif = formule ? tarifsFormule.find((t) => t.libelleVariante === formule) ?? null : null;
 
   return (
     <>
-      <FieldRow label="Raison sociale / Nom de l'entreprise *">
-        <input
-          value={raisonSociale}
-          onChange={(e) => setRaisonSociale(e.target.value)}
-          placeholder="Ex. BANESSERE CASA"
-          style={inputStyle}
-        />
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
       </FieldRow>
-      <FieldRow label="Profession / Type d'activité *">
-        <select value={profession} onChange={(e) => setProfession(e.target.value)} style={inputStyle}>
-          <option value="">Sélectionnez votre profession / type d'activité...</option>
-          {([1, 2, 3, 4] as const).map((c) => (
-            <optgroup key={c} label={`Classe ${c}`}>
-              {NOMENCLATURE_PROFESSIONS.filter((p) => p.classe === c).map((p) => (
-                <option key={p.libelle} value={p.libelle}>
-                  {p.libelle}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </FieldRow>
-      <FieldRow label="Effectif à assurer *">
-        <input
-          value={effectif}
-          onChange={(e) => setEffectif(e.target.value.replace(/\D/g, ""))}
-          type="text"
-          inputMode="numeric"
-          placeholder="Ex. 10"
-          style={inputStyle}
-        />
-      </FieldRow>
-      <FieldRow label="Type de couverture *">
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"] as TypeCouverture[]).map((t) => (
-            <label key={t} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-              <input type="radio" checked={typeCouverture === t} onChange={() => setTypeCouverture(t)} />
-              {TYPE_COUVERTURE_LABELS[t]}
-            </label>
-          ))}
-        </div>
-      </FieldRow>
-      <FieldRow label="Indemnité Journalière *">
-        <select value={montantIJ} onChange={(e) => setMontantIJ(e.target.value)} style={inputStyle}>
-          {MONTANTS_IJ.map((m) => (
-            <option key={m} value={m}>
-              {fcfa(m)}
-            </option>
-          ))}
-        </select>
-      </FieldRow>
-      <FieldRow label="Frais médicaux *">
-        <select value={montantFraisMedicaux} onChange={(e) => setMontantFraisMedicaux(e.target.value)} style={inputStyle}>
-          {MONTANTS_FRAIS_MEDICAUX.map((m) => (
-            <option key={m} value={m}>
-              {fcfa(m)}
-            </option>
-          ))}
-        </select>
-      </FieldRow>
-      <FieldRow label={`Invalidité Permanente Totale (max ${fcfa(MONTANT_IPT_MAX)}) *`}>
-        <input
-          value={montantIPT}
-          onChange={(e) => setMontantIPT(e.target.value.replace(/\D/g, ""))}
-          type="text"
-          inputMode="numeric"
-          style={inputStyle}
-        />
-      </FieldRow>
-      <FieldRow label={`Décès Accidentel (max ${fcfa(MONTANT_DECES_ACCIDENTEL_MAX)}) *`}>
-        <input
-          value={montantDecesAccidentel}
-          onChange={(e) => setMontantDecesAccidentel(e.target.value.replace(/\D/g, ""))}
-          type="text"
-          inputMode="numeric"
-          style={inputStyle}
-        />
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
       </FieldRow>
       <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
         <PhoneInput value={telephone} onChange={setTelephone} />
       </FieldRow>
+      <FieldRow label="Date de naissance *">
+        <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
+      </FieldRow>
+      <SexeField value={sexe} onChange={setSexe} />
+      <FieldRow label="Type d'activité *">
+        <select
+          value={classe}
+          onChange={(e) => setClasse(e.target.value ? (Number(e.target.value) as Classe) : "")}
+          style={inputStyle}
+        >
+          <option value="">Sélectionnez votre activité...</option>
+          {ACTIVITES_RELAXACCIDENTS_GENERALE.map((a) => (
+            <option key={a.classe} value={a.classe}>
+              {a.libelle}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <FieldRow label="Êtes-vous Travailleur déclaré CNPS ou autre ? *">
+        <div style={{ display: "flex", gap: 20 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={cnpsDeclare === true} onChange={() => setCnpsDeclare(true)} />
+            Oui
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={cnpsDeclare === false} onChange={() => setCnpsDeclare(false)} />
+            Non
+          </label>
+        </div>
+      </FieldRow>
+
+      {garanties && cnpsDeclare !== null && (
+        <div
+          style={{
+            background: "var(--sim-primary-50, #e6f1fb)",
+            borderRadius: 12,
+            padding: "14px 16px",
+            margin: "18px 0",
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, color: "#004b9c" }}>Garanties incluses</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {!cnpsDeclare && (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                <span style={{ color: "#5b6b80" }}>Indemnité journalière</span>
+                <strong style={{ textAlign: "right", color: "#0f1b2d" }}>
+                  {fcfa(ij.montant)} / jour, {ij.dureeMaxJours} jours max ({ij.carenceJours} jours de délai de carence)
+                </strong>
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: "#5b6b80" }}>Frais médicaux et pharmaceutiques</span>
+              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.fraisMedicaux)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: "#5b6b80" }}>Invalidité Permanente Partielle/Totale</span>
+              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.invaliditePermanenteTotale)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: "#5b6b80" }}>Décès non accidentel</span>
+              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesNonAccidentel)}</strong>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: "#5b6b80" }}>Décès Accidentel</span>
+              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesAccidentel)}</strong>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div
         style={{
-          background: "var(--sim-primary-50, #e6f1fb)",
+          background: "#f4f7fb",
           borderRadius: 12,
           padding: "14px 16px",
-          margin: "18px 0",
+          margin: "0 0 18px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>
-          Aperçu du devis
-        </div>
-        {resultat ? (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-              <span>Prime nette HT</span>
-              <span>{fcfa(resultat.primeNetteHT1)}</span>
-            </div>
-            {resultat.reductionPct > 0 && (
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-                <span>Réduction com. effectif (-{Math.round(resultat.reductionPct * 100)}%)</span>
-                <span>-{fcfa(resultat.primeNetteHT1 - resultat.primeNetteHT2)}</span>
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-              <span>Accessoires</span>
-              <span>{fcfa(resultat.accessoires)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
-              <span>Taxes</span>
-              <span>{fcfa(resultat.taxes)}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
-              <span>PRIME TTC</span>
-              <span>{fcfa(resultat.primeTTC)}</span>
-            </div>
-          </>
+        <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
+        {tarif ? (
+          <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
         ) : (
-          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
-            {erreur || "Renseignez les champs ci-dessus pour voir le montant de votre prime."}
-          </div>
+          <span style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS</span>
         )}
       </div>
 
@@ -1233,17 +1185,12 @@ export default function Souscription() {
   const [dateDepart, setDateDepart] = useState("");
   const [numeroPersonneContact, setNumeroPersonneContact] = useState(PHONE_PREFIX);
 
-  // Champs RelaxAccidents générale (police collective, devis calculé
-  // dynamiquement — pas de tarif au catalogue). `telephone`/`sigRef` sont
-  // partagés avec la branche isAccidentLike/isRelaxVoyage ci-dessus.
-  const [raisonSociale, setRaisonSociale] = useState("");
-  const [profession, setProfession] = useState("");
-  const [typeCouverture, setTypeCouverture] = useState<TypeCouverture | "">("");
-  const [effectif, setEffectif] = useState("1");
-  const [montantIJ, setMontantIJ] = useState<string>(String(MONTANTS_IJ[0]));
-  const [montantFraisMedicaux, setMontantFraisMedicaux] = useState<string>(String(MONTANTS_FRAIS_MEDICAUX[0]));
-  const [montantIPT, setMontantIPT] = useState("0");
-  const [montantDecesAccidentel, setMontantDecesAccidentel] = useState("0");
+  // Champs RelaxAccidents générale — tarif fixe (classe d'activité × statut
+  // CNPS), voir relaxAccidentsGenerale.ts. `nom`/`prenom`/`telephone`/
+  // `dateNaissance`/`sexe`/`sigRef` sont partagés avec les branches
+  // isAccidentLike/isRelaxVoyage ci-dessus.
+  const [classeRelaxAccidents, setClasseRelaxAccidents] = useState<Classe | "">("");
+  const [cnpsDeclare, setCnpsDeclare] = useState<boolean | null>(null);
 
   // Champs SecurPro (Assurances Dommages) — réutilise calculerSecurpro déjà
   // utilisé côté IMF (offline/tarification.ts). `nom`/`prenom`/`telephone`/
@@ -1332,11 +1279,8 @@ export default function Souscription() {
     numeroPersonneContact?: string | null;
     fraisSante?: number | null;
     bagages?: string | null;
-    raisonSociale?: string | null;
-    profession?: string | null;
     classe?: number | null;
-    typeCouverture?: string | null;
-    effectif?: number | null;
+    cnpsDeclare?: boolean | null;
     // SecurPro (Assurances Dommages)
     nomCommercial?: string | null;
     ville?: string | null;
@@ -1348,7 +1292,7 @@ export default function Souscription() {
     contenu?: number | null;
     dansMarche?: boolean | null;
     nombrePieces?: number | null;
-    resultat?: ResultatRelaxAccidentsGenerale | ResultatTarifImf | ResultatSecurhome | null;
+    resultat?: ResultatTarifImf | ResultatSecurhome | null;
   } | null>(null);
 
   // Prime d'UN cycle pour la formule RelaxMoto/RelaxAuto sélectionnée — sert
@@ -1447,11 +1391,8 @@ export default function Souscription() {
             numeroPersonneContact: data.numeroPersonneContact ?? null,
             fraisSante: data.fraisSante ?? null,
             bagages: data.bagages ?? null,
-            raisonSociale: data.raisonSociale ?? null,
-            profession: data.profession ?? null,
             classe: data.classe ?? null,
-            typeCouverture: data.typeCouverture ?? null,
-            effectif: data.effectif ?? null,
+            cnpsDeclare: data.cnpsDeclare ?? null,
             nomCommercial: data.nomCommercial ?? null,
             ville: data.ville ?? null,
             communeQuartier: data.communeQuartier ?? null,
@@ -1637,7 +1578,11 @@ export default function Souscription() {
       return;
     }
     if (isRelaxAccidentsGenerale(produit)) {
+      if (p.nom) setNom(p.nom);
+      if (p.prenom) setPrenom(p.prenom);
       if (telephoneClient) setTelephone(telephoneClient);
+      if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
+      if (p.sexe) setSexe(p.sexe);
     }
   }
 
@@ -1662,6 +1607,12 @@ export default function Souscription() {
           : [...formules].sort((a, b) => a.prime - b.prime);
       setTarifsFormule(formulesTriees);
       if (formulesTriees.length > 0) setSelectedFormule(formulesTriees[0].libelleVariante);
+    } else if (isRelaxAccidentsGenerale(produit)) {
+      // Pas de présélection : la formule (classe × statut CNPS) est dérivée
+      // des deux sélecteurs du formulaire, pas d'une liste de prix à choisir
+      // directement (voir RelaxAccidentsGeneraleForm).
+      const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/relaxaccidents`).then((r) => r.json());
+      setTarifsFormule(formules);
     } else if (isRelax(produit)) {
       const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       setTarifsRelax(tarifs);
@@ -1743,16 +1694,11 @@ export default function Souscription() {
       if (isRelaxVoyage(p))
         return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
       if (isRelax(p)) return primeRelaxUnitaire != null ? primeRelaxUnitaire * nombrePeriodes : null;
-      if (isRelaxAccidentsGenerale(p))
-        return calculerRelaxAccidentsGenerale({
-          profession,
-          typeCouverture: typeCouverture as TypeCouverture,
-          effectif: Number(effectif),
-          montantIJ: Number(montantIJ),
-          montantFraisMedicaux: Number(montantFraisMedicaux),
-          montantIPT: Number(montantIPT),
-          montantDecesAccidentel: Number(montantDecesAccidentel),
-        }).primeTTC;
+      if (isRelaxAccidentsGenerale(p)) {
+        if (!classeRelaxAccidents || cnpsDeclare === null) return null;
+        const formule = formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare);
+        return tarifsFormule.find((t) => t.libelleVariante === formule)?.prime ?? null;
+      }
       if (isSecurproDommages(p)) {
         const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
         if (!bar) return null;
@@ -1818,15 +1764,13 @@ export default function Souscription() {
     }
 
     if (isRelaxAccidentsGenerale(p)) {
-      l.push({ label: "Raison sociale", valeur: raisonSociale });
-      l.push({ label: "Profession", valeur: profession });
-      l.push({ label: "Type de couverture", valeur: typeCouverture ? TYPE_COUVERTURE_LABELS[typeCouverture] : "—" });
-      l.push({ label: "Effectif", valeur: `${effectif} personne(s)` });
-      l.push({ label: "Indemnité journalière", valeur: fcfa(Number(montantIJ)) });
-      l.push({ label: "Frais médicaux", valeur: fcfa(Number(montantFraisMedicaux)) });
-      l.push({ label: "IPT", valeur: fcfa(Number(montantIPT)) });
-      l.push({ label: "Décès accidentel", valeur: fcfa(Number(montantDecesAccidentel)) });
+      l.push({ label: "Prénom", valeur: prenom });
+      l.push({ label: "Nom", valeur: nom });
       l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
+      l.push({ label: "Sexe", valeur: sexeLabel });
+      l.push({ label: "Activité", valeur: classeRelaxAccidents ? ACTIVITES_RELAXACCIDENTS_GENERALE.find((a) => a.classe === classeRelaxAccidents)?.libelle ?? "—" : "—" });
+      l.push({ label: "Travailleur déclaré CNPS ou autre", valeur: cnpsDeclare === null ? "—" : oui(cnpsDeclare) });
       return l;
     }
 
@@ -1892,6 +1836,7 @@ export default function Souscription() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
+    if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null)) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
@@ -1909,22 +1854,20 @@ export default function Souscription() {
         : undefined;
     setSubmitting(true);
     try {
-      if (qrInfo.produit === "relaxaccidents") {
-        const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents/initiate`, {
+      if (isRelaxAccidentsGenerale(qrInfo.produit)) {
+        if (!classeRelaxAccidents || cnpsDeclare === null) return;
+        const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents/initiate-formule`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             qrToken: token,
-            raisonSociale,
-            profession,
+            nom,
+            prenom,
             telephone,
+            dateNaissance,
+            sexe: sexe || undefined,
+            formule: formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare),
             signature,
-            typeCouverture,
-            effectif: Number(effectif),
-            montantIJ: Number(montantIJ),
-            montantFraisMedicaux: Number(montantFraisMedicaux),
-            montantIPT: Number(montantIPT),
-            montantDecesAccidentel: Number(montantDecesAccidentel),
           }),
         });
         const data = await res.json();
@@ -1933,7 +1876,7 @@ export default function Souscription() {
           checkoutUrl: data.checkoutUrl,
           souscriptionId: data.souscriptionId,
           montant: data.montant,
-          resultat: data.resultat,
+          capitalGaranti: data.capitalGaranti,
         });
         window.location.href = data.checkoutUrl;
         return;
@@ -2185,9 +2128,8 @@ export default function Souscription() {
 
   function telechargerContrat() {
     if (!result || !qrInfo) return;
-    if (qrInfo.produit === "relaxaccidents") {
-      const resultat = result.resultat as ResultatRelaxAccidentsGenerale | undefined;
-      if (!resultat) return;
+    if (isRelaxAccidentsGenerale(qrInfo.produit)) {
+      if (!result.classe || result.cnpsDeclare == null) return;
       genererContratRelaxAccidentsGenerale({
         numeroPolice: result.numeroPolice ?? "",
         partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
@@ -2195,22 +2137,13 @@ export default function Souscription() {
         dateFin:
           result.dateFin ??
           new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        dateNaissance: result.dateNaissance ?? dateNaissance,
+        nom: result.nom ?? nom,
+        prenom: result.prenom ?? prenom,
         telephone: result.telephone ?? telephone,
-        raisonSociale: result.raisonSociale ?? raisonSociale,
-        profession: result.profession ?? profession,
-        classe: result.classe ?? resultat.classe,
-        typeCouverture: (result.typeCouverture ?? typeCouverture) as
-          | "vie_privee"
-          | "vie_professionnelle"
-          | "vie_privee_professionnelle",
-        effectif: result.effectif ?? Number(effectif),
-        lignes: resultat.lignes.map((l) => ({ garantie: l.garantie, capital: l.montant, prime: l.prime })),
-        primeNetteHT1: resultat.primeNetteHT1,
-        reductionPct: resultat.reductionPct,
-        primeNetteHT2: resultat.primeNetteHT2,
-        accessoires: resultat.accessoires,
-        taxes: resultat.taxes,
-        primeTTC: resultat.primeTTC,
+        montant: result.montant ?? 0,
+        classe: result.classe as 1 | 2 | 3 | 4,
+        cnpsDeclare: result.cnpsDeclare,
         signature: result.signature ?? null,
       });
       return;
@@ -2991,24 +2924,21 @@ export default function Souscription() {
                 />
               ) : isRelaxAccidentsGenerale(qrInfo?.produit) ? (
                 <RelaxAccidentsGeneraleForm
-                  raisonSociale={raisonSociale}
-                  setRaisonSociale={setRaisonSociale}
-                  profession={profession}
-                  setProfession={setProfession}
-                  typeCouverture={typeCouverture}
-                  setTypeCouverture={setTypeCouverture}
-                  effectif={effectif}
-                  setEffectif={setEffectif}
-                  montantIJ={montantIJ}
-                  setMontantIJ={setMontantIJ}
-                  montantFraisMedicaux={montantFraisMedicaux}
-                  setMontantFraisMedicaux={setMontantFraisMedicaux}
-                  montantIPT={montantIPT}
-                  setMontantIPT={setMontantIPT}
-                  montantDecesAccidentel={montantDecesAccidentel}
-                  setMontantDecesAccidentel={setMontantDecesAccidentel}
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
                   telephone={telephone}
                   setTelephone={setTelephone}
+                  dateNaissance={dateNaissance}
+                  setDateNaissance={setDateNaissance}
+                  sexe={sexe}
+                  setSexe={setSexe}
+                  classe={classeRelaxAccidents}
+                  setClasse={setClasseRelaxAccidents}
+                  cnpsDeclare={cnpsDeclare}
+                  setCnpsDeclare={setCnpsDeclare}
+                  tarifsFormule={tarifsFormule}
                   sigRef={sigRef}
                 />
               ) : isRelaxVoyage(qrInfo?.produit) ? (
@@ -3355,28 +3285,13 @@ export default function Souscription() {
                 const bloque =
                   submitting ||
                   (isRelaxAccidentsGenerale(qrInfo?.produit)
-                    ? !raisonSociale ||
-                      !profession ||
-                      !typeCouverture ||
-                      !Number.isInteger(Number(effectif)) ||
-                      Number(effectif) < 1 ||
+                    ? !nom ||
+                      !prenom ||
                       phoneInvalid(telephone) ||
-                      (() => {
-                        try {
-                          calculerRelaxAccidentsGenerale({
-                            profession,
-                            typeCouverture: typeCouverture as TypeCouverture,
-                            effectif: Number(effectif),
-                            montantIJ: Number(montantIJ),
-                            montantFraisMedicaux: Number(montantFraisMedicaux),
-                            montantIPT: Number(montantIPT),
-                            montantDecesAccidentel: Number(montantDecesAccidentel),
-                          });
-                          return false;
-                        } catch {
-                          return true;
-                        }
-                      })()
+                      !dateNaissance ||
+                      !sexe ||
+                      !classeRelaxAccidents ||
+                      cnpsDeclare === null
                     : isRelaxVoyage(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
@@ -3795,8 +3710,7 @@ export default function Souscription() {
                     🎉 Souscription confirmée !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
-                    L'assurance RelaxAccidents de <strong>{result?.raisonSociale ?? raisonSociale}</strong> est activée
-                    pour <strong>{result?.effectif ?? effectif} personne(s)</strong>.
+                    L'assurance RelaxAccidents de <strong>{result?.prenom ?? prenom} {result?.nom ?? nom}</strong> est activée.
                   </div>
                   {result?.numeroPolice && (
                     <div

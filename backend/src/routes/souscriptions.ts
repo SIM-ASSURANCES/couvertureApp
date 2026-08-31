@@ -75,11 +75,8 @@ souscriptionsRouter.get(
       fraisSante?: number | null;
       bagages?: string | null;
       optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
-      raisonSociale?: string | null;
-      profession?: string | null;
       classe?: number | null;
-      typeCouverture?: string | null;
-      effectif?: number | null;
+      cnpsDeclare?: boolean | null;
       nomCommercial?: string | null;
       ville?: string | null;
       communeQuartier?: string | null;
@@ -241,9 +238,12 @@ souscriptionsRouter.get(
         for (const s of generiques) {
           const d = await mapperSouscriptionGenerique(s);
 
-          // Produits à devis calculé : les totaux sont déjà figés dans
-          // `resultat` (voir services/relaxAccidentsGenerale.ts et
-          // securhomeDommages.ts), même lecture que services/commission.ts.
+          // Produits à devis calculé (SecurHome+/SecurPro Dommages) : les
+          // totaux sont déjà figés dans `resultat` (voir
+          // services/securhomeDommages.ts), même lecture que
+          // services/commission.ts. RelaxAccidents générale est passée à un
+          // tarif fixe (refonte 2026-08-31) : `resultat` y est toujours null,
+          // elle tombe donc dans la branche TarifProduit ci-dessous.
           const r = s.resultat as
             | { primeNetteHT?: number; primeNetteHT2?: number; accessoires?: number; taxes?: number; primeTTC?: number }
             | null;
@@ -304,11 +304,8 @@ souscriptionsRouter.get(
             fraisSante: d.fraisSante,
             bagages: d.bagages,
             optionDeces: d.optionDeces,
-            raisonSociale: d.raisonSociale,
-            profession: d.profession,
             classe: d.classe,
-            typeCouverture: d.typeCouverture,
-            effectif: d.effectif,
+            cnpsDeclare: d.cnpsDeclare,
             nomCommercial: d.nomCommercial,
             ville: d.ville,
             communeQuartier: d.communeQuartier,

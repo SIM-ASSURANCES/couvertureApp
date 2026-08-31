@@ -105,10 +105,13 @@ async function commissionSouscriptionsGeneriques(where: {
  * commission est configurable depuis la page admin Tarifs et s'applique sur
  * la prime nette HT du devis, stockée dans `Souscription.resultat` à la
  * souscription. SecurPro a un taux par classe de risque (BaremeSecurpro,
- * déjà utilisé côté IMF) ; RelaxAccidents générale et SecurHome+ ont un taux
- * unique par produit (Produit.tauxCommission).
+ * déjà utilisé côté IMF) ; SecurHome+ a un taux unique par produit
+ * (Produit.tauxCommission). RelaxAccidents générale est passée à un tarif
+ * fixe (refonte 2026-08-31, voir services/relaxAccidentsGenerale.ts) : sa
+ * commission est désormais couverte par commissionSouscriptionsGeneriques
+ * ci-dessus, comme RelaxMoto/RelaxAuto.
  */
-export const PRODUITS_COMMISSION_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
+export const PRODUITS_COMMISSION_DYNAMIQUE = ["securhome_dommages", "securpro_dommages"] as const;
 
 async function commissionSouscriptionsDynamiques(where: {
   partenaireId?: string;

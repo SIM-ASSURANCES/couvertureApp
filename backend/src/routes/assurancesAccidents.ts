@@ -300,13 +300,14 @@ assurancesAccidentsRouter.delete(
 
 /**
  * Commission des produits à devis calculé dynamiquement — pas de
- * TarifProduit pour RelaxAccidents générale/SecurHome+/SecurPro (prime
- * recalculée à chaque souscription, jamais une table de formules), donc pas
- * de colonne "commission" par formule à éditer comme ci-dessus. Le taux
- * (décimal, appliqué sur la prime nette HT) est réglé ici — voir
- * services/commission.ts::commissionSouscriptionsDynamiques.
+ * TarifProduit pour SecurHome+/SecurPro (prime recalculée à chaque
+ * souscription, jamais une table de formules), donc pas de colonne
+ * "commission" par formule à éditer comme ci-dessus. Le taux (décimal,
+ * appliqué sur la prime nette HT) est réglé ici — voir
+ * services/commission.ts::commissionSouscriptionsDynamiques. RelaxAccidents
+ * générale a rejoint ProduitTarifsTable (tarif fixe, refonte 2026-08-31).
  */
-const PRODUITS_COMMISSION_TAUX_UNIQUE = ["relaxaccidents", "securhome_dommages"] as const;
+const PRODUITS_COMMISSION_TAUX_UNIQUE = ["securhome_dommages"] as const;
 type ProduitCommissionTauxUnique = (typeof PRODUITS_COMMISSION_TAUX_UNIQUE)[number];
 function estProduitCommissionTauxUnique(code: string): code is ProduitCommissionTauxUnique {
   return (PRODUITS_COMMISSION_TAUX_UNIQUE as readonly string[]).includes(code);

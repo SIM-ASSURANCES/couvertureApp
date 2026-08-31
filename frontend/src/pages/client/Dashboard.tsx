@@ -5,6 +5,7 @@ import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
 import ReseauSoins from "../../components/ReseauSoins";
 import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
+import { garantiesRelaxAccidentsGenerale, INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE, type Classe } from "../../relaxAccidentsGenerale";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 
 function fcfa(n: number) {
@@ -35,6 +36,10 @@ interface Moi {
   // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
   // choisie à la souscription.
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
+  // RelaxAccidents générale uniquement — classe de risque + statut CNPS,
+  // dont dépendent les garanties affichées.
+  classe?: number | null;
+  cnpsDeclare?: boolean | null;
 }
 
 interface ProduitDisponible {
@@ -314,10 +319,13 @@ export default function ClientDashboard() {
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.montantPrime)}</strong>
                 </div>
               )}
-              {/* RelaxMoto/Auto et RelaxVoyage détaillent déjà Décès/IPT dans
-                  le bloc "Garanties incluses" ci-dessous — cette ligne
-                  unique y ferait doublon. */}
-              {moi.produitCode !== "relaxmoto" && moi.produitCode !== "relaxauto" && moi.produitCode !== "relaxvoyage" && (
+              {/* RelaxMoto/Auto, RelaxVoyage et RelaxAccidents générale
+                  détaillent déjà Décès/IPT dans le bloc "Garanties incluses"
+                  ci-dessous — cette ligne unique y ferait doublon. */}
+              {moi.produitCode !== "relaxmoto" &&
+                moi.produitCode !== "relaxauto" &&
+                moi.produitCode !== "relaxvoyage" &&
+                moi.produitCode !== "relaxaccidents" && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                   <span>Capital garanti</span>
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
@@ -369,6 +377,38 @@ export default function ClientDashboard() {
                   ["Décès / IPT", fcfa(moi.capitalGaranti)],
                   ["Frais de Santé", moi.fraisSante != null ? fcfa(moi.fraisSante) : "—"],
                   ["Bagages", moi.bagages || "—"],
+                ];
+                return (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Garanties incluses</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {lignes.map(([label, valeur]) => (
+                        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                          <span style={{ color: "#5b6b80" }}>{label}</span>
+                          <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{valeur}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {moi.produitCode === "relaxaccidents" && moi.classe != null && (() => {
+                const g = garantiesRelaxAccidentsGenerale(moi.classe as Classe);
+                const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
+                const lignes: [string, string][] = [
+                  ...(moi.cnpsDeclare
+                    ? []
+                    : ([
+                        [
+                          "Indemnité journalière",
+                          `${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de carence)`,
+                        ],
+                      ] as [string, string][])),
+                  ["Frais médicaux et pharmaceutiques", fcfa(g.fraisMedicaux)],
+                  ["Invalidité Permanente Partielle/Totale", fcfa(g.invaliditePermanenteTotale)],
+                  ["Décès non accidentel", fcfa(g.decesNonAccidentel)],
+                  ["Décès Accidentel", fcfa(g.decesAccidentel)],
                 ];
                 return (
                   <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>

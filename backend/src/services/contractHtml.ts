@@ -6,6 +6,7 @@
 // dans le navigateur). La mise en page (CSS, structure) reste identique.
 
 import { prisma } from "../db.js";
+import { garantiesRelaxAccidentsGenerale, INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE, type Classe } from "./relaxAccidentsGenerale.js";
 
 const APP_PUBLIC_URL = process.env.APP_PUBLIC_URL || "http://localhost:5173";
 
@@ -100,19 +101,13 @@ export interface ContratRelaxAccidentsGenerale {
   partenaire: string;
   dateDebut: string;
   dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
   telephone: string;
-  raisonSociale?: string | null;
-  profession?: string | null;
-  classe: number;
-  typeCouverture: "vie_privee" | "vie_professionnelle" | "vie_privee_professionnelle";
-  effectif: number;
-  lignes: LigneGarantie[];
-  primeNetteHT1: number;
-  reductionPct: number;
-  primeNetteHT2: number;
-  accessoires: number;
-  taxes: number;
-  primeTTC: number;
+  dateNaissance?: string | null;
+  montant: number;
+  classe: Classe;
+  cnpsDeclare: boolean;
   signature?: string | null;
 }
 
@@ -627,41 +622,36 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
-const TYPE_COUVERTURE_LABELS: Record<ContratRelaxAccidentsGenerale["typeCouverture"], string> = {
-  vie_privee: "Vie privée uniquement",
-  vie_professionnelle: "Vie professionnelle uniquement",
-  vie_privee_professionnelle: "Vie privée & Vie professionnelle",
-};
-
 export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale): Promise<string> {
+  const g = garantiesRelaxAccidentsGenerale(c.classe);
+  const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
-  <div class="sub">Assurance Accidents (police collective) · Distribué via ${val(c.partenaire)}</div>
+  <div class="sub">Assurance Accidents · Distribué via ${val(c.partenaire)}</div>
 
   <h2>Conditions Particulières</h2>
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td><td class="k">Bénéficiaire</td><td>Les Assurés</td></tr>
+    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
   </table>
 
   <table>
-    <tr><td class="k">Souscripteur / Raison sociale</td><td>${val(c.raisonSociale)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
-    <tr><td class="k">Type d'activité / Profession</td><td>${val(c.profession)}</td><td class="k">Classe de risque</td><td>Classe ${val(c.classe)}</td></tr>
-    <tr><td class="k">Type de couverture</td><td>${val(TYPE_COUVERTURE_LABELS[c.typeCouverture])}</td><td class="k">Effectif assuré</td><td>${val(c.effectif)} personne(s)</td></tr>
+    <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Classe de risque</td><td>Classe ${val(c.classe)}</td></tr>
+    <tr><td class="k">Statut CNPS</td><td colspan="3">${c.cnpsDeclare ? "Travailleur déclaré CNPS ou autre" : "Travailleur non déclaré CNPS ou autre"}</td></tr>
   </table>
 
-  <h2>Garanties souscrites (par personne assurée)</h2>
+  <h2>Garanties</h2>
   <table>
-    <tr><td class="k">Garantie</td><td class="k">Montant</td><td class="k">Prime</td></tr>
-    ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
-  </table>
-
-  <table>
-    <tr><td class="k">Prime nette HT (avant réduction)</td><td>${fcfa(c.primeNetteHT1)}</td><td class="k">Réduction com. effectif</td><td>${(c.reductionPct * 100).toLocaleString("fr-FR")} %</td></tr>
-    <tr><td class="k">Prime nette HT (après réduction)</td><td>${fcfa(c.primeNetteHT2)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
-    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+    ${
+      c.cnpsDeclare
+        ? ""
+        : `<tr><td class="k">Indemnité journalière</td><td colspan="3">${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de carence)</td></tr>`
+    }
+    <tr><td class="k">Frais médicaux et pharmaceutiques</td><td>${fcfa(g.fraisMedicaux)}</td><td class="k">Invalidité Permanente Partielle/Totale</td><td>${fcfa(g.invaliditePermanenteTotale)}</td></tr>
+    <tr><td class="k">Décès non accidentel</td><td>${fcfa(g.decesNonAccidentel)}</td><td class="k">Décès Accidentel</td><td>${fcfa(g.decesAccidentel)}</td></tr>
   </table>
 
   <div class="note">
@@ -669,7 +659,8 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
     les Conditions Générales police RELAXACCIDENTS (MFB/DGTCP/DA/N° 01507 du 19 JUIN 2025) et les présentes Conditions Particulières.
     <br/><br/>
     <b>En cas de sinistre :</b> le déclarer à SIM ASSURANCES (e-mail info@simassurances.com, 08 BP M4141 ABIDJAN 08,
-    ou tél/WhatsApp 07 99 44 57 57), muni de la CNI de l'assuré concerné, des ordonnances et factures médicales et du numéro Wave.
+    ou tél/WhatsApp 07 99 44 57 57), muni de la CNI, des ordonnances et factures médicales et du numéro Wave.
+    Le paiement intervient sous 10 jours maximum après réception des pièces.
     Le souscripteur reconnaît avoir pris connaissance des Conditions Générales RELAXACCIDENTS.
   </div>
   ${RECLAMATION}

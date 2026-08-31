@@ -20,7 +20,7 @@ import { verifyWaveSignature, type RawBodyRequest } from "../security.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
-import { calculerRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
+import { parseFormuleRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
 import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
@@ -53,14 +53,16 @@ const dataUrlImage = z
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
 // refonte Assurances Accidents/Dommages (voir routes /initiate-formule ci-dessous).
-const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage"] as const;
+const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents"] as const;
 function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
 }
 
-// Produits à devis calculé dynamiquement (pas de TarifProduit) — RelaxAccidents
-// générale (police collective), SecurHome+ et SecurPro (Assurances Dommages).
-const PRODUITS_CALCUL_DYNAMIQUE = ["relaxaccidents", "securhome_dommages", "securpro_dommages"] as const;
+// Produits à devis calculé dynamiquement (pas de TarifProduit) — SecurHome+ et
+// SecurPro (Assurances Dommages). RelaxAccidents générale est passée à un
+// tarif fixe (refonte 2026-08-31, voir services/relaxAccidentsGenerale.ts) :
+// elle rejoint désormais PRODUITS_FORMULE ci-dessus.
+const PRODUITS_CALCUL_DYNAMIQUE = ["securhome_dommages", "securpro_dommages"] as const;
 function isProduitCalculDynamique(p: string): p is (typeof PRODUITS_CALCUL_DYNAMIQUE)[number] {
   return (PRODUITS_CALCUL_DYNAMIQUE as readonly string[]).includes(p);
 }
@@ -1042,133 +1044,6 @@ const relaxSchema = z.object({
 });
 
 /**
- * RelaxAccidents générale — police collective à devis calculé dynamiquement
- * (classe de risque, effectif, montants choisis par garantie), pas de
- * TarifProduit. Le montant payé est toujours recalculé ici, jamais confiance
- * dans les totaux envoyés par le client (voir services/relaxAccidentsGenerale.ts).
- * Enregistrée AVANT la route générique `/souscriptions/:produit/initiate`
- * ci-dessous : sinon celle-ci (destinée à RelaxMoto/RelaxAuto) intercepterait
- * en premier tout POST vers ce chemin littéral, Express matchant les routes
- * dans l'ordre d'enregistrement.
- */
-const relaxAccidentsGeneraleSchema = z.object({
-  qrToken: z.string(),
-  raisonSociale: z.string().min(1).max(200),
-  profession: z.string().min(1).max(200),
-  telephone: z.string().min(6),
-  signature: dataUrlImage.optional(),
-  typeCouverture: z.enum(["vie_privee", "vie_professionnelle", "vie_privee_professionnelle"]),
-  effectif: z.number().int().min(1),
-  montantIJ: z.number().finite(),
-  montantFraisMedicaux: z.number().finite(),
-  montantIPT: z.number().finite(),
-  montantDecesAccidentel: z.number().finite(),
-});
-
-publicRouter.post(
-  "/souscriptions/relaxaccidents/initiate",
-  asyncHandler(async (req, res) => {
-    const data = relaxAccidentsGeneraleSchema.parse(req.body);
-
-    const resolu = await resoudreQrCodeGenerique("relaxaccidents", data.qrToken);
-    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
-    const { produit: prod, qr } = resolu;
-
-    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
-      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
-    }
-    if (await souscriptionDejaExistante(prod.id, data.raisonSociale, data.telephone)) {
-      return res.status(409).json({ error: MESSAGE_DOUBLON });
-    }
-
-    let resultat;
-    try {
-      resultat = calculerRelaxAccidentsGenerale({
-        profession: data.profession,
-        typeCouverture: data.typeCouverture,
-        effectif: data.effectif,
-        montantIJ: data.montantIJ,
-        montantFraisMedicaux: data.montantFraisMedicaux,
-        montantIPT: data.montantIPT,
-        montantDecesAccidentel: data.montantDecesAccidentel,
-      });
-    } catch (e) {
-      return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
-    }
-
-    const s = await prisma.souscription.create({
-      data: {
-        produitId: prod.id,
-        partenaireId: qr.partenaireId,
-        agentDistributionId: qr.agentDistributionId,
-        nom: data.raisonSociale,
-        telephone: data.telephone,
-        montantPrime: resultat.primeTTC,
-        capitalGaranti: data.montantDecesAccidentel,
-        waveStatut: "en_attente",
-        nombreEcheances: 1,
-        donneesSpecifiques: {
-          signature: data.signature ?? null,
-          raisonSociale: data.raisonSociale,
-          profession: data.profession,
-          classe: resultat.classe,
-          typeCouverture: data.typeCouverture,
-          effectif: data.effectif,
-          montantIJ: data.montantIJ,
-          montantFraisMedicaux: data.montantFraisMedicaux,
-          montantIPT: data.montantIPT,
-          montantDecesAccidentel: data.montantDecesAccidentel,
-        },
-        resultat: JSON.parse(JSON.stringify(resultat)),
-        paiements: {
-          create: { numeroEcheance: 1, montant: resultat.primeTTC, dateEcheance: new Date() },
-        },
-      },
-    });
-
-    const echeance = await prisma.paiement.findUniqueOrThrow({
-      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
-    });
-
-    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
-    const successUrl = `${appUrl}/s/relaxaccidents/${data.qrToken}?paid=${echeance.id}`;
-    const errorUrl = `${appUrl}/s/relaxaccidents/${data.qrToken}?paiement=echec`;
-
-    let checkoutUrl: string;
-    let transactionId: string;
-
-    if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
-      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
-      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
-      checkoutUrl = successUrl;
-    } else {
-      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
-      transactionId = wave.transactionId;
-      checkoutUrl = wave.checkoutUrl;
-      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
-    }
-
-    await notifyPartenaire(
-      qr.partenaireId,
-      "souscription",
-      `Nouvelle souscription ${prod.libelle}`,
-      `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA, ${data.effectif} pers.) via votre QR code.`,
-      "/partenaire/souscriptions"
-    );
-
-    res.status(201).json({
-      souscriptionId: s.id,
-      echeanceId: echeance.id,
-      montant: resultat.primeTTC,
-      resultat,
-      checkoutUrl,
-      transactionId,
-    });
-  })
-);
-
-/**
  * SecurPro (Assurances Dommages) — réutilise TEL QUEL le moteur de calcul déjà
  * implémenté côté IMF (calculerSecurpro/BaremeSecurpro), vérifié conforme au
  * document TARIF SECURHOME+_SECURPRO.docx. Seul le canal de distribution
@@ -1696,6 +1571,16 @@ publicRouter.post(
     });
     if (!tarif) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
 
+    // RelaxAccidents générale : la formule (ex. "3_declare") encode à la fois
+    // la classe de risque et le statut CNPS — dérivés ici depuis la formule
+    // TROUVÉE en base (jamais depuis un champ envoyé par le client), pour
+    // affichage sur le contrat (voir garantiesRelaxAccidentsGenerale).
+    let relaxAccidentsGenerale: { classe: number; cnpsDeclare: boolean } | null = null;
+    if (code === "relaxaccidents") {
+      relaxAccidentsGenerale = parseFormuleRelaxAccidentsGenerale(tarif.libelleVariante ?? "");
+      if (!relaxAccidentsGenerale) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
+    }
+
     // Le total payé recalculé ici, jamais confié au client : prime de la
     // formule + prime de l'option Décès si choisie.
     const optionDeces = data.optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces] : null;
@@ -1726,6 +1611,12 @@ publicRouter.post(
                 numeroTicket: data.numeroTicket,
                 dateDepart: data.dateDepart,
                 numeroPersonneContact: data.numeroPersonneContact,
+              }
+            : relaxAccidentsGenerale
+            ? {
+                signature: data.signature ?? null,
+                classe: relaxAccidentsGenerale.classe,
+                cnpsDeclare: relaxAccidentsGenerale.cnpsDeclare,
               }
             : data.signature || optionDeces
             ? {
@@ -1870,11 +1761,8 @@ publicRouter.get(
       numeroTicket?: string;
       dateDepart?: string;
       numeroPersonneContact?: string;
-      raisonSociale?: string;
-      profession?: string;
       classe?: number;
-      typeCouverture?: string;
-      effectif?: number;
+      cnpsDeclare?: boolean;
       nom?: string;
       prenom?: string;
       nomCommercial?: string | null;
@@ -1929,11 +1817,8 @@ publicRouter.get(
       numeroPersonneContact: donneesSpecifiques?.numeroPersonneContact ?? null,
       fraisSante,
       bagages,
-      raisonSociale: donneesSpecifiques?.raisonSociale ?? null,
-      profession: donneesSpecifiques?.profession ?? null,
       classe: donneesSpecifiques?.classe ?? null,
-      typeCouverture: donneesSpecifiques?.typeCouverture ?? null,
-      effectif: donneesSpecifiques?.effectif ?? null,
+      cnpsDeclare: donneesSpecifiques?.cnpsDeclare ?? null,
       // SecurHome+/SecurPro (Assurances Dommages)
       nomCommercial: donneesSpecifiques?.nomCommercial ?? null,
       ville: donneesSpecifiques?.ville ?? null,

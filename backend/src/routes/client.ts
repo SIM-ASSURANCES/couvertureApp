@@ -133,6 +133,13 @@ clientRouter.get(
             ?.optionDeces ?? null)
         : null;
 
+    // RelaxAccidents générale : classe de risque + statut CNPS, dont
+    // dépendent les garanties affichées (voir garantiesRelaxAccidentsGenerale).
+    const relaxAccidentsGenerale =
+      s.produit.code === "relaxaccidents"
+        ? (s.donneesSpecifiques as { classe?: number; cnpsDeclare?: boolean } | null)
+        : null;
+
     res.json({
       id: s.id,
       nom: s.nom,
@@ -153,6 +160,8 @@ clientRouter.get(
       fraisSante,
       bagages,
       optionDeces,
+      classe: relaxAccidentsGenerale?.classe ?? null,
+      cnpsDeclare: relaxAccidentsGenerale?.cnpsDeclare ?? null,
     });
   })
 );
@@ -273,11 +282,8 @@ clientRouter.get(
       fraisSante: d.fraisSante,
       bagages: d.bagages,
       optionDeces: d.optionDeces,
-      raisonSociale: d.raisonSociale,
-      profession: d.profession,
       classe: d.classe,
-      typeCouverture: d.typeCouverture,
-      effectif: d.effectif,
+      cnpsDeclare: d.cnpsDeclare,
       nomCommercial: d.nomCommercial,
       ville: d.ville,
       communeQuartier: d.communeQuartier,
