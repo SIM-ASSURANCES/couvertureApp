@@ -58,7 +58,7 @@ const TAGLINES_PRODUITS: Record<string, string> = {
     "Chauffeurs de VTC, cargo, Gbaka, taxis, camions, faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents: "Faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents_fraismedicaux: "Travailleurs de tous secteurs, faites-vous soigner sans stress en cas d'accident.",
-  relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident et garantissez vos proches en cas de décès.",
+  relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident.",
   securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
   securpro_dommages:
     "Entrepreneur, commerçant, protégez votre local contre l'incendie, les vols et bien d'autres dommages.",
