@@ -199,6 +199,11 @@ interface TarifFormule {
   libelleVariante: string | null;
   prime: number;
   capitalGaranti: number;
+  // RelaxAccidents générale uniquement — détail de la prime (Prime HT,
+  // Accessoires, Taxes), affiché pendant la souscription.
+  primeHT?: number | null;
+  fg?: number | null;
+  taxes?: number | null;
   // RelaxVoyage uniquement — { fraisSante?: number; bagages?: string }.
   donneesSpecifiques?: { fraisSante?: number; bagages?: string } | null;
 }
@@ -486,16 +491,30 @@ function RelaxAccidentsGeneraleForm({
           borderRadius: 12,
           padding: "14px 16px",
           margin: "0 0 18px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
         }}
       >
-        <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Détail de la prime</div>
         {tarif ? (
-          <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Prime HT</span>
+              <span>{tarif.primeHT != null ? fcfa(tarif.primeHT) : "—"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Accessoires</span>
+              <span>{tarif.fg != null ? fcfa(tarif.fg) : "—"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
+              <span>Taxes</span>
+              <span>{tarif.taxes != null ? fcfa(tarif.taxes) : "—"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
+              <span>PRIME TTC</span>
+              <span>{fcfa(tarif.prime)}</span>
+            </div>
+          </>
         ) : (
-          <span style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS</span>
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS pour voir le détail de la prime.</div>
         )}
       </div>
 
@@ -2365,7 +2384,7 @@ export default function Souscription() {
                   : isAccidentLike(qrInfo.produit)
                   ? "RelaxAccidents Frais Médicaux"
                   : qrInfo.produit === "relaxaccidents"
-                  ? "RelaxAccidents (entreprise)"
+                  ? "RelaxAccidents"
                   : qrInfo.produit === "relaxvoyage"
                   ? "RelaxVoyage"
                   : qrInfo.produit === "securpro_dommages"
