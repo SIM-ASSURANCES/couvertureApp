@@ -4,17 +4,29 @@
 // autres produits Accidents (RelaxMoto, RelaxAuto, RelaxAccidents Frais
 // Médicaux, RelaxVoyage). Le prospect choisit :
 //   1. son activité (4 choix, chacun rattaché à une classe de risque 1 à 4) ;
-//   2. s'il est déclaré CNPS ou non (retire/ajoute l'Indemnité Journalière).
-// Ces deux choix déterminent une formule fixe (TarifProduit.libelleVariante,
-// voir formuleRelaxAccidentsGenerale ci-dessous) — 8 formules au total,
+//   2. s'il est déclaré CNPS ou non (retire/ajoute l'Indemnité Journalière) ;
+//   3. (2026-09-01) la périodicité de la prime — annuelle ou mensuelle,
+//      chacune à son propre tarif (la mensuelle n'est jamais l'annuelle
+//      divisée par 12, ce sont deux barèmes indépendants — même principe que
+//      RelaxMoto/RelaxAuto).
+// Ces trois choix déterminent une formule fixe (TarifProduit.libelleVariante,
+// voir formuleRelaxAccidentsGenerale ci-dessous) — 16 formules au total,
 // éditables depuis l'admin (page Tarifs, comme RelaxMoto/RelaxVoyage). Les
 // garanties elles-mêmes (hors prix) ne dépendent que du GROUPE de classe
-// (1-2 ou 3-4), pas de la classe précise — voir garantiesRelaxAccidentsGenerale.
+// (1-2 ou 3-4), pas de la classe précise ni de la périodicité — voir
+// garantiesRelaxAccidentsGenerale.
+//
+// Contrairement à RelaxMoto/RelaxAuto, ce n'est PAS un abonnement : une seule
+// échéance payée à la souscription (comme les autres produits à formule),
+// couvrant 1 mois ou 1 an selon la périodicité choisie ; le renouvellement se
+// fait ensuite via la relance admin, comme RelaxAccidents Frais Médicaux
+// (voir services/paiementWave.ts::dureeFormuleMois).
 //
 // Miroir exact de frontend/src/relaxAccidentsGenerale.ts (aperçu pendant la
 // souscription) — à garder synchronisé si ces montants changent.
 
 export type Classe = 1 | 2 | 3 | 4;
+export type CycleRelaxAccidentsGenerale = "annuel" | "mensuel";
 
 export interface ActiviteRelaxAccidentsGenerale {
   classe: Classe;
@@ -76,14 +88,20 @@ export function garantiesRelaxAccidentsGenerale(classe: Classe): GarantiesRelaxA
   return GARANTIES_PAR_GROUPE[groupeClasseRelaxAccidentsGenerale(classe)];
 }
 
-/** Identifiant de formule (TarifProduit.libelleVariante) pour une classe et un statut CNPS donnés. */
-export function formuleRelaxAccidentsGenerale(classe: Classe, cnpsDeclare: boolean): string {
-  return `${classe}_${cnpsDeclare ? "declare" : "non_declare"}`;
+/** Identifiant de formule (TarifProduit.libelleVariante) pour une classe, un statut CNPS et une périodicité donnés. */
+export function formuleRelaxAccidentsGenerale(
+  classe: Classe,
+  cnpsDeclare: boolean,
+  cycle: CycleRelaxAccidentsGenerale
+): string {
+  return `${classe}_${cnpsDeclare ? "declare" : "non_declare"}_${cycle}`;
 }
 
 /** Inverse de formuleRelaxAccidentsGenerale — `null` si la chaîne ne correspond à aucune formule valide. */
-export function parseFormuleRelaxAccidentsGenerale(formule: string): { classe: Classe; cnpsDeclare: boolean } | null {
-  const m = /^([1-4])_(declare|non_declare)$/.exec(formule);
+export function parseFormuleRelaxAccidentsGenerale(
+  formule: string
+): { classe: Classe; cnpsDeclare: boolean; cycle: CycleRelaxAccidentsGenerale } | null {
+  const m = /^([1-4])_(declare|non_declare)_(annuel|mensuel)$/.exec(formule);
   if (!m) return null;
-  return { classe: Number(m[1]) as Classe, cnpsDeclare: m[2] === "declare" };
+  return { classe: Number(m[1]) as Classe, cnpsDeclare: m[2] === "declare", cycle: m[3] as CycleRelaxAccidentsGenerale };
 }

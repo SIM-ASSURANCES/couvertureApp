@@ -102,6 +102,7 @@ export interface ContratRelaxAccidentsGenerale {
   taxes?: number | null;
   classe: 1 | 2 | 3 | 4;
   cnpsDeclare: boolean;
+  cycle?: "annuel" | "mensuel" | null;
   signature?: string | null;
 }
 
@@ -315,6 +316,7 @@ export interface DonneesContrat {
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
   classe?: number | null;
   cnpsDeclare?: boolean | null;
+  cycle?: "annuel" | "mensuel" | null;
   // RelaxAccidents générale uniquement — détail de la prime affiché sur le contrat PDF.
   primeHT?: number | null;
   fg?: number | null;
@@ -451,6 +453,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       taxes: c.taxes ?? null,
       classe: (c.classe ?? 1) as 1 | 2 | 3 | 4,
       cnpsDeclare: c.cnpsDeclare ?? false,
+      cycle: c.cycle ?? null,
       signature: c.signature ?? null,
     });
     return;

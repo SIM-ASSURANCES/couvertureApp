@@ -18,6 +18,24 @@ function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel", nombrePeriode
 }
 
 /**
+ * Durée de couverture (en mois) d'un produit à formule unique (pas
+ * d'abonnement, `cycleFacturation` reste null) — 3 mois par défaut. Pour
+ * RelaxAccidents générale, le souscripteur choisit une périodicité
+ * annuelle/mensuelle à la souscription (stockée dans
+ * `donneesSpecifiques.cycle`, voir routes/public.ts), qui fixe la durée du
+ * contrat ET celle de chaque renouvellement (le cycle initial ne change
+ * jamais, comme pour un abonnement RelaxMoto/Auto).
+ */
+function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): number {
+  if (produitCode === "relaxaccidents") {
+    const cycle = (donneesSpecifiques as { cycle?: string } | null)?.cycle;
+    if (cycle === "mensuel") return 1;
+    if (cycle === "annuel") return 12;
+  }
+  return 3;
+}
+
+/**
  * Confirme le paiement d'une échéance. Deux cas selon le produit (distingués
  * par `cycleFacturation`, renseigné uniquement pour un abonnement) :
  * - Abonnement (RelaxMoto/RelaxAuto) : 1ère échéance → police, couverture pour
@@ -43,7 +61,10 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
   });
 
   if (p.estRenouvellement) {
-    const s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId } });
+    const s = await prisma.souscription.findUnique({
+      where: { id: p.souscriptionId },
+      include: { produit: { select: { code: true } } },
+    });
     if (!s) return;
     const base = s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
     const dateFin =
@@ -53,7 +74,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
           avancerDateCycle(base, s.cycleFacturation, s.nombrePeriodes)
         : (() => {
             const d = new Date(base);
-            d.setMonth(d.getMonth() + 3);
+            d.setMonth(d.getMonth() + dureeFormuleMois(s.produit.code, s.donneesSpecifiques));
             return d;
           })();
     await prisma.souscription.update({
@@ -102,7 +123,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
       if (s.produit.code === "relaxvoyage") {
         dateFin.setHours(dateFin.getHours() + 24);
       } else {
-        dateFin.setMonth(dateFin.getMonth() + 3);
+        dateFin.setMonth(dateFin.getMonth() + dureeFormuleMois(s.produit.code, s.donneesSpecifiques));
       }
       const numeroPolice = newNumeroPolice();
 

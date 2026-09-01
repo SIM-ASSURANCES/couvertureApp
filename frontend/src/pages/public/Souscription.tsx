@@ -379,6 +379,8 @@ function RelaxAccidentsGeneraleForm({
   setClasse,
   cnpsDeclare,
   setCnpsDeclare,
+  cycle,
+  setCycle,
   typePiece,
   setTypePiece,
   piecePhoto,
@@ -402,6 +404,8 @@ function RelaxAccidentsGeneraleForm({
   setClasse: (v: Classe | "") => void;
   cnpsDeclare: boolean | null;
   setCnpsDeclare: (v: boolean) => void;
+  cycle: "annuel" | "mensuel";
+  setCycle: (v: "annuel" | "mensuel") => void;
   typePiece: "CNI" | "Passeport";
   setTypePiece: (v: "CNI" | "Passeport") => void;
   piecePhoto: string | null;
@@ -413,7 +417,7 @@ function RelaxAccidentsGeneraleForm({
 }) {
   const garanties = classe ? garantiesRelaxAccidentsGenerale(classe) : null;
   const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
-  const formule = classe && cnpsDeclare !== null ? formuleRelaxAccidentsGenerale(classe, cnpsDeclare) : null;
+  const formule = classe && cnpsDeclare !== null ? formuleRelaxAccidentsGenerale(classe, cnpsDeclare, cycle) : null;
   const tarif = formule ? tarifsFormule.find((t) => t.libelleVariante === formule) ?? null : null;
 
   return (
@@ -444,6 +448,18 @@ function RelaxAccidentsGeneraleForm({
             </option>
           ))}
         </select>
+      </FieldRow>
+      <FieldRow label="Périodicité de la prime *">
+        <div style={{ display: "flex", gap: 20 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={cycle === "annuel"} onChange={() => setCycle("annuel")} />
+            Annuelle
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={cycle === "mensuel"} onChange={() => setCycle("mensuel")} />
+            Mensuelle
+          </label>
+        </div>
       </FieldRow>
       <FieldRow label="Êtes-vous Travailleur déclaré CNPS ou autre ? *">
         <div style={{ display: "flex", gap: 20 }}>
@@ -1323,6 +1339,7 @@ export default function Souscription() {
     bagages?: string | null;
     classe?: number | null;
     cnpsDeclare?: boolean | null;
+    cycle?: "annuel" | "mensuel" | null;
     primeHT?: number | null;
     fg?: number | null;
     taxes?: number | null;
@@ -1438,6 +1455,7 @@ export default function Souscription() {
             bagages: data.bagages ?? null,
             classe: data.classe ?? null,
             cnpsDeclare: data.cnpsDeclare ?? null,
+            cycle: data.cycle ?? null,
             primeHT: data.primeHT ?? null,
             fg: data.fg ?? null,
             taxes: data.taxes ?? null,
@@ -1659,11 +1677,12 @@ export default function Souscription() {
       setTarifsFormule(formulesTriees);
       if (formulesTriees.length > 0) setSelectedFormule(formulesTriees[0].libelleVariante);
     } else if (isRelaxAccidentsGenerale(produit)) {
-      // Pas de présélection : la formule (classe × statut CNPS) est dérivée
-      // des deux sélecteurs du formulaire, pas d'une liste de prix à choisir
-      // directement (voir RelaxAccidentsGeneraleForm).
+      // Pas de présélection : la formule (classe × statut CNPS × périodicité)
+      // est dérivée des trois sélecteurs du formulaire, pas d'une liste de
+      // prix à choisir directement (voir RelaxAccidentsGeneraleForm).
       const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/relaxaccidents`).then((r) => r.json());
       setTarifsFormule(formules);
+      setCycle("annuel");
     } else if (isRelax(produit)) {
       const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       setTarifsRelax(tarifs);
@@ -1747,7 +1766,7 @@ export default function Souscription() {
       if (isRelax(p)) return primeRelaxUnitaire != null ? primeRelaxUnitaire * nombrePeriodes : null;
       if (isRelaxAccidentsGenerale(p)) {
         if (!classeRelaxAccidents || cnpsDeclare === null) return null;
-        const formule = formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare);
+        const formule = formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare, cycle);
         return tarifsFormule.find((t) => t.libelleVariante === formule)?.prime ?? null;
       }
       if (isSecurproDommages(p)) {
@@ -1822,6 +1841,7 @@ export default function Souscription() {
       l.push({ label: "Sexe", valeur: sexeLabel });
       l.push({ label: "Pièce d'identité", valeur: typePieceRa === "CNI" ? "CNI" : "Passeport" });
       l.push({ label: "Activité", valeur: classeRelaxAccidents ? ACTIVITES_RELAXACCIDENTS_GENERALE.find((a) => a.classe === classeRelaxAccidents)?.libelle ?? "—" : "—" });
+      l.push({ label: "Périodicité de la prime", valeur: cycle === "annuel" ? "Annuelle" : "Mensuelle" });
       l.push({ label: "Travailleur déclaré CNPS ou autre", valeur: cnpsDeclare === null ? "—" : oui(cnpsDeclare) });
       return l;
     }
@@ -1918,7 +1938,7 @@ export default function Souscription() {
             telephone,
             dateNaissance,
             sexe: sexe || undefined,
-            formule: formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare),
+            formule: formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare, cycle),
             signature,
           }),
         });
@@ -2217,6 +2237,7 @@ export default function Souscription() {
         taxes: result.taxes ?? null,
         classe: result.classe as 1 | 2 | 3 | 4,
         cnpsDeclare: result.cnpsDeclare,
+        cycle: result.cycle ?? null,
         signature: result.signature ?? null,
       });
       return;
@@ -3011,6 +3032,8 @@ export default function Souscription() {
                   setClasse={setClasseRelaxAccidents}
                   cnpsDeclare={cnpsDeclare}
                   setCnpsDeclare={setCnpsDeclare}
+                  cycle={cycle}
+                  setCycle={setCycle}
                   typePiece={typePieceRa}
                   setTypePiece={setTypePieceRa}
                   piecePhoto={piecePhotoRa}

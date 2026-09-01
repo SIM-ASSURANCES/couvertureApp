@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { formuleRelaxAccidentsGenerale, type Classe } from "./services/relaxAccidentsGenerale.js";
+import { formuleRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./services/relaxAccidentsGenerale.js";
 
 const prisma = new PrismaClient();
 
@@ -405,47 +405,79 @@ async function seedCatalogueAssurancesAccidentsDommages() {
       actif: true,
     },
   });
-  // Tableau de primes fourni par l'utilisateur (2026-08-31) — capitalGaranti
-  // = Décès Accidentel = Invalidité Permanente Totale (identiques, voir
+  // Tableaux de primes fournis par l'utilisateur (annuel 2026-08-31, mensuel
+  // 2026-09-01 — la mensuelle n'est PAS l'annuelle divisée par 12, c'est un
+  // barème indépendant, comme RelaxMoto/RelaxAuto). capitalGaranti = Décès
+  // Accidentel = Invalidité Permanente Totale (identiques, voir
   // garantiesRelaxAccidentsGenerale), 1 000 000 pour les classes 1-2, 500 000
-  // pour les classes 3-4.
-  const PRIX_RELAXACCIDENTS_GENERALE: Record<
-    "non_declare" | "declare",
-    Record<Classe, { ttc: number; taxes: number; accessoiresHT: number; primeHT: number }>
-  > = {
-    non_declare: {
-      1: { ttc: 16_500, taxes: 1_115, accessoiresHT: 2_500, primeHT: 12_885 },
-      2: { ttc: 19_000, taxes: 1_284, accessoiresHT: 2_500, primeHT: 15_216 },
-      3: { ttc: 25_000, taxes: 1_690, accessoiresHT: 2_500, primeHT: 20_810 },
-      4: { ttc: 28_500, taxes: 1_927, accessoiresHT: 2_500, primeHT: 24_073 },
+  // pour les classes 3-4 — inchangé quelle que soit la périodicité.
+  type PrixParClasse = Record<Classe, { ttc: number; taxes: number; accessoiresHT: number; primeHT: number }>;
+  const PRIX_RELAXACCIDENTS_GENERALE: Record<CycleRelaxAccidentsGenerale, Record<"non_declare" | "declare", PrixParClasse>> = {
+    annuel: {
+      non_declare: {
+        1: { ttc: 16_500, taxes: 1_115, accessoiresHT: 2_500, primeHT: 12_885 },
+        2: { ttc: 19_000, taxes: 1_284, accessoiresHT: 2_500, primeHT: 15_216 },
+        3: { ttc: 25_000, taxes: 1_690, accessoiresHT: 2_500, primeHT: 20_810 },
+        4: { ttc: 28_500, taxes: 1_927, accessoiresHT: 2_500, primeHT: 24_073 },
+      },
+      declare: {
+        1: { ttc: 14_000, taxes: 946, accessoiresHT: 2_500, primeHT: 10_554 },
+        2: { ttc: 14_500, taxes: 980, accessoiresHT: 2_500, primeHT: 11_020 },
+        3: { ttc: 15_000, taxes: 1_014, accessoiresHT: 2_500, primeHT: 11_486 },
+        4: { ttc: 17_500, taxes: 1_183, accessoiresHT: 2_500, primeHT: 13_817 },
+      },
     },
-    declare: {
-      1: { ttc: 14_000, taxes: 946, accessoiresHT: 2_500, primeHT: 10_554 },
-      2: { ttc: 14_500, taxes: 980, accessoiresHT: 2_500, primeHT: 11_020 },
-      3: { ttc: 15_000, taxes: 1_014, accessoiresHT: 2_500, primeHT: 11_486 },
-      4: { ttc: 17_500, taxes: 1_183, accessoiresHT: 2_500, primeHT: 13_817 },
+    // Libellés confirmés avec l'utilisateur : ses deux tableaux mensuels
+    // étaient fournis avec les statuts CNPS inversés par rapport à l'annuel
+    // (le tableau "déclaré" correspondait exactement à l'annuel "non déclaré"
+    // ÷ 10, et vice versa) — corrigés ici pour rester cohérents (déclaré
+    // moins cher que non déclaré, comme en annuel).
+    mensuel: {
+      declare: {
+        1: { ttc: 1_400, taxes: 95, accessoiresHT: 250, primeHT: 1_055 },
+        2: { ttc: 1_450, taxes: 98, accessoiresHT: 250, primeHT: 1_102 },
+        3: { ttc: 1_500, taxes: 101, accessoiresHT: 250, primeHT: 1_149 },
+        4: { ttc: 1_750, taxes: 118, accessoiresHT: 250, primeHT: 1_382 },
+      },
+      non_declare: {
+        1: { ttc: 1_650, taxes: 112, accessoiresHT: 250, primeHT: 1_288 },
+        2: { ttc: 1_900, taxes: 128, accessoiresHT: 250, primeHT: 1_522 },
+        3: { ttc: 2_500, taxes: 169, accessoiresHT: 250, primeHT: 2_081 },
+        4: { ttc: 2_850, taxes: 193, accessoiresHT: 250, primeHT: 2_407 },
+      },
     },
   };
-  for (const cnpsDeclare of [false, true]) {
-    for (const classe of [1, 2, 3, 4] as const) {
-      const prix = PRIX_RELAXACCIDENTS_GENERALE[cnpsDeclare ? "declare" : "non_declare"][classe];
-      const libelleVariante = formuleRelaxAccidentsGenerale(classe, cnpsDeclare);
-      await prisma.tarifProduit.upsert({
-        where: { produitId_libelleVariante: { produitId: relaxAccidentsGenerale.id, libelleVariante } },
-        update: {},
-        create: {
-          produitId: relaxAccidentsGenerale.id,
-          libelleVariante,
-          prime: prix.ttc,
-          primeHT: prix.primeHT,
-          taxes: prix.taxes,
-          fg: prix.accessoiresHT,
-          capitalGaranti: classe <= 2 ? 1_000_000 : 500_000,
-          commission: 0,
-        },
-      });
+  const libellesValides = new Set<string>();
+  for (const cycle of ["annuel", "mensuel"] as const) {
+    for (const cnpsDeclare of [false, true]) {
+      for (const classe of [1, 2, 3, 4] as const) {
+        const prix = PRIX_RELAXACCIDENTS_GENERALE[cycle][cnpsDeclare ? "declare" : "non_declare"][classe];
+        const libelleVariante = formuleRelaxAccidentsGenerale(classe, cnpsDeclare, cycle);
+        libellesValides.add(libelleVariante);
+        await prisma.tarifProduit.upsert({
+          where: { produitId_libelleVariante: { produitId: relaxAccidentsGenerale.id, libelleVariante } },
+          update: {},
+          create: {
+            produitId: relaxAccidentsGenerale.id,
+            libelleVariante,
+            prime: prix.ttc,
+            primeHT: prix.primeHT,
+            taxes: prix.taxes,
+            fg: prix.accessoiresHT,
+            capitalGaranti: classe <= 2 ? 1_000_000 : 500_000,
+            commission: 0,
+          },
+        });
+      }
     }
   }
+  // Nettoie les anciennes formules "classe_statut" (sans périodicité, avant
+  // l'introduction du choix annuel/mensuel) — remplacées par les 16 lignes
+  // ci-dessus, jamais référencées ailleurs (Souscription fige son propre
+  // montantPrime/capitalGaranti, indépendamment de cette table).
+  await prisma.tarifProduit.deleteMany({
+    where: { produitId: relaxAccidentsGenerale.id, libelleVariante: { notIn: [...libellesValides] } },
+  });
 
   // SecurHome+ et SecurPro (Assurances Dommages) — mécanisme de prime livré
   // (services/securhomeDommages.ts, et routes/public.ts qui réutilise

@@ -40,6 +40,10 @@ interface Moi {
   // dont dépendent les garanties affichées.
   classe?: number | null;
   cnpsDeclare?: boolean | null;
+  // Périodicité choisie à la souscription (annuel/mensuel) — distincte de
+  // `cycleFacturation` ci-dessus, qui reste toujours null pour ce produit
+  // (pas un abonnement reconductible comme RelaxMoto/Auto).
+  periodicite?: "annuel" | "mensuel" | null;
 }
 
 interface ProduitDisponible {
@@ -315,7 +319,7 @@ export default function ClientDashboard() {
               )}
               {!moi.cycleFacturation && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
-                  <span>Prime</span>
+                  <span>{moi.periodicite ? "Prime " + (moi.periodicite === "annuel" ? "annuelle" : "mensuelle") : "Prime"}</span>
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.montantPrime)}</strong>
                 </div>
               )}

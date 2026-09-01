@@ -111,6 +111,7 @@ export interface ContratRelaxAccidentsGenerale {
   taxes?: number | null;
   classe: Classe;
   cnpsDeclare: boolean;
+  cycle?: "annuel" | "mensuel" | null;
   signature?: string | null;
 }
 
@@ -628,6 +629,7 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
 export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale): Promise<string> {
   const g = garantiesRelaxAccidentsGenerale(c.classe);
   const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
+  const periodicite = c.cycle === "mensuel" ? "mensuelle" : c.cycle === "annuel" ? "annuelle" : null;
   const cp = `
   ${header(c.numeroPolice)}
   <h1>Bulletin de souscription — RELAXACCIDENTS</h1>
@@ -637,7 +639,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+    <tr><td class="k">Prime TTC${periodicite ? ` ${periodicite}` : ""}</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
   </table>
 
   <table>

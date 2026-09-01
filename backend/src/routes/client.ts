@@ -137,7 +137,7 @@ clientRouter.get(
     // dépendent les garanties affichées (voir garantiesRelaxAccidentsGenerale).
     const relaxAccidentsGenerale =
       s.produit.code === "relaxaccidents"
-        ? (s.donneesSpecifiques as { classe?: number; cnpsDeclare?: boolean } | null)
+        ? (s.donneesSpecifiques as { classe?: number; cnpsDeclare?: boolean; cycle?: "annuel" | "mensuel" } | null)
         : null;
 
     res.json({
@@ -162,6 +162,12 @@ clientRouter.get(
       optionDeces,
       classe: relaxAccidentsGenerale?.classe ?? null,
       cnpsDeclare: relaxAccidentsGenerale?.cnpsDeclare ?? null,
+      // RelaxAccidents générale uniquement — périodicité choisie à la
+      // souscription (annuel/mensuel). Distinct de `cycleFacturation`
+      // ci-dessus, qui reste toujours null ici : ce produit n'est PAS un
+      // abonnement reconductible (RelaxMoto/Auto), juste une formule à
+      // paiement unique dont la durée dépend de cette périodicité.
+      periodicite: relaxAccidentsGenerale?.cycle ?? null,
     });
   })
 );
@@ -284,6 +290,7 @@ clientRouter.get(
       optionDeces: d.optionDeces,
       classe: d.classe,
       cnpsDeclare: d.cnpsDeclare,
+      cycle: d.cycle,
       primeHT: d.primeHT,
       fg: d.fg,
       taxes: d.taxes,

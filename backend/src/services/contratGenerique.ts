@@ -47,6 +47,7 @@ export interface DonneesContratGenerique {
   optionDeces: OptionDecesFraisMedicaux | null;
   classe: number | null;
   cnpsDeclare: boolean | null;
+  cycle: "annuel" | "mensuel" | null;
   // RelaxAccidents générale uniquement — détail de la prime affiché sur le contrat PDF.
   primeHT: number | null;
   fg: number | null;
@@ -151,6 +152,7 @@ export async function mapperSouscriptionGenerique(
     optionDeces,
     classe: num("classe"),
     cnpsDeclare: bool("cnpsDeclare"),
+    cycle: (d?.cycle as "annuel" | "mensuel" | undefined) ?? null,
     primeHT,
     fg,
     taxes,

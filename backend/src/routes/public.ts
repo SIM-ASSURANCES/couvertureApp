@@ -1571,11 +1571,12 @@ publicRouter.post(
     });
     if (!tarif) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
 
-    // RelaxAccidents générale : la formule (ex. "3_declare") encode à la fois
-    // la classe de risque et le statut CNPS — dérivés ici depuis la formule
-    // TROUVÉE en base (jamais depuis un champ envoyé par le client), pour
-    // affichage sur le contrat (voir garantiesRelaxAccidentsGenerale).
-    let relaxAccidentsGenerale: { classe: number; cnpsDeclare: boolean } | null = null;
+    // RelaxAccidents générale : la formule (ex. "3_declare_annuel") encode la
+    // classe de risque, le statut CNPS et la périodicité — dérivés ici depuis
+    // la formule TROUVÉE en base (jamais depuis un champ envoyé par le
+    // client), pour affichage sur le contrat (voir garantiesRelaxAccidentsGenerale)
+    // et pour la durée de couverture (voir paiementWave.ts::dureeFormuleMois).
+    let relaxAccidentsGenerale: { classe: number; cnpsDeclare: boolean; cycle: "annuel" | "mensuel" } | null = null;
     if (code === "relaxaccidents") {
       relaxAccidentsGenerale = parseFormuleRelaxAccidentsGenerale(tarif.libelleVariante ?? "");
       if (!relaxAccidentsGenerale) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
@@ -1617,6 +1618,7 @@ publicRouter.post(
                 signature: data.signature ?? null,
                 classe: relaxAccidentsGenerale.classe,
                 cnpsDeclare: relaxAccidentsGenerale.cnpsDeclare,
+                cycle: relaxAccidentsGenerale.cycle,
               }
             : data.signature || optionDeces
             ? {
@@ -1765,6 +1767,7 @@ publicRouter.get(
       numeroPersonneContact?: string;
       classe?: number;
       cnpsDeclare?: boolean;
+      cycle?: "annuel" | "mensuel";
       nom?: string;
       prenom?: string;
       nomCommercial?: string | null;
@@ -1834,6 +1837,7 @@ publicRouter.get(
       bagages,
       classe: donneesSpecifiques?.classe ?? null,
       cnpsDeclare: donneesSpecifiques?.cnpsDeclare ?? null,
+      cycle: donneesSpecifiques?.cycle ?? null,
       primeHT,
       fg,
       taxes,

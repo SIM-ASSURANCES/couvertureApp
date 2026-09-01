@@ -164,6 +164,7 @@ const relaxaccidentsGeneraleSchema = z.object({
     taxes: montant.nullish(),
     classe: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
     cnpsDeclare: z.boolean(),
+    cycle: z.enum(["annuel", "mensuel"]).nullish(),
     signature: dataUrlSignature,
   }),
 });

@@ -6,6 +6,7 @@
 // TarifProduit (voir GET /public/tarifs/relaxaccidents).
 
 export type Classe = 1 | 2 | 3 | 4;
+export type CycleRelaxAccidentsGenerale = "annuel" | "mensuel";
 
 export interface ActiviteRelaxAccidentsGenerale {
   classe: Classe;
@@ -62,7 +63,11 @@ export function garantiesRelaxAccidentsGenerale(classe: Classe): GarantiesRelaxA
   return GARANTIES_PAR_GROUPE[groupeClasseRelaxAccidentsGenerale(classe)];
 }
 
-/** Identifiant de formule (TarifProduit.libelleVariante) pour une classe et un statut CNPS donnés. */
-export function formuleRelaxAccidentsGenerale(classe: Classe, cnpsDeclare: boolean): string {
-  return `${classe}_${cnpsDeclare ? "declare" : "non_declare"}`;
+/** Identifiant de formule (TarifProduit.libelleVariante) pour une classe, un statut CNPS et une périodicité donnés. */
+export function formuleRelaxAccidentsGenerale(
+  classe: Classe,
+  cnpsDeclare: boolean,
+  cycle: CycleRelaxAccidentsGenerale
+): string {
+  return `${classe}_${cnpsDeclare ? "declare" : "non_declare"}_${cycle}`;
 }
