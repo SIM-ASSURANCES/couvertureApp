@@ -1685,12 +1685,14 @@ publicRouter.get(
 );
 
 /**
- * RelaxMoto/RelaxAuto : dépôt d'un document d'identité (CNI/Permis) lié à la
- * souscription. `url` est l'emplacement du fichier déjà hébergé côté client
- * (aucun service de stockage de fichiers n'est encore intégré côté backend).
+ * Dépôt d'un document d'identité (CNI/Permis/Passeport) ou d'un selfie lié à
+ * la souscription — RelaxMoto/RelaxAuto/RelaxAccidents Frais Médicaux
+ * (CNI/Permis) et RelaxAccidents générale (CNI/Passeport). `url` est
+ * l'emplacement du fichier déjà hébergé côté client (aucun service de
+ * stockage de fichiers n'est encore intégré côté backend).
  */
 const documentSchema = z.object({
-  type: z.enum(["CNI", "Permis", "Selfie"]),
+  type: z.enum(["CNI", "Permis", "Passeport", "Selfie"]),
   url: dataUrlImage,
 });
 

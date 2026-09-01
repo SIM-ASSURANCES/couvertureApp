@@ -379,6 +379,12 @@ function RelaxAccidentsGeneraleForm({
   setClasse,
   cnpsDeclare,
   setCnpsDeclare,
+  typePiece,
+  setTypePiece,
+  piecePhoto,
+  setPiecePhoto,
+  selfiePhoto,
+  setSelfiePhoto,
   tarifsFormule,
   sigRef,
 }: {
@@ -396,6 +402,12 @@ function RelaxAccidentsGeneraleForm({
   setClasse: (v: Classe | "") => void;
   cnpsDeclare: boolean | null;
   setCnpsDeclare: (v: boolean) => void;
+  typePiece: "CNI" | "Passeport";
+  setTypePiece: (v: "CNI" | "Passeport") => void;
+  piecePhoto: string | null;
+  setPiecePhoto: (v: string | null) => void;
+  selfiePhoto: string | null;
+  setSelfiePhoto: (v: string | null) => void;
   tarifsFormule: TarifFormule[];
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
@@ -419,6 +431,32 @@ function RelaxAccidentsGeneraleForm({
         <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
       </FieldRow>
       <SexeField value={sexe} onChange={setSexe} />
+      <FieldRow label="Pièce d'identité *">
+        <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={typePiece === "CNI"} onChange={() => setTypePiece("CNI")} />
+            CNI
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={typePiece === "Passeport"} onChange={() => setTypePiece("Passeport")} />
+            Passeport
+          </label>
+        </div>
+      </FieldRow>
+      <PhotoCapture
+        label={`Photo de votre ${typePiece === "CNI" ? "CNI" : "passeport"}`}
+        value={piecePhoto}
+        onChange={setPiecePhoto}
+        capture="environment"
+        required
+      />
+      <PhotoCapture
+        label="Selfie (photo de votre visage)"
+        value={selfiePhoto}
+        onChange={setSelfiePhoto}
+        capture="user"
+        required
+      />
       <FieldRow label="Type d'activité *">
         <select
           value={classe}
@@ -1203,6 +1241,11 @@ export default function Souscription() {
   // isAccidentLike/isRelaxVoyage ci-dessus.
   const [classeRelaxAccidents, setClasseRelaxAccidents] = useState<Classe | "">("");
   const [cnpsDeclare, setCnpsDeclare] = useState<boolean | null>(null);
+  // Pièce d'identité (CNI ou Passeport — pas de Permis, contrairement à
+  // RelaxMoto/Auto/Frais Médicaux) + selfie, capturées avant paiement.
+  const [typePieceRa, setTypePieceRa] = useState<"CNI" | "Passeport">("CNI");
+  const [piecePhotoRa, setPiecePhotoRa] = useState<string | null>(null);
+  const [selfiePhotoRa, setSelfiePhotoRa] = useState<string | null>(null);
 
   // Champs SecurPro (Assurances Dommages) — réutilise calculerSecurpro déjà
   // utilisé côté IMF (offline/tarification.ts). `nom`/`prenom`/`telephone`/
@@ -1565,7 +1608,7 @@ export default function Souscription() {
       if (telephoneClient) setTelephoneRx(telephoneClient);
       if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
       if (p.sexe) setSexe(p.sexe);
-      if (p.typePiece) setTypePieceRx(p.typePiece);
+      if (p.typePiece === "CNI" || p.typePiece === "Permis") setTypePieceRx(p.typePiece);
       if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
       if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
       return;
@@ -1577,7 +1620,7 @@ export default function Souscription() {
       if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
       if (p.sexe) setSexe(p.sexe);
       if (isRelaxAccidentsFraisMedicaux(produit)) {
-        if (p.typePiece) setTypePieceRx(p.typePiece);
+        if (p.typePiece === "CNI" || p.typePiece === "Permis") setTypePieceRx(p.typePiece);
         if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
         if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
       }
@@ -1595,6 +1638,9 @@ export default function Souscription() {
       if (telephoneClient) setTelephone(telephoneClient);
       if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
       if (p.sexe) setSexe(p.sexe);
+      if (p.typePiece === "CNI" || p.typePiece === "Passeport") setTypePieceRa(p.typePiece);
+      if (p.pieceIdentiteUrl) setPiecePhotoRa(p.pieceIdentiteUrl);
+      if (p.selfieUrl) setSelfiePhotoRa(p.selfieUrl);
     }
   }
 
@@ -1781,6 +1827,7 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
       l.push({ label: "Sexe", valeur: sexeLabel });
+      l.push({ label: "Pièce d'identité", valeur: typePieceRa === "CNI" ? "CNI" : "Passeport" });
       l.push({ label: "Activité", valeur: classeRelaxAccidents ? ACTIVITES_RELAXACCIDENTS_GENERALE.find((a) => a.classe === classeRelaxAccidents)?.libelle ?? "—" : "—" });
       l.push({ label: "Travailleur déclaré CNPS ou autre", valeur: cnpsDeclare === null ? "—" : oui(cnpsDeclare) });
       return l;
@@ -1884,6 +1931,24 @@ export default function Souscription() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+
+        // Pièce d'identité + selfie déposées AVANT le paiement (comme
+        // RelaxAccidents Frais Médicaux) — best-effort, ne bloque jamais le
+        // paiement si l'envoi échoue.
+        const documentsRa = [
+          piecePhotoRa ? { type: typePieceRa, url: piecePhotoRa } : null,
+          selfiePhotoRa ? { type: "Selfie" as const, url: selfiePhotoRa } : null,
+        ].filter((d): d is { type: "CNI" | "Passeport" | "Selfie"; url: string } => d !== null);
+        await Promise.all(
+          documentsRa.map((doc) =>
+            fetch(`${BASE}/public/souscriptions/relaxaccidents/${data.souscriptionId}/documents`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(doc),
+            }).catch(() => null)
+          )
+        );
+
         setResult({
           checkoutUrl: data.checkoutUrl,
           souscriptionId: data.souscriptionId,
@@ -2950,6 +3015,12 @@ export default function Souscription() {
                   setClasse={setClasseRelaxAccidents}
                   cnpsDeclare={cnpsDeclare}
                   setCnpsDeclare={setCnpsDeclare}
+                  typePiece={typePieceRa}
+                  setTypePiece={setTypePieceRa}
+                  piecePhoto={piecePhotoRa}
+                  setPiecePhoto={setPiecePhotoRa}
+                  selfiePhoto={selfiePhotoRa}
+                  setSelfiePhoto={setSelfiePhotoRa}
                   tarifsFormule={tarifsFormule}
                   sigRef={sigRef}
                 />
@@ -3302,6 +3373,8 @@ export default function Souscription() {
                       phoneInvalid(telephone) ||
                       !dateNaissance ||
                       !sexe ||
+                      !piecePhotoRa ||
+                      !selfiePhotoRa ||
                       !classeRelaxAccidents ||
                       cnpsDeclare === null
                     : isRelaxVoyage(qrInfo?.produit)

@@ -75,7 +75,7 @@ async function resoudreIdentite(
   let pieceIdentiteUrl = s.pieceIdentiteUrl;
   if (!pieceIdentiteUrl) {
     const doc = await prisma.document.findFirst({
-      where: { souscriptionId, type: { in: ["CNI", "Permis"] } },
+      where: { souscriptionId, type: { in: ["CNI", "Permis", "Passeport"] } },
       orderBy: { createdAt: "desc" },
     });
     pieceIdentiteUrl = doc?.url ?? null;

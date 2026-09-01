@@ -579,11 +579,11 @@ clientRouter.get(
     let selfieUrl: string | null = null;
     if (mesSouscriptions.length > 0) {
       const documents = await prisma.document.findMany({
-        where: { souscriptionId: { in: mesSouscriptions.map((s) => s.id) }, type: { in: ["CNI", "Permis", "Selfie"] } },
+        where: { souscriptionId: { in: mesSouscriptions.map((s) => s.id) }, type: { in: ["CNI", "Permis", "Passeport", "Selfie"] } },
         orderBy: { createdAt: "desc" },
       });
       const selfieDoc = documents.find((d) => d.type === "Selfie");
-      const pieceDoc = documents.find((d) => d.type === "CNI" || d.type === "Permis");
+      const pieceDoc = documents.find((d) => d.type === "CNI" || d.type === "Permis" || d.type === "Passeport");
       selfieUrl = selfieDoc?.url ?? null;
       if (pieceDoc) {
         typePiece = pieceDoc.type;

@@ -47,7 +47,7 @@ export interface ClientProfilIdentite {
   prenom: string | null;
   dateNaissance: string | null;
   sexe: "masculin" | "feminin" | null;
-  typePiece: "CNI" | "Permis" | null;
+  typePiece: "CNI" | "Permis" | "Passeport" | null;
   pieceIdentiteUrl: string | null;
   selfieUrl: string | null;
 }

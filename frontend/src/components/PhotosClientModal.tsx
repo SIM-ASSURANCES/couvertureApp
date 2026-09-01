@@ -5,7 +5,7 @@ import { useFetch } from "../useFetch";
 interface Photos {
   pieceIdentiteUrl: string | null;
   selfieUrl: string | null;
-  typePiece: "CNI" | "Permis" | null;
+  typePiece: "CNI" | "Permis" | "Passeport" | null;
 }
 
 const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
@@ -34,7 +34,8 @@ export default function PhotosClientModal({
   const [agrandie, setAgrandie] = useState<{ url: string; titre: string } | null>(null);
 
   const base = sanitize(referenceFichier || souscriptionId);
-  const libellePiece = data?.typePiece === "Permis" ? "Permis de conduire" : "Pièce d'identité";
+  const libellePiece =
+    data?.typePiece === "Permis" ? "Permis de conduire" : data?.typePiece === "Passeport" ? "Passeport" : "Pièce d'identité";
 
   const vignettes = [
     { url: data?.pieceIdentiteUrl ?? null, titre: libellePiece, fichier: `piece-${base}` },

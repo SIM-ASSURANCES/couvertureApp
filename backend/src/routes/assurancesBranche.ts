@@ -673,10 +673,10 @@ assurancesBrancheRouter.get(
     const s = await prisma.souscription.findUnique({ where: { id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
     const documents = await prisma.document.findMany({
-      where: { souscriptionId: id, type: { in: ["CNI", "Permis", "Selfie"] } },
+      where: { souscriptionId: id, type: { in: ["CNI", "Permis", "Passeport", "Selfie"] } },
       orderBy: { createdAt: "desc" },
     });
-    const piece = documents.find((d) => d.type === "CNI" || d.type === "Permis");
+    const piece = documents.find((d) => d.type === "CNI" || d.type === "Permis" || d.type === "Passeport");
     const selfie = documents.find((d) => d.type === "Selfie");
     res.json({
       pieceIdentiteUrl: s.pieceIdentiteUrl ?? piece?.url ?? null,
