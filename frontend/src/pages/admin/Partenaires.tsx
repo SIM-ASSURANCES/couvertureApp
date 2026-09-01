@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
+import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -518,6 +518,8 @@ const empty = {
   email: "",
 };
 
+const MEDAILLES = ["🥇", "🥈", "🥉"];
+
 export default function Partenaires() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
@@ -547,6 +549,42 @@ export default function Partenaires() {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [produitsId, setProduitsId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partenaire | null>(null);
+
+  // Classement des partenaires par produit — le prospect choisit un produit,
+  // le tableau liste les partenaires du plus performant (le plus de
+  // souscriptions confirmées) au moins performant. Agrégation client-side
+  // sur GET /assurances-branche/souscriptions, déjà utilisé ailleurs (voir
+  // filtre "Production par produit" du tableau de bord) : aucun endroit
+  // backend dédié n'est nécessaire.
+  const [produitClassement, setProduitClassement] = useState("");
+  const [classementFrom, setClassementFrom] = useState("");
+  const [classementTo, setClassementTo] = useState("");
+  const { data: catalogueClassement } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
+  const classementParams = new URLSearchParams();
+  classementParams.set("statut", "confirme");
+  if (produitClassement) classementParams.set("produit", produitClassement);
+  if (classementFrom) classementParams.set("from", classementFrom);
+  if (classementTo) classementParams.set("to", classementTo);
+  const { data: souscriptionsClassement, loading: classementLoading } = useFetch<SouscriptionBranche[]>(
+    produitClassement ? `/assurances-branche/souscriptions?${classementParams.toString()}` : null
+  );
+  const classement = (() => {
+    const parPartenaire = new Map<string, { partenaireId: string; nomCommerce: string; nomResponsable: string; nombre: number; ca: number }>();
+    for (const s of souscriptionsClassement ?? []) {
+      const ligne = parPartenaire.get(s.partenaireId) ?? {
+        partenaireId: s.partenaireId,
+        nomCommerce: s.partenaireNom,
+        nomResponsable: s.partenaireResponsable ?? "",
+        nombre: 0,
+        ca: 0,
+      };
+      ligne.nombre += 1;
+      ligne.ca += s.montantPrime;
+      parPartenaire.set(s.partenaireId, ligne);
+    }
+    return [...parPartenaire.values()].sort((a, b) => b.nombre - a.nombre);
+  })();
+  const maxClassement = Math.max(...classement.map((c) => c.nombre), 1);
 
   function notify(m: string) {
     setToast(m);
@@ -672,6 +710,91 @@ export default function Partenaires() {
           </button>
         }
       />
+
+      <Card
+        title="Classement des partenaires par produit"
+        style={{ marginTop: 24 }}
+        extra={
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <select
+              className="select"
+              style={{ width: 260, height: 40 }}
+              value={produitClassement}
+              onChange={(e) => setProduitClassement(e.target.value)}
+            >
+              <option value="">Sélectionnez un produit…</option>
+              {(catalogueClassement ?? []).map((p) => (
+                <option key={p.code} value={p.code}>{p.libelle}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              className="input"
+              style={{ height: 40, width: 150 }}
+              value={classementFrom}
+              max={classementTo || undefined}
+              onChange={(e) => setClassementFrom(e.target.value)}
+              title="Du"
+            />
+            <input
+              type="date"
+              className="input"
+              style={{ height: 40, width: 150 }}
+              value={classementTo}
+              min={classementFrom || undefined}
+              onChange={(e) => setClassementTo(e.target.value)}
+              title="Au"
+            />
+          </div>
+        }
+        noBody={!!produitClassement}
+      >
+        {!produitClassement && (
+          <div className="muted" style={{ fontSize: 13, padding: "4px 0" }}>
+            Choisissez un produit pour voir les partenaires classés du plus performant au moins performant.
+          </div>
+        )}
+        {produitClassement && classementLoading && <Loader />}
+        {produitClassement && !classementLoading && (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Partenaire</th>
+                  <th>Souscriptions</th>
+                  <th>Chiffre d'affaires</th>
+                </tr>
+              </thead>
+              <tbody>
+                {classement.map((c, i) => (
+                  <tr key={c.partenaireId}>
+                    <td style={{ color: "var(--text-2)", fontWeight: 600 }}>
+                      {i < 3 ? MEDAILLES[i] : i + 1}
+                    </td>
+                    <td>
+                      <strong>{c.nomCommerce}</strong>
+                      <div className="muted" style={{ fontSize: 12 }}>{c.nomResponsable}</div>
+                    </td>
+                    <td style={{ minWidth: 160 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="bar-track" style={{ flex: 1 }}>
+                          <div className="bar-fill" style={{ width: `${(c.nombre / maxClassement) * 100}%` }} />
+                        </div>
+                        <span style={{ fontWeight: 600 }}>{nb(c.nombre)}</span>
+                      </div>
+                    </td>
+                    <td><strong style={{ color: "var(--sim-primary)" }}>{fcfa(c.ca)}</strong></td>
+                  </tr>
+                ))}
+                {classement.length === 0 && (
+                  <tr><td colSpan={4}><div className="empty">Aucune souscription confirmée pour ce produit sur cette période.</div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <div className="grid-2" style={{ marginTop: 24 }}>
         <Card
