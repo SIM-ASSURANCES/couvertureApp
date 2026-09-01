@@ -17,7 +17,6 @@ import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProf
 import {
   ACTIVITES_RELAXACCIDENTS_GENERALE,
   MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE,
-  SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE,
   garantiesRelaxAccidentsGenerale,
   formuleRelaxAccidentsGenerale,
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
@@ -457,7 +456,7 @@ function RelaxAccidentsGeneraleForm({
           ))}
         </select>
       </FieldRow>
-      <FieldRow label="Quel moyen de déplacement ? *">
+      <FieldRow label="Quel moyen de déplacement vous utilisez ? *">
         <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
           {MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.map((m) => (
             <label key={m.valeur} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
@@ -466,11 +465,6 @@ function RelaxAccidentsGeneraleForm({
             </label>
           ))}
         </div>
-        {moyenDeplacement === "moto_tricycle" && (
-          <div style={{ fontSize: 12, color: "#5b6b80", marginTop: 6 }}>
-            Un supplément de {fcfa(SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE[cycle])} s'ajoute à la prime {cycle === "annuel" ? "annuelle" : "mensuelle"}.
-          </div>
-        )}
       </FieldRow>
       <FieldRow label="Périodicité de la prime *">
         <div style={{ display: "flex", gap: 20 }}>
