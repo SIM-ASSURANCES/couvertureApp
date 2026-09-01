@@ -455,32 +455,25 @@ function RelaxAccidentsGeneraleForm({
             margin: "18px 0",
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, color: "#004b9c" }}>Garanties incluses</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 8, color: "#004b9c" }}>Garanties incluses</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", rowGap: 6, columnGap: 14 }}>
             {!cnpsDeclare && (
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-                <span style={{ color: "#5b6b80" }}>Indemnité journalière</span>
-                <strong style={{ textAlign: "right", color: "#0f1b2d" }}>
-                  {fcfa(ij.montant)} / jour, {ij.dureeMaxJours} jours max ({ij.carenceJours} jours de délai de carence)
+              <>
+                <span style={{ fontSize: 11.5, color: "#5b6b80", alignSelf: "start" }}>Indemnité journalière</span>
+                <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>
+                  {fcfa(ij.montant)} / jour, {ij.dureeMaxJours} jours max
+                  <br />({ij.carenceJours} jours de délai de carence)
                 </strong>
-              </div>
+              </>
             )}
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-              <span style={{ color: "#5b6b80" }}>Frais médicaux et pharmaceutiques</span>
-              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.fraisMedicaux)}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-              <span style={{ color: "#5b6b80" }}>Invalidité Permanente Partielle/Totale</span>
-              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.invaliditePermanenteTotale)}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-              <span style={{ color: "#5b6b80" }}>Décès non accidentel</span>
-              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesNonAccidentel)}</strong>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
-              <span style={{ color: "#5b6b80" }}>Décès Accidentel</span>
-              <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesAccidentel)}</strong>
-            </div>
+            <span style={{ fontSize: 11.5, color: "#5b6b80" }}>Frais médicaux et pharmaceutiques</span>
+            <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.fraisMedicaux)}</strong>
+            <span style={{ fontSize: 11.5, color: "#5b6b80" }}>Invalidité Permanente Partielle/Totale</span>
+            <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.invaliditePermanenteTotale)}</strong>
+            <span style={{ fontSize: 11.5, color: "#5b6b80" }}>Décès non accidentel</span>
+            <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesNonAccidentel)}</strong>
+            <span style={{ fontSize: 11.5, color: "#5b6b80" }}>Décès Accidentel</span>
+            <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>{fcfa(garanties.decesAccidentel)}</strong>
           </div>
         </div>
       )}
