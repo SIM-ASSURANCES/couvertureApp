@@ -47,6 +47,10 @@ export interface DonneesContratGenerique {
   optionDeces: OptionDecesFraisMedicaux | null;
   classe: number | null;
   cnpsDeclare: boolean | null;
+  // RelaxAccidents générale uniquement — détail de la prime affiché sur le contrat PDF.
+  primeHT: number | null;
+  fg: number | null;
+  taxes: number | null;
   nomCommercial: string | null;
   ville: string | null;
   communeQuartier: string | null;
@@ -84,6 +88,21 @@ export async function mapperSouscriptionGenerique(
     const infos = tarif?.donneesSpecifiques as { fraisSante?: number; bagages?: string } | null;
     fraisSante = infos?.fraisSante ?? null;
     bagages = infos?.bagages ?? null;
+  }
+
+  // RelaxAccidents générale — tarif fixe (refonte 2026-08-31) : détail de la
+  // prime (Prime HT/Accessoires/Taxes) lu depuis TarifProduit, affiché sur le
+  // contrat PDF (voir services/contractHtml.ts::renderContratRelaxAccidentsGenerale).
+  let primeHT: number | null = null;
+  let fg: number | null = null;
+  let taxes: number | null = null;
+  if (s.produit.code === "relaxaccidents") {
+    const tarif = await prisma.tarifProduit.findFirst({
+      where: { produitId: s.produitId, prime: s.montantPrime },
+    });
+    primeHT = tarif?.primeHT ?? null;
+    fg = tarif?.fg ?? null;
+    taxes = tarif?.taxes ?? null;
   }
 
   const str = (k: string) => (typeof d?.[k] === "string" ? (d[k] as string) : null);
@@ -132,6 +151,9 @@ export async function mapperSouscriptionGenerique(
     optionDeces,
     classe: num("classe"),
     cnpsDeclare: bool("cnpsDeclare"),
+    primeHT,
+    fg,
+    taxes,
     nomCommercial: str("nomCommercial"),
     ville: str("ville"),
     communeQuartier: str("communeQuartier"),

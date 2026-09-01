@@ -1798,6 +1798,19 @@ publicRouter.get(
       fraisSante = infos?.fraisSante ?? null;
       bagages = infos?.bagages ?? null;
     }
+    // RelaxAccidents générale — détail de la prime (Prime HT/Accessoires/
+    // Taxes), affiché uniquement sur le contrat PDF (voir contractHtml.ts).
+    let primeHT: number | null = null;
+    let fg: number | null = null;
+    let taxes: number | null = null;
+    if (req.params.produit === "relaxaccidents") {
+      const tarif = await prisma.tarifProduit.findFirst({
+        where: { produitId: s.produitId, prime: s.montantPrime },
+      });
+      primeHT = tarif?.primeHT ?? null;
+      fg = tarif?.fg ?? null;
+      taxes = tarif?.taxes ?? null;
+    }
     res.json({
       souscriptionId: s.id,
       numeroPolice: s.numeroPolice,
@@ -1821,6 +1834,9 @@ publicRouter.get(
       bagages,
       classe: donneesSpecifiques?.classe ?? null,
       cnpsDeclare: donneesSpecifiques?.cnpsDeclare ?? null,
+      primeHT,
+      fg,
+      taxes,
       // SecurHome+/SecurPro (Assurances Dommages)
       nomCommercial: donneesSpecifiques?.nomCommercial ?? null,
       ville: donneesSpecifiques?.ville ?? null,

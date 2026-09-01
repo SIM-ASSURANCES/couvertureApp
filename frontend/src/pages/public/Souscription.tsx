@@ -431,32 +431,6 @@ function RelaxAccidentsGeneraleForm({
         <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
       </FieldRow>
       <SexeField value={sexe} onChange={setSexe} />
-      <FieldRow label="Pièce d'identité *">
-        <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
-          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-            <input type="radio" checked={typePiece === "CNI"} onChange={() => setTypePiece("CNI")} />
-            CNI
-          </label>
-          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-            <input type="radio" checked={typePiece === "Passeport"} onChange={() => setTypePiece("Passeport")} />
-            Passeport
-          </label>
-        </div>
-      </FieldRow>
-      <PhotoCapture
-        label={`Photo de votre ${typePiece === "CNI" ? "CNI" : "passeport"}`}
-        value={piecePhoto}
-        onChange={setPiecePhoto}
-        capture="environment"
-        required
-      />
-      <PhotoCapture
-        label="Selfie (photo de votre visage)"
-        value={selfiePhoto}
-        onChange={setSelfiePhoto}
-        capture="user"
-        required
-      />
       <FieldRow label="Type d'activité *">
         <select
           value={classe}
@@ -522,32 +496,45 @@ function RelaxAccidentsGeneraleForm({
           borderRadius: 12,
           padding: "14px 16px",
           margin: "0 0 18px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Détail de la prime</div>
+        <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
         {tarif ? (
-          <>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-              <span>Prime HT</span>
-              <span>{tarif.primeHT != null ? fcfa(tarif.primeHT) : "—"}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
-              <span>Accessoires</span>
-              <span>{tarif.fg != null ? fcfa(tarif.fg) : "—"}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
-              <span>Taxes</span>
-              <span>{tarif.taxes != null ? fcfa(tarif.taxes) : "—"}</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
-              <span>PRIME TTC</span>
-              <span>{fcfa(tarif.prime)}</span>
-            </div>
-          </>
+          <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
         ) : (
-          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS pour voir le détail de la prime.</div>
+          <span style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS</span>
         )}
       </div>
+
+      <FieldRow label="Pièce d'identité *">
+        <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={typePiece === "CNI"} onChange={() => setTypePiece("CNI")} />
+            CNI
+          </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={typePiece === "Passeport"} onChange={() => setTypePiece("Passeport")} />
+            Passeport
+          </label>
+        </div>
+      </FieldRow>
+      <PhotoCapture
+        label={`Photo de votre ${typePiece === "CNI" ? "CNI" : "passeport"}`}
+        value={piecePhoto}
+        onChange={setPiecePhoto}
+        capture="environment"
+        required
+      />
+      <PhotoCapture
+        label="Selfie (photo de votre visage)"
+        value={selfiePhoto}
+        onChange={setSelfiePhoto}
+        capture="user"
+        required
+      />
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -1336,6 +1323,9 @@ export default function Souscription() {
     bagages?: string | null;
     classe?: number | null;
     cnpsDeclare?: boolean | null;
+    primeHT?: number | null;
+    fg?: number | null;
+    taxes?: number | null;
     // SecurPro (Assurances Dommages)
     nomCommercial?: string | null;
     ville?: string | null;
@@ -1448,6 +1438,9 @@ export default function Souscription() {
             bagages: data.bagages ?? null,
             classe: data.classe ?? null,
             cnpsDeclare: data.cnpsDeclare ?? null,
+            primeHT: data.primeHT ?? null,
+            fg: data.fg ?? null,
+            taxes: data.taxes ?? null,
             nomCommercial: data.nomCommercial ?? null,
             ville: data.ville ?? null,
             communeQuartier: data.communeQuartier ?? null,
@@ -2219,6 +2212,9 @@ export default function Souscription() {
         prenom: result.prenom ?? prenom,
         telephone: result.telephone ?? telephone,
         montant: result.montant ?? 0,
+        primeHT: result.primeHT ?? null,
+        accessoires: result.fg ?? null,
+        taxes: result.taxes ?? null,
         classe: result.classe as 1 | 2 | 3 | 4,
         cnpsDeclare: result.cnpsDeclare,
         signature: result.signature ?? null,

@@ -106,6 +106,9 @@ export interface ContratRelaxAccidentsGenerale {
   telephone: string;
   dateNaissance?: string | null;
   montant: number;
+  primeHT?: number | null;
+  accessoires?: number | null;
+  taxes?: number | null;
   classe: Classe;
   cnpsDeclare: boolean;
   signature?: string | null;
@@ -653,6 +656,16 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
     <tr><td class="k">Frais médicaux et pharmaceutiques</td><td>${fcfa(g.fraisMedicaux)}</td><td class="k">Invalidité Permanente Partielle/Totale</td><td>${fcfa(g.invaliditePermanenteTotale)}</td></tr>
     <tr><td class="k">Décès non accidentel</td><td>${fcfa(g.decesNonAccidentel)}</td><td class="k">Décès Accidentel</td><td>${fcfa(g.decesAccidentel)}</td></tr>
   </table>
+
+  ${
+    c.primeHT != null || c.accessoires != null || c.taxes != null
+      ? `<h2>Détail de la prime</h2>
+  <table>
+    <tr><td class="k">Prime HT</td><td>${c.primeHT != null ? fcfa(c.primeHT) : "—"}</td><td class="k">Accessoires</td><td>${c.accessoires != null ? fcfa(c.accessoires) : "—"}</td></tr>
+    <tr><td class="k">Taxes</td><td>${c.taxes != null ? fcfa(c.taxes) : "—"}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.montant)}</strong></td></tr>
+  </table>`
+      : ""
+  }
 
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
