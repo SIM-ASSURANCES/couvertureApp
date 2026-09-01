@@ -27,6 +27,7 @@
 
 export type Classe = 1 | 2 | 3 | 4;
 export type CycleRelaxAccidentsGenerale = "annuel" | "mensuel";
+export type MoyenDeplacementRelaxAccidentsGenerale = "voiture" | "moto_tricycle" | "autres";
 
 export interface ActiviteRelaxAccidentsGenerale {
   classe: Classe;
@@ -104,4 +105,28 @@ export function parseFormuleRelaxAccidentsGenerale(
   const m = /^([1-4])_(declare|non_declare)_(annuel|mensuel)$/.exec(formule);
   if (!m) return null;
   return { classe: Number(m[1]) as Classe, cnpsDeclare: m[2] === "declare", cycle: m[3] as CycleRelaxAccidentsGenerale };
+}
+
+// Moyen de déplacement (2026-09-01) — question posée juste après le secteur
+// d'activité. Un moyen "Moto / Tricycle" ajoute un supplément forfaitaire à
+// la prime, IDENTIQUE quelle que soit la classe de risque, contrairement au
+// reste de la tarification qui varie par classe — voiture/autres n'ajoutent
+// rien.
+export const MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE: { valeur: MoyenDeplacementRelaxAccidentsGenerale; libelle: string }[] = [
+  { valeur: "voiture", libelle: "Voiture" },
+  { valeur: "moto_tricycle", libelle: "Moto / Tricycle" },
+  { valeur: "autres", libelle: "Autres" },
+];
+
+export const SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE: Record<CycleRelaxAccidentsGenerale, number> = {
+  annuel: 1_500,
+  mensuel: 150,
+};
+
+/** Supplément dû au moyen de déplacement choisi — 0 sauf pour "moto_tricycle". */
+export function surchargeMoyenDeplacementRelaxAccidentsGenerale(
+  moyenDeplacement: string | null | undefined,
+  cycle: CycleRelaxAccidentsGenerale
+): number {
+  return moyenDeplacement === "moto_tricycle" ? SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE[cycle] : 0;
 }

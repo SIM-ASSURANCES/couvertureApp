@@ -16,10 +16,14 @@ import PhotoCapture from "../../components/PhotoCapture";
 import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
 import {
   ACTIVITES_RELAXACCIDENTS_GENERALE,
+  MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE,
+  SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE,
   garantiesRelaxAccidentsGenerale,
   formuleRelaxAccidentsGenerale,
+  surchargeMoyenDeplacementRelaxAccidentsGenerale,
   INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE,
   type Classe,
+  type MoyenDeplacementRelaxAccidentsGenerale,
 } from "../../relaxAccidentsGenerale";
 import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
 import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
@@ -377,6 +381,8 @@ function RelaxAccidentsGeneraleForm({
   setSexe,
   classe,
   setClasse,
+  moyenDeplacement,
+  setMoyenDeplacement,
   cnpsDeclare,
   setCnpsDeclare,
   cycle,
@@ -402,6 +408,8 @@ function RelaxAccidentsGeneraleForm({
   setSexe: (v: "masculin" | "feminin" | "") => void;
   classe: Classe | "";
   setClasse: (v: Classe | "") => void;
+  moyenDeplacement: MoyenDeplacementRelaxAccidentsGenerale | "";
+  setMoyenDeplacement: (v: MoyenDeplacementRelaxAccidentsGenerale) => void;
   cnpsDeclare: boolean | null;
   setCnpsDeclare: (v: boolean) => void;
   cycle: "annuel" | "mensuel";
@@ -435,7 +443,7 @@ function RelaxAccidentsGeneraleForm({
         <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
       </FieldRow>
       <SexeField value={sexe} onChange={setSexe} />
-      <FieldRow label="Type d'activité *">
+      <FieldRow label="Secteur d'activité *">
         <select
           value={classe}
           onChange={(e) => setClasse(e.target.value ? (Number(e.target.value) as Classe) : "")}
@@ -448,6 +456,21 @@ function RelaxAccidentsGeneraleForm({
             </option>
           ))}
         </select>
+      </FieldRow>
+      <FieldRow label="Quel moyen de déplacement ? *">
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+          {MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.map((m) => (
+            <label key={m.valeur} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+              <input type="radio" checked={moyenDeplacement === m.valeur} onChange={() => setMoyenDeplacement(m.valeur)} />
+              {m.libelle}
+            </label>
+          ))}
+        </div>
+        {moyenDeplacement === "moto_tricycle" && (
+          <div style={{ fontSize: 12, color: "#5b6b80", marginTop: 6 }}>
+            Un supplément de {fcfa(SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE[cycle])} s'ajoute à la prime {cycle === "annuel" ? "annuelle" : "mensuelle"}.
+          </div>
+        )}
       </FieldRow>
       <FieldRow label="Périodicité de la prime *">
         <div style={{ display: "flex", gap: 20 }}>
@@ -519,7 +542,9 @@ function RelaxAccidentsGeneraleForm({
       >
         <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
         {tarif ? (
-          <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
+          <strong style={{ fontSize: 18, color: "#004b9c" }}>
+            {fcfa(tarif.prime + surchargeMoyenDeplacementRelaxAccidentsGenerale(moyenDeplacement, cycle))}
+          </strong>
         ) : (
           <span style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez votre activité et votre statut CNPS</span>
         )}
@@ -1244,6 +1269,9 @@ export default function Souscription() {
   // isAccidentLike/isRelaxVoyage ci-dessus.
   const [classeRelaxAccidents, setClasseRelaxAccidents] = useState<Classe | "">("");
   const [cnpsDeclare, setCnpsDeclare] = useState<boolean | null>(null);
+  // Moyen de déplacement — un supplément forfaitaire s'ajoute si Moto/Tricycle
+  // est choisi (voir SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE).
+  const [moyenDeplacementRa, setMoyenDeplacementRa] = useState<MoyenDeplacementRelaxAccidentsGenerale | "">("");
   // Pièce d'identité (CNI ou Passeport — pas de Permis, contrairement à
   // RelaxMoto/Auto/Frais Médicaux) + selfie, capturées avant paiement.
   const [typePieceRa, setTypePieceRa] = useState<"CNI" | "Passeport">("CNI");
@@ -1767,7 +1795,9 @@ export default function Souscription() {
       if (isRelaxAccidentsGenerale(p)) {
         if (!classeRelaxAccidents || cnpsDeclare === null) return null;
         const formule = formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare, cycle);
-        return tarifsFormule.find((t) => t.libelleVariante === formule)?.prime ?? null;
+        const base = tarifsFormule.find((t) => t.libelleVariante === formule)?.prime ?? null;
+        if (base == null) return null;
+        return base + surchargeMoyenDeplacementRelaxAccidentsGenerale(moyenDeplacementRa, cycle);
       }
       if (isSecurproDommages(p)) {
         const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
@@ -1840,7 +1870,8 @@ export default function Souscription() {
       l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
       l.push({ label: "Sexe", valeur: sexeLabel });
       l.push({ label: "Pièce d'identité", valeur: typePieceRa === "CNI" ? "CNI" : "Passeport" });
-      l.push({ label: "Activité", valeur: classeRelaxAccidents ? ACTIVITES_RELAXACCIDENTS_GENERALE.find((a) => a.classe === classeRelaxAccidents)?.libelle ?? "—" : "—" });
+      l.push({ label: "Secteur d'activité", valeur: classeRelaxAccidents ? ACTIVITES_RELAXACCIDENTS_GENERALE.find((a) => a.classe === classeRelaxAccidents)?.libelle ?? "—" : "—" });
+      l.push({ label: "Moyen de déplacement", valeur: MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.find((m) => m.valeur === moyenDeplacementRa)?.libelle ?? "—" });
       l.push({ label: "Périodicité de la prime", valeur: cycle === "annuel" ? "Annuelle" : "Mensuelle" });
       l.push({ label: "Travailleur déclaré CNPS ou autre", valeur: cnpsDeclare === null ? "—" : oui(cnpsDeclare) });
       return l;
@@ -1908,7 +1939,7 @@ export default function Souscription() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
-    if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null)) return;
+    if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
@@ -1927,7 +1958,7 @@ export default function Souscription() {
     setSubmitting(true);
     try {
       if (isRelaxAccidentsGenerale(qrInfo.produit)) {
-        if (!classeRelaxAccidents || cnpsDeclare === null) return;
+        if (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa) return;
         const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents/initiate-formule`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1939,6 +1970,7 @@ export default function Souscription() {
             dateNaissance,
             sexe: sexe || undefined,
             formule: formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare, cycle),
+            moyenDeplacement: moyenDeplacementRa,
             signature,
           }),
         });
@@ -3030,6 +3062,8 @@ export default function Souscription() {
                   setSexe={setSexe}
                   classe={classeRelaxAccidents}
                   setClasse={setClasseRelaxAccidents}
+                  moyenDeplacement={moyenDeplacementRa}
+                  setMoyenDeplacement={setMoyenDeplacementRa}
                   cnpsDeclare={cnpsDeclare}
                   setCnpsDeclare={setCnpsDeclare}
                   cycle={cycle}
@@ -3395,6 +3429,7 @@ export default function Souscription() {
                       !piecePhotoRa ||
                       !selfiePhotoRa ||
                       !classeRelaxAccidents ||
+                      !moyenDeplacementRa ||
                       cnpsDeclare === null
                     : isRelaxVoyage(qrInfo?.produit)
                     ? !nom ||

@@ -7,6 +7,7 @@
 
 export type Classe = 1 | 2 | 3 | 4;
 export type CycleRelaxAccidentsGenerale = "annuel" | "mensuel";
+export type MoyenDeplacementRelaxAccidentsGenerale = "voiture" | "moto_tricycle" | "autres";
 
 export interface ActiviteRelaxAccidentsGenerale {
   classe: Classe;
@@ -70,4 +71,25 @@ export function formuleRelaxAccidentsGenerale(
   cycle: CycleRelaxAccidentsGenerale
 ): string {
   return `${classe}_${cnpsDeclare ? "declare" : "non_declare"}_${cycle}`;
+}
+
+// Moyen de déplacement — un supplément forfaitaire s'ajoute si "Moto /
+// Tricycle" est choisi, IDENTIQUE quelle que soit la classe de risque.
+export const MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE: { valeur: MoyenDeplacementRelaxAccidentsGenerale; libelle: string }[] = [
+  { valeur: "voiture", libelle: "Voiture" },
+  { valeur: "moto_tricycle", libelle: "Moto / Tricycle" },
+  { valeur: "autres", libelle: "Autres" },
+];
+
+export const SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE: Record<CycleRelaxAccidentsGenerale, number> = {
+  annuel: 1_500,
+  mensuel: 150,
+};
+
+/** Supplément dû au moyen de déplacement choisi — 0 sauf pour "moto_tricycle". */
+export function surchargeMoyenDeplacementRelaxAccidentsGenerale(
+  moyenDeplacement: string | null | undefined,
+  cycle: CycleRelaxAccidentsGenerale
+): number {
+  return moyenDeplacement === "moto_tricycle" ? SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE[cycle] : 0;
 }

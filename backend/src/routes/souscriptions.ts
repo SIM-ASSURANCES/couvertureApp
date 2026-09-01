@@ -77,6 +77,8 @@ souscriptionsRouter.get(
       optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
       classe?: number | null;
       cnpsDeclare?: boolean | null;
+      cycle?: "annuel" | "mensuel" | null;
+      moyenDeplacement?: string | null;
       nomCommercial?: string | null;
       ville?: string | null;
       communeQuartier?: string | null;
@@ -253,7 +255,17 @@ souscriptionsRouter.get(
           let primeTTC: number = r?.primeTTC ?? d.montant;
           let fg: number | null = null;
 
-          if (primeHT === null) {
+          if (s.produit.code === "relaxaccidents") {
+            // Tarif recherché par formule (classe/statut/cycle) dans le
+            // mapper, jamais par prime — le montant payé peut inclure le
+            // supplément moto/tricycle, qui ne correspond à aucune ligne
+            // TarifProduit (voir mapperSouscriptionGenerique).
+            primeHT = d.primeHT;
+            taxes = d.taxes;
+            fg = d.fg;
+            accessoires = null;
+            primeTTC = d.montant;
+          } else if (primeHT === null) {
             const tarif =
               (s.cycleFacturation ? tarifParVariante.get(`${s.produitId}|${s.cycleFacturation}`) : undefined) ??
               tarifParPrime.get(`${s.produitId}|${s.montantPrime}`);
@@ -306,6 +318,8 @@ souscriptionsRouter.get(
             optionDeces: d.optionDeces,
             classe: d.classe,
             cnpsDeclare: d.cnpsDeclare,
+            cycle: d.cycle,
+            moyenDeplacement: d.moyenDeplacement,
             nomCommercial: d.nomCommercial,
             ville: d.ville,
             communeQuartier: d.communeQuartier,

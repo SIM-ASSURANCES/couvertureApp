@@ -291,6 +291,7 @@ clientRouter.get(
       classe: d.classe,
       cnpsDeclare: d.cnpsDeclare,
       cycle: d.cycle,
+      moyenDeplacement: d.moyenDeplacement,
       primeHT: d.primeHT,
       fg: d.fg,
       taxes: d.taxes,

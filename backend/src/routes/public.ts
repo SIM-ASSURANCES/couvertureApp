@@ -20,7 +20,11 @@ import { verifyWaveSignature, type RawBodyRequest } from "../security.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
-import { parseFormuleRelaxAccidentsGenerale } from "../services/relaxAccidentsGenerale.js";
+import {
+  parseFormuleRelaxAccidentsGenerale,
+  formuleRelaxAccidentsGenerale,
+  surchargeMoyenDeplacementRelaxAccidentsGenerale,
+} from "../services/relaxAccidentsGenerale.js";
 import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
@@ -1515,6 +1519,8 @@ const formuleSchema = z.object({
   // garanti choisi.
   declarePasLivreur: z.boolean().optional(),
   optionDeces: z.enum(["200000", "100000"]).optional(),
+  // RelaxAccidents générale uniquement — voir MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.
+  moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
 });
 
 /**
@@ -1554,6 +1560,9 @@ publicRouter.post(
     if (data.optionDeces && (code !== "relaxaccidents_fraismedicaux" || !data.declarePasLivreur)) {
       return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
     }
+    if (code === "relaxaccidents" && !data.moyenDeplacement) {
+      return res.status(400).json({ error: "Moyen de déplacement manquant." });
+    }
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -1583,9 +1592,13 @@ publicRouter.post(
     }
 
     // Le total payé recalculé ici, jamais confié au client : prime de la
-    // formule + prime de l'option Décès si choisie.
+    // formule + prime de l'option Décès si choisie + supplément moto/tricycle
+    // pour RelaxAccidents générale.
     const optionDeces = data.optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces] : null;
-    const montantTotal = tarif.prime + (optionDeces?.prime ?? 0);
+    const surchargeDeplacement = relaxAccidentsGenerale
+      ? surchargeMoyenDeplacementRelaxAccidentsGenerale(data.moyenDeplacement, relaxAccidentsGenerale.cycle)
+      : 0;
+    const montantTotal = tarif.prime + (optionDeces?.prime ?? 0) + surchargeDeplacement;
 
     const s = await prisma.souscription.create({
       data: {
@@ -1619,6 +1632,7 @@ publicRouter.post(
                 classe: relaxAccidentsGenerale.classe,
                 cnpsDeclare: relaxAccidentsGenerale.cnpsDeclare,
                 cycle: relaxAccidentsGenerale.cycle,
+                moyenDeplacement: data.moyenDeplacement,
               }
             : data.signature || optionDeces
             ? {
@@ -1790,6 +1804,7 @@ publicRouter.get(
       deCapital?: number | null;
       bdgCapital?: number | null;
       nombrePieces?: number | null;
+      moyenDeplacement?: string | null;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -1803,16 +1818,30 @@ publicRouter.get(
     }
     // RelaxAccidents générale — détail de la prime (Prime HT/Accessoires/
     // Taxes), affiché uniquement sur le contrat PDF (voir contractHtml.ts).
+    // Le tarif est recherché par FORMULE (classe/statut/cycle), pas par
+    // prime : le montant payé inclut le supplément moto/tricycle éventuel,
+    // qui ne correspond donc plus au prix d'aucune ligne TarifProduit.
     let primeHT: number | null = null;
     let fg: number | null = null;
     let taxes: number | null = null;
-    if (req.params.produit === "relaxaccidents") {
+    if (req.params.produit === "relaxaccidents" && donneesSpecifiques?.classe && donneesSpecifiques?.cnpsDeclare != null && donneesSpecifiques?.cycle) {
       const tarif = await prisma.tarifProduit.findFirst({
-        where: { produitId: s.produitId, prime: s.montantPrime },
+        where: {
+          produitId: s.produitId,
+          libelleVariante: formuleRelaxAccidentsGenerale(
+            donneesSpecifiques.classe as 1 | 2 | 3 | 4,
+            donneesSpecifiques.cnpsDeclare,
+            donneesSpecifiques.cycle
+          ),
+        },
       });
       primeHT = tarif?.primeHT ?? null;
-      fg = tarif?.fg ?? null;
       taxes = tarif?.taxes ?? null;
+      fg =
+        tarif != null
+          ? (tarif.fg ?? 0) +
+            surchargeMoyenDeplacementRelaxAccidentsGenerale(donneesSpecifiques.moyenDeplacement, donneesSpecifiques.cycle)
+          : null;
     }
     res.json({
       souscriptionId: s.id,
@@ -1838,6 +1867,7 @@ publicRouter.get(
       classe: donneesSpecifiques?.classe ?? null,
       cnpsDeclare: donneesSpecifiques?.cnpsDeclare ?? null,
       cycle: donneesSpecifiques?.cycle ?? null,
+      moyenDeplacement: donneesSpecifiques?.moyenDeplacement ?? null,
       primeHT,
       fg,
       taxes,

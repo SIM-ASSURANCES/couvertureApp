@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import type { Souscription } from "@prisma/client";
+import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
 
 /**
  * Aplatit une souscription du modèle générique (RelaxMoto/Auto, RelaxAccidents
@@ -48,6 +49,7 @@ export interface DonneesContratGenerique {
   classe: number | null;
   cnpsDeclare: boolean | null;
   cycle: "annuel" | "mensuel" | null;
+  moyenDeplacement: string | null;
   // RelaxAccidents générale uniquement — détail de la prime affiché sur le contrat PDF.
   primeHT: number | null;
   fg: number | null;
@@ -94,16 +96,25 @@ export async function mapperSouscriptionGenerique(
   // RelaxAccidents générale — tarif fixe (refonte 2026-08-31) : détail de la
   // prime (Prime HT/Accessoires/Taxes) lu depuis TarifProduit, affiché sur le
   // contrat PDF (voir services/contractHtml.ts::renderContratRelaxAccidentsGenerale).
+  // Recherché par FORMULE (classe/statut CNPS/périodicité), pas par prime :
+  // le montant payé inclut le supplément moto/tricycle éventuel (voir
+  // surchargeMoyenDeplacementRelaxAccidentsGenerale), qui ne correspond donc
+  // plus au prix d'aucune ligne TarifProduit — le supplément est ajouté ici
+  // à l'Accessoires affiché pour que Prime HT + Accessoires + Taxes = Prime TTC.
   let primeHT: number | null = null;
   let fg: number | null = null;
   let taxes: number | null = null;
-  if (s.produit.code === "relaxaccidents") {
+  const raClasse = typeof d?.classe === "number" ? (d.classe as Classe) : null;
+  const raCnpsDeclare = typeof d?.cnpsDeclare === "boolean" ? d.cnpsDeclare : null;
+  const raCycle = (d?.cycle as CycleRelaxAccidentsGenerale | undefined) ?? null;
+  const raMoyenDeplacement = typeof d?.moyenDeplacement === "string" ? d.moyenDeplacement : null;
+  if (s.produit.code === "relaxaccidents" && raClasse && raCnpsDeclare != null && raCycle) {
     const tarif = await prisma.tarifProduit.findFirst({
-      where: { produitId: s.produitId, prime: s.montantPrime },
+      where: { produitId: s.produitId, libelleVariante: formuleRelaxAccidentsGenerale(raClasse, raCnpsDeclare, raCycle) },
     });
     primeHT = tarif?.primeHT ?? null;
-    fg = tarif?.fg ?? null;
     taxes = tarif?.taxes ?? null;
+    fg = tarif != null ? (tarif.fg ?? 0) + surchargeMoyenDeplacementRelaxAccidentsGenerale(raMoyenDeplacement, raCycle) : null;
   }
 
   const str = (k: string) => (typeof d?.[k] === "string" ? (d[k] as string) : null);
@@ -152,7 +163,8 @@ export async function mapperSouscriptionGenerique(
     optionDeces,
     classe: num("classe"),
     cnpsDeclare: bool("cnpsDeclare"),
-    cycle: (d?.cycle as "annuel" | "mensuel" | undefined) ?? null,
+    cycle: raCycle,
+    moyenDeplacement: raMoyenDeplacement,
     primeHT,
     fg,
     taxes,
