@@ -27,6 +27,29 @@ enum StatutPartenaire {
   inactif
 }
 
+// --- API partenaire (accès serveur-à-serveur au catalogue + souscriptions) ---
+
+// Canal par lequel une souscription est entrée : parcours normal (QR public,
+// espaces admin/agent) ou API partenaire. `api` implique que l'encaissement est
+// fait par le partenaire lui-même (option B) : la couverture n'est activée
+// qu'après POST /api/partner/v1/souscriptions/:id/confirmer-paiement.
+enum CanalVente {
+  direct
+  api
+}
+
+// `test` : clé de bac à sable — souscriptions non facturées / exclues des stats
+// et des commissions (phase 2). `live` : production.
+enum EnvApiKey {
+  live
+  test
+}
+
+enum StatutApiKey {
+  active
+  revoquee
+}
+
 enum StatutIncendie {
   en_cours
   complet
@@ -196,6 +219,11 @@ model Partenaire {
   // tentative de souscription directe à ce produit pour ce partenaire est
   // rejetée côté serveur (voir produitDesactivePourPartenaire).
   produitsDesactives Produit[] @relation("ProduitsDesactivesPartenaire")
+
+  // Clés d'accès à l'API partenaire (au plus une active à la fois — contrainte
+  // applicative, voir routes/partenaires.ts). Générées uniquement par un
+  // super-administrateur de la branche INCENDIE_ACCIDENT.
+  apiKeys PartnerApiKey[]
 }
 
 /**
@@ -290,6 +318,13 @@ model SouscriptionIncendie {
   // première complétion réussie du formulaire (statut "complet").
   clientPasswordHash String?
   sinistres          SinistreRelax[]
+
+  // --- Canal API partenaire (voir Souscription) ---
+  canalVente                  CanalVente @default(direct)
+  apiKeyId                    String?
+  montantCommissionApi        Int?
+  montantAReverser            Int?
+  referencePaiementPartenaire String?
 }
 
 model SouscriptionAccident {
@@ -352,6 +387,13 @@ model SouscriptionAccident {
   // première confirmation de paiement.
   clientPasswordHash String?
   sinistres          SinistreRelax[]
+
+  // --- Canal API partenaire (voir Souscription) ---
+  canalVente                  CanalVente @default(direct)
+  apiKeyId                    String?
+  montantCommissionApi        Int?
+  montantAReverser            Int?
+  referencePaiementPartenaire String?
 }
 
 model JournalActivite {
@@ -416,6 +458,11 @@ model Parametre {
   primeAccident                   Int   @default(2000)
   primeHtIncendie1000             Float @default(800)
   primeHtIncendie2000             Float @default(1600)
+  // Taux de commission « canal API » (décimal, ex. 0.10 = 10%) appliqué sur la
+  // prime HT quand une souscription passe par l'API partenaire et que le
+  // produit concerné n'a pas de taux dédié (Produit.tauxCommissionApi). Sert
+  // aussi de repli pour les produits historiques Incendie/Accident.
+  tauxCommissionApiDefaut         Float @default(0.10)
 }
 
 model TarifAccident {
@@ -469,6 +516,10 @@ model Produit {
   // le taux s'applique directement sur la prime nette HT calculée à la
   // souscription (voir services/commission.ts).
   tauxCommission        Float?
+  // Taux de commission « canal API » (décimal) propre à ce produit, appliqué
+  // sur la prime HT des souscriptions entrées via l'API partenaire. Prioritaire
+  // sur Parametre.tauxCommissionApiDefaut. Null → repli sur le taux global.
+  tauxCommissionApi     Float?
   tarifs                TarifProduit[]
   qrCodes               QrCode[]
   souscriptions         Souscription[]
@@ -619,6 +670,18 @@ model Souscription {
   // (services/commission.ts) pondère par ce compteur plutôt que par ligne,
   // pour qu'un renouvellement génère une commission au partenaire.
   nombrePaiements             Int       @default(1)
+
+  // --- Canal API partenaire (option B : le partenaire encaisse) ---
+  // `direct` = parcours normal ; `api` = créée via l'API partenaire, en
+  // attente de POST .../confirmer-paiement. `montantCommissionApi` (part
+  // partenaire, figée à la création depuis Produit.tauxCommissionApi ou le
+  // taux global) et `montantAReverser` (= montantPrime - montantCommissionApi)
+  // ne sont renseignés que pour `canalVente = api`.
+  canalVente                  CanalVente @default(direct)
+  apiKeyId                    String?
+  montantCommissionApi        Int?
+  montantAReverser            Int?
+  referencePaiementPartenaire String?
 }
 
 /**
@@ -1002,4 +1065,93 @@ model ConditionsGenerales {
   contenuHtml      String
   modifieParAdminId String?
   updatedAt        DateTime @updatedAt
+}
+
+// =====================================================================
+// API partenaire — clés d'accès, journal des requêtes, idempotence,
+// livraison des webhooks sortants. Voir routes/partnerApi.ts,
+// src/apiKey.ts, services/partnerWebhook.ts.
+// =====================================================================
+
+model PartnerApiKey {
+  id             String       @id @default(uuid())
+  partenaireId   String
+  partenaire     Partenaire   @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  label          String
+  // 16 premiers caractères du secret (ex. "sk_live_a1b2c3d4") — sert à
+  // retrouver la ligne sans jamais stocker le secret complet.
+  prefix         String       @unique
+  // SHA-256 hex du secret complet. Le secret en clair n'est renvoyé qu'une
+  // seule fois, à la création (voir POST /partenaires/:id/api-key).
+  hash           String
+  environnement  EnvApiKey    @default(live)
+  // Portées accordées : "catalogue:read", "souscriptions:write",
+  // "souscriptions:read", "documents:read".
+  scopes         String[]
+  // CIDR autorisés (vide = pas de restriction d'IP).
+  ipAllowlist    String[]     @default([])
+  statut         StatutApiKey @default(active)
+  // Endpoint HTTPS du partenaire pour les webhooks sortants + secret de
+  // signature HMAC (X-SIM-Signature) + liste des événements souscrits.
+  webhookUrl     String?
+  webhookSecret  String?
+  webhookEvents  String[]     @default([])
+  dernierUsageAt DateTime?
+  expireAt       DateTime?
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+
+  requetes   PartnerApiRequest[]
+  livraisons PartnerWebhookDelivery[]
+
+  @@index([partenaireId, statut])
+}
+
+model PartnerApiRequest {
+  id             String        @id @default(uuid())
+  apiKeyId       String
+  apiKey         PartnerApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  partenaireId   String
+  methode        String
+  chemin         String
+  statusCode     Int
+  ip             String?
+  idempotencyKey String?
+  souscriptionId String?
+  dureeMs        Int
+  createdAt      DateTime      @default(now())
+
+  @@index([partenaireId, createdAt])
+  @@index([apiKeyId, createdAt])
+}
+
+// Rejoue la même réponse si le partenaire renvoie une écriture avec la même
+// clé Idempotency-Key (coupure réseau après succès, double tap...).
+model IdempotencyRecord {
+  cle            String   @id
+  apiKeyId       String
+  requestHash    String
+  responseStatus Int
+  responseBody   Json
+  createdAt      DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model PartnerWebhookDelivery {
+  id                   String        @id @default(uuid())
+  apiKeyId             String
+  apiKey               PartnerApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  evenement            String
+  payload              Json
+  url                  String
+  tentatives           Int           @default(0)
+  // "en_attente" | "livre" | "echec" (abandon après ~24 h de retries).
+  statut               String        @default("en_attente")
+  prochaineTentativeAt DateTime?
+  dernierStatusCode    Int?
+  createdAt            DateTime      @default(now())
+  livreAt              DateTime?
+
+  @@index([statut, prochaineTentativeAt])
 }

@@ -1,0 +1,104 @@
+{
+  "info": {
+    "name": "SIM Assurances — API partenaire v1",
+    "description": "Collection de démarrage. Renseignez les variables base_url et api_key.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://EXEMPLE.sim/api/partner/v1" },
+    { "key": "api_key", "value": "LA_CLE_FOURNIE_PAR_SIM" },
+    { "key": "souscription_id", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{api_key}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Ping",
+      "request": { "method": "GET", "url": "{{base_url}}/ping" }
+    },
+    {
+      "name": "Catalogue",
+      "request": { "method": "GET", "url": "{{base_url}}/catalogue" }
+    },
+    {
+      "name": "Fiche produit",
+      "request": { "method": "GET", "url": "{{base_url}}/produits/relaxmoto" }
+    },
+    {
+      "name": "Devis",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": "{{base_url}}/devis",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"produit\": \"relaxmoto\",\n  \"formule\": \"mensuel\",\n  \"nombrePeriodes\": 3\n}"
+        }
+      }
+    },
+    {
+      "name": "Créer une souscription",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "exec": ["pm.variables.set('idem', require('uuid').v4 ? require('uuid').v4() : ('' + Date.now() + Math.random()));"] }
+        },
+        {
+          "listen": "test",
+          "script": { "exec": ["var d = pm.response.json().data; if (d && d.id) pm.collectionVariables.set('souscription_id', d.id);"] }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idem}}" }
+        ],
+        "url": "{{base_url}}/souscriptions",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"produit\": \"relaxmoto\",\n  \"formule\": \"mensuel\",\n  \"nombrePeriodes\": 3,\n  \"prospect\": {\n    \"nom\": \"KOUAME\",\n    \"prenom\": \"Ama\",\n    \"telephone\": \"+2250700000000\"\n  },\n  \"pieceIdentiteUrl\": \"data:image/jpeg;base64,REMPLACER\",\n  \"selfieUrl\": \"data:image/jpeg;base64,REMPLACER\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Confirmer le paiement",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": { "exec": ["pm.variables.set('idem', '' + Date.now() + Math.random());"] }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Idempotency-Key", "value": "{{idem}}" }
+        ],
+        "url": "{{base_url}}/souscriptions/{{souscription_id}}/confirmer-paiement",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"referencePaiement\": \"WAVE-ABC123\",\n  \"montantPercu\": 7500\n}"
+        }
+      }
+    },
+    {
+      "name": "Lister les souscriptions",
+      "request": { "method": "GET", "url": "{{base_url}}/souscriptions?limit=20" }
+    },
+    {
+      "name": "Détail souscription",
+      "request": { "method": "GET", "url": "{{base_url}}/souscriptions/{{souscription_id}}" }
+    },
+    {
+      "name": "Événements souscription",
+      "request": { "method": "GET", "url": "{{base_url}}/souscriptions/{{souscription_id}}/evenements" }
+    },
+    {
+      "name": "Carte PNG",
+      "request": { "method": "GET", "url": "{{base_url}}/souscriptions/{{souscription_id}}/carte.png" }
+    }
+  ]
+}

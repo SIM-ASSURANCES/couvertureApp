@@ -27,6 +27,25 @@ export const publicLimiter = rateLimit({
   message: { error: "Trop de requêtes. Veuillez patienter." },
 });
 
+/**
+ * Limiteur pour l'API partenaire (`/api/partner/v1/*`). Partitionné par clé
+ * API (`req.partner.apiKeyId`) plutôt que par IP : un partenaire qui appelle
+ * depuis un seul serveur ne doit pas être pénalisé par un autre, et une clé
+ * ne doit pas pouvoir contourner la limite en changeant d'IP sortante.
+ * Retombe sur l'IP tant que `requireApiKey()` n'a pas encore posé `req.partner`
+ * (requêtes non authentifiées).
+ * 120 requêtes par minute et par clé.
+ */
+export const partnerLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) =>
+    (req as { partner?: { apiKeyId?: string } }).partner?.apiKeyId ?? req.ip ?? "inconnu",
+  message: { error: { code: "rate_limite", message: "Trop de requêtes. Veuillez ralentir." } },
+});
+
 /** Requête Express enrichie du corps brut (nécessaire pour vérifier la signature Wave). */
 export interface RawBodyRequest extends Request {
   rawBody?: Buffer;

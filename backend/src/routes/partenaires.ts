@@ -14,6 +14,8 @@ import {
 } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
 import { commissionTotaleAgent } from "../services/commission.js";
+import { genererCleApi, SCOPES_API, EVENEMENTS_WEBHOOK } from "../apiKey.js";
+import { emettreWebhook, webhookUrlValide } from "../services/partnerWebhook.js";
 
 export const partenairesRouter = Router();
 partenairesRouter.use(requireAuth("admin"));
@@ -707,5 +709,256 @@ partenairesRouter.post(
       valeurApres: { produit: produit.code, actif },
     });
     res.json({ ok: true });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────
+// Clé d'accès à l'API partenaire — création / consultation / mise à jour /
+// révocation. Réservé au Super Administrateur de la branche INCENDIE_ACCIDENT.
+// Une seule clé active par partenaire : toute création révoque la précédente
+// (révocation immédiate, sans période de grâce).
+// ─────────────────────────────────────────────────────────────────────
+
+const scopeEnum = z.enum([...SCOPES_API] as [string, ...string[]]);
+const evenementWebhookEnum = z.enum([...EVENEMENTS_WEBHOOK] as [string, ...string[]]);
+
+const apiKeyCreateSchema = z.object({
+  label: z.string().min(1).max(120),
+  environnement: z.enum(["live", "test"]).default("live"),
+  scopes: z.array(scopeEnum).min(1),
+  ipAllowlist: z.array(z.string().min(1).max(64)).max(50).default([]),
+  expireAt: z.string().datetime().optional(),
+  webhookUrl: z
+    .string()
+    .url()
+    .refine(webhookUrlValide, "URL webhook invalide (HTTPS et hôte public requis).")
+    .optional(),
+  webhookEvents: z.array(evenementWebhookEnum).default([]),
+});
+
+const apiKeyPatchSchema = z.object({
+  label: z.string().min(1).max(120).optional(),
+  scopes: z.array(scopeEnum).min(1).optional(),
+  ipAllowlist: z.array(z.string().min(1).max(64)).max(50).optional(),
+  expireAt: z.string().datetime().nullable().optional(),
+  webhookUrl: z
+    .string()
+    .url()
+    .refine(webhookUrlValide, "URL webhook invalide (HTTPS et hôte public requis).")
+    .nullable()
+    .optional(),
+  webhookEvents: z.array(evenementWebhookEnum).optional(),
+  regenererWebhookSecret: z.boolean().optional(),
+});
+
+/** Projection publique d'une clé : jamais le secret, jamais le hash. */
+function vueCleApi(c: {
+  id: string;
+  label: string;
+  prefix: string;
+  environnement: string;
+  scopes: string[];
+  ipAllowlist: string[];
+  statut: string;
+  webhookUrl: string | null;
+  webhookSecret: string | null;
+  webhookEvents: string[];
+  dernierUsageAt: Date | null;
+  expireAt: Date | null;
+  createdAt: Date;
+  revokedAt: Date | null;
+}) {
+  return {
+    id: c.id,
+    label: c.label,
+    prefix: c.prefix,
+    environnement: c.environnement,
+    scopes: c.scopes,
+    ipAllowlist: c.ipAllowlist,
+    statut: c.statut,
+    webhookUrl: c.webhookUrl,
+    webhookEvents: c.webhookEvents,
+    webhookSecretDefini: !!c.webhookSecret,
+    dernierUsageAt: c.dernierUsageAt,
+    expireAt: c.expireAt,
+    createdAt: c.createdAt,
+    revokedAt: c.revokedAt,
+  };
+}
+
+/** Clé API active du partenaire (ou `null`). */
+partenairesRouter.get(
+  "/:id/api-key",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    const cle = await prisma.partnerApiKey.findFirst({
+      where: { partenaireId: p.id, statut: "active" },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json(cle ? vueCleApi(cle) : null);
+  })
+);
+
+/**
+ * Génère une nouvelle clé API. Révoque immédiatement la clé active
+ * précédente. Le `secret` (et le `webhookSecret` éventuel) ne sont renvoyés
+ * QUE dans cette réponse.
+ */
+partenairesRouter.post(
+  "/:id/api-key",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    const data = apiKeyCreateSchema.parse(req.body);
+
+    const { secret, prefix, hash } = genererCleApi(data.environnement);
+    const webhookSecret = data.webhookUrl ? randomBytes(32).toString("hex") : null;
+
+    const cle = await prisma.$transaction(async (tx) => {
+      await tx.partnerApiKey.updateMany({
+        where: { partenaireId: p.id, statut: "active" },
+        data: { statut: "revoquee", revokedAt: new Date() },
+      });
+      return tx.partnerApiKey.create({
+        data: {
+          partenaireId: p.id,
+          label: data.label,
+          prefix,
+          hash,
+          environnement: data.environnement,
+          scopes: data.scopes,
+          ipAllowlist: data.ipAllowlist,
+          expireAt: data.expireAt ? new Date(data.expireAt) : null,
+          webhookUrl: data.webhookUrl ?? null,
+          webhookSecret,
+          webhookEvents: data.webhookEvents,
+        },
+      });
+    });
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "creation",
+      objetType: "partner_api_key",
+      objetId: cle.id,
+      valeurApres: {
+        partenaireId: p.id,
+        prefix,
+        environnement: data.environnement,
+        scopes: data.scopes,
+      },
+    });
+
+    res.status(201).json({ ...vueCleApi(cle), secret, webhookSecret });
+  })
+);
+
+/** Met à jour la clé active (portées, IP, webhook, expiration, libellé). */
+partenairesRouter.patch(
+  "/:id/api-key",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    const cle = await prisma.partnerApiKey.findFirst({
+      where: { partenaireId: p.id, statut: "active" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!cle) return res.status(404).json({ error: "Aucune clé API active pour ce partenaire" });
+    const data = apiKeyPatchSchema.parse(req.body);
+
+    // `undefined` = champ non transmis (on garde) ; `null` = retrait explicite.
+    const urlFinale = data.webhookUrl === undefined ? cle.webhookUrl : data.webhookUrl;
+    let nouveauWebhookSecret: string | null | undefined;
+    if (!urlFinale) {
+      nouveauWebhookSecret = null; // pas d'URL → pas de secret
+    } else if (data.regenererWebhookSecret || !cle.webhookSecret) {
+      nouveauWebhookSecret = randomBytes(32).toString("hex");
+    }
+
+    const updated = await prisma.partnerApiKey.update({
+      where: { id: cle.id },
+      data: {
+        label: data.label ?? undefined,
+        scopes: data.scopes ?? undefined,
+        ipAllowlist: data.ipAllowlist ?? undefined,
+        expireAt:
+          data.expireAt === undefined
+            ? undefined
+            : data.expireAt === null
+              ? null
+              : new Date(data.expireAt),
+        webhookUrl: data.webhookUrl === undefined ? undefined : data.webhookUrl,
+        webhookEvents: data.webhookEvents ?? undefined,
+        webhookSecret: nouveauWebhookSecret === undefined ? undefined : nouveauWebhookSecret,
+      },
+    });
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "partner_api_key",
+      objetId: updated.id,
+      valeurApres: {
+        scopes: updated.scopes,
+        ipAllowlist: updated.ipAllowlist,
+        webhookUrl: updated.webhookUrl,
+        expireAt: updated.expireAt,
+      },
+    });
+
+    res.json({
+      ...vueCleApi(updated),
+      ...(nouveauWebhookSecret ? { webhookSecret: nouveauWebhookSecret } : {}),
+    });
+  })
+);
+
+/** Révoque immédiatement la clé active du partenaire. */
+partenairesRouter.post(
+  "/:id/api-key/revoke",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    const { count } = await prisma.partnerApiKey.updateMany({
+      where: { partenaireId: p.id, statut: "active" },
+      data: { statut: "revoquee", revokedAt: new Date() },
+    });
+    if (count === 0) return res.status(404).json({ error: "Aucune clé API active à révoquer" });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "suppression",
+      objetType: "partner_api_key",
+      objetId: p.id,
+    });
+    res.json({ ok: true, revoquees: count });
+  })
+);
+
+/** Envoie un événement de test à l'URL webhook configurée sur la clé active. */
+partenairesRouter.post(
+  "/:id/webhook/test",
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const cle = await prisma.partnerApiKey.findFirst({
+      where: { partenaireId: req.params.id, statut: "active" },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!cle) return res.status(404).json({ error: "Aucune clé API active pour ce partenaire" });
+    if (!cle.webhookUrl) return res.status(400).json({ error: "Aucune URL webhook configurée sur cette clé" });
+
+    // `ignorerFiltre` : l'événement de test part même si le partenaire n'a
+    // souscrit à aucun événement.
+    await emettreWebhook(
+      cle.id,
+      "test",
+      { message: "Événement de test SIM Assurances", horodatage: new Date().toISOString() },
+      true
+    );
+    res.json({ ok: true, url: cle.webhookUrl });
   })
 );

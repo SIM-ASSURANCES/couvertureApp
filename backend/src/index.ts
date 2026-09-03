@@ -6,6 +6,7 @@ import cron from "node-cron";
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { envoyerRelancesEcheance } from "./services/relances.js";
+import { rejouerWebhooksEnAttente } from "./services/partnerWebhook.js";
 
 import { authRouter } from "./routes/auth.js";
 import { partenairesRouter } from "./routes/partenaires.js";
@@ -26,6 +27,7 @@ import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
 import { contratsRouter } from "./routes/contrats.js";
 import { cartesRouter } from "./routes/cartes.js";
+import { partnerApiRouter } from "./routes/partnerApi.js";
 import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
 import { requireAuth, requireBranche } from "./auth.js";
@@ -162,6 +164,10 @@ app.use("/api/agent-distribution", agentDistributionRouter);
 app.use("/api/contrats", publicLimiter, contratsRouter);
 // Carte virtuelle de prise en charge — même exposition publique/rate-limit que les contrats.
 app.use("/api/cartes", publicLimiter, cartesRouter);
+// API partenaire (serveur-à-serveur) : authentification par clé API + limiteur
+// dédié + journalisation, appliqués dans le routeur lui-même (voir
+// routes/partnerApi.ts). Pas de session admin, pas de CORS navigateur.
+app.use("/api/partner", partnerApiRouter);
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ZodError) {
@@ -184,6 +190,12 @@ cron.schedule(
   },
   { timezone: "Africa/Abidjan" }
 );
+
+// Rejeu des webhooks partenaire en échec (backoff croissant, abandon après
+// 24 h) — voir services/partnerWebhook.ts.
+cron.schedule("*/2 * * * *", () => {
+  rejouerWebhooksEnAttente().catch((e) => console.error("[partnerWebhook] rejeu", e));
+});
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => console.log(`API SIM Assurances sur http://localhost:${PORT}`));
