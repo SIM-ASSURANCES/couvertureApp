@@ -23,7 +23,7 @@ export const ACTIVITES_RELAXACCIDENTS_GENERALE: ActiviteRelaxAccidentsGenerale[]
   {
     classe: 2,
     libelle:
-      "Petit commerce et artisanat sans outils dangereux (Commerçant ambulant, vendeur au marché, tailleur, coiffeur, cordonnier, boulanger, chauffeur, agent commercial)",
+      "Petit commerce et artisanat sans outils dangereux (Commerçant ambulant, vendeur au marché, tailleur, coiffeur, cordonnier, boulanger, agent commercial)",
   },
   {
     classe: 3,

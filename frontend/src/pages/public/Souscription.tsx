@@ -507,7 +507,7 @@ function RelaxAccidentsGeneraleForm({
                 <span style={{ fontSize: 11.5, color: "#5b6b80", alignSelf: "start" }}>Indemnité journalière</span>
                 <strong style={{ fontSize: 11.5, textAlign: "right", color: "#0f1b2d" }}>
                   {fcfa(ij.montant)} / jour, {ij.dureeMaxJours} jours max
-                  <br />({ij.carenceJours} jours de délai de carence)
+                  <br />({ij.carenceJours} jours de délai de franchise)
                 </strong>
               </>
             )}

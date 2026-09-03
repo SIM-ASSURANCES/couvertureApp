@@ -406,7 +406,7 @@ export default function ClientDashboard() {
                     : ([
                         [
                           "Indemnité journalière",
-                          `${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de carence)`,
+                          `${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de franchise)`,
                         ],
                       ] as [string, string][])),
                   ["Frais médicaux et pharmaceutiques", fcfa(g.fraisMedicaux)],

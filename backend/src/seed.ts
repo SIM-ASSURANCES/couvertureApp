@@ -417,7 +417,10 @@ async function seedCatalogueAssurancesAccidentsDommages() {
       non_declare: {
         1: { ttc: 16_500, taxes: 1_115, accessoiresHT: 2_500, primeHT: 12_885 },
         2: { ttc: 19_000, taxes: 1_284, accessoiresHT: 2_500, primeHT: 15_216 },
-        3: { ttc: 25_000, taxes: 1_690, accessoiresHT: 2_500, primeHT: 20_810 },
+        // Mise à jour 2026-09-01 : 23 500 (au lieu de 25 000) — taxes/primeHT
+        // recalculés au même taux que les autres lignes (taxes = TTC × 6,76 %,
+        // vérifié exact sur les 16 lignes existantes).
+        3: { ttc: 23_500, taxes: 1_589, accessoiresHT: 2_500, primeHT: 19_411 },
         4: { ttc: 28_500, taxes: 1_927, accessoiresHT: 2_500, primeHT: 24_073 },
       },
       declare: {
@@ -442,7 +445,9 @@ async function seedCatalogueAssurancesAccidentsDommages() {
       non_declare: {
         1: { ttc: 1_650, taxes: 112, accessoiresHT: 250, primeHT: 1_288 },
         2: { ttc: 1_900, taxes: 128, accessoiresHT: 250, primeHT: 1_522 },
-        3: { ttc: 2_500, taxes: 169, accessoiresHT: 250, primeHT: 2_081 },
+        // Mise à jour 2026-09-01 : 2 350 (au lieu de 2 500) — voir la même
+        // note que ci-dessus (annuel classe 3 non déclaré).
+        3: { ttc: 2_350, taxes: 159, accessoiresHT: 250, primeHT: 1_941 },
         4: { ttc: 2_850, taxes: 193, accessoiresHT: 250, primeHT: 2_407 },
       },
     },
@@ -478,6 +483,21 @@ async function seedCatalogueAssurancesAccidentsDommages() {
   await prisma.tarifProduit.deleteMany({
     where: { produitId: relaxAccidentsGenerale.id, libelleVariante: { notIn: [...libellesValides] } },
   });
+  // Correction ponctuelle de prix demandée par l'utilisateur (2026-09-01,
+  // classe 3 / non déclaré CNPS : 25 000 → 23 500 annuel, 2 500 → 2 350
+  // mensuel) — contrairement à la boucle ci-dessus (`update: {}`, qui ne
+  // touche jamais un tarif déjà en base pour ne jamais écraser une
+  // modification faite depuis l'admin), on force ICI la mise à jour de ces
+  // deux lignes précises pour que la baisse de prime s'applique aussi aux
+  // bases déjà seedées (sur une base neuve, la boucle ci-dessus les a déjà
+  // créées avec les bonnes valeurs — ce bloc est alors un no-op).
+  for (const cycle of ["annuel", "mensuel"] as const) {
+    const prix = PRIX_RELAXACCIDENTS_GENERALE[cycle].non_declare[3];
+    await prisma.tarifProduit.updateMany({
+      where: { produitId: relaxAccidentsGenerale.id, libelleVariante: formuleRelaxAccidentsGenerale(3, false, cycle) },
+      data: { prime: prix.ttc, primeHT: prix.primeHT, taxes: prix.taxes, fg: prix.accessoiresHT },
+    });
+  }
 
   // SecurHome+ et SecurPro (Assurances Dommages) — mécanisme de prime livré
   // (services/securhomeDommages.ts, et routes/public.ts qui réutilise

@@ -653,7 +653,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
     ${
       c.cnpsDeclare
         ? ""
-        : `<tr><td class="k">Indemnité journalière</td><td colspan="3">${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de carence)</td></tr>`
+        : `<tr><td class="k">Indemnité journalière</td><td colspan="3">${fcfa(ij.montant)} / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de délai de franchise)</td></tr>`
     }
     <tr><td class="k">Frais médicaux et pharmaceutiques</td><td>${fcfa(g.fraisMedicaux)}</td><td class="k">Invalidité Permanente Partielle/Totale</td><td>${fcfa(g.invaliditePermanenteTotale)}</td></tr>
     <tr><td class="k">Décès non accidentel</td><td>${fcfa(g.decesNonAccidentel)}</td><td class="k">Décès Accidentel</td><td>${fcfa(g.decesAccidentel)}</td></tr>
