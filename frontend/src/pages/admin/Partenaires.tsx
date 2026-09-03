@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal, KeyRound, RefreshCw, Send } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
@@ -510,6 +510,345 @@ function EditModal({
   );
 }
 
+interface CleApi {
+  id: string;
+  label: string;
+  prefix: string;
+  environnement: "live" | "test";
+  scopes: string[];
+  ipAllowlist: string[];
+  statut: "active" | "revoquee";
+  webhookUrl: string | null;
+  webhookEvents: string[];
+  webhookSecretDefini: boolean;
+  dernierUsageAt: string | null;
+  expireAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+type CleApiAvecSecret = CleApi & { secret: string; webhookSecret: string | null };
+
+const SCOPES_API: { v: string; l: string }[] = [
+  { v: "catalogue:read", l: "Catalogue & devis" },
+  { v: "souscriptions:write", l: "Créer / confirmer des souscriptions" },
+  { v: "souscriptions:read", l: "Lire les souscriptions" },
+  { v: "documents:read", l: "Documents (carte, contrat)" },
+];
+const EVENEMENTS_WEBHOOK = [
+  "souscription.creee",
+  "paiement.recu",
+  "souscription.confirmee",
+  "contrat.disponible",
+];
+
+function ChampSecret({ label, valeur, k, copied, onCopy }: {
+  label: string; valeur: string; k: string; copied: string | null; onCopy: (v: string, k: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 4 }}>{label}</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <code style={{ flex: 1, fontSize: 12, background: "var(--sim-primary-50)", border: "1px solid var(--border-strong)", borderRadius: 8, padding: "8px 10px", wordBreak: "break-all", lineHeight: 1.5 }}>{valeur}</code>
+        <button type="button" className="btn btn-ghost" style={{ padding: 8 }} title="Copier" onClick={() => onCopy(valeur, k)}>
+          {copied === k ? <Check size={15} color="var(--success)" /> : <Copy size={15} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AccesApiModal({ partenaire, onClose }: { partenaire: Partenaire; onClose: () => void }) {
+  const { data, loading, error, reload } = useFetch<CleApi | null>(`/partenaires/${partenaire.id}/api-key`);
+  const [reveal, setReveal] = useState<{ secret?: string; webhookSecret?: string | null } | null>(null);
+  const [mode, setMode] = useState<"view" | "form">("view");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const [label, setLabel] = useState("Intégration API");
+  const [environnement, setEnvironnement] = useState<"live" | "test">("live");
+  const [scopes, setScopes] = useState<string[]>(SCOPES_API.map((s) => s.v));
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookEvents, setWebhookEvents] = useState<string[]>(EVENEMENTS_WEBHOOK);
+  const [ipAllowlist, setIpAllowlist] = useState("");
+  const [expireAt, setExpireAt] = useState("");
+
+  const editing = mode === "form" && !!data;
+
+  function copier(v: string, k: string) {
+    navigator.clipboard?.writeText(v);
+    setCopied(k);
+    setTimeout(() => setCopied(null), 1500);
+  }
+  function toggle(list: string[], setList: (v: string[]) => void, v: string) {
+    setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
+  }
+
+  function ouvrirEdition() {
+    if (!data) return;
+    setLabel(data.label);
+    setEnvironnement(data.environnement);
+    setScopes(data.scopes);
+    setWebhookUrl(data.webhookUrl ?? "");
+    setWebhookEvents(data.webhookEvents.length ? data.webhookEvents : EVENEMENTS_WEBHOOK);
+    setIpAllowlist(data.ipAllowlist.join("\n"));
+    setExpireAt(data.expireAt ? data.expireAt.slice(0, 10) : "");
+    setErr(""); setOk("");
+    setMode("form");
+  }
+
+  function ipsDuFormulaire() {
+    return ipAllowlist.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  async function creer() {
+    setBusy("creer"); setErr(""); setOk("");
+    try {
+      const body: Record<string, unknown> = { label, environnement, scopes, ipAllowlist: ipsDuFormulaire() };
+      if (webhookUrl.trim()) { body.webhookUrl = webhookUrl.trim(); body.webhookEvents = webhookEvents; }
+      if (expireAt) body.expireAt = new Date(expireAt + "T00:00:00.000Z").toISOString();
+      const cle = await api.post<CleApiAvecSecret>(`/partenaires/${partenaire.id}/api-key`, body);
+      setReveal({ secret: cle.secret, webhookSecret: cle.webhookSecret });
+      setMode("view");
+      reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function enregistrerEdition() {
+    setBusy("edit"); setErr(""); setOk("");
+    try {
+      const body: Record<string, unknown> = {
+        label,
+        scopes,
+        ipAllowlist: ipsDuFormulaire(),
+        webhookUrl: webhookUrl.trim() || null,
+        webhookEvents: webhookUrl.trim() ? webhookEvents : [],
+        expireAt: expireAt ? new Date(expireAt + "T00:00:00.000Z").toISOString() : null,
+      };
+      const cle = await api.patch<CleApi & { webhookSecret?: string }>(`/partenaires/${partenaire.id}/api-key`, body);
+      if (cle.webhookSecret) setReveal({ webhookSecret: cle.webhookSecret });
+      setMode("view");
+      setOk("Clé mise à jour ✓");
+      reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function regenerer() {
+    if (!data) return;
+    if (!window.confirm("Régénérer la clé ? L'ancienne est révoquée immédiatement — le partenaire devra remplacer sa clé.")) return;
+    setBusy("regen"); setErr(""); setOk("");
+    try {
+      const body: Record<string, unknown> = {
+        label: data.label,
+        environnement: data.environnement,
+        scopes: data.scopes,
+        ipAllowlist: data.ipAllowlist,
+      };
+      if (data.webhookUrl) { body.webhookUrl = data.webhookUrl; body.webhookEvents = data.webhookEvents; }
+      if (data.expireAt) body.expireAt = data.expireAt;
+      const cle = await api.post<CleApiAvecSecret>(`/partenaires/${partenaire.id}/api-key`, body);
+      setReveal({ secret: cle.secret, webhookSecret: cle.webhookSecret });
+      reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function revoquer() {
+    if (!window.confirm("Révoquer la clé API de ce partenaire ? Ses appels seront immédiatement refusés.")) return;
+    setBusy("revoke"); setErr(""); setOk("");
+    try {
+      await api.post(`/partenaires/${partenaire.id}/api-key/revoke`);
+      setOk("Clé révoquée.");
+      reload();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  async function testerWebhook() {
+    setBusy("webhook"); setErr(""); setOk("");
+    try {
+      await api.post(`/partenaires/${partenaire.id}/webhook/test`);
+      setOk("Événement de test envoyé à l'URL configurée.");
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(null); }
+  }
+
+  const champLabel: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.04em" };
+  const ligne: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, padding: "8px 0", borderBottom: "1px solid var(--border-strong)", fontSize: 13 };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 500, maxWidth: "100%", padding: 24, maxHeight: "90vh", overflowY: "auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <strong style={{ fontSize: 17 }}>Accès API — {partenaire.nomCommerce}</strong>
+          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+        </div>
+        <p style={{ fontSize: 12.5, color: "var(--text-2)", marginBottom: 16 }}>
+          Clé d'accès serveur&#8209;à&#8209;serveur à l'API partenaire (<code>/api/partner/v1</code>). Une seule clé active à la fois — la régénérer révoque l'ancienne.
+        </p>
+
+        {err && <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 12 }}>{err}</div>}
+        {ok && <div style={{ color: "var(--success)", fontSize: 13, marginBottom: 12 }}>{ok}</div>}
+
+        {reveal && (
+          <div style={{ border: "1px solid var(--warning)", background: "var(--warning-50)", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--warning)", marginBottom: 10 }}>
+              À copier maintenant — ces valeurs ne seront plus jamais affichées.
+            </div>
+            {reveal.secret && (
+              <ChampSecret label="Clé API (secret)" valeur={reveal.secret} k="secret" copied={copied} onCopy={copier} />
+            )}
+            {reveal.webhookSecret && (
+              <ChampSecret label="Secret webhook (vérification X-SIM-Signature)" valeur={reveal.webhookSecret} k="wh" copied={copied} onCopy={copier} />
+            )}
+            <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={() => setReveal(null)}>
+              J'ai copié — continuer
+            </button>
+          </div>
+        )}
+
+        {!reveal && loading && <Loader />}
+        {!reveal && error && <ErrorBox message={error} />}
+
+        {/* ---------- Vue d'une clé active ---------- */}
+        {!reveal && !loading && data && mode === "view" && (
+          <>
+            <div style={{ marginBottom: 4 }}>
+              <div style={ligne}><span style={champLabel}>Identifiant</span><code style={{ fontSize: 12.5 }}>{data.prefix}…</code></div>
+              <div style={ligne}><span style={champLabel}>Environnement</span><span style={{ fontWeight: 600 }}>{data.environnement}</span></div>
+              <div style={ligne}>
+                <span style={champLabel}>Portées</span>
+                <span style={{ display: "flex", flexWrap: "wrap", gap: 4, justifyContent: "flex-end" }}>
+                  {data.scopes.map((s) => (
+                    <span key={s} style={{ background: "var(--sim-primary-50)", color: "var(--sim-primary)", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>{s}</span>
+                  ))}
+                </span>
+              </div>
+              <div style={ligne}>
+                <span style={champLabel}>Webhook</span>
+                <span style={{ textAlign: "right", wordBreak: "break-all" }}>
+                  {data.webhookUrl
+                    ? <>{data.webhookUrl}<br /><span style={{ fontSize: 11, color: "var(--text-2)" }}>{data.webhookEvents.join(", ") || "aucun événement"}{data.webhookSecretDefini ? " · secret défini" : ""}</span></>
+                    : <span style={{ color: "var(--text-2)" }}>non configuré</span>}
+                </span>
+              </div>
+              <div style={ligne}><span style={champLabel}>IP autorisées</span><span style={{ textAlign: "right" }}>{data.ipAllowlist.length ? data.ipAllowlist.join(", ") : <span style={{ color: "var(--text-2)" }}>toutes</span>}</span></div>
+              <div style={ligne}><span style={champLabel}>Dernier appel</span><span>{data.dernierUsageAt ? fmtDate(data.dernierUsageAt) : <span style={{ color: "var(--text-2)" }}>jamais</span>}</span></div>
+              <div style={ligne}><span style={champLabel}>Expiration</span><span>{data.expireAt ? fmtDate(data.expireAt) : <span style={{ color: "var(--text-2)" }}>aucune</span>}</span></div>
+              <div style={{ ...ligne, borderBottom: "none" }}><span style={champLabel}>Créée le</span><span>{fmtDate(data.createdAt)}</span></div>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--text-2)", margin: "10px 0 14px" }}>
+              Le secret n'est pas récupérable. En cas de perte, régénérez la clé.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <button className="btn btn-ghost" onClick={ouvrirEdition} disabled={!!busy}><Pencil size={14} style={{ marginRight: 6 }} />Modifier</button>
+              {data.webhookUrl && (
+                <button className="btn btn-ghost" onClick={testerWebhook} disabled={!!busy}><Send size={14} style={{ marginRight: 6 }} />{busy === "webhook" ? "Envoi…" : "Tester le webhook"}</button>
+              )}
+              <button className="btn btn-ghost" onClick={regenerer} disabled={!!busy}><RefreshCw size={14} style={{ marginRight: 6 }} />{busy === "regen" ? "…" : "Régénérer"}</button>
+              <button className="btn btn-ghost" style={{ color: "var(--danger)" }} onClick={revoquer} disabled={!!busy}><Trash2 size={14} style={{ marginRight: 6 }} />{busy === "revoke" ? "…" : "Révoquer"}</button>
+            </div>
+          </>
+        )}
+
+        {/* ---------- Aucune clé : proposition de création ---------- */}
+        {!reveal && !loading && !data && mode === "view" && (
+          <div className="empty" style={{ marginBottom: 16 }}>
+            Aucune clé API active pour ce partenaire.
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-primary" onClick={() => { setErr(""); setOk(""); setMode("form"); }}>Créer une clé</button>
+            </div>
+          </div>
+        )}
+
+        {/* ---------- Formulaire (création ou édition) ---------- */}
+        {!reveal && !loading && mode === "form" && (
+          <div>
+            {!editing && (
+              <>
+                <div className="field">
+                  <label className="label">Libellé</label>
+                  <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ex. Intégration site partenaire" />
+                </div>
+                <div className="field">
+                  <label className="label">Environnement</label>
+                  <select className="select" value={environnement} onChange={(e) => setEnvironnement(e.target.value as "live" | "test")}>
+                    <option value="live">live (production)</option>
+                    <option value="test">test (bac à sable)</option>
+                  </select>
+                </div>
+              </>
+            )}
+            {editing && (
+              <div className="field">
+                <label className="label">Libellé</label>
+                <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} />
+              </div>
+            )}
+
+            <div className="field">
+              <label className="label">Portées <span className="req">*</span></label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                {SCOPES_API.map((s) => (
+                  <label key={s.v} style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer", fontSize: 13 }}>
+                    <input type="checkbox" checked={scopes.includes(s.v)} onChange={() => toggle(scopes, setScopes, s.v)} />
+                    <span>{s.l} <code style={{ fontSize: 11, color: "var(--text-2)" }}>{s.v}</code></span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="field">
+              <label className="label">URL webhook (optionnel)</label>
+              <input className="input" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://partenaire.exemple.com/webhooks/sim" />
+              <div style={{ fontSize: 11, color: "var(--text-2)", marginTop: 4 }}>HTTPS obligatoire, hôte public.</div>
+            </div>
+
+            {webhookUrl.trim() && (
+              <div className="field">
+                <label className="label">Événements poussés</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 4 }}>
+                  {EVENEMENTS_WEBHOOK.map((ev) => (
+                    <label key={ev} style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer", fontSize: 13 }}>
+                      <input type="checkbox" checked={webhookEvents.includes(ev)} onChange={() => toggle(webhookEvents, setWebhookEvents, ev)} />
+                      <code style={{ fontSize: 12 }}>{ev}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="field">
+              <label className="label">IP autorisées (optionnel)</label>
+              <textarea className="input" rows={2} value={ipAllowlist} onChange={(e) => setIpAllowlist(e.target.value)} placeholder="Une IP ou plage CIDR par ligne — vide = toutes" style={{ resize: "vertical", fontFamily: "monospace", fontSize: 12 }} />
+            </div>
+
+            <div className="field">
+              <label className="label">Expiration (optionnel)</label>
+              <input className="input" type="date" value={expireAt} onChange={(e) => setExpireAt(e.target.value)} />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 8 }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: 1 }}
+                disabled={!!busy || scopes.length === 0}
+                onClick={editing ? enregistrerEdition : creer}
+              >
+                {busy ? "…" : editing ? "Enregistrer" : "Créer la clé"}
+              </button>
+              <button className="btn btn-ghost" onClick={() => { setMode("view"); setErr(""); }}>Annuler</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const empty = {
   nomCommerce: "",
   nomResponsable: "",
@@ -549,6 +888,7 @@ export default function Partenaires() {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [produitsId, setProduitsId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partenaire | null>(null);
+  const [accesApi, setAccesApi] = useState<Partenaire | null>(null);
 
   // Classement des partenaires par produit — le prospect choisit un produit,
   // le tableau liste les partenaires du plus performant (le plus de
@@ -900,6 +1240,16 @@ export default function Partenaires() {
                           >
                             <Pencil size={15} />
                           </button>
+                          {isSuper && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 8 }}
+                              title="Accès API"
+                              onClick={() => setAccesApi(p)}
+                            >
+                              <KeyRound size={15} />
+                            </button>
+                          )}
                           {isSuperAdminGlobal && (p.sousBranche || p.qrUnifie) && (
                             <button
                               className="btn btn-ghost"
@@ -1148,6 +1498,7 @@ export default function Partenaires() {
 
       {detailsId && <DetailsModal partenaireId={detailsId} onClose={() => setDetailsId(null)} />}
       {produitsId && <ProduitsModal partenaireId={produitsId} onClose={() => setProduitsId(null)} />}
+      {accesApi && <AccesApiModal partenaire={accesApi} onClose={() => setAccesApi(null)} />}
       {editing && (
         <EditModal
           partenaire={editing}
