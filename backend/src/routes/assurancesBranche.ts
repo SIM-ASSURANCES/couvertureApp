@@ -62,6 +62,14 @@ export interface SouscriptionBranche {
   // Espace client (voir refonte "espace client universel") — permet à l'admin
   // de savoir si une réinitialisation de mot de passe est pertinente.
   espaceClientActif?: boolean;
+  // Canal de vente ("direct" | "api") — renseigné pour le modèle générique.
+  canalVente?: string;
+  // Analyse anti-fraude IA (souscriptions canal API uniquement) — voir
+  // services/fraudeIA.ts::analyserSouscriptionApiIA. `niveauRisqueIA` :
+  // "faible" | "moyen" | "eleve", null si l'analyse a échoué ou pas encore eu lieu.
+  niveauRisqueIA?: string | null;
+  analyseIA?: unknown;
+  analyseIAAt?: string | null;
 }
 
 export interface Filtres {
@@ -205,6 +213,10 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
     renouveleAt: r.renouveleAt ? r.renouveleAt.toISOString() : null,
     cycleFacturation: r.cycleFacturation,
     espaceClientActif: !!r.clientPasswordHash,
+    canalVente: r.canalVente,
+    niveauRisqueIA: r.niveauRisqueIA,
+    analyseIA: r.analyseIA,
+    analyseIAAt: r.analyseIAAt ? r.analyseIAAt.toISOString() : null,
   }));
 }
 

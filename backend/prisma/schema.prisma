@@ -682,6 +682,17 @@ model Souscription {
   montantCommissionApi        Int?
   montantAReverser            Int?
   referencePaiementPartenaire String?
+
+  // --- Analyse anti-fraude IA (souscriptions canal API uniquement) ---
+  // Lancée en fire-and-forget à la création (services/fraudeIA.ts::
+  // analyserSouscriptionApiIA) : compare pièce d'identité ↔ selfie ↔ identité
+  // déclarée via OpenRouter. Purement indicative — ne bloque ni ne rejette
+  // jamais la souscription, sert d'alerte de revue côté admin.
+  // `niveauRisqueIA` (faible|moyen|eleve) est dénormalisé depuis
+  // `analyseIA.niveauRisque` pour le filtrage ; null si l'analyse a échoué.
+  analyseIA      Json?
+  analyseIAAt    DateTime?
+  niveauRisqueIA String?
 }
 
 /**

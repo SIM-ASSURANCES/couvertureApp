@@ -26,6 +26,7 @@ import { confirmerEcheance } from "../services/paiementWave.js";
 import { notifyPartenaire } from "../services/notifications.js";
 import { renderCartePngGenerique, CarteIndisponibleError } from "../services/carteRender.js";
 import { emettreWebhook } from "../services/partnerWebhook.js";
+import { analyserSouscriptionApiIA } from "../services/fraudeIA.js";
 import { openapiPartnerV1 } from "../openapi/partnerV1.js";
 
 // =====================================================================
@@ -430,6 +431,13 @@ partnerApiRouter.post(
       montantAPercevoir: prime,
       montantAReverser,
     }).catch((e) => console.error("[partnerWebhook] souscription.creee", e));
+
+    // Analyse anti-fraude IA (pièce d'identité ↔ selfie ↔ identité déclarée),
+    // en fire-and-forget : ne bloque ni ne fait échouer la souscription.
+    // Résultat purement indicatif, consultable côté admin.
+    void analyserSouscriptionApiIA(s.id).catch((e) =>
+      console.error("[fraudeIA] souscription API", e)
+    );
 
     const debut = dateDebutPremiereActivation(produit.code);
     apiOk(
