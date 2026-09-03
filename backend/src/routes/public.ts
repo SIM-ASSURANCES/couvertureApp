@@ -57,7 +57,7 @@ const dataUrlImage = z
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
 // refonte Assurances Accidents/Dommages (voir routes /initiate-formule ci-dessous).
-const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents"] as const;
+const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents", "securhome"] as const;
 function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
 }
@@ -1521,6 +1521,8 @@ const formuleSchema = z.object({
   optionDeces: z.enum(["200000", "100000"]).optional(),
   // RelaxAccidents générale uniquement — voir MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
+  // SecurHome uniquement — locataire ou propriétaire de la maison assurée.
+  statutOccupation: z.enum(["proprietaire", "locataire"]).optional(),
 });
 
 /**
@@ -1562,6 +1564,9 @@ publicRouter.post(
     }
     if (code === "relaxaccidents" && !data.moyenDeplacement) {
       return res.status(400).json({ error: "Moyen de déplacement manquant." });
+    }
+    if (code === "securhome" && !data.statutOccupation) {
+      return res.status(400).json({ error: "Statut d'occupation manquant (locataire ou propriétaire)." });
     }
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
@@ -1633,6 +1638,12 @@ publicRouter.post(
                 cnpsDeclare: relaxAccidentsGenerale.cnpsDeclare,
                 cycle: relaxAccidentsGenerale.cycle,
                 moyenDeplacement: data.moyenDeplacement,
+              }
+            : code === "securhome"
+            ? {
+                signature: data.signature ?? null,
+                nombrePieces: Number(data.formule),
+                statutOccupation: data.statutOccupation,
               }
             : data.signature || optionDeces
             ? {

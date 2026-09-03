@@ -138,6 +138,25 @@ export interface ContratSecurhome {
   signature?: string | null;
 }
 
+// SecurHome (2026-09-03) — distinct de SecurHome+ ci-dessus : ne couvre que
+// l'incendie, tarif fixe selon le nombre de pièces (pas de devis calculé),
+// voir services/relaxAccidentsGenerale.ts pour le principe équivalent côté
+// RelaxAccidents générale.
+export interface ContratSecurhomeIncendie {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  nombrePieces: number;
+  statutOccupation: "proprietaire" | "locataire";
+  montant: number;
+  capitalGaranti: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -787,6 +806,41 @@ export async function renderContratSecurhome(c: ContratSecurhome): Promise<strin
 
   const cg = await loadCG("incendie");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function renderContratSecurhomeIncendie(c: ContratSecurhomeIncendie): Promise<string> {
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — SECURHOME</h1>
+  <div class="sub">Assurance Incendie Habitation · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Nombre de pièces</td><td>${val(c.nombrePieces)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales SECURDOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et le présent bulletin de souscription.
+    <br/><br/>
+    <b>Risques garantis :</b> Incendie / Explosion de l'habitation désignée. <b>Ne sont pas couvertes</b> les constructions
+    en bois et le changement de domicile en cours de contrat. <b>Indemnisation :</b> <b>montant forfaitaire de ${fcfa(c.capitalGaranti)}</b>
+    (SIM ASSURANCES pourra recourir à un expert pour la validation du montant à payer).
+    Le souscripteur reconnaît avoir pris connaissance des Conditions Générales SECURDOMMAGE.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("incendie");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECURDOMMAGE</h2><div class="cg">${cg}</div>`;
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 

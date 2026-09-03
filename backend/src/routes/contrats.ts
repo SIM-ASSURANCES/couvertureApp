@@ -10,6 +10,7 @@ import {
   renderContratRelaxAccidentsGenerale,
   renderContratSecurpro,
   renderContratSecurhome,
+  renderContratSecurhomeIncendie,
   renderContratSecurecolte,
   renderContratSecurstock,
   renderContratCoupsdurs,
@@ -258,6 +259,26 @@ const securhomeDommagesSchema = z.object({
   }),
 });
 
+// SecurHome (2026-09-03) — distinct de securhomeDommagesSchema ci-dessus :
+// tarif fixe selon le nombre de pièces, pas de devis calculé.
+const securhomeIncendieSchema = z.object({
+  type: z.literal("securhome_incendie"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    nombrePieces: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+    statutOccupation: z.enum(["proprietaire", "locataire"]),
+    montant,
+    capitalGaranti: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
 const securstockSchema = z.object({
   type: z.literal("securstock"),
   data: z.object({
@@ -381,6 +402,7 @@ const bodySchema = z.discriminatedUnion("type", [
   securproSchema,
   securproDommagesSchema,
   securhomeDommagesSchema,
+  securhomeIncendieSchema,
   securstockSchema,
   securecolteSchema,
   coupsdursSchema,
@@ -420,6 +442,9 @@ contratsRouter.post(
         break;
       case "securhome_dommages":
         html = await renderContratSecurhome(body.data);
+        break;
+      case "securhome_incendie":
+        html = await renderContratSecurhomeIncendie(body.data);
         break;
       case "securstock":
         html = await renderContratSecurstock(body.data);

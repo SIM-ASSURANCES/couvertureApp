@@ -129,6 +129,23 @@ export interface ContratSecurhome {
   signature?: string | null;
 }
 
+// SecurHome (2026-09-03) — distinct de SecurHome+ ci-dessus : ne couvre que
+// l'incendie, tarif fixe selon le nombre de pièces, pas de devis calculé.
+export interface ContratSecurhomeIncendie {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  nombrePieces: 1 | 2 | 3 | 4 | 5;
+  statutOccupation: "proprietaire" | "locataire";
+  montant: number;
+  capitalGaranti: number;
+  signature?: string | null;
+}
+
 export interface ContratSecurpro {
   numeroPolice: string;
   intermediaire: string;
@@ -458,6 +475,23 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
     });
     return;
   }
+  if (c.type === "securhome") {
+    genererContratSecurhomeIncendie({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      nombrePieces: (c.nombrePieces ?? 1) as 1 | 2 | 3 | 4 | 5,
+      statutOccupation: c.statutOccupation ?? "proprietaire",
+      montant: c.montant,
+      capitalGaranti: c.capitalGaranti,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
   if (c.type === "securhome_dommages") {
     const r = c.resultat ?? {};
     const statutFinal = c.statutOccupation ?? "proprietaire";
@@ -746,6 +780,7 @@ type ContratType =
   | "securpro"
   | "securpro_dommages"
   | "securhome_dommages"
+  | "securhome_incendie"
   | "securstock"
   | "securecolte"
   | "coupsdurs";
@@ -819,6 +854,10 @@ export async function genererContratSecurproDommages(c: ContratSecurpro) {
 
 export async function genererContratSecurhome(c: ContratSecurhome) {
   await telechargerContratPdf("securhome_dommages", c.numeroPolice, c);
+}
+
+export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie) {
+  await telechargerContratPdf("securhome_incendie", c.numeroPolice, c);
 }
 
 export async function genererContratSecurecolte(c: ContratSecurecolte) {

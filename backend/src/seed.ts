@@ -524,6 +524,56 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     });
   }
 
+  // SecurHome (2026-09-03) — nouveau produit Assurances Dommages, distinct de
+  // SecurHome+ : ne couvre que l'incendie, tarif FIXE selon le nombre de
+  // pièces de la maison (1 à 5), pas de devis calculé. Le souscripteur
+  // précise aussi s'il est locataire ou propriétaire (champ générique
+  // `statutOccupation`, déjà utilisé par SecurHome+/SecurPro).
+  const securhome = await prisma.produit.upsert({
+    where: { code: "securhome" },
+    update: { actif: true, libelle: "SecurHome" },
+    create: {
+      code: "securhome",
+      libelle: "SecurHome",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_DOMMAGES",
+      typePaiement: "WAVE",
+      ordre: 0,
+      actif: true,
+    },
+  });
+  // Tableau de primes fourni par l'utilisateur (2026-09-03) — Capital garanti
+  // = 1 333 500 FCFA × nombre de pièces. Accessoires fixés à 2 500 FCFA quel
+  // que soit le nombre de pièces.
+  const PRIX_SECURHOME: Record<1 | 2 | 3 | 4 | 5, { ttc: number; taxes: number; primeHT: number }> = {
+    1: { ttc: 4_913, taxes: 546, primeHT: 1_867 },
+    2: { ttc: 7_013, taxes: 779, primeHT: 3_734 },
+    // TTC corrigé à 9 114 (l'utilisateur avait indiqué 9 113) : seule valeur
+    // cohérente avec Prime HT (5 601) + Accessoires (2 500) + Taxes (1 013)
+    // = 9 114, et avec le taux de taxes (TTC × 1/9) vérifié exact sur les
+    // 4 autres lignes.
+    3: { ttc: 9_114, taxes: 1_013, primeHT: 5_601 },
+    4: { ttc: 11_214, taxes: 1_246, primeHT: 7_468 },
+    5: { ttc: 13_314, taxes: 1_479, primeHT: 9_335 },
+  };
+  for (const nombrePieces of [1, 2, 3, 4, 5] as const) {
+    const prix = PRIX_SECURHOME[nombrePieces];
+    await prisma.tarifProduit.upsert({
+      where: { produitId_libelleVariante: { produitId: securhome.id, libelleVariante: String(nombrePieces) } },
+      update: {},
+      create: {
+        produitId: securhome.id,
+        libelleVariante: String(nombrePieces),
+        prime: prix.ttc,
+        primeHT: prix.primeHT,
+        taxes: prix.taxes,
+        fg: 2_500,
+        capitalGaranti: 1_333_500 * nombrePieces,
+        commission: 0,
+      },
+    });
+  }
+
   console.log("[seed] Catalogue Assurances Accidents/Dommages synchronisé.");
 }
 

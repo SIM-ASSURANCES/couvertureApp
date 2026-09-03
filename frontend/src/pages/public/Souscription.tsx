@@ -9,6 +9,7 @@ import {
   genererContratRelaxAccidentsGenerale,
   genererContratSecurproDommages,
   genererContratSecurhome,
+  genererContratSecurhomeIncendie,
 } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -91,7 +92,7 @@ function libellePeriode(cycle: "mensuel" | "annuel", n: number): string {
 // "choisir votre Assurance" (QR unique) quand l'URL vise déjà un produit
 // précis (lien "Souscrire" depuis l'espace client, voir Dashboard.tsx).
 const PRODUITS_ACCIDENTS = ["relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents"];
-const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages"];
+const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages", "securhome"];
 function sousBrancheDuProduit(code: string): "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null {
   if (PRODUITS_ACCIDENTS.includes(code)) return "ASSURANCES_ACCIDENTS";
   if (PRODUITS_DOMMAGES.includes(code)) return "ASSURANCES_DOMMAGES";
@@ -115,6 +116,13 @@ function isSecurproDommages(p?: string): p is "securpro_dommages" {
 // frontend/src/securhomeDommages.ts (miroir de backend/src/services/securhomeDommages.ts).
 function isSecurhomeDommages(p?: string): p is "securhome_dommages" {
   return p === "securhome_dommages";
+}
+
+// SecurHome (2026-09-03, Assurances Dommages) — distinct de SecurHome+ :
+// ne couvre que l'incendie, tarif fixe selon le nombre de pièces (pas de
+// devis calculé), voir relaxAccidentsGenerale.ts pour le principe équivalent.
+function isSecurhomeIncendie(p?: string): p is "securhome" {
+  return p === "securhome";
 }
 
 // Reprend la nomenclature du document TARIF SECURHOME+_SECURPRO.docx
@@ -143,7 +151,8 @@ interface QrInfo {
     | "relaxvoyage"
     | "relaxaccidents"
     | "securpro_dommages"
-    | "securhome_dommages";
+    | "securhome_dommages"
+    | "securhome";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -1193,6 +1202,107 @@ function SecurhomeDommagesForm({
   );
 }
 
+// SecurHome (2026-09-03) — Assurances Dommages, incendie uniquement, tarif
+// fixe par nombre de pièces (pas de devis calculé, contrairement à
+// SecurHome+) : le prospect choisit son nombre de pièces (capital garanti +
+// prime TTC affichés en direct) puis précise s'il est locataire ou
+// propriétaire de la maison à assurer.
+function SecurhomeIncendieForm({
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
+  telephone,
+  setTelephone,
+  nombrePieces,
+  setNombrePieces,
+  statutOccupation,
+  setStatutOccupation,
+  tarifsFormule,
+  sigRef,
+}: {
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  nombrePieces: "" | "1" | "2" | "3" | "4" | "5";
+  setNombrePieces: (v: "1" | "2" | "3" | "4" | "5") => void;
+  statutOccupation: "proprietaire" | "locataire" | "";
+  setStatutOccupation: (v: "proprietaire" | "locataire") => void;
+  tarifsFormule: TarifFormule[];
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  const tarif = nombrePieces ? tarifsFormule.find((t) => t.libelleVariante === nombrePieces) ?? null : null;
+
+  return (
+    <>
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+      <FieldRow label="Nombre de pièces de la maison *">
+        <select
+          value={nombrePieces}
+          onChange={(e) => setNombrePieces(e.target.value as "1" | "2" | "3" | "4" | "5")}
+          style={inputStyle}
+        >
+          <option value="">Sélectionnez le nombre de pièces...</option>
+          {(["1", "2", "3", "4", "5"] as const).map((n) => (
+            <option key={n} value={n}>
+              {n} pièce{n === "1" ? "" : "s"}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+
+      {tarif && (
+        <div
+          style={{
+            background: "var(--sim-primary-50, #e6f1fb)",
+            borderRadius: 12,
+            padding: "14px 16px",
+            margin: "0 0 18px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80" }}>
+            <span>Capital garanti</span>
+            <strong style={{ color: "#0f1b2d" }}>{fcfa(tarif.capitalGaranti)}</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
+            <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
+          </div>
+        </div>
+      )}
+
+      <FieldRow label="Êtes-vous locataire ou propriétaire de cette maison ? *">
+        <div style={{ display: "flex", gap: 20 }}>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "proprietaire"} onChange={() => setStatutOccupation("proprietaire")} />
+            Propriétaire
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" checked={statutOccupation === "locataire"} onChange={() => setStatutOccupation("locataire")} />
+            Locataire
+          </label>
+        </div>
+      </FieldRow>
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
 export default function Souscription() {
   const { token, produit: produitParam } = useParams<{ token: string; produit?: string }>();
   const navigate = useNavigate();
@@ -1315,6 +1425,12 @@ export default function Souscription() {
   const [deCapitalSh, setDeCapitalSh] = useState("");
   const [bdgCapitalSh, setBdgCapitalSh] = useState("");
 
+  // Champs SecurHome (Assurances Dommages, incendie uniquement, tarif fixe
+  // par nombre de pièces) — `nom`/`prenom`/`telephone`/`sigRef` partagés avec
+  // les branches ci-dessus.
+  const [nombrePiecesSecurhome, setNombrePiecesSecurhome] = useState<"" | "1" | "2" | "3" | "4" | "5">("");
+  const [statutOccupationSecurhome, setStatutOccupationSecurhome] = useState<"proprietaire" | "locataire" | "">("");
+
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
   const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
@@ -1408,7 +1524,8 @@ export default function Souscription() {
           produitEffectif === "relaxvoyage" ||
           produitEffectif === "relaxaccidents" ||
           produitEffectif === "securpro_dommages" ||
-          produitEffectif === "securhome_dommages";
+          produitEffectif === "securhome_dommages" ||
+          produitEffectif === "securhome";
         const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
@@ -1705,6 +1822,11 @@ export default function Souscription() {
       const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/relaxaccidents`).then((r) => r.json());
       setTarifsFormule(formules);
       setCycle("annuel");
+    } else if (isSecurhomeIncendie(produit)) {
+      // Pas de présélection : le nombre de pièces (donc la formule) est
+      // choisi explicitement par le souscripteur (voir SecurhomeIncendieForm).
+      const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/securhome`).then((r) => r.json());
+      setTarifsFormule(formules);
     } else if (isRelax(produit)) {
       const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       setTarifsRelax(tarifs);
@@ -1793,6 +1915,8 @@ export default function Souscription() {
         if (base == null) return null;
         return base + surchargeMoyenDeplacementRelaxAccidentsGenerale(moyenDeplacementRa, cycle);
       }
+      if (isSecurhomeIncendie(p))
+        return tarifsFormule.find((t) => t.libelleVariante === nombrePiecesSecurhome)?.prime ?? null;
       if (isSecurproDommages(p)) {
         const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
         if (!bar) return null;
@@ -1871,6 +1995,15 @@ export default function Souscription() {
       return l;
     }
 
+    if (isSecurhomeIncendie(p)) {
+      l.push({ label: "Prénom", valeur: prenom });
+      l.push({ label: "Nom", valeur: nom });
+      l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Nombre de pièces", valeur: nombrePiecesSecurhome || "—" });
+      l.push({ label: "Statut d'occupation", valeur: statutOccupationSecurhome === "proprietaire" ? "Propriétaire" : statutOccupationSecurhome === "locataire" ? "Locataire" : "—" });
+      return l;
+    }
+
     if (isSecurproDommages(p) || isSecurhomeDommages(p)) {
       const pro = isSecurproDommages(p);
       const statut = pro ? statutOccupationSp : statutOccupationSh;
@@ -1934,6 +2067,7 @@ export default function Souscription() {
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
     if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
+    if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
@@ -1945,6 +2079,7 @@ export default function Souscription() {
       isRelaxAccidentsGenerale(qrInfo.produit) ||
       isSecurproDommages(qrInfo.produit) ||
       isSecurhomeDommages(qrInfo.produit) ||
+      isSecurhomeIncendie(qrInfo.produit) ||
       isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
       isRelax(qrInfo.produit)
         ? signatureCapturee ?? undefined
@@ -1988,6 +2123,31 @@ export default function Souscription() {
           )
         );
 
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          capitalGaranti: data.capitalGaranti,
+        });
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (isSecurhomeIncendie(qrInfo.produit)) {
+        if (!nombrePiecesSecurhome || !statutOccupationSecurhome) return;
+        const res = await fetch(`${BASE}/public/souscriptions/securhome/initiate-formule`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            telephone,
+            formule: nombrePiecesSecurhome,
+            statutOccupation: statutOccupationSecurhome,
+            signature,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
         setResult({
           checkoutUrl: data.checkoutUrl,
           souscriptionId: data.souscriptionId,
@@ -2268,6 +2428,26 @@ export default function Souscription() {
       });
       return;
     }
+    if (isSecurhomeIncendie(qrInfo.produit)) {
+      if (!result.nombrePieces || !result.statutOccupation) return;
+      genererContratSecurhomeIncendie({
+        numeroPolice: result.numeroPolice ?? "",
+        partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+        dateDebut: result.dateDebut ?? new Date().toISOString(),
+        dateFin:
+          result.dateFin ??
+          new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        nom: result.nom ?? nom,
+        prenom: result.prenom ?? prenom,
+        telephone: result.telephone ?? telephone,
+        nombrePieces: result.nombrePieces as 1 | 2 | 3 | 4 | 5,
+        statutOccupation: result.statutOccupation,
+        montant: result.montant ?? 0,
+        capitalGaranti: result.capitalGaranti ?? 0,
+        signature: result.signature ?? null,
+      });
+      return;
+    }
     if (qrInfo.produit === "securpro_dommages") {
       const resultat = result.resultat as ResultatTarifImf | undefined;
       if (!resultat) return;
@@ -2492,6 +2672,8 @@ export default function Souscription() {
                   ? "SecurPro"
                   : qrInfo.produit === "securhome_dommages"
                   ? "SecurHome+"
+                  : qrInfo.produit === "securhome"
+                  ? "SecurHome"
                   : qrInfo.produit === "relaxmoto"
                   ? "RelaxMoto"
                   : "RelaxAuto"}
@@ -2953,7 +3135,22 @@ export default function Souscription() {
                 Vos informations
               </div>
 
-              {isSecurhomeDommages(qrInfo?.produit) ? (
+              {isSecurhomeIncendie(qrInfo?.produit) ? (
+                <SecurhomeIncendieForm
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  nombrePieces={nombrePiecesSecurhome}
+                  setNombrePieces={setNombrePiecesSecurhome}
+                  statutOccupation={statutOccupationSecurhome}
+                  setStatutOccupation={setStatutOccupationSecurhome}
+                  tarifsFormule={tarifsFormule}
+                  sigRef={sigRef}
+                />
+              ) : isSecurhomeDommages(qrInfo?.produit) ? (
                 <SecurhomeDommagesForm
                   nom={nom}
                   setNom={setNom}
@@ -3483,6 +3680,8 @@ export default function Souscription() {
                         );
                         return r.depassementPlafond;
                       })()
+                    : isSecurhomeIncendie(qrInfo?.produit)
+                    ? !nom || !prenom || phoneInvalid(telephone) || !nombrePiecesSecurhome || !statutOccupationSecurhome
                     : isSecurhomeDommages(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
@@ -3731,7 +3930,60 @@ export default function Souscription() {
                 </svg>
               </div>
 
-              {isSecurhomeDommages(qrInfo?.produit) ? (
+              {isSecurhomeIncendie(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre assurance SecurHome est activée.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.capitalGaranti != null && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Capital garanti : {fcfa(result.capitalGaranti)}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isSecurhomeDommages(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Souscription confirmée !
