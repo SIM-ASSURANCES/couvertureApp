@@ -71,10 +71,12 @@ export default function AdminDashboard() {
   // Dommages) — sans quoi les partenaires vendant uniquement ces produits
   // (notamment ceux au QR unique) n'étaient comptés nulle part sur ce tableau
   // de bord, qui ne portait jusqu'ici que sur les deux modèles historiques.
-  const { data: generiqueConfirmes } = useFetch<SouscriptionBranche[]>(
-    "/assurances-branche/souscriptions?statut=confirme&generiqueSeul=1"
+  // Agrégat (COUNT côté serveur) plutôt qu'un rapatriement de toutes les
+  // lignes pour n'en garder que la longueur.
+  const { data: generiqueAgregat } = useFetch<{ nombre: number; montant: number }>(
+    "/assurances-branche/souscriptions/agregat?statut=confirme&generiqueSeul=1"
   );
-  const generiqueConfirmesTotal = generiqueConfirmes?.length ?? 0;
+  const generiqueConfirmesTotal = generiqueAgregat?.nombre ?? 0;
 
   // Filtres "type d'assurance" / "type de produit" des dernières souscriptions
   // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
@@ -85,18 +87,20 @@ export default function AdminDashboard() {
   // Production (nombre de souscriptions confirmées + chiffre d'affaires) par
   // produit — filtre indépendant de celui des "Dernières souscriptions"
   // ci-dessous, et respecte la même période (from/to) que le reste du
-  // tableau de bord. "" = tous produits confondus.
+  // tableau de bord. "" = tous produits confondus. Agrégat (COUNT/SUM côté
+  // serveur) plutôt qu'un rapatriement de toutes les lignes correspondantes
+  // (potentiellement l'historique complet quand aucun filtre n'est posé).
   const [produitProduction, setProduitProduction] = useState("");
   const productionParams = new URLSearchParams();
   productionParams.set("statut", "confirme");
   if (produitProduction) productionParams.set("produit", produitProduction);
   if (from) productionParams.set("from", from);
   if (to) productionParams.set("to", to);
-  const { data: production, loading: productionLoading } = useFetch<SouscriptionBranche[]>(
-    `/assurances-branche/souscriptions?${productionParams.toString()}`
+  const { data: production, loading: productionLoading } = useFetch<{ nombre: number; montant: number }>(
+    `/assurances-branche/souscriptions/agregat?${productionParams.toString()}`
   );
-  const productionNombre = production?.length ?? 0;
-  const productionCa = (production ?? []).reduce((somme, r) => somme + r.montantPrime, 0);
+  const productionNombre = production?.nombre ?? 0;
+  const productionCa = production?.montant ?? 0;
   const produitProductionLabel =
     (catalogue ?? []).find((p) => p.code === produitProduction)?.libelle || "Tous produits";
 

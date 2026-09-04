@@ -1,5 +1,5 @@
 import { prisma } from "../db.js";
-import type { Souscription } from "@prisma/client";
+import type { Souscription, TarifProduit } from "@prisma/client";
 import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
 
 /**
@@ -77,17 +77,32 @@ type SouscriptionAvecRelations = Souscription & {
   produit: { code: string; libelle: string };
 };
 
+/**
+ * `tarifsPreloaded`, quand fourni, évite un aller-retour DB par souscription
+ * (findFirst) — indispensable dans une boucle sur toute une liste (page
+ * Contrats admin) où ce N+1 devenait la principale cause de lenteur. Absent
+ * (cas d'un affichage unitaire, ex. routes/client.ts), la fonction interroge
+ * la DB elle-même comme avant.
+ */
 export async function mapperSouscriptionGenerique(
-  s: SouscriptionAvecRelations
+  s: SouscriptionAvecRelations,
+  tarifsPreloaded?: TarifProduit[]
 ): Promise<DonneesContratGenerique> {
   const d = (s.donneesSpecifiques ?? null) as Record<string, unknown> | null;
+
+  const trouverTarifParPrime = (produitId: string, prime: number) =>
+    tarifsPreloaded
+      ? tarifsPreloaded.find((t) => t.produitId === produitId && t.prime === prime) ?? null
+      : prisma.tarifProduit.findFirst({ where: { produitId, prime } });
+  const trouverTarifParVariante = (produitId: string, libelleVariante: string) =>
+    tarifsPreloaded
+      ? tarifsPreloaded.find((t) => t.produitId === produitId && t.libelleVariante === libelleVariante) ?? null
+      : prisma.tarifProduit.findFirst({ where: { produitId, libelleVariante } });
 
   let fraisSante: number | null = null;
   let bagages: string | null = null;
   if (s.produit.code === "relaxvoyage") {
-    const tarif = await prisma.tarifProduit.findFirst({
-      where: { produitId: s.produitId, prime: s.montantPrime },
-    });
+    const tarif = await trouverTarifParPrime(s.produitId, s.montantPrime);
     const infos = tarif?.donneesSpecifiques as { fraisSante?: number; bagages?: string } | null;
     fraisSante = infos?.fraisSante ?? null;
     bagages = infos?.bagages ?? null;
@@ -109,9 +124,7 @@ export async function mapperSouscriptionGenerique(
   const raCycle = (d?.cycle as CycleRelaxAccidentsGenerale | undefined) ?? null;
   const raMoyenDeplacement = typeof d?.moyenDeplacement === "string" ? d.moyenDeplacement : null;
   if (s.produit.code === "relaxaccidents" && raClasse && raCnpsDeclare != null && raCycle) {
-    const tarif = await prisma.tarifProduit.findFirst({
-      where: { produitId: s.produitId, libelleVariante: formuleRelaxAccidentsGenerale(raClasse, raCnpsDeclare, raCycle) },
-    });
+    const tarif = await trouverTarifParVariante(s.produitId, formuleRelaxAccidentsGenerale(raClasse, raCnpsDeclare, raCycle));
     primeHT = tarif?.primeHT ?? null;
     taxes = tarif?.taxes ?? null;
     fg = tarif != null ? (tarif.fg ?? 0) + surchargeMoyenDeplacementRelaxAccidentsGenerale(raMoyenDeplacement, raCycle) : null;

@@ -153,21 +153,29 @@ assurancesBrancheRouter.get(
   })
 );
 
-export async function fetchGenerique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchGenerique(f: Filtres, limit?: number): Promise<SouscriptionBranche[]> {
   if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE && f.produit !== CODE_ACCIDENT_HISTORIQUE) {
     const produit = await prisma.produit.findUnique({ where: { code: f.produit } });
     if (!produit) return [];
-    return fetchGeneriqueParProduitIds([produit.id], f);
+    return fetchGeneriqueParProduitIds([produit.id], f, limit);
   }
   if (f.produit === CODE_INCENDIE_HISTORIQUE || f.produit === CODE_ACCIDENT_HISTORIQUE) return [];
 
   const produits = await prisma.produit.findMany({
     where: { sousBranche: f.sousBranche ? f.sousBranche : { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
   });
-  return fetchGeneriqueParProduitIds(produits.map((p) => p.id), f);
+  return fetchGeneriqueParProduitIds(produits.map((p) => p.id), f, limit);
 }
 
-async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Promise<SouscriptionBranche[]> {
+/**
+ * `limit`, quand fourni, est poussé jusqu'à la requête SQL (`take`) plutôt que
+ * tronqué après coup en JS — indispensable pour "Dernières souscriptions" du
+ * tableau de bord (limit=10), qui sinon rapatriait TOUTES les souscriptions
+ * confirmées du système à chaque chargement de page pour n'en garder que 10.
+ * Les 3 sources étant déjà triées par le même critère, prendre le top `limit`
+ * de chacune avant fusion donne bien le top `limit` global une fois fusionné.
+ */
+async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, limit?: number): Promise<SouscriptionBranche[]> {
   if (produitIds.length === 0) return [];
   const rows = await prisma.souscription.findMany({
     where: {
@@ -192,6 +200,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
       produit: { select: { code: true, libelle: true, sousBranche: true } },
     },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
+    take: limit,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -220,7 +229,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres): Pr
   }));
 }
 
-export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promise<SouscriptionBranche[]> {
   if (f.generiqueSeul) return [];
   // Incendie n'a pas de paiement Wave en attente à proprement parler (la
   // prime est incluse dans l'achat) — exclu du mode "attente".
@@ -238,6 +247,7 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
     },
     include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
+    take: limit,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -261,7 +271,7 @@ export async function fetchIncendieHistorique(f: Filtres): Promise<SouscriptionB
   }));
 }
 
-export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionBranche[]> {
+export async function fetchAccidentHistorique(f: Filtres, limit?: number): Promise<SouscriptionBranche[]> {
   if (f.generiqueSeul) return [];
   // L'ancien Accident a sa propre page "Paiement en attente" ET sa propre
   // alerte de renouvellement dédiées (routes/souscriptions.ts) — pas de
@@ -278,6 +288,7 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
     },
     include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
     orderBy: { createdAt: "desc" },
+    take: limit,
   });
   return rows.map((r) => ({
     id: r.id,
@@ -297,6 +308,91 @@ export async function fetchAccidentHistorique(f: Filtres): Promise<SouscriptionB
   }));
 }
 
+/**
+ * Variantes "agrégat" (nombre + chiffre d'affaires) des trois fonctions
+ * fetch* ci-dessus — mêmes filtres, mais un COUNT/SUM en base plutôt qu'un
+ * rapatriement de toutes les lignes juste pour les compter/sommer côté JS.
+ * Sert la carte "Production par produit" et le total générique du tableau de
+ * bord, qui rapatriaient jusqu'ici l'intégralité des souscriptions confirmées
+ * du système à chaque chargement de page.
+ */
+async function agregatGenerique(f: Filtres): Promise<{ nombre: number; montant: number }> {
+  let produitIds: string[];
+  if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE && f.produit !== CODE_ACCIDENT_HISTORIQUE) {
+    const produit = await prisma.produit.findUnique({ where: { code: f.produit } });
+    if (!produit) return { nombre: 0, montant: 0 };
+    produitIds = [produit.id];
+  } else if (f.produit === CODE_INCENDIE_HISTORIQUE || f.produit === CODE_ACCIDENT_HISTORIQUE) {
+    return { nombre: 0, montant: 0 };
+  } else {
+    const produits = await prisma.produit.findMany({
+      where: { sousBranche: f.sousBranche ? f.sousBranche : { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+      select: { id: true },
+    });
+    produitIds = produits.map((p) => p.id);
+  }
+  if (produitIds.length === 0) return { nombre: 0, montant: 0 };
+  const agg = await prisma.souscription.aggregate({
+    where: {
+      produitId: { in: produitIds },
+      partenaireId: f.partenaireId,
+      createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+      waveStatut:
+        f.statut === "confirme" ? "confirme" : f.statut === "attente" ? { in: ["en_attente", "echoue"] } : undefined,
+    },
+    _count: true,
+    _sum: { montantPrime: true },
+  });
+  return { nombre: agg._count, montant: agg._sum.montantPrime ?? 0 };
+}
+
+async function agregatIncendieHistorique(f: Filtres): Promise<{ nombre: number; montant: number }> {
+  if (f.generiqueSeul || f.statut === "attente" || f.sousBranche === "ASSURANCES_ACCIDENTS") return { nombre: 0, montant: 0 };
+  if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE) return { nombre: 0, montant: 0 };
+  const agg = await prisma.souscriptionIncendie.aggregate({
+    where: {
+      partenaireId: f.partenaireId,
+      statut: f.statut === "confirme" ? "complet" : undefined,
+      createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+    },
+    _count: true,
+    _sum: { montantPrime: true },
+  });
+  return { nombre: agg._count, montant: agg._sum.montantPrime ?? 0 };
+}
+
+async function agregatAccidentHistorique(f: Filtres): Promise<{ nombre: number; montant: number }> {
+  if (f.generiqueSeul || f.statut === "attente" || f.sousBranche === "ASSURANCES_DOMMAGES") return { nombre: 0, montant: 0 };
+  if (f.produit && f.produit !== CODE_ACCIDENT_HISTORIQUE) return { nombre: 0, montant: 0 };
+  const agg = await prisma.souscriptionAccident.aggregate({
+    where: {
+      waveStatut: "confirme",
+      partenaireId: f.partenaireId,
+      createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+    },
+    _count: true,
+    _sum: { montantPrime: true },
+  });
+  return { nombre: agg._count, montant: agg._sum.montantPrime ?? 0 };
+}
+
+/** Agrégat (nombre de souscriptions + chiffre d'affaires) — mêmes filtres que /souscriptions, sans rapatrier les lignes. */
+assurancesBrancheRouter.get(
+  "/souscriptions/agregat",
+  asyncHandler(async (req, res) => {
+    const f = parseFiltres(req.query as Record<string, string | undefined>);
+    const [generique, incendie, accident] = await Promise.all([
+      agregatGenerique(f),
+      agregatIncendieHistorique(f),
+      agregatAccidentHistorique(f),
+    ]);
+    res.json({
+      nombre: generique.nombre + incendie.nombre + accident.nombre,
+      montant: generique.montant + incendie.montant + accident.montant,
+    });
+  })
+);
+
 /** Liste unifiée, filtrable par sous-branche / produit / partenaire / période. */
 assurancesBrancheRouter.get(
   "/souscriptions",
@@ -307,9 +403,9 @@ assurancesBrancheRouter.get(
     if (f.statut === "attente") await purgerAttentesExpirees();
 
     const [generique, incendie, accident] = await Promise.all([
-      fetchGenerique(f),
-      fetchIncendieHistorique(f),
-      fetchAccidentHistorique(f),
+      fetchGenerique(f, limit),
+      fetchIncendieHistorique(f, limit),
+      fetchAccidentHistorique(f, limit),
     ]);
 
     let rows = [...generique, ...incendie, ...accident].sort((a, b) =>

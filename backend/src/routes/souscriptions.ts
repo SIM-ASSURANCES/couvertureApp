@@ -238,7 +238,9 @@ souscriptionsRouter.get(
           orderBy: { createdAt: "desc" },
         });
         for (const s of generiques) {
-          const d = await mapperSouscriptionGenerique(s);
+          // `tarifsProduit` déjà chargé plus haut (une seule requête pour tous
+          // les produits génériques) — évite un aller-retour DB par ligne.
+          const d = await mapperSouscriptionGenerique(s, tarifsProduit);
 
           // Produits à devis calculé (SecurHome+/SecurPro Dommages) : les
           // totaux sont déjà figés dans `resultat` (voir

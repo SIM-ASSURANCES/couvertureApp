@@ -27,6 +27,23 @@ async function resolveProduitId(code: string) {
   return p && p.sousBranche === SOUS_BRANCHE ? p.id : undefined;
 }
 
+/**
+ * Produits Assurances Dommages à tarif fixe (TarifProduit), édités depuis
+ * cette même page admin "Tarifs" bien qu'ils ne soient pas de la sous-branche
+ * ASSURANCES_ACCIDENTS — même exception explicite que
+ * PRODUITS_COMMISSION_TAUX_UNIQUE ci-dessous pour la commission SecurHome+.
+ */
+const PRODUITS_DOMMAGES_TARIF_FIXE = ["securhome"] as const;
+
+function produitAutoriseTarifs(p: { sousBranche: string | null; code: string }) {
+  return p.sousBranche === SOUS_BRANCHE || (PRODUITS_DOMMAGES_TARIF_FIXE as readonly string[]).includes(p.code);
+}
+
+async function resolveProduitIdTarifs(code: string) {
+  const p = await prisma.produit.findUnique({ where: { code } });
+  return p && produitAutoriseTarifs(p) ? p.id : undefined;
+}
+
 /** Vue d'ensemble de la sous-branche (pour le tableau de bord dédié) */
 assurancesAccidentsRouter.get(
   "/overview",
@@ -199,7 +216,7 @@ assurancesAccidentsRouter.delete(
 assurancesAccidentsRouter.get(
   "/produits/:code/tarifs",
   asyncHandler(async (req, res) => {
-    const produitId = await resolveProduitId(req.params.code);
+    const produitId = await resolveProduitIdTarifs(req.params.code);
     if (!produitId) return res.status(404).json({ error: "Produit inconnu" });
     const tarifs = await prisma.tarifProduit.findMany({
       where: { produitId },
@@ -229,7 +246,7 @@ assurancesAccidentsRouter.patch(
       where: { id: Number(req.params.id) },
       include: { produit: true },
     });
-    if (!tarif || tarif.produit.sousBranche !== SOUS_BRANCHE) {
+    if (!tarif || !produitAutoriseTarifs(tarif.produit)) {
       return res.status(404).json({ error: "Tarif introuvable" });
     }
     const updated = await prisma.tarifProduit.update({
@@ -253,7 +270,7 @@ const tarifCreateSchema = z.object(tarifChampsSchema);
 assurancesAccidentsRouter.post(
   "/produits/:code/tarifs",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const produitId = await resolveProduitId(req.params.code);
+    const produitId = await resolveProduitIdTarifs(req.params.code);
     if (!produitId) return res.status(404).json({ error: "Produit inconnu" });
     const data = tarifCreateSchema.parse(req.body);
     const existante = await prisma.tarifProduit.findFirst({
@@ -283,7 +300,7 @@ assurancesAccidentsRouter.delete(
       where: { id: Number(req.params.id) },
       include: { produit: true },
     });
-    if (!tarif || tarif.produit.sousBranche !== SOUS_BRANCHE) {
+    if (!tarif || !produitAutoriseTarifs(tarif.produit)) {
       return res.status(404).json({ error: "Tarif introuvable" });
     }
     await prisma.tarifProduit.delete({ where: { id: tarif.id } });
