@@ -22,7 +22,7 @@ import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
 import { assurancesAccidentsRouter } from "./routes/assurancesAccidents.js";
 import { assurancesBrancheRouter } from "./routes/assurancesBranche.js";
-import { imfRouter, agentImfRouter } from "./routes/imf.js";
+import { imfRouter, agentImfRouter, publicImfRouter } from "./routes/imf.js";
 import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
 import { contratsRouter } from "./routes/contrats.js";
@@ -105,6 +105,9 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, publicUrl: process.en
 
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/public", publicLimiter, publicRouter);
+// Simulation + souscription IMF publiques, sans compte, rattachées à l'agent
+// dont le lien/QR a été scanné — voir routes/imf.ts::publicImfRouter.
+app.use("/api/public/imf", publicLimiter, publicImfRouter);
 app.use("/api/partenaires", partenairesRouter);
 // Incendie/Accident et Relax sont deux branches métier distinctes : ces routeurs
 // exposent des données exclusives à chacune, donc restreints à l'admin ayant la

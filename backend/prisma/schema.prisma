@@ -859,6 +859,13 @@ model AgentImf {
   simulations   SimulationImf[]
   souscriptions SouscriptionImf[]
   sinistres     SinistreImf[]
+
+  // Lien public de simulation (2026-09-04) — un client peut simuler et
+  // souscrire seul via `${APP_PUBLIC_URL}/imf/:token`, sans que l'agent
+  // saisisse quoi que ce soit ; la souscription lui est automatiquement
+  // rattachée (agentId). Généré à la demande (null tant que l'admin n'a pas
+  // cliqué sur "Lien public"), voir GET /imf/agents/:id/qr.
+  qrImfToken String? @unique
 }
 
 // --- Phase 2 : moteur de tarification IMF (SECURPRO/SECURSTOCK à formules, COUPS DURS/SECURECOLTE en catalogue fixe) ---

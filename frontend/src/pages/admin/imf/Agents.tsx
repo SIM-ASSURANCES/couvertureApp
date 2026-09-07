@@ -1,11 +1,79 @@
 import { useState } from "react";
-import { Plus, Trash2, FileSpreadsheet } from "lucide-react";
+import { Plus, Trash2, FileSpreadsheet, Link2, Download, Copy, X } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fmtDate, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { useAuth } from "../../../auth";
 import { exportExcel } from "../../../xlsx";
 import type { AgentImf, AgenceImf, ZoneImf, RoleImf } from "../../../types";
+
+interface AgentQr {
+  token: string;
+  dataUrl: string;
+}
+
+/**
+ * Lien/QR public de simulation d'un agent (`/imf/:token`, voir
+ * pages/public/SimulationImf.tsx) — un client scanne ce QR ou ouvre ce lien
+ * pour simuler ET souscrire seul ; la souscription est automatiquement
+ * rattachée à cet agent. Généré à la demande au premier affichage (aucun
+ * champ à saisir côté admin).
+ */
+function AgentQrModal({ agent, onClose }: { agent: AgentImf; onClose: () => void }) {
+  const { data, loading, error } = useFetch<AgentQr>(`/imf/agents/${agent.id}/qr`);
+  const [copie, setCopie] = useState(false);
+  const url = data ? `${window.location.origin}/imf/${data.token}` : "";
+
+  async function copier() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopie(true);
+      setTimeout(() => setCopie(false), 2000);
+    } catch {
+      /* le bouton "Copier" reste disponible même si l'API clipboard échoue */
+    }
+  }
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+    >
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: 380, maxWidth: "100%", padding: 24, textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <strong style={{ fontSize: 17 }}>Lien public — {agent.prenom} {agent.nom}</strong>
+          <button className="btn btn-ghost" style={{ padding: 6 }} onClick={onClose}><X size={18} /></button>
+        </div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+          Un client scanne ce QR ou ouvre ce lien pour simuler et souscrire seul — la souscription lui est automatiquement rattachée.
+        </p>
+        {loading && <Loader />}
+        {error && <ErrorBox message={error} />}
+        {data && (
+          <>
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <img
+                src={data.dataUrl}
+                alt="QR de simulation"
+                style={{ width: 200, height: 200, border: "1px solid var(--border)", borderRadius: 12, padding: 8, background: "#fff" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 6, marginTop: 16 }}>
+              <input className="input" readOnly value={url} style={{ fontSize: 12.5 }} onFocus={(e) => e.target.select()} />
+              <button className="btn btn-ghost" style={{ padding: "8px 10px" }} onClick={copier} title="Copier le lien">
+                <Copy size={15} />
+              </button>
+            </div>
+            {copie && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>Lien copié ✓</div>}
+            <a className="btn btn-primary btn-block" style={{ marginTop: 12 }} href={data.dataUrl} download={`qr-imf-${agent.id}.png`}>
+              <Download size={17} /> Télécharger le QR (PNG)
+            </a>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 const empty = {
   nom: "",
@@ -43,6 +111,7 @@ export default function Agents() {
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [qrFor, setQrFor] = useState<AgentImf | null>(null);
 
   function notify(m: string) {
     setToast(m);
@@ -150,6 +219,7 @@ export default function Agents() {
                     <th>Rattachement</th>
                     <th>Statut</th>
                     <th>Créé le</th>
+                    <th></th>
                     {isSuper && <th></th>}
                   </tr>
                 </thead>
@@ -170,6 +240,11 @@ export default function Agents() {
                         </Badge>
                       </td>
                       <td className="muted">{fmtDate(a.createdAt)}</td>
+                      <td>
+                        <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={() => setQrFor(a)}>
+                          <Link2 size={14} /> Lien public
+                        </button>
+                      </td>
                       {isSuper && (
                         <td>
                           <div style={{ display: "flex", gap: 6 }}>
@@ -185,7 +260,7 @@ export default function Agents() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={6}><div className="empty">Aucun agent.</div></td></tr>
+                    <tr><td colSpan={7}><div className="empty">Aucun agent.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -286,6 +361,7 @@ export default function Agents() {
           </form>
         </Card>
       </div>
+      {qrFor && <AgentQrModal agent={qrFor} onClose={() => setQrFor(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </>
   );

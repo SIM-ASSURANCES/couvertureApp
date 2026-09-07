@@ -5,6 +5,7 @@ import { AuthProvider, RequireAuth } from "./auth";
 import Login from "./pages/Login";
 import Souscription from "./pages/public/Souscription";
 import SouscriptionComplement from "./pages/public/SouscriptionComplement";
+import SimulationImfPublique from "./pages/public/SimulationImf";
 import ClientLogin from "./pages/client/Login";
 import ClientDashboard from "./pages/client/Dashboard";
 import AgentDistributionLogin from "./pages/agent-distribution/Login";
@@ -151,6 +152,7 @@ export default function App() {
           <Route path="/souscription/:token" element={<Souscription />} />
           <Route path="/s/:produit/complement/:token" element={<SouscriptionComplement />} />
           <Route path="/s/:produit/:token" element={<Souscription />} />
+          <Route path="/imf/:token" element={<SimulationImfPublique />} />
 
           <Route path="/client/connexion" element={<ClientLogin />} />
           <Route path="/client" element={<ClientDashboard />} />

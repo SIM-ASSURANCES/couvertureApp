@@ -14,6 +14,7 @@ import {
   type SecurproInput,
   type SecurstockInput,
 } from "../services/tarificationImf.js";
+import { newQrToken, qrDataUrl } from "../services/qr.js";
 
 /** Référentiels IMF (Zone/Agence/Agent) — réservé aux admins ayant la branche IMF. */
 export const imfRouter = Router();
@@ -369,6 +370,28 @@ imfRouter.delete(
       objetId: req.params.id,
     });
     res.status(204).end();
+  })
+);
+
+/**
+ * Lien/QR public de simulation de cet agent (`${APP_PUBLIC_URL}/imf/:token`,
+ * voir publicImfRouter plus bas) — généré à la demande au premier appel
+ * (agents déjà en base créés avant cette fonctionnalité n'ont pas de token),
+ * puis toujours le même ensuite.
+ */
+imfRouter.get(
+  "/agents/:id/qr",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    let agent = await prisma.agentImf.findUnique({ where: { id: req.params.id } });
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
+    if (!agent.qrImfToken) {
+      agent = await prisma.agentImf.update({
+        where: { id: agent.id },
+        data: { qrImfToken: newQrToken("imf") },
+      });
+    }
+    const dataUrl = await qrDataUrl("imf", agent.qrImfToken!, "#004b9c");
+    res.json({ token: agent.qrImfToken, dataUrl });
   })
 );
 
@@ -990,6 +1013,154 @@ async function calculerDevisImf(
     primeTTC,
   };
 }
+
+/**
+ * Simulation + souscription PUBLIQUES, sans compte (2026-09-04) : un client
+ * scanne le QR/lien personnel d'un agent (`${APP_PUBLIC_URL}/imf/:token`,
+ * voir GET /imf/agents/:id/qr) et simule/souscrit seul, en autonomie — la
+ * souscription lui est automatiquement rattachée à CET agent (agentId),
+ * exactement comme s'il l'avait saisie lui-même. Pas de paiement Wave côté
+ * IMF (la souscription est déjà le contrat, voir plus bas) : contrairement
+ * au parcours public Accidents/Dommages, il n'y a donc aucune étape de
+ * confirmation différée à sécuriser.
+ *
+ * Mêmes formes de requête/réponse que agentImfRouter (`/agent-imf/...`) —
+ * le frontend réutilise d'ailleurs le même composant `Simulateur` (voir
+ * pages/public/SimulationImf.tsx), simplement pointé sur `apiBase =
+ * "/public/imf/:token"`.
+ */
+export const publicImfRouter = Router();
+
+async function resolveAgentImfParToken(token: string) {
+  return prisma.agentImf.findFirst({
+    where: { qrImfToken: token, statut: "actif" },
+    include: { agence: { select: { nom: true } } },
+  });
+}
+
+/** Infos d'affichage (en-tête de la page publique) — jamais l'email/téléphone de l'agent. */
+publicImfRouter.get(
+  "/:token",
+  asyncHandler(async (req, res) => {
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    res.json({ nom: agent.nom, prenom: agent.prenom, agenceNom: agent.agence?.nom ?? null });
+  })
+);
+
+publicImfRouter.get(
+  "/:token/baremes/securpro",
+  asyncHandler(async (req, res) => {
+    if (!(await resolveAgentImfParToken(req.params.token))) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
+publicImfRouter.get(
+  "/:token/baremes/securstock",
+  asyncHandler(async (req, res) => {
+    if (!(await resolveAgentImfParToken(req.params.token))) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    const rows = await prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
+    res.json(rows);
+  })
+);
+
+/**
+ * Le simulateur (composant partagé) charge ses brouillons au montage : côté
+ * public, ce serait exposer l'historique de simulations de l'AGENT (pas du
+ * visiteur, qui n'a pas de session) à n'importe qui connaissant le lien —
+ * on renvoie donc toujours une liste vide, sans jamais lire la table.
+ */
+publicImfRouter.get("/:token/simulations", (_req, res) => res.json([]));
+
+publicImfRouter.post(
+  "/:token/simulations",
+  asyncHandler(async (req, res) => {
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    const { produitCode, entrees } = simulationSchema.parse(req.body);
+
+    const calc = await calculerDevisImf(produitCode, entrees);
+    if (!calc.ok) return res.status(400).json({ error: calc.error });
+
+    const simulation = await prisma.simulationImf.create({
+      data: {
+        agentId: agent.id,
+        produitCode,
+        entrees: JSON.parse(JSON.stringify(entrees)),
+        resultat: JSON.parse(JSON.stringify(calc.resultat)),
+        primeTTC: Math.round(calc.primeTTC),
+      },
+    });
+    res.status(201).json(simulation);
+  })
+);
+
+/** Supprime un brouillon — n'est jamais atteint par l'UI publique (GET simulations renvoie toujours []) ; gardé pour cohérence défensive. */
+publicImfRouter.delete(
+  "/:token/simulations/:id",
+  asyncHandler(async (req, res) => {
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: req.params.id },
+      include: { souscription: { select: { id: true } } },
+    });
+    if (!simulation || simulation.agentId !== agent.id) return res.status(404).json({ error: "Introuvable" });
+    if (simulation.souscription) return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    await prisma.simulationImf.delete({ where: { id: req.params.id } });
+    res.status(204).end();
+  })
+);
+
+publicImfRouter.post(
+  "/:token/souscriptions",
+  asyncHandler(async (req, res) => {
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    const data = souscriptionSchema.parse(req.body);
+
+    const simulation = await prisma.simulationImf.findUnique({
+      where: { id: data.simulationId },
+      include: { souscription: true },
+    });
+    if (!simulation || simulation.agentId !== agent.id) {
+      return res.status(404).json({ error: "Simulation introuvable" });
+    }
+    if (simulation.souscription) {
+      return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
+    }
+
+    const annee = new Date().getFullYear();
+    const numeroPolice = `IMF-${simulation.produitCode.toUpperCase()}-${annee}-${simulation.id.slice(0, 8).toUpperCase()}`;
+
+    const souscription = await prisma.souscriptionImf.create({
+      data: {
+        numeroPolice,
+        agentId: agent.id,
+        simulationId: simulation.id,
+        produitCode: simulation.produitCode,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        email: data.email,
+        typePiece: data.typePiece,
+        numeroPiece: data.numeroPiece,
+        ville: data.ville,
+        communeQuartier: data.communeQuartier,
+        signature: data.signature,
+        entrees: simulation.entrees as object,
+        resultat: simulation.resultat as object,
+        primeTTC: simulation.primeTTC,
+        // Pas de passerelle de paiement bloquante côté IMF (contrairement à
+        // Wave pour Accident) : la souscription est déjà le contrat.
+        statut: "active",
+      },
+    });
+    res.status(201).json(souscription);
+  })
+);
 
 agentImfRouter.post(
   "/simulations",
