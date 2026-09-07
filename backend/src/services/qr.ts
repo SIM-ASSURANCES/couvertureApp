@@ -12,15 +12,33 @@ export function qrTargetUrl(produitCode: string, token: string) {
   return `${BASE}/s/${produitCode}/${token}`;
 }
 
+async function qrDataUrlPourCible(url: string, couleur: string): Promise<string> {
+  return QRCode.toDataURL(url, {
+    width: 600,
+    margin: 2,
+    color: { dark: couleur, light: "#ffffff" },
+  });
+}
+
 /** couleur : Produit.couleurQr — passée par l'appelant (résolue via Prisma), #004b9c par défaut */
 export async function qrDataUrl(
   produitCode: string,
   token: string,
   couleur: string = "#004b9c"
 ): Promise<string> {
-  return QRCode.toDataURL(qrTargetUrl(produitCode, token), {
-    width: 600,
-    margin: 2,
-    color: { dark: couleur, light: "#ffffff" },
-  });
+  return qrDataUrlPourCible(qrTargetUrl(produitCode, token), couleur);
+}
+
+/**
+ * IMF : lien public de simulation d'un agent — route dédiée `/imf/:token`
+ * (pas `/s/:produit/:token`, qui est le chooser/formulaire Accidents-Dommages
+ * et ne sait pas traiter produitCode="imf"). Utilisé par
+ * GET /imf/agents/:id/qr — voir pages/public/SimulationImf.tsx côté frontend.
+ */
+export function qrImfTargetUrl(token: string) {
+  return `${BASE}/imf/${token}`;
+}
+
+export async function qrDataUrlImf(token: string, couleur: string = "#004b9c"): Promise<string> {
+  return qrDataUrlPourCible(qrImfTargetUrl(token), couleur);
 }

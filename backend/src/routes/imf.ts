@@ -14,7 +14,7 @@ import {
   type SecurproInput,
   type SecurstockInput,
 } from "../services/tarificationImf.js";
-import { newQrToken, qrDataUrl } from "../services/qr.js";
+import { newQrToken, qrDataUrlImf } from "../services/qr.js";
 
 /** Référentiels IMF (Zone/Agence/Agent) — réservé aux admins ayant la branche IMF. */
 export const imfRouter = Router();
@@ -390,7 +390,7 @@ imfRouter.get(
         data: { qrImfToken: newQrToken("imf") },
       });
     }
-    const dataUrl = await qrDataUrl("imf", agent.qrImfToken!, "#004b9c");
+    const dataUrl = await qrDataUrlImf(agent.qrImfToken!, "#004b9c");
     res.json({ token: agent.qrImfToken, dataUrl });
   })
 );
