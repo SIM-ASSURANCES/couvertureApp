@@ -136,7 +136,7 @@ export default function ClientsAccident() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 2 semaines)"
+        title="Renouvellements à venir (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -187,7 +187,7 @@ export default function ClientsAccident() {
                 </tr>
               ))}
               {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir dans les 2 prochaines semaines.</div></td></tr>
+                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -269,6 +269,17 @@ export default function ClientsAccident() {
                         >
                           <Eye size={15} />
                         </button>
+                        {c.waveStatut === "confirme" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
+                            disabled={!!c.renouvellementEnCoursDepuis}
+                            onClick={() => relancerRenouvellement(c.id)}
+                          >
+                            <Send size={15} />
+                          </button>
+                        )}
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}

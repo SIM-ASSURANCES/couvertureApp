@@ -387,6 +387,10 @@ souscriptionsRouter.post(
   })
 );
 
+// Fenêtre de la liste "Renouvellements à venir" — 5 jours avant l'échéance
+// (aligné sur le rappel SMS automatique J-5, voir services/relances.ts).
+const RENOUVELLEMENT_FENETRE_MS = 5 * 24 * 60 * 60 * 1000;
+
 souscriptionsRouter.get(
   "/incendie",
   asyncHandler(async (req, res) => {
@@ -404,7 +408,7 @@ souscriptionsRouter.get(
             : undefined,
         partenaireId: partenaireId || undefined,
         ...(procheDeLecheance
-          ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) } }
+          ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
           : {}),
       },
       include: {
@@ -424,8 +428,6 @@ souscriptionsRouter.get(
     );
   })
 );
-
-const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * Liste des clients Accident. Un accident n'est considéré comme une souscription

@@ -85,7 +85,9 @@ assurancesAccidentsRouter.get(
   })
 );
 
-const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
+// Fenêtre de la liste "Renouvellements à venir" — 5 jours avant l'échéance
+// (aligné sur le rappel SMS automatique J-5, voir services/relances.ts).
+const RENOUVELLEMENT_FENETRE_MS = 5 * 24 * 60 * 60 * 1000;
 
 /**
  * Liste des souscriptions de la sous-branche, filtrable par produit /

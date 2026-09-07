@@ -111,7 +111,9 @@ export function parseFiltres(query: Record<string, string | undefined>): Filtres
   };
 }
 
-const RENOUVELLEMENT_FENETRE_MS = 14 * 24 * 60 * 60 * 1000;
+// Fenêtre de la liste "Renouvellements à venir" — 5 jours avant l'échéance
+// (aligné sur le rappel SMS automatique J-5, voir services/relances.ts).
+const RENOUVELLEMENT_FENETRE_MS = 5 * 24 * 60 * 60 * 1000;
 
 const DELAI_EXPIRATION_ATTENTE_MS = 24 * 60 * 60 * 1000;
 

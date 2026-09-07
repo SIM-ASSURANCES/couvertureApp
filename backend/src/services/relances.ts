@@ -21,14 +21,17 @@ function plageJour(joursDepuisAujourdhui: number): { gte: Date; lt: Date } {
  * renouvelé a une `dateFin` déjà avancée, qui ne retombe donc plus dans la
  * plage du jour ciblé à la prochaine exécution (le mécanisme s'auto-corrige,
  * y compris entre le rappel J-5 et le rappel J-0). Appelée quotidiennement
- * par le planificateur (voir index.ts) ou à la demande via
- * POST /admin/relances/executer.
+ * par le planificateur (voir index.ts, deux horaires distincts — J-5 à 8h,
+ * jour J dès la première heure) ou à la demande via
+ * POST /admin/relances/executer (les deux jours, comportement historique).
  */
-export async function envoyerRelancesEcheance(): Promise<{ envoyes: number }> {
+export async function envoyerRelancesEcheance(
+  joursCibles: readonly number[] = [5, 0]
+): Promise<{ envoyes: number }> {
   let envoyes = 0;
   const lien = lienClientRelax();
 
-  for (const joursRestants of [5, 0]) {
+  for (const joursRestants of joursCibles) {
     const plage = plageJour(joursRestants);
 
     const [generiques, accidents, incendies] = await Promise.all([

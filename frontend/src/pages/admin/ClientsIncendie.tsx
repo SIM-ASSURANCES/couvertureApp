@@ -67,7 +67,7 @@ export default function ClientsIncendie() {
   const dataFiltree = (data ?? []).filter((c) => rechercheMatch(c.nom, c.prenom, c.telephone, c.refFacture, c.partenaireNom));
   const generiqueFiltre = generiqueSeul.filter((r) => rechercheMatch(r.nom, r.prenom, r.telephone, r.partenaireNom, r.produitLibelle));
 
-  // Alerte renouvellement (échéance ≤ 2 semaines) — Incendie historique +
+  // Alerte renouvellement (échéance ≤ 5 jours) — Incendie historique +
   // SecurHome+/SecurPro (modèle générique), toutes deux à formule unique de 3
   // mois, combinées dans une même section.
   const { data: incendieProches, reload: reloadIncendieProches } = useFetch<ClientIncendie[]>(
@@ -262,7 +262,7 @@ export default function ClientsIncendie() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 2 semaines)"
+        title="Renouvellements à venir (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -314,7 +314,7 @@ export default function ClientsIncendie() {
                 </tr>
               ))}
               {renouvellementsProches.length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 2 prochaines semaines.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -409,6 +409,17 @@ export default function ClientsIncendie() {
                         >
                           <Eye size={15} />
                         </button>
+                        {c.statut === "complet" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
+                            disabled={!!c.renouvellementEnCoursDepuis}
+                            onClick={() => relancerRenouvellementIncendie(c.id)}
+                          >
+                            <Send size={15} />
+                          </button>
+                        )}
                         <button
                           className="btn btn-ghost"
                           style={{ padding: "7px 10px" }}
@@ -501,6 +512,17 @@ export default function ClientsIncendie() {
                         >
                           <Eye size={15} />
                         </button>
+                        {r.statut === "confirme" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "7px 10px" }}
+                            title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
+                            disabled={!!r.renouvellementEnCoursDepuis}
+                            onClick={() => relancerRenouvellementGenerique(r.id)}
+                          >
+                            <Send size={15} />
+                          </button>
+                        )}
                         {isSuper && (
                           <button
                             className="btn btn-ghost"

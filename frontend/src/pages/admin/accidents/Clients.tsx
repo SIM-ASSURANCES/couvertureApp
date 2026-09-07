@@ -31,11 +31,16 @@ interface SouscriptionAssurancesAccidents {
   espaceClientActif?: boolean;
 }
 
+/** RelaxMoto/Auto (cycleFacturation non-null) ont leur propre renouvellement
+ * côté espace client. RelaxVoyage (trajet ponctuel de 24h) ne se renouvelle
+ * jamais. Tout autre produit confirmé peut être relancé par l'admin, y
+ * compris bien avant l'échéance (pas seulement dans la liste "à venir"). */
+function renouvelable(c: SouscriptionAssurancesAccidents) {
+  return !c.cycleFacturation && c.produit.code !== "relaxvoyage";
+}
+
 function statutRenouvellement(c: SouscriptionAssurancesAccidents) {
-  // RelaxMoto/Auto (cycleFacturation non-null) ont leur propre renouvellement
-  // côté espace client — pas de statut admin à afficher ici. RelaxVoyage
-  // (trajet ponctuel de 24h) ne se renouvelle jamais.
-  if (c.cycleFacturation || c.produit.code === "relaxvoyage") return <span className="muted">—</span>;
+  if (!renouvelable(c)) return <span className="muted">—</span>;
   if (c.renouvellementEnCoursDepuis) return <Badge kind="warning">Renouvellement en attente</Badge>;
   if (c.renouveleAt) return <Badge kind="success">Renouvelé le {fmtDateHeure(c.renouveleAt)}</Badge>;
   return <span className="muted">—</span>;
@@ -150,7 +155,7 @@ export default function AssurancesAccidentsClients() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 2 semaines)"
+        title="Renouvellements à venir (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -203,7 +208,7 @@ export default function AssurancesAccidentsClients() {
                 </tr>
               ))}
               {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 2 prochaines semaines.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -267,6 +272,17 @@ export default function AssurancesAccidentsClients() {
                           <button className="btn btn-ghost" style={{ padding: 8 }} title="Voir les détails" onClick={() => setDetailFor(c)}>
                             <Eye size={15} />
                           </button>
+                          {renouvelable(c) && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 8 }}
+                              title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
+                              disabled={!!c.renouvellementEnCoursDepuis}
+                              onClick={() => relancerRenouvellement(c.id)}
+                            >
+                              <Send size={15} />
+                            </button>
+                          )}
                           <button
                             className="btn btn-ghost"
                             style={{ padding: 8 }}

@@ -180,13 +180,23 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   res.status(500).json({ error: "Erreur serveur" });
 });
 
-// Relances SMS automatiques d'échéance (J-5/jour J) — une fois par jour, voir
-// services/relances.ts. Déclenchement manuel possible via
+// Relances SMS automatiques d'échéance — voir services/relances.ts.
+// Déclenchement manuel (les deux jours) possible via
 // POST /parametres/relances/executer (SUPER_ADMIN).
+// - J-5 : rappel d'avance, à une heure normale de la journée.
 cron.schedule(
   "0 8 * * *",
   () => {
-    envoyerRelancesEcheance().catch((e) => console.error("[relances] erreur", e));
+    envoyerRelancesEcheance([5]).catch((e) => console.error("[relances] erreur (J-5)", e));
+  },
+  { timezone: "Africa/Abidjan" }
+);
+// - Jour J : le client doit recevoir son SMS dès la toute première heure de
+// l'échéance, avant même l'ouverture des boutiques partenaires.
+cron.schedule(
+  "5 0 * * *",
+  () => {
+    envoyerRelancesEcheance([0]).catch((e) => console.error("[relances] erreur (J-0)", e));
   },
   { timezone: "Africa/Abidjan" }
 );
