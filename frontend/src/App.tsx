@@ -37,6 +37,18 @@ import RelaxContrats from "./pages/admin/relax/Contrats";
 import RelaxPerformance from "./pages/admin/relax/Performance";
 
 import ImfDashboard from "./pages/admin/imf/Dashboard";
+import ImfPartenairesDashboard from "./pages/admin/imfs/Dashboard";
+import ImfPartenairesListe from "./pages/admin/imfs/Liste";
+import ImfFicheLayout from "./pages/admin/imfs/Fiche";
+import {
+  RouteGeneral as ImfRouteGeneral,
+  RouteReseau as ImfRouteReseau,
+  RouteSimulateur as ImfRouteSimulateur,
+  RoutePortefeuille as ImfRoutePortefeuille,
+  RouteProduits as ImfRouteProduits,
+  RouteBaremes as ImfRouteBaremes,
+  RouteDocuments as ImfRouteDocuments,
+} from "./pages/admin/imfs/fiche/OngletRoutes";
 import ImfZones from "./pages/admin/imf/Zones";
 import ImfAgences from "./pages/admin/imf/Agences";
 import ImfAgents from "./pages/admin/imf/Agents";
@@ -105,6 +117,18 @@ export default function App() {
             <Route path="relax/performance" element={<RelaxPerformance />} />
 
             <Route path="imf" element={<ImfDashboard />} />
+            <Route path="imfs" element={<ImfPartenairesDashboard />} />
+            <Route path="imfs/liste" element={<ImfPartenairesListe />} />
+            <Route path="imfs/:imfId" element={<ImfFicheLayout />}>
+              <Route index element={<Navigate to="general" replace />} />
+              <Route path="general" element={<ImfRouteGeneral />} />
+              <Route path="reseau" element={<ImfRouteReseau />} />
+              <Route path="simulateur" element={<ImfRouteSimulateur />} />
+              <Route path="portefeuille" element={<ImfRoutePortefeuille />} />
+              <Route path="produits" element={<ImfRouteProduits />} />
+              <Route path="baremes" element={<ImfRouteBaremes />} />
+              <Route path="documents" element={<ImfRouteDocuments />} />
+            </Route>
             <Route path="imf/zones" element={<ImfZones />} />
             <Route path="imf/agences" element={<ImfAgences />} />
             <Route path="imf/agents" element={<ImfAgents />} />

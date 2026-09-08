@@ -86,6 +86,10 @@ enum Branche {
   INCENDIE_ACCIDENT
   RELAX
   IMF
+  // Branche « IMF Partenaires » — gestion multi-IMF : l'admin enregistre
+  // autant d'institutions de microfinance qu'il veut, chacune avec son
+  // paramétrage propre. Voir model Imf et routes/imfPartenaires.ts.
+  IMF_PARTENAIRES
 }
 
 enum RoleImf {
@@ -224,6 +228,10 @@ model Partenaire {
   // applicative, voir routes/partenaires.ts). Générées uniquement par un
   // super-administrateur de la branche INCENDIE_ACCIDENT.
   apiKeys PartnerApiKey[]
+
+  // Institution de microfinance rattachée (branche IMF_PARTENAIRES) — un
+  // Partenaire porte au plus une Imf. Voir routes/imfPartenaires.ts.
+  imf Imf?
 }
 
 /**
@@ -812,10 +820,175 @@ model SinistreRelax {
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent (distribution par agent, pas par QR) ---
 
+// =====================================================================
+// Branche « IMF Partenaires » — chaque IMF partenaire est une institution
+// de microfinance enregistrée par l'admin, rattachée 1:1 à un Partenaire,
+// avec son paramétrage propre (produits & garanties, barèmes/tarifs + taux
+// de commission, documents/branding + habilitations — livrés par phases).
+//
+// Voie « multi-tenant » : les entités opérationnelles IMF (Zone/Agence/Agent/
+// Simulation/Souscription/Sinistre/Bordereau) portent un `imfId` NULLABLE :
+//   - null            → branche « Assurances IMF » historique (mono-IMF)
+//   - renseigné       → IMF partenaire de la branche IMF_PARTENAIRES
+// Le filtrage par périmètre IMF est branché phase par phase (cf. plan).
+// Voir routes/imfPartenaires.ts.
+// =====================================================================
+model Imf {
+  id                String           @id @default(uuid())
+  // Slug stable, dérivé du nom à la création (unicité garantie côté route).
+  code              String           @unique
+  nom               String
+  partenaireId      String           @unique
+  partenaire        Partenaire       @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  statut            StatutPartenaire @default(actif)
+  // Branding repris sur les documents et l'espace dédié de l'IMF (phase 4).
+  logoUrl           String?
+  couleurPrimaire   String?
+  couleurSecondaire String?
+  mentionsLegales   String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  zones         ZoneImf[]
+  agences       AgenceImf[]
+  agents        AgentImf[]
+  simulations   SimulationImf[]
+  souscriptions SouscriptionImf[]
+  sinistres     SinistreImf[]
+  bordereaux    BordereauImf[]
+
+  // Paramétrage par IMF (phase 2).
+  produits           ImfProduit[]
+  baremesSecurpro    ImfBaremeSecurpro[]
+  baremesSecurstock  ImfBaremeSecurstock[]
+  paliersSecurecolte ImfPalierSecurecolte[]
+  tarifsFixes        ImfTarifFixe[]
+  documents          ImfDocumentModele[]
+}
+
+/**
+ * Produit IMF activé pour une IMF partenaire, avec ses surcharges propres.
+ * Une ligne par (imf, code) provisionnée à la création de l'IMF depuis
+ * CATALOGUE_PRODUITS_IMF (services/cataloguesImf.ts). Le moteur de tarification
+ * / simulation ne la consomme qu'à partir de la phase 3.
+ */
+model ImfProduit {
+  id        String   @id @default(uuid())
+  imfId     String
+  imf       Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  // "securpro" | "securstock" | "coupsdurs" | "securecolte"
+  code      String
+  actif     Boolean  @default(true)
+  // Surcharges par garantie : [{ code, libelle, actif, plafond }] — copiées du
+  // catalogue de référence à la création, éditables ensuite.
+  garanties Json
+  // Plafond de capital global pour ce produit chez cette IMF (null = barème).
+  plafond   Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([imfId, code])
+  @@index([imfId])
+}
+
+/**
+ * Barèmes / tarifs par IMF (phase 2b). Provisionnés à la création de l'IMF en
+ * copiant les valeurs *live* des tables globales (BaremeSecurpro/…), avec repli
+ * sur services/baremesImfDefaut.ts. Édités depuis la fiche IMF, onglet
+ * « Barèmes & tarifs ». Consommés par le moteur de tarification à partir de la
+ * phase 3.
+ */
+model ImfBaremeSecurpro {
+  id             String   @id @default(uuid())
+  imfId          String
+  imf            Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  classe         Int // 1..4
+  limiteCapital  Int
+  tauxIncendie   Float
+  tauxCommission Float    @default(0.20)
+  updatedAt      DateTime @updatedAt
+
+  @@unique([imfId, classe])
+  @@index([imfId])
+}
+
+model ImfBaremeSecurstock {
+  id                    String   @id @default(uuid())
+  imfId                 String
+  imf                   Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  classe                Int
+  limiteCapital         Int
+  tauxDommageElectrique Float
+  tauxAutreCause        Float
+  tauxCommission        Float    @default(0.20)
+  updatedAt             DateTime @updatedAt
+
+  @@unique([imfId, classe])
+  @@index([imfId])
+}
+
+model ImfPalierSecurecolte {
+  id                String   @id @default(uuid())
+  imfId             String
+  imf               Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  seuil             String // "forte" | "moyenne" | "faible"
+  pourcentageIndice Float
+  montantIndemnite  Int
+  updatedAt         DateTime @updatedAt
+
+  @@unique([imfId, seuil])
+  @@index([imfId])
+}
+
+model ImfTarifFixe {
+  id              String   @id @default(uuid())
+  imfId           String
+  imf             Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  produitCode     String // "coupsdurs" | "securecolte"
+  libelleVariante String
+  prime           Int
+  primeHT         Float?
+  fg              Float?
+  taxes           Float?
+  capitalGaranti  Int
+  commission      Float
+  updatedAt       DateTime @updatedAt
+
+  @@unique([imfId, produitCode, libelleVariante])
+  @@index([imfId])
+}
+
+/**
+ * Modèle de document propre à une IMF (phase 2c). Une ligne n'existe que si
+ * l'admin a personnalisé le document (mêmes principes que ConditionsGenerales) ;
+ * tant qu'aucune ligne n'existe, le rendu retombera sur le document de la
+ * branche (câblage phase 3). `cle` ∈ CLES_DOCUMENTS_IMF (services/cataloguesImf.ts).
+ */
+model ImfDocumentModele {
+  id                String   @id @default(uuid())
+  imfId             String
+  imf               Imf      @relation(fields: [imfId], references: [id], onDelete: Cascade)
+  cle               String
+  libelle           String
+  contenuHtml       String
+  modifieParAdminId String?
+  updatedAt         DateTime @updatedAt
+
+  @@unique([imfId, cle])
+  @@index([imfId])
+}
+
 model ZoneImf {
   id           String      @id @default(uuid())
-  nom          String      @unique
+  // Unicité par périmètre : globale pour la branche « Assurances IMF » (imfId
+  // null), et par IMF pour « IMF Partenaires ». NB : Postgres considère les
+  // NULL comme distincts, donc l'unicité des noms côté branche historique
+  // repose aussi sur un contrôle applicatif (routes/imf.ts).
+  nom          String
   createdAt    DateTime    @default(now())
+  // null = branche IMF historique ; renseigné = IMF partenaire (voir model Imf).
+  imfId        String?
+  imf          Imf?        @relation(fields: [imfId], references: [id])
   agences      AgenceImf[]
   // Rattachement direct du/des RESPONSABLE_ZONE de cette zone (une seule zone
   // par responsable, via le champ scalaire AgentImf.zoneId).
@@ -824,6 +997,9 @@ model ZoneImf {
   // many-to-many, un chef peut couvrir plusieurs zones et une zone peut avoir
   // plusieurs chefs.
   responsables AgentImf[]  @relation("ResponsableZones")
+
+  @@unique([imfId, nom])
+  @@index([imfId])
 }
 
 model AgenceImf {
@@ -834,8 +1010,12 @@ model AgenceImf {
   telephone    String?
   localisation String?
   createdAt    DateTime       @default(now())
+  imfId        String?
+  imf          Imf?           @relation(fields: [imfId], references: [id])
   agents       AgentImf[]
   bordereaux   BordereauImf[]
+
+  @@index([imfId])
 }
 
 model AgentImf {
@@ -856,6 +1036,8 @@ model AgentImf {
   zones         ZoneImf[]         @relation("ResponsableZones")
   statut        StatutPartenaire  @default(actif)
   createdAt     DateTime          @default(now())
+  imfId         String?
+  imf           Imf?              @relation(fields: [imfId], references: [id])
   simulations   SimulationImf[]
   souscriptions SouscriptionImf[]
   sinistres     SinistreImf[]
@@ -866,6 +1048,8 @@ model AgentImf {
   // rattachée (agentId). Généré à la demande (null tant que l'admin n'a pas
   // cliqué sur "Lien public"), voir GET /imf/agents/:id/qr.
   qrImfToken String? @unique
+
+  @@index([imfId])
 }
 
 // --- Phase 2 : moteur de tarification IMF (SECURPRO/SECURSTOCK à formules, COUPS DURS/SECURECOLTE en catalogue fixe) ---
@@ -947,12 +1131,16 @@ model SimulationImf {
   resultat     Json
   primeTTC     Int
   createdAt    DateTime         @default(now())
+  imfId        String?
+  imf          Imf?             @relation(fields: [imfId], references: [id])
   souscription SouscriptionImf?
   // Identifiant généré côté client lors d'une saisie hors-ligne (PWA), utilisé
   // comme clé d'idempotence à la synchronisation : si la requête est rejouée
   // (double tap, coupure réseau après succès), la même simulation est
   // retournée au lieu d'en créer un doublon.
   offlineId    String?          @unique
+
+  @@index([imfId])
 }
 
 // --- Phase 3 (réduite) : conversion d'une simulation en souscription ---
@@ -1003,10 +1191,14 @@ model SouscriptionImf {
   statut          StatutSouscriptionImf @default(en_cours)
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
+  imfId           String?
+  imf             Imf?                  @relation(fields: [imfId], references: [id])
   sinistres       SinistreImf[]
   // Clé d'idempotence pour la synchronisation hors-ligne (PWA) — voir
   // SimulationImf.offlineId.
   offlineId       String?               @unique
+
+  @@index([imfId])
 }
 
 // --- Phase 6 : sinistres IMF ---
@@ -1050,6 +1242,10 @@ model SinistreImf {
   statut              StatutSinistreImf @default(declare)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
+  imfId               String?
+  imf                 Imf?              @relation(fields: [imfId], references: [id])
+
+  @@index([imfId])
 }
 
 // --- Phase 7 : bordereaux & règlement IMF ---
@@ -1085,6 +1281,10 @@ model BordereauImf {
   genereParAdmin      Admin?             @relation("AdminBordereauxImf", fields: [genereParAdminId], references: [id])
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
+  imfId               String?
+  imf                 Imf?               @relation(fields: [imfId], references: [id])
+
+  @@index([imfId])
 }
 
 /**

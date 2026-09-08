@@ -57,14 +57,24 @@ function grouperParZoneAgence(rows: SouscriptionImf[]): Groupe[] {
 }
 
 /** Tableau des souscriptions/contrats IMF, regroupé par zone puis par agence. */
-export default function SouscriptionsGroupees({ rows, onDeleted }: { rows: SouscriptionImf[]; onDeleted?: () => void }) {
+export default function SouscriptionsGroupees({
+  rows,
+  onDeleted,
+  apiBase = "/imf",
+  branche = "IMF",
+}: {
+  rows: SouscriptionImf[];
+  onDeleted?: () => void;
+  apiBase?: string;
+  branche?: import("../../../auth").BrancheAcces;
+}) {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
+  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes(branche));
 
   async function supprimer(s: SouscriptionImf) {
     if (!confirm(`Supprimer le contrat ${s.numeroPolice} ?`)) return;
     try {
-      await api.del(`/imf/contrats/${s.id}`);
+      await api.del(`${apiBase}/contrats/${s.id}`);
       onDeleted?.();
     } catch (err) {
       alert((err as Error).message);

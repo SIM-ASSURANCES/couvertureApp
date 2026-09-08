@@ -3,13 +3,28 @@ import { Plus, Trash2 } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
-import { useAuth } from "../../../auth";
+import { useAuth, type BrancheAcces } from "../../../auth";
 import type { ZoneImf } from "../../../types";
 
-export default function Zones() {
+/**
+ * Gestion des zones IMF. Paramétrable pour servir aussi bien la branche
+ * « Assurances IMF » (apiBase `/imf`) que le réseau d'une IMF partenaire
+ * (apiBase `/imf-partenaires/:id/reseau`). Le `header` est masqué quand la
+ * page est rendue à l'intérieur d'un onglet.
+ */
+export function ZonesInner({
+  apiBase = "/imf",
+  branche = "IMF",
+  header = true,
+}: {
+  apiBase?: string;
+  branche?: BrancheAcces;
+  header?: boolean;
+}) {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
-  const { data, loading, error, reload } = useFetch<ZoneImf[]>("/imf/zones");
+  const isSuper =
+    user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes(branche));
+  const { data, loading, error, reload } = useFetch<ZoneImf[]>(`${apiBase}/zones`);
   const [nom, setNom] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -23,7 +38,7 @@ export default function Zones() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/imf/zones", { nom });
+      await api.post(`${apiBase}/zones`, { nom });
       setNom("");
       notify("Zone créée ✓");
       reload();
@@ -37,7 +52,7 @@ export default function Zones() {
   async function remove(z: ZoneImf) {
     if (!confirm(`Supprimer la zone "${z.nom}" ?`)) return;
     try {
-      await api.del(`/imf/zones/${z.id}`);
+      await api.del(`${apiBase}/zones/${z.id}`);
       notify("Zone supprimée ✓");
       reload();
     } catch (err) {
@@ -47,9 +62,9 @@ export default function Zones() {
 
   return (
     <>
-      <PageHeader title="Zones" subtitle="Découpage géographique du réseau IMF." />
+      {header && <PageHeader title="Zones" subtitle="Découpage géographique du réseau IMF." />}
 
-      <div className="grid-2" style={{ marginTop: 24 }}>
+      <div className="grid-2" style={{ marginTop: header ? 24 : 0 }}>
         <Card title={data ? `${data.length} zones` : "Zones"} noBody>
           {loading && <Loader />}
           {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
@@ -105,4 +120,8 @@ export default function Zones() {
       {toast && <div className="toast">{toast}</div>}
     </>
   );
+}
+
+export default function Zones() {
+  return <ZonesInner />;
 }

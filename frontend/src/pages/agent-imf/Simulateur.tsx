@@ -137,13 +137,16 @@ interface ResultatFormule {
 }
 
 /**
- * `apiBase` permet de réutiliser le même simulateur dans deux espaces :
+ * `apiBase` permet de réutiliser le même simulateur dans plusieurs espaces :
  *  - "/agent-imf" (par défaut) : l'agent connecté, souscription rattachée à lui ;
- *  - "/imf" : l'admin, souscription directe (sans agent/zone/agence).
+ *  - "/imf" : l'admin, souscription directe (sans agent/zone/agence) ;
+ *  - "/imf-partenaires/:id/reseau" : le simulateur d'une IMF partenaire (barèmes
+ *    et produits propres à l'IMF, souscription directe).
  * Les endpoints (baremes/securpro, simulations, souscriptions) existent sous
- * les deux préfixes avec la même forme de requête/réponse.
+ * tous ces préfixes avec la même forme de requête/réponse. `header` = false
+ * masque le titre quand le simulateur est rendu dans un onglet.
  */
-export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: string }) {
+export default function Simulateur({ apiBase = "/agent-imf", header = true }: { apiBase?: string; header?: boolean }) {
   const [produitCode, setProduitCode] = useState<ProduitCode>("securpro");
   const [error, setError] = useState("");
   const [resultat, setResultat] = useState<
@@ -555,7 +558,7 @@ export default function Simulateur({ apiBase = "/agent-imf" }: { apiBase?: strin
 
   return (
     <>
-      <PageHeader title="Simulateur" subtitle="Établir un devis pour l'un des produits IMF." />
+      {header && <PageHeader title="Simulateur" subtitle="Établir un devis pour l'un des produits IMF." />}
 
       {modeHorsLigne && (
         <div style={{ marginTop: 16, padding: "10px 14px", borderRadius: 10, background: "rgba(245,158,11,0.12)", color: "#b45309", display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>

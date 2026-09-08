@@ -13,8 +13,8 @@ function statutBadge(s: BordereauImf["statut"]) {
 }
 
 /** Détail dépliable d'un bordereau : souscriptions incluses, virements pointés, export Excel. */
-function DetailBordereau({ id, onUpdated }: { id: string; onUpdated: (b: BordereauImf) => void }) {
-  const { data, loading, error, reload } = useFetch<BordereauImfDetail>(`/imf/bordereaux/${id}`);
+function DetailBordereau({ id, apiBase, onUpdated }: { id: string; apiBase: string; onUpdated: (b: BordereauImf) => void }) {
+  const { data, loading, error, reload } = useFetch<BordereauImfDetail>(`${apiBase}/bordereaux/${id}`);
   const [montant, setMontant] = useState(0);
   const [date, setDate] = useState("");
   const [reference, setReference] = useState("");
@@ -27,7 +27,7 @@ function DetailBordereau({ id, onUpdated }: { id: string; onUpdated: (b: Bordere
     setSaving(true);
     setSaveError("");
     try {
-      const updated = await api.post<BordereauImf>(`/imf/bordereaux/${id}/virements`, { montant, date, reference: reference.trim() });
+      const updated = await api.post<BordereauImf>(`${apiBase}/bordereaux/${id}/virements`, { montant, date, reference: reference.trim() });
       onUpdated(updated);
       setMontant(0);
       setDate("");
@@ -129,14 +129,21 @@ function DetailBordereau({ id, onUpdated }: { id: string; onUpdated: (b: Bordere
   );
 }
 
-export default function Bordereaux() {
-  const { data: agences } = useFetch<AgenceImf[]>("/imf/agences");
+/** Voir ZonesInner pour le paramétrage branche « Assurances IMF » / IMF partenaire. */
+export function BordereauxInner({
+  apiBase = "/imf",
+  header = true,
+}: {
+  apiBase?: string;
+  header?: boolean;
+}) {
+  const { data: agences } = useFetch<AgenceImf[]>(`${apiBase}/agences`);
   const [agenceFiltre, setAgenceFiltre] = useState("");
   const [statutFiltre, setStatutFiltre] = useState("");
   const params = new URLSearchParams();
   if (agenceFiltre) params.set("agenceId", agenceFiltre);
   if (statutFiltre) params.set("statut", statutFiltre);
-  const { data, loading, error, reload, setData } = useFetch<BordereauImf[]>(`/imf/bordereaux?${params.toString()}`);
+  const { data, loading, error, reload, setData } = useFetch<BordereauImf[]>(`${apiBase}/bordereaux?${params.toString()}`);
 
   const [agenceId, setAgenceId] = useState("");
   const [periodeDebut, setPeriodeDebut] = useState("");
@@ -151,7 +158,7 @@ export default function Bordereaux() {
     setGenerating(true);
     setGenError("");
     try {
-      await api.post<BordereauImf>("/imf/bordereaux", { agenceId, periodeDebut, periodeFin });
+      await api.post<BordereauImf>(`${apiBase}/bordereaux`, { agenceId, periodeDebut, periodeFin });
       setAgenceId("");
       setPeriodeDebut("");
       setPeriodeFin("");
@@ -169,9 +176,9 @@ export default function Bordereaux() {
 
   return (
     <>
-      <PageHeader title="Bordereaux IMF" subtitle="Production périodique par agence et pointage des virements reçus." />
+      {header && <PageHeader title="Bordereaux IMF" subtitle="Production périodique par agence et pointage des virements reçus." />}
 
-      <Card title="Générer un bordereau" style={{ marginTop: 24 }}>
+      <Card title="Générer un bordereau" style={{ marginTop: header ? 24 : 0 }}>
         <form onSubmit={generer}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <div className="field" style={{ flex: 1, minWidth: 200 }}>
@@ -257,7 +264,7 @@ export default function Bordereaux() {
                     {expanded === b.id && (
                       <tr key={`${b.id}-detail`}>
                         <td colSpan={8} style={{ background: "var(--bg-2, #f8fafc)" }}>
-                          <DetailBordereau id={b.id} onUpdated={onUpdated} />
+                          <DetailBordereau id={b.id} apiBase={apiBase} onUpdated={onUpdated} />
                         </td>
                       </tr>
                     )}
@@ -273,4 +280,8 @@ export default function Bordereaux() {
       </Card>
     </>
   );
+}
+
+export default function Bordereaux() {
+  return <BordereauxInner />;
 }

@@ -15,7 +15,7 @@ function loadSecret(): string {
 const SECRET = loadSecret();
 
 export type ActorType = "admin" | "partenaire" | "agent_imf" | "client" | "agent_distribution";
-export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
+export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF" | "IMF_PARTENAIRES";
 export type RoleImfAcces = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 
 export interface AuthUser {
@@ -34,6 +34,10 @@ export interface AuthUser {
   // CHEF_ZONE — absent/vide pour les autres rôles IMF.
   zoneIds?: string[];
   roleImf?: RoleImfAcces;
+  // IMF partenaire de l'agent (branche « IMF Partenaires », phase 4) : absent
+  // pour un agent de la branche « Assurances IMF » historique. Quand présent,
+  // l'espace agent est scopé à cette IMF (barèmes, produits, portefeuille).
+  imfId?: string;
 }
 
 export function signToken(user: AuthUser): string {

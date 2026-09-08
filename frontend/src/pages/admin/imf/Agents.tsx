@@ -3,7 +3,7 @@ import { Plus, Trash2, FileSpreadsheet, Link2, Download, Copy, X } from "lucide-
 import { PageHeader, Card, Badge, Loader, ErrorBox, fmtDate, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
-import { useAuth } from "../../../auth";
+import { useAuth, type BrancheAcces } from "../../../auth";
 import { exportExcel } from "../../../xlsx";
 import type { AgentImf, AgenceImf, ZoneImf, RoleImf } from "../../../types";
 
@@ -19,8 +19,8 @@ interface AgentQr {
  * rattachée à cet agent. Généré à la demande au premier affichage (aucun
  * champ à saisir côté admin).
  */
-function AgentQrModal({ agent, onClose }: { agent: AgentImf; onClose: () => void }) {
-  const { data, loading, error } = useFetch<AgentQr>(`/imf/agents/${agent.id}/qr`);
+function AgentQrModal({ agent, apiBase, onClose }: { agent: AgentImf; apiBase: string; onClose: () => void }) {
+  const { data, loading, error } = useFetch<AgentQr>(`${apiBase}/agents/${agent.id}/qr`);
   const [copie, setCopie] = useState(false);
   const url = data ? `${window.location.origin}/imf/${data.token}` : "";
 
@@ -102,12 +102,24 @@ function roleBadgeKind(r: RoleImf): "neutral" | "warning" | "info" | "success" {
   return "info";
 }
 
-export default function Agents() {
+/** Voir ZonesInner : paramétrable branche « Assurances IMF » / réseau d'une IMF partenaire. */
+export function AgentsInner({
+  apiBase = "/imf",
+  branche = "IMF",
+  header = true,
+  showQr = true,
+}: {
+  apiBase?: string;
+  branche?: BrancheAcces;
+  header?: boolean;
+  showQr?: boolean;
+}) {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
-  const { data, loading, error, reload } = useFetch<AgentImf[]>("/imf/agents");
-  const { data: agences } = useFetch<AgenceImf[]>("/imf/agences");
-  const { data: zones } = useFetch<ZoneImf[]>("/imf/zones");
+  const isSuper =
+    user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes(branche));
+  const { data, loading, error, reload } = useFetch<AgentImf[]>(`${apiBase}/agents`);
+  const { data: agences } = useFetch<AgenceImf[]>(`${apiBase}/agences`);
+  const { data: zones } = useFetch<ZoneImf[]>(`${apiBase}/zones`);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -122,7 +134,7 @@ export default function Agents() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/imf/agents", {
+      await api.post(`${apiBase}/agents`, {
         nom: form.nom,
         prenom: form.prenom,
         telephone: form.telephone,
@@ -145,7 +157,7 @@ export default function Agents() {
 
   async function toggleStatut(a: AgentImf) {
     try {
-      await api.patch(`/imf/agents/${a.id}`, { statut: a.statut === "actif" ? "inactif" : "actif" });
+      await api.patch(`${apiBase}/agents/${a.id}`, { statut: a.statut === "actif" ? "inactif" : "actif" });
       notify(a.statut === "actif" ? "Agent désactivé" : "Agent réactivé");
       reload();
     } catch (err) {
@@ -156,7 +168,7 @@ export default function Agents() {
   async function remove(a: AgentImf) {
     if (!confirm(`Supprimer ${a.prenom} ${a.nom} ?`)) return;
     try {
-      await api.del(`/imf/agents/${a.id}`);
+      await api.del(`${apiBase}/agents/${a.id}`);
       notify("Agent supprimé ✓");
       reload();
     } catch (err) {
@@ -195,9 +207,9 @@ export default function Agents() {
 
   return (
     <>
-      <PageHeader title="Agents" subtitle="Comptes de connexion des agents et responsables de zone IMF." />
+      {header && <PageHeader title="Agents" subtitle="Comptes de connexion des agents et responsables de zone IMF." />}
 
-      <div className="grid-2" style={{ marginTop: 24 }}>
+      <div className="grid-2" style={{ marginTop: header ? 24 : 0 }}>
         <Card
           title={data ? `${data.length} agents` : "Agents"}
           extra={
@@ -219,7 +231,7 @@ export default function Agents() {
                     <th>Rattachement</th>
                     <th>Statut</th>
                     <th>Créé le</th>
-                    <th></th>
+                    {showQr && <th></th>}
                     {isSuper && <th></th>}
                   </tr>
                 </thead>
@@ -240,11 +252,13 @@ export default function Agents() {
                         </Badge>
                       </td>
                       <td className="muted">{fmtDate(a.createdAt)}</td>
-                      <td>
-                        <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={() => setQrFor(a)}>
-                          <Link2 size={14} /> Lien public
-                        </button>
-                      </td>
+                      {showQr && (
+                        <td>
+                          <button className="btn btn-ghost" style={{ padding: "7px 10px", fontSize: 12 }} onClick={() => setQrFor(a)}>
+                            <Link2 size={14} /> Lien public
+                          </button>
+                        </td>
+                      )}
                       {isSuper && (
                         <td>
                           <div style={{ display: "flex", gap: 6 }}>
@@ -260,7 +274,7 @@ export default function Agents() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={7}><div className="empty">Aucun agent.</div></td></tr>
+                    <tr><td colSpan={5 + (showQr ? 1 : 0) + (isSuper ? 1 : 0)}><div className="empty">Aucun agent.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -361,8 +375,12 @@ export default function Agents() {
           </form>
         </Card>
       </div>
-      {qrFor && <AgentQrModal agent={qrFor} onClose={() => setQrFor(null)} />}
+      {qrFor && showQr && <AgentQrModal agent={qrFor} apiBase={apiBase} onClose={() => setQrFor(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </>
   );
+}
+
+export default function Agents() {
+  return <AgentsInner />;
 }

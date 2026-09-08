@@ -15,9 +15,16 @@ import {
   type SecurstockInput,
 } from "../services/tarificationImf.js";
 import { newQrToken, qrDataUrlImf } from "../services/qr.js";
+import { ensureBaremesImf } from "../services/provisioningImf.js";
 
 /** Référentiels IMF (Zone/Agence/Agent) — réservé aux admins ayant la branche IMF. */
 export const imfRouter = Router();
+
+// La branche « Assurances IMF » historique ne manipule QUE les lignes non
+// rattachées à une IMF partenaire (imfId null) : les entités Zone/Agence/Agent/
+// Souscription/… sont partagées avec la branche « IMF Partenaires » (voir
+// routes/imfPartenairesReseau.ts), ce filtre garantit l'étanchéité.
+const NON_SCOPE = { imfId: null } as const;
 
 /* ── Zones ── */
 
@@ -25,6 +32,7 @@ imfRouter.get(
   "/zones",
   asyncHandler(async (_req, res) => {
     const zones = await prisma.zoneImf.findMany({
+      where: NON_SCOPE,
       orderBy: { nom: "asc" },
       include: { _count: { select: { agences: true, agents: true } } },
     });
@@ -44,7 +52,7 @@ imfRouter.post(
   "/zones",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = zoneSchema.parse(req.body);
-    const created = await prisma.zoneImf.create({ data });
+    const created = await prisma.zoneImf.create({ data: { ...data, imfId: null } });
     await logAction({
       adminId: req.user!.sub,
       typeAction: "creation",
@@ -60,6 +68,8 @@ imfRouter.patch(
   "/zones/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = zoneSchema.partial().parse(req.body);
+    const existante = await prisma.zoneImf.findFirst({ where: { id: req.params.id, ...NON_SCOPE } });
+    if (!existante) return res.status(404).json({ error: "Introuvable" });
     const updated = await prisma.zoneImf.update({ where: { id: req.params.id }, data });
     await logAction({
       adminId: req.user!.sub,
@@ -76,8 +86,8 @@ imfRouter.delete(
   "/zones/:id",
   requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const zone = await prisma.zoneImf.findUnique({
-      where: { id: req.params.id },
+    const zone = await prisma.zoneImf.findFirst({
+      where: { id: req.params.id, ...NON_SCOPE },
       include: { _count: { select: { agences: true, agents: true } } },
     });
     if (!zone) return res.status(404).json({ error: "Introuvable" });
@@ -103,6 +113,7 @@ imfRouter.get(
   "/agences",
   asyncHandler(async (_req, res) => {
     const agences = await prisma.agenceImf.findMany({
+      where: NON_SCOPE,
       orderBy: { nom: "asc" },
       include: { zone: { select: { nom: true } }, _count: { select: { agents: true } } },
     });
@@ -123,9 +134,9 @@ imfRouter.post(
   "/agences",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agenceSchema.parse(req.body);
-    const zone = await prisma.zoneImf.findUnique({ where: { id: data.zoneId } });
+    const zone = await prisma.zoneImf.findFirst({ where: { id: data.zoneId, ...NON_SCOPE } });
     if (!zone) return res.status(400).json({ error: "Zone introuvable" });
-    const created = await prisma.agenceImf.create({ data });
+    const created = await prisma.agenceImf.create({ data: { ...data, imfId: null } });
     await logAction({
       adminId: req.user!.sub,
       typeAction: "creation",
@@ -141,8 +152,10 @@ imfRouter.patch(
   "/agences/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agenceSchema.partial().parse(req.body);
+    const existante = await prisma.agenceImf.findFirst({ where: { id: req.params.id, ...NON_SCOPE } });
+    if (!existante) return res.status(404).json({ error: "Introuvable" });
     if (data.zoneId) {
-      const zone = await prisma.zoneImf.findUnique({ where: { id: data.zoneId } });
+      const zone = await prisma.zoneImf.findFirst({ where: { id: data.zoneId, ...NON_SCOPE } });
       if (!zone) return res.status(400).json({ error: "Zone introuvable" });
     }
     const updated = await prisma.agenceImf.update({ where: { id: req.params.id }, data });
@@ -161,8 +174,8 @@ imfRouter.delete(
   "/agences/:id",
   requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const agence = await prisma.agenceImf.findUnique({
-      where: { id: req.params.id },
+    const agence = await prisma.agenceImf.findFirst({
+      where: { id: req.params.id, ...NON_SCOPE },
       include: { _count: { select: { agents: true } } },
     });
     if (!agence) return res.status(404).json({ error: "Introuvable" });
@@ -188,6 +201,7 @@ imfRouter.get(
   "/agents",
   asyncHandler(async (_req, res) => {
     const agents = await prisma.agentImf.findMany({
+      where: NON_SCOPE,
       orderBy: { createdAt: "desc" },
       include: {
         agence: { select: { nom: true, zone: { select: { nom: true } } } },
@@ -249,7 +263,7 @@ async function verifierUniciteResponsable(
 ) {
   if (roleImf === "RESPONSABLE_AGENCE" && agenceId) {
     const existant = await prisma.agentImf.findFirst({
-      where: { roleImf: "RESPONSABLE_AGENCE", agenceId },
+      where: { roleImf: "RESPONSABLE_AGENCE", agenceId, ...NON_SCOPE },
     });
     if (existant) {
       return `Cette agence a déjà un responsable (${existant.prenom} ${existant.nom}).`;
@@ -257,7 +271,7 @@ async function verifierUniciteResponsable(
   }
   if (roleImf === "FINANCE_COMPTABLE" && agenceId) {
     const existant = await prisma.agentImf.findFirst({
-      where: { roleImf: "FINANCE_COMPTABLE", agenceId },
+      where: { roleImf: "FINANCE_COMPTABLE", agenceId, ...NON_SCOPE },
     });
     if (existant) {
       return `Cette agence a déjà un finance comptable (${existant.prenom} ${existant.nom}).`;
@@ -265,7 +279,7 @@ async function verifierUniciteResponsable(
   }
   if (roleImf === "RESPONSABLE_ZONE" && zoneId) {
     const existant = await prisma.agentImf.findFirst({
-      where: { roleImf: "RESPONSABLE_ZONE", zoneId },
+      where: { roleImf: "RESPONSABLE_ZONE", zoneId, ...NON_SCOPE },
     });
     if (existant) {
       return `Cette zone a déjà un responsable (${existant.prenom} ${existant.nom}).`;
@@ -279,13 +293,13 @@ imfRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agentSchema.parse(req.body);
     if (data.roleImf === "RESPONSABLE_ZONE") {
-      const zone = await prisma.zoneImf.findUnique({ where: { id: data.zoneId! } });
+      const zone = await prisma.zoneImf.findFirst({ where: { id: data.zoneId!, ...NON_SCOPE } });
       if (!zone) return res.status(400).json({ error: "Zone introuvable" });
     } else if (data.roleImf === "CHEF_ZONE") {
-      const zones = await prisma.zoneImf.findMany({ where: { id: { in: data.zoneIds! } } });
+      const zones = await prisma.zoneImf.findMany({ where: { id: { in: data.zoneIds! }, ...NON_SCOPE } });
       if (zones.length !== data.zoneIds!.length) return res.status(400).json({ error: "Zone introuvable" });
     } else {
-      const agence = await prisma.agenceImf.findUnique({ where: { id: data.agenceId! } });
+      const agence = await prisma.agenceImf.findFirst({ where: { id: data.agenceId!, ...NON_SCOPE } });
       if (!agence) return res.status(400).json({ error: "Agence introuvable" });
     }
     const conflit = await verifierUniciteResponsable(data.roleImf, data.agenceId, data.zoneId);
@@ -298,6 +312,7 @@ imfRouter.post(
         telephone: data.telephone,
         email: data.email,
         roleImf: data.roleImf,
+        imfId: null,
         agenceId: data.roleImf === "RESPONSABLE_ZONE" || data.roleImf === "CHEF_ZONE" ? null : data.agenceId,
         zoneId: data.roleImf === "RESPONSABLE_ZONE" ? data.zoneId : null,
         zones: data.roleImf === "CHEF_ZONE" ? { connect: data.zoneIds!.map((id) => ({ id })) } : undefined,
@@ -332,6 +347,8 @@ imfRouter.patch(
   "/agents/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = agentPatchSchema.parse(req.body);
+    const existant = await prisma.agentImf.findFirst({ where: { id: req.params.id, ...NON_SCOPE } });
+    if (!existant) return res.status(404).json({ error: "Agent introuvable" });
     const updated = await prisma.agentImf.update({
       where: { id: req.params.id },
       data: {
@@ -362,6 +379,8 @@ imfRouter.delete(
   "/agents/:id",
   requireSuperAdminBranche("IMF"),
   asyncHandler(async (req: AuthedRequest, res) => {
+    const agent = await prisma.agentImf.findFirst({ where: { id: req.params.id, ...NON_SCOPE } });
+    if (!agent) return res.status(404).json({ error: "Agent introuvable" });
     await prisma.agentImf.delete({ where: { id: req.params.id } });
     await logAction({
       adminId: req.user!.sub,
@@ -382,7 +401,7 @@ imfRouter.delete(
 imfRouter.get(
   "/agents/:id/qr",
   asyncHandler(async (req: AuthedRequest, res) => {
-    let agent = await prisma.agentImf.findUnique({ where: { id: req.params.id } });
+    let agent = await prisma.agentImf.findFirst({ where: { id: req.params.id, ...NON_SCOPE } });
     if (!agent) return res.status(404).json({ error: "Agent introuvable" });
     if (!agent.qrImfToken) {
       agent = await prisma.agentImf.update({
@@ -633,7 +652,7 @@ imfRouter.get(
   asyncHandler(async (req, res) => {
     const { agentId } = req.query as { agentId?: string };
     const rows = await prisma.simulationImf.findMany({
-      where: { agentId: agentId || undefined },
+      where: { ...NON_SCOPE, agentId: agentId || undefined },
       orderBy: { createdAt: "desc" },
       include: { agent: { select: { nom: true, prenom: true } } },
     });
@@ -648,7 +667,7 @@ imfRouter.get(
   asyncHandler(async (req, res) => {
     const { produitCode, agentId } = req.query as { produitCode?: string; agentId?: string };
     const rows = await prisma.souscriptionImf.findMany({
-      where: { produitCode: produitCode || undefined, agentId: agentId || undefined },
+      where: { ...NON_SCOPE, produitCode: produitCode || undefined, agentId: agentId || undefined },
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
@@ -674,7 +693,7 @@ imfRouter.get(
  * des zones/agences). Un RESPONSABLE_ZONE affiche sa zone unique, un
  * CHEF_ZONE ses zones jointes par une virgule.
  */
-function mapSouscriptionAdmin(r: {
+export function mapSouscriptionAdmin(r: {
   agent: {
     nom: string; prenom: string;
     agence: { nom: string; zone: { nom: string } } | null;
@@ -741,6 +760,13 @@ export const agentImfRouter = Router();
 agentImfRouter.use(requireAuth("agent_imf"));
 
 /**
+ * IMF partenaire de l'agent connecté (phase 4) : null pour un agent de la
+ * branche « Assurances IMF » historique. Utilisé pour scoper barèmes, devis et
+ * souscriptions de l'espace agent sur son IMF.
+ */
+const scopeImfAgent = (req: AuthedRequest): string | null => req.user!.imfId ?? null;
+
+/**
  * Le finance comptable n'a accès qu'au tableau de bord et aux
  * souscriptions/contrats — jamais à la création de devis/souscriptions ni à
  * la déclaration de sinistres. Le chef de zone (CHEF_ZONE) a lui accès au
@@ -787,24 +813,23 @@ agentImfRouter.get(
       statut: a.statut,
       agenceNom: a.agence?.nom ?? null,
       zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
+      imfId: a.imfId ?? null,
     });
   })
 );
 
-/** Lecture seule pour le simulateur agent : limites de capital par classe en vigueur. */
+/** Lecture seule pour le simulateur agent : barèmes en vigueur (ceux de l'IMF de l'agent si scopé). */
 agentImfRouter.get(
   "/baremes/securpro",
-  asyncHandler(async (_req, res) => {
-    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
-    res.json(rows);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    res.json(await baremesSecurproPourAgent(scopeImfAgent(req)));
   })
 );
 
 agentImfRouter.get(
   "/baremes/securstock",
-  asyncHandler(async (_req, res) => {
-    const rows = await prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
-    res.json(rows);
+  asyncHandler(async (req: AuthedRequest, res) => {
+    res.json(await baremesSecurstockPourAgent(scopeImfAgent(req)));
   })
 );
 
@@ -932,23 +957,47 @@ const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
   plafond_1000000: "Incapacité temporaire — plafond 1 000 000",
 };
 
-const simulationSchema = z.object({
+export const simulationSchema = z.object({
   produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte"]),
   entrees: z.record(z.unknown()),
   // Clé d'idempotence PWA (mode hors-ligne) — voir SimulationImf.offlineId.
   offlineId: z.string().min(1).optional(),
 });
 
+type GarantieImfConfig = { code: string; actif: boolean; plafond: number | null };
+
+/**
+ * Configuration d'un produit pour une IMF partenaire (phase 2/3b) : la ligne
+ * ImfProduit si `imfId` est fourni, sinon `null` (branche « Assurances IMF »
+ * historique → barèmes/tarifs globaux, aucune restriction produit).
+ */
+async function chargerConfigProduitImf(imfId: string | null | undefined, produitCode: string) {
+  if (!imfId) return null;
+  const row = await prisma.imfProduit.findUnique({ where: { imfId_code: { imfId, code: produitCode } } });
+  if (!row) return { actif: false, plafond: null, garanties: [] as GarantieImfConfig[] };
+  const garanties = Array.isArray(row.garanties) ? (row.garanties as unknown as GarantieImfConfig[]) : [];
+  return { actif: row.actif, plafond: row.plafond, garanties };
+}
+
 /**
  * Calcul d'un devis IMF à partir du produit et des entrées, partagé entre le
- * simulateur agent (`/agent-imf/simulations`) et le simulateur admin
- * (`/imf/simulations`). Renvoie soit le résultat + la prime TTC, soit un
- * message d'erreur métier (barème/variante introuvable, risque non assurable).
+ * simulateur agent (`/agent-imf/simulations`), le simulateur admin
+ * (`/imf/simulations`) et le simulateur d'une IMF partenaire
+ * (`/imf-partenaires/:id/reseau/simulations`). Quand `imfId` est fourni, les
+ * barèmes/tarifs lus sont ceux de l'IMF (tables Imf*), et le produit / la
+ * garantie doivent être activés pour elle. Renvoie soit le résultat + la prime
+ * TTC, soit un message d'erreur métier.
  */
-async function calculerDevisImf(
+export async function calculerDevisImf(
   produitCode: string,
-  entrees: Record<string, unknown>
+  entrees: Record<string, unknown>,
+  imfId?: string | null
 ): Promise<{ ok: true; resultat: unknown; primeTTC: number } | { ok: false; error: string }> {
+  const cfg = await chargerConfigProduitImf(imfId, produitCode);
+  if (cfg && !cfg.actif) return { ok: false, error: "Ce produit n'est pas proposé par cette IMF." };
+  const plafondImf = cfg?.plafond ?? null;
+  const garantieActive = (code: string) => !cfg || cfg.garanties.find((g) => g.code === code)?.actif !== false;
+
   if (produitCode === "securpro") {
     const parsed = securproInputSchema.parse(entrees);
     // Contenu déclaré = somme des 5 postes détaillés (jamais saisi directement).
@@ -959,32 +1008,48 @@ async function calculerDevisImf(
       parsed.materielInformatique +
       parsed.stocksMarchandises;
     const input = { ...parsed, contenu } as SecurproInput;
-    const bareme = await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
+    const bareme = imfId
+      ? await prisma.imfBaremeSecurpro.findUnique({ where: { imfId_classe: { imfId, classe: input.classe } } })
+      : await prisma.baremeSecurpro.findUnique({ where: { classe: input.classe } });
     if (!bareme) return { ok: false, error: "Barème SECURPRO introuvable pour cette classe" };
-    const r = calculerSecurpro(input, { ...bareme, classe: input.classe });
+    const limiteCapital = plafondImf != null ? Math.min(bareme.limiteCapital, plafondImf) : bareme.limiteCapital;
+    const r = calculerSecurpro(input, { ...bareme, classe: input.classe, limiteCapital });
     return { ok: true, resultat: r, primeTTC: r.primeTTC };
   }
   if (produitCode === "securstock") {
     const input = securstockInputSchema.parse(entrees) as SecurstockInput;
-    const bareme = await prisma.baremeSecurstock.findUnique({ where: { classe: input.classe } });
+    const bareme = imfId
+      ? await prisma.imfBaremeSecurstock.findUnique({ where: { imfId_classe: { imfId, classe: input.classe } } })
+      : await prisma.baremeSecurstock.findUnique({ where: { classe: input.classe } });
     if (!bareme) return { ok: false, error: "Barème SECURSTOCK introuvable pour cette classe" };
-    const r = calculerSecurstock(input, { ...bareme, classe: input.classe });
+    const limiteCapital = plafondImf != null ? Math.min(bareme.limiteCapital, plafondImf) : bareme.limiteCapital;
+    const r = calculerSecurstock(input, { ...bareme, classe: input.classe, limiteCapital });
     if ("nonAssurable" in r && r.nonAssurable) return { ok: false, error: r.motif };
     return { ok: true, resultat: r, primeTTC: (r as { primeTTC: number }).primeTTC };
   }
   if (produitCode === "coupsdurs") {
     const input = coupsdursCombineSchema.parse(entrees);
-    const produit = await prisma.produit.findUnique({ where: { code: "coupsdurs" } });
-    if (!produit) return { ok: false, error: "Produit introuvable" };
     const variantes = ["maladie", ...(input.deces ? ["deces"] : []), ...(input.incapacite ? [input.incapacite] : [])];
-    const tarifsCoupsdurs = await prisma.tarifProduit.findMany({
-      where: { produitId: produit.id, libelleVariante: { in: variantes } },
-    });
-    if (tarifsCoupsdurs.length !== variantes.length) {
+    const desactivee = variantes.find((v) => !garantieActive(v));
+    if (desactivee) return { ok: false, error: `La garantie « ${LABEL_GARANTIE_COUPSDURS[desactivee] ?? desactivee} » n'est pas proposée par cette IMF.` };
+
+    let tarifs: { libelleVariante: string | null; prime: number; capitalGaranti: number }[];
+    if (imfId) {
+      tarifs = await prisma.imfTarifFixe.findMany({
+        where: { imfId, produitCode: "coupsdurs", libelleVariante: { in: variantes } },
+      });
+    } else {
+      const produit = await prisma.produit.findUnique({ where: { code: "coupsdurs" } });
+      if (!produit) return { ok: false, error: "Produit introuvable" };
+      tarifs = await prisma.tarifProduit.findMany({
+        where: { produitId: produit.id, libelleVariante: { in: variantes } },
+      });
+    }
+    if (tarifs.length !== variantes.length) {
       return { ok: false, error: "Garantie introuvable dans le catalogue" };
     }
     const lignes = variantes.map((v) => {
-      const t = tarifsCoupsdurs.find((t) => t.libelleVariante === v)!;
+      const t = tarifs.find((t) => t.libelleVariante === v)!;
       // Prorata linéaire sur la durée choisie — le tarif catalogue est la
       // prime annuelle de référence (12 mois).
       const prime = Math.round((t.prime * input.dureeMois) / 12);
@@ -1038,6 +1103,23 @@ async function resolveAgentImfParToken(token: string) {
   });
 }
 
+// Barèmes lus par le simulateur public : ceux de l'IMF partenaire de l'agent
+// (imfId renseigné) ou, à défaut, les barèmes globaux « Assurances IMF ».
+async function baremesSecurproPourAgent(imfId: string | null) {
+  if (imfId) {
+    await ensureBaremesImf(imfId);
+    return prisma.imfBaremeSecurpro.findMany({ where: { imfId }, orderBy: { classe: "asc" } });
+  }
+  return prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
+}
+async function baremesSecurstockPourAgent(imfId: string | null) {
+  if (imfId) {
+    await ensureBaremesImf(imfId);
+    return prisma.imfBaremeSecurstock.findMany({ where: { imfId }, orderBy: { classe: "asc" } });
+  }
+  return prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
+}
+
 /** Infos d'affichage (en-tête de la page publique) — jamais l'email/téléphone de l'agent. */
 publicImfRouter.get(
   "/:token",
@@ -1051,18 +1133,18 @@ publicImfRouter.get(
 publicImfRouter.get(
   "/:token/baremes/securpro",
   asyncHandler(async (req, res) => {
-    if (!(await resolveAgentImfParToken(req.params.token))) return res.status(404).json({ error: "Lien invalide ou expiré" });
-    const rows = await prisma.baremeSecurpro.findMany({ orderBy: { classe: "asc" } });
-    res.json(rows);
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    res.json(await baremesSecurproPourAgent(agent.imfId));
   })
 );
 
 publicImfRouter.get(
   "/:token/baremes/securstock",
   asyncHandler(async (req, res) => {
-    if (!(await resolveAgentImfParToken(req.params.token))) return res.status(404).json({ error: "Lien invalide ou expiré" });
-    const rows = await prisma.baremeSecurstock.findMany({ orderBy: { classe: "asc" } });
-    res.json(rows);
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    res.json(await baremesSecurstockPourAgent(agent.imfId));
   })
 );
 
@@ -1081,12 +1163,13 @@ publicImfRouter.post(
     if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
     const { produitCode, entrees } = simulationSchema.parse(req.body);
 
-    const calc = await calculerDevisImf(produitCode, entrees);
+    const calc = await calculerDevisImf(produitCode, entrees, agent.imfId);
     if (!calc.ok) return res.status(400).json({ error: calc.error });
 
     const simulation = await prisma.simulationImf.create({
       data: {
         agentId: agent.id,
+        imfId: agent.imfId,
         produitCode,
         entrees: JSON.parse(JSON.stringify(entrees)),
         resultat: JSON.parse(JSON.stringify(calc.resultat)),
@@ -1139,6 +1222,7 @@ publicImfRouter.post(
       data: {
         numeroPolice,
         agentId: agent.id,
+        imfId: agent.imfId,
         simulationId: simulation.id,
         produitCode: simulation.produitCode,
         nom: data.nom,
@@ -1176,12 +1260,14 @@ agentImfRouter.post(
       if (existante) return res.status(200).json(existante);
     }
 
-    const calc = await calculerDevisImf(produitCode, entrees);
+    const imf = scopeImfAgent(req);
+    const calc = await calculerDevisImf(produitCode, entrees, imf);
     if (!calc.ok) return res.status(400).json({ error: calc.error });
 
     const simulation = await prisma.simulationImf.create({
       data: {
         agentId: req.user!.sub,
+        imfId: imf,
         produitCode,
         entrees: JSON.parse(JSON.stringify(entrees)),
         resultat: JSON.parse(JSON.stringify(calc.resultat)),
@@ -1271,6 +1357,7 @@ agentImfRouter.post(
       data: {
         numeroPolice,
         agentId: req.user!.sub,
+        imfId: scopeImfAgent(req),
         simulationId: simulation.id,
         produitCode: simulation.produitCode,
         nom: data.nom,
@@ -1531,6 +1618,7 @@ imfRouter.post(
     const simulation = await prisma.simulationImf.create({
       data: {
         adminId: req.user!.sub,
+        imfId: null,
         produitCode,
         entrees: JSON.parse(JSON.stringify(entrees)),
         resultat: JSON.parse(JSON.stringify(calc.resultat)),
@@ -1546,7 +1634,7 @@ imfRouter.get(
   "/simulations",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.simulationImf.findMany({
-      where: { adminId: req.user!.sub, souscription: null },
+      where: { ...NON_SCOPE, adminId: req.user!.sub, souscription: null },
       orderBy: { createdAt: "desc" },
     });
     res.json(rows);
@@ -1560,7 +1648,7 @@ imfRouter.delete(
       where: { id: req.params.id },
       include: { souscription: { select: { id: true } } },
     });
-    if (!simulation || simulation.adminId !== req.user!.sub) {
+    if (!simulation || simulation.adminId !== req.user!.sub || simulation.imfId !== null) {
       return res.status(404).json({ error: "Introuvable" });
     }
     if (simulation.souscription) {
@@ -1580,7 +1668,7 @@ imfRouter.post(
       where: { id: data.simulationId },
       include: { souscription: true },
     });
-    if (!simulation || simulation.adminId !== req.user!.sub) {
+    if (!simulation || simulation.adminId !== req.user!.sub || simulation.imfId !== null) {
       return res.status(404).json({ error: "Simulation introuvable" });
     }
     if (simulation.souscription) {
@@ -1594,6 +1682,7 @@ imfRouter.post(
       data: {
         numeroPolice,
         adminId: req.user!.sub,
+        imfId: null,
         simulationId: simulation.id,
         produitCode: simulation.produitCode,
         nom: data.nom,
@@ -1630,7 +1719,7 @@ imfRouter.get(
   asyncHandler(async (req, res) => {
     const { produitCode } = req.query as { produitCode?: string };
     const rows = await prisma.souscriptionImf.findMany({
-      where: { statut: "active", produitCode: produitCode || undefined },
+      where: { ...NON_SCOPE, statut: "active", produitCode: produitCode || undefined },
       orderBy: { createdAt: "desc" },
       include: {
         agent: {
@@ -1678,7 +1767,7 @@ imfRouter.delete(
  * Regroupe les 5 codes produit en 4 familles commerciales (les deux variantes
  * COUPS DURS sont fusionnées) pour le tableau de bord.
  */
-const FAMILLE_PRODUIT: Record<string, string> = {
+export const FAMILLE_PRODUIT: Record<string, string> = {
   securpro: "SECURPRO",
   securstock: "SECURSTOCK",
   coupsdurs: "COUPS DURS",
@@ -1687,7 +1776,7 @@ const FAMILLE_PRODUIT: Record<string, string> = {
   coupsdurs_incapacite: "COUPS DURS",
   securecolte: "SECURECOLTE",
 };
-const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE"];
+export const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE"];
 
 /**
  * Statistiques du tableau de bord admin : chiffre d'affaires, taxes et
@@ -1701,7 +1790,7 @@ imfRouter.get(
   "/stats",
   asyncHandler(async (_req, res) => {
     const souscriptions = await prisma.souscriptionImf.findMany({
-      where: { statut: "active" },
+      where: { ...NON_SCOPE, statut: "active" },
       select: { produitCode: true, primeTTC: true, resultat: true, createdAt: true },
     });
 
@@ -1752,7 +1841,7 @@ imfRouter.get(
  * Phase 6 — Sinistres IMF
  * ──────────────────────────────────────────────────────────────────────── */
 
-interface PieceChecklist {
+export interface PieceChecklist {
   label: string;
   fournie: boolean;
 }
@@ -1764,7 +1853,7 @@ interface PieceChecklist {
  * (vidéosurveillance + registre de stock). SECURECOLTE n'a pas de checklist :
  * son indemnisation est automatique par palier de sécheresse (voir plus bas).
  */
-function checklistImf(produitCode: string, typeEvenement: string): string[] {
+export function checklistImf(produitCode: string, typeEvenement: string): string[] {
   if (produitCode === "securpro") {
     return [
       "Formulaire de déclaration de sinistre",
@@ -1813,12 +1902,12 @@ function checklistImf(produitCode: string, typeEvenement: string): string[] {
   return [];
 }
 
-function numeroSinistre(produitCode: string, id: string) {
+export function numeroSinistre(produitCode: string, id: string) {
   const annee = new Date().getFullYear();
   return `SIN-${produitCode.toUpperCase()}-${annee}-${id.slice(0, 8).toUpperCase()}`;
 }
 
-function mapSinistre(sin: {
+export function mapSinistre(sin: {
   agent: { nom: string; prenom: string } | null;
   admin: { nom: string } | null;
   souscription: { numeroPolice: string; nom: string; prenom: string; telephone: string; produitCode: string; primeTTC: number };
@@ -1836,13 +1925,13 @@ function mapSinistre(sin: {
   };
 }
 
-const sinistreInclude = {
+export const sinistreInclude = {
   agent: { select: { nom: true, prenom: true } },
   admin: { select: { nom: true } },
   souscription: { select: { numeroPolice: true, nom: true, prenom: true, telephone: true, produitCode: true, primeTTC: true } },
 };
 
-const declarationSchema = z.object({
+export const declarationSchema = z.object({
   souscriptionId: z.string().min(1),
   typeEvenement: z.string().min(1),
   dateSurvenance: z.coerce.date(),
@@ -1879,6 +1968,7 @@ agentImfRouter.post(
         numeroSinistre: "TMP",
         souscriptionId: souscription.id,
         agentId: req.user!.sub,
+        imfId: souscription.imfId,
         typeEvenement: data.typeEvenement,
         dateSurvenance: data.dateSurvenance,
         montantEstime: data.montantEstime ? Math.round(data.montantEstime) : undefined,
@@ -2004,6 +2094,7 @@ imfRouter.get(
     const { statut, produitCode } = req.query as { statut?: string; produitCode?: string };
     const rows = await prisma.sinistreImf.findMany({
       where: {
+        ...NON_SCOPE,
         statut: (statut as StatutSinistreImf) || undefined,
         souscription: produitCode ? { produitCode } : undefined,
       },
@@ -2014,7 +2105,7 @@ imfRouter.get(
   })
 );
 
-const transitionSchema = z.object({
+export const transitionSchema = z.object({
   statut: z.enum(["instruction", "accepte", "rejete", "regle"]),
   montantRegle: z.number().nonnegative().optional(),
   montantIMF: z.number().nonnegative().optional(),
@@ -2067,7 +2158,7 @@ imfRouter.patch(
  * SECURECOLTE actifs concernés et le palier constaté ; un sinistre "réglé"
  * est créé directement pour chacun, au pourcentage du palier.
  */
-const indemnisationSecurecolteSchema = z.object({
+export const indemnisationSecurecolteSchema = z.object({
   souscriptionIds: z.array(z.string().min(1)).min(1),
   palier: z.enum(["forte", "moyenne", "faible", "deces"]),
   region: z.string().min(1),
@@ -2075,7 +2166,7 @@ const indemnisationSecurecolteSchema = z.object({
 
 // Taux appliqué au capital garanti "forte" (= capitalGaranti) pour les
 // souscriptions antérieures au modèle ARC (sans capitaux détaillés par palier).
-const TAUX_PALIER: Record<"forte" | "moyenne" | "faible" | "deces", number> = {
+export const TAUX_PALIER: Record<"forte" | "moyenne" | "faible" | "deces", number> = {
   forte: 1, moyenne: 0.5, faible: 0.2, deces: 1,
 };
 
@@ -2084,7 +2175,7 @@ imfRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = indemnisationSecurecolteSchema.parse(req.body);
     const souscriptions = await prisma.souscriptionImf.findMany({
-      where: { id: { in: data.souscriptionIds }, produitCode: "securecolte", statut: "active" },
+      where: { ...NON_SCOPE, id: { in: data.souscriptionIds }, produitCode: "securecolte", statut: "active" },
     });
     if (souscriptions.length === 0) {
       return res.status(400).json({ error: "Aucune souscription SECURECOLTE active dans la sélection." });
@@ -2147,10 +2238,10 @@ imfRouter.get(
   asyncHandler(async (_req, res) => {
     const [sinistres, souscriptions] = await Promise.all([
       prisma.sinistreImf.findMany({
-        where: { statut: "regle" },
+        where: { ...NON_SCOPE, statut: "regle" },
         select: { montantRegle: true, souscription: { select: { produitCode: true } } },
       }),
-      prisma.souscriptionImf.findMany({ where: { statut: "active" }, select: { produitCode: true, primeTTC: true } }),
+      prisma.souscriptionImf.findMany({ where: { ...NON_SCOPE, statut: "active" }, select: { produitCode: true, primeTTC: true } }),
     ]);
 
     const primesParFamille: Record<string, number> = {};
@@ -2189,25 +2280,25 @@ imfRouter.get(
  * bordereau de production est généré.
  * ──────────────────────────────────────────────────────────────────────── */
 
-interface VirementBordereau {
+export interface VirementBordereau {
   montant: number;
   date: string;
   reference: string;
 }
 
-function numeroBordereau(agenceNom: string, periodeDebut: Date, id: string) {
+export function numeroBordereau(agenceNom: string, periodeDebut: Date, id: string) {
   const code = agenceNom.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8) || "AGENCE";
   const aaaamm = `${periodeDebut.getFullYear()}${String(periodeDebut.getMonth() + 1).padStart(2, "0")}`;
   return `BORD-${code}-${aaaamm}-${id.slice(0, 6).toUpperCase()}`;
 }
 
-function statutBordereau(montantRecu: number, primeTotal: number): "emis" | "partiellement_regle" | "regle" {
+export function statutBordereau(montantRecu: number, primeTotal: number): "emis" | "partiellement_regle" | "regle" {
   if (montantRecu <= 0) return "emis";
   if (montantRecu >= primeTotal) return "regle";
   return "partiellement_regle";
 }
 
-function mapBordereau(b: { agence: { nom: string; zone: { nom: string } }; genereParAdmin: { nom: string } | null; [k: string]: unknown }) {
+export function mapBordereau(b: { agence: { nom: string; zone: { nom: string } }; genereParAdmin: { nom: string } | null; [k: string]: unknown }) {
   return {
     ...b,
     agenceNom: b.agence.nom,
@@ -2216,12 +2307,12 @@ function mapBordereau(b: { agence: { nom: string; zone: { nom: string } }; gener
   };
 }
 
-const bordereauInclude = {
+export const bordereauInclude = {
   agence: { select: { nom: true, zone: { select: { nom: true } } } },
   genereParAdmin: { select: { nom: true } },
 };
 
-const genererBordereauSchema = z.object({
+export const genererBordereauSchema = z.object({
   agenceId: z.string().min(1),
   periodeDebut: z.coerce.date(),
   periodeFin: z.coerce.date(),
@@ -2241,6 +2332,7 @@ imfRouter.post(
     const agents = await prisma.agentImf.findMany({ where: { agenceId: data.agenceId }, select: { id: true } });
     const souscriptions = await prisma.souscriptionImf.findMany({
       where: {
+        ...NON_SCOPE,
         agentId: { in: agents.map((a) => a.id) },
         statut: "active",
         createdAt: { gte: data.periodeDebut, lte: data.periodeFin },
@@ -2283,7 +2375,7 @@ imfRouter.get(
   asyncHandler(async (req, res) => {
     const { agenceId, statut } = req.query as { agenceId?: string; statut?: string };
     const rows = await prisma.bordereauImf.findMany({
-      where: { agenceId: agenceId || undefined, statut: (statut as StatutBordereauImf) || undefined },
+      where: { ...NON_SCOPE, agenceId: agenceId || undefined, statut: (statut as StatutBordereauImf) || undefined },
       orderBy: { createdAt: "desc" },
       include: bordereauInclude,
     });
@@ -2299,7 +2391,7 @@ imfRouter.get(
     if (!bordereau) return res.status(404).json({ error: "Bordereau introuvable" });
     const ids = bordereau.souscriptionIds as unknown as string[];
     const souscriptions = await prisma.souscriptionImf.findMany({
-      where: { id: { in: ids } },
+      where: { ...NON_SCOPE, id: { in: ids } },
       include: { agent: { select: { nom: true, prenom: true } } },
       orderBy: { createdAt: "asc" },
     });
@@ -2318,7 +2410,7 @@ imfRouter.get(
   })
 );
 
-const virementSchema = z.object({
+export const virementSchema = z.object({
   montant: z.number().positive(),
   date: z.coerce.date(),
   reference: z.string().min(1),

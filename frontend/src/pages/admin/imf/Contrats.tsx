@@ -4,6 +4,7 @@ import { PageHeader, Card, Loader, ErrorBox, fmtDate } from "../../../components
 import { useFetch } from "../../../useFetch";
 import { exportExcel } from "../../../xlsx";
 import SouscriptionsGroupees from "./SouscriptionsGroupees";
+import type { BrancheAcces } from "../../../auth";
 import type { SouscriptionImf } from "../../../types";
 
 const PRODUITS = [
@@ -16,12 +17,20 @@ const PRODUITS = [
   { value: "securecolte", label: "SECURECOLTE" },
 ];
 
-/** Contrats IMF actifs de tout le réseau, regroupés par zone puis par agence. */
-export default function Contrats() {
+/** Contrats IMF actifs du réseau, regroupés par zone puis par agence. Voir ZonesInner pour le paramétrage. */
+export function ContratsInner({
+  apiBase = "/imf",
+  branche = "IMF",
+  header = true,
+}: {
+  apiBase?: string;
+  branche?: BrancheAcces;
+  header?: boolean;
+}) {
   const [produitCode, setProduitCode] = useState("");
   const params = new URLSearchParams();
   if (produitCode) params.set("produitCode", produitCode);
-  const { data, loading, error, reload } = useFetch<SouscriptionImf[]>(`/imf/contrats?${params.toString()}`);
+  const { data, loading, error, reload } = useFetch<SouscriptionImf[]>(`${apiBase}/contrats?${params.toString()}`);
 
   function exporter() {
     if (!data) return;
@@ -46,10 +55,12 @@ export default function Contrats() {
 
   return (
     <>
-      <PageHeader
-        title="Contrats IMF"
-        subtitle="Contrats actifs du réseau, regroupés par zone et par agence."
-      />
+      {header && (
+        <PageHeader
+          title="Contrats IMF"
+          subtitle="Contrats actifs du réseau, regroupés par zone et par agence."
+        />
+      )}
 
       <Card
         title={data ? `${data.length} contrats` : "Contrats"}
@@ -64,12 +75,16 @@ export default function Contrats() {
           </div>
         }
         noBody
-        style={{ marginTop: 24 }}
+        style={{ marginTop: header ? 24 : 0 }}
       >
         {loading && <Loader />}
         {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
-        {data && <SouscriptionsGroupees rows={data} onDeleted={reload} />}
+        {data && <SouscriptionsGroupees rows={data} onDeleted={reload} apiBase={apiBase} branche={branche} />}
       </Card>
     </>
   );
+}
+
+export default function Contrats() {
+  return <ContratsInner />;
 }

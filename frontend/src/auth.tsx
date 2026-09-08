@@ -8,7 +8,7 @@ import { Navigate } from "react-router-dom";
 import { api, getUser } from "./api";
 
 type Role = "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
-export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
+export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF" | "IMF_PARTENAIRES";
 export interface SessionUser {
   id: string;
   type: "admin" | "partenaire" | "agent_imf";
@@ -28,6 +28,13 @@ export interface SessionUser {
   roleImf?: "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
   agenceNom?: string | null;
   zoneNom?: string | null;
+  // Agent d'une IMF partenaire (branche « IMF Partenaires », phase 4) : espace
+  // scopé + branding de l'IMF. Absent pour un agent de la branche historique.
+  imfId?: string | null;
+  imfNom?: string | null;
+  imfLogoUrl?: string | null;
+  imfCouleurPrimaire?: string | null;
+  imfCouleurSecondaire?: string | null;
 }
 
 interface AuthCtx {

@@ -9,9 +9,10 @@ import { logAction } from "../journal.js";
 export const adminsRouter = Router();
 adminsRouter.use(requireAuth("admin"));
 
-/** Branches effectives : un SUPER_ADMIN a toujours accès aux trois, quel que soit le stockage en base. */
+/** Branches effectives : un SUPER_ADMIN a toujours accès à toutes, quel que soit le stockage en base. */
+const TOUTES_BRANCHES = ["INCENDIE_ACCIDENT", "RELAX", "IMF", "IMF_PARTENAIRES"] as const;
 function branchesEffectives(a: { role: string; branches: string[] }) {
-  return a.role === "SUPER_ADMIN" ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"] : a.branches;
+  return a.role === "SUPER_ADMIN" ? [...TOUTES_BRANCHES] : a.branches;
 }
 
 adminsRouter.get(
@@ -77,7 +78,7 @@ const createSchema = z.object({
   email: z.string().email(),
   motDePasse: z.string().min(6),
   role: z.enum(["ADMIN", "BRANCH_SUPER_ADMIN", "SUPER_ADMIN"]).default("ADMIN"),
-  branches: z.array(z.enum(["INCENDIE_ACCIDENT", "RELAX", "IMF"])).default([]),
+  branches: z.array(z.enum(["INCENDIE_ACCIDENT", "RELAX", "IMF", "IMF_PARTENAIRES"])).default([]),
 }).refine(
   (data) => data.role === "SUPER_ADMIN" || data.branches.length > 0,
   { message: "Au moins une branche doit être assignée à un administrateur.", path: ["branches"] }
@@ -101,9 +102,9 @@ adminsRouter.post(
         return res.status(403).json({ error: "Vous ne pouvez assigner que les branches auxquelles vous avez accès." });
       }
     }
-    // Un SUPER_ADMIN global reçoit toujours les trois branches automatiquement.
-    const branches: ("INCENDIE_ACCIDENT" | "RELAX" | "IMF")[] =
-      data.role === "SUPER_ADMIN" ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"] : data.branches;
+    // Un SUPER_ADMIN global reçoit toujours toutes les branches automatiquement.
+    const branches: BrancheAcces[] =
+      data.role === "SUPER_ADMIN" ? [...TOUTES_BRANCHES] : data.branches;
     const created = await prisma.admin.create({
       data: {
         nom: data.nom,

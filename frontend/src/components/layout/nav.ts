@@ -13,6 +13,7 @@ import {
   Clock,
   IdCard,
   Landmark,
+  Building,
   MapPin,
   Building2,
   Percent,
@@ -112,6 +113,21 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
           { to: "/admin/imf/sinistres", label: "Sinistres", icon: LifeBuoy },
           { to: "/admin/imf/bordereaux", label: "Bordereaux", icon: Banknote },
+        ],
+      },
+    ],
+  },
+  {
+    id: "imf-partenaires",
+    label: "IMF Partenaires",
+    icon: Building,
+    homeTo: "/admin/imfs",
+    groups: [
+      {
+        section: "Gestion",
+        items: [
+          { to: "/admin/imfs", label: "Tableau de bord", icon: LayoutDashboard },
+          { to: "/admin/imfs/liste", label: "Les IMF", icon: Landmark },
         ],
       },
     ],

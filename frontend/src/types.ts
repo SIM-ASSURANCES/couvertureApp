@@ -182,6 +182,101 @@ export interface ClientAccident {
 
 export type RoleImf = "AGENT" | "RESPONSABLE_AGENCE" | "RESPONSABLE_ZONE" | "CHEF_ZONE" | "FINANCE_COMPTABLE";
 
+/** Institution de microfinance de la branche « IMF Partenaires » (1:1 avec un Partenaire). */
+export interface Imf {
+  id: string;
+  code: string;
+  nom: string;
+  statut: "actif" | "inactif";
+  logoUrl: string | null;
+  couleurPrimaire: string | null;
+  couleurSecondaire: string | null;
+  mentionsLegales: string | null;
+  createdAt: string;
+  updatedAt: string;
+  partenaireId: string;
+  nomResponsable: string;
+  telephone: string;
+  email: string | null;
+  localisation: string | null;
+  nbZones: number;
+  nbAgences: number;
+  nbAgents: number;
+  nbSouscriptions: number;
+}
+
+export interface StatsImfPartenaires {
+  total: number;
+  actives: number;
+  inactives: number;
+  souscriptions: number;
+}
+
+/** Garantie d'un produit IMF, telle que paramétrée pour une IMF donnée. */
+export interface ImfGarantieConfig {
+  code: string;
+  libelle: string;
+  actif: boolean;
+  plafond: number | null;
+}
+
+/** Produit IMF activé pour une IMF, avec ses surcharges (branche « IMF Partenaires », phase 2a). */
+export interface ImfProduitConfig {
+  code: string;
+  libelle: string;
+  aFormule: boolean;
+  actif: boolean;
+  plafond: number | null;
+  garanties: ImfGarantieConfig[];
+  updatedAt: string;
+}
+
+/* Barèmes / tarifs par IMF (branche « IMF Partenaires », phase 2b). */
+export interface ImfBaremeSecurproLigne {
+  classe: number;
+  limiteCapital: number;
+  tauxIncendie: number;
+  tauxCommission: number;
+}
+export interface ImfBaremeSecurstockLigne {
+  classe: number;
+  limiteCapital: number;
+  tauxDommageElectrique: number;
+  tauxAutreCause: number;
+  tauxCommission: number;
+}
+export interface ImfPalierSecurecolteLigne {
+  seuil: string;
+  pourcentageIndice: number;
+  montantIndemnite: number;
+}
+export interface ImfTarifFixeLigne {
+  produitCode: string;
+  libelleVariante: string;
+  prime: number;
+  primeHT: number | null;
+  fg: number | null;
+  taxes: number | null;
+  capitalGaranti: number;
+  commission: number;
+}
+export interface ImfBaremes {
+  securpro: ImfBaremeSecurproLigne[];
+  securstock: ImfBaremeSecurstockLigne[];
+  securecolte: ImfPalierSecurecolteLigne[];
+  tarifsFixes: ImfTarifFixeLigne[];
+}
+
+/** Modèle de document paramétrable par IMF (branche « IMF Partenaires », phase 2c). */
+export interface ImfDocumentModeleView {
+  cle: string;
+  libelle: string;
+  contenuHtml: string;
+  /** false = le rendu retombe sur le document de la branche. */
+  personnalise: boolean;
+  updatedAt: string | null;
+}
+
 export interface ZoneImf {
   id: string;
   nom: string;

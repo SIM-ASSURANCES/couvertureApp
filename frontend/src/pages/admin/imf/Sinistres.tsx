@@ -4,6 +4,7 @@ import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb } from "..
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
+import type { BrancheAcces } from "../../../auth";
 import type { SinistreImf, SouscriptionImf } from "../../../types";
 
 const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]> = {
@@ -63,13 +64,22 @@ const PALIERS = [
   { value: "deces", label: "Décès de l'agriculteur (100%)" },
 ];
 
-export default function Sinistres() {
+export function SinistresInner({
+  apiBase = "/imf",
+  branche = "IMF",
+  header = true,
+}: {
+  apiBase?: string;
+  branche?: BrancheAcces;
+  header?: boolean;
+}) {
+  void branche;
   const [statut, setStatut] = useState("");
   const [produitCode, setProduitCode] = useState("");
   const params = new URLSearchParams();
   if (statut) params.set("statut", statut);
   if (produitCode) params.set("produitCode", produitCode);
-  const { data, loading, error, reload, setData } = useFetch<SinistreImf[]>(`/imf/sinistres?${params.toString()}`);
+  const { data, loading, error, reload, setData } = useFetch<SinistreImf[]>(`${apiBase}/sinistres?${params.toString()}`);
 
   function exporter() {
     if (!data) return;
@@ -94,7 +104,7 @@ export default function Sinistres() {
   }
 
   // Déclaration par l'admin (souscriptions directes, sans agent/zone/agence).
-  const { data: toutesSouscriptions } = useFetch<SouscriptionImf[]>("/imf/souscriptions");
+  const { data: toutesSouscriptions } = useFetch<SouscriptionImf[]>(`${apiBase}/souscriptions`);
   const declarables = (toutesSouscriptions ?? []).filter(
     (s) => s.directe && s.statut === "active" && s.produitCode !== "securecolte"
   );
@@ -117,7 +127,7 @@ export default function Sinistres() {
     setDeclaring(true);
     setDeclareError("");
     try {
-      await api.post<SinistreImf>("/imf/sinistres", {
+      await api.post<SinistreImf>(`${apiBase}/sinistres`, {
         souscriptionId,
         typeEvenement,
         dateSurvenance,
@@ -159,7 +169,7 @@ export default function Sinistres() {
     setTransitioning(true);
     setTransitionError("");
     try {
-      const updated = await api.patch<SinistreImf>(`/imf/sinistres/${s.id}/statut`, {
+      const updated = await api.patch<SinistreImf>(`${apiBase}/sinistres/${s.id}/statut`, {
         statut: cible,
         motifRejet: cible === "rejete" ? motifRejet : undefined,
         montantRegle: cible === "regle" ? montantRegle : undefined,
@@ -176,7 +186,7 @@ export default function Sinistres() {
   }
 
   // SECURECOLTE — indemnisation automatique
-  const { data: souscriptionsSecurecolte } = useFetch<SouscriptionImf[]>("/imf/souscriptions?produitCode=securecolte");
+  const { data: souscriptionsSecurecolte } = useFetch<SouscriptionImf[]>(`${apiBase}/souscriptions?produitCode=securecolte`);
   const actives = (souscriptionsSecurecolte ?? []).filter((s) => s.statut === "active");
   const [selection, setSelection] = useState<string[]>([]);
   const [palier, setPalier] = useState<"forte" | "moyenne" | "faible" | "deces">("forte");
@@ -193,7 +203,7 @@ export default function Sinistres() {
     setIndemnisant(true);
     setIndemnisationMsg("");
     try {
-      const res = await api.post<{ nombre: number }>("/imf/sinistres/securecolte/indemnisation", {
+      const res = await api.post<{ nombre: number }>(`${apiBase}/sinistres/securecolte/indemnisation`, {
         souscriptionIds: selection,
         palier,
         region: region.trim(),
@@ -210,7 +220,7 @@ export default function Sinistres() {
 
   return (
     <>
-      <PageHeader title="Sinistres IMF" subtitle="Instruction des sinistres du réseau et indemnisation SECURECOLTE." />
+      {header && <PageHeader title="Sinistres IMF" subtitle="Instruction des sinistres du réseau et indemnisation SECURECOLTE." />}
 
       {declarables.length > 0 && (
         <Card title="Déclarer un sinistre (souscription directe)" style={{ marginTop: 24 }}>
@@ -456,4 +466,8 @@ export default function Sinistres() {
       </Card>
     </>
   );
+}
+
+export default function Sinistres() {
+  return <SinistresInner />;
 }

@@ -3,16 +3,26 @@ import { Plus, Trash2 } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, fmtDate, nb, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
-import { useAuth } from "../../../auth";
+import { useAuth, type BrancheAcces } from "../../../auth";
 import type { AgenceImf, ZoneImf } from "../../../types";
 
 const empty = { nom: "", zoneId: "", telephone: "", localisation: "" };
 
-export default function Agences() {
+/** Voir ZonesInner : paramétrable branche « Assurances IMF » / réseau d'une IMF partenaire. */
+export function AgencesInner({
+  apiBase = "/imf",
+  branche = "IMF",
+  header = true,
+}: {
+  apiBase?: string;
+  branche?: BrancheAcces;
+  header?: boolean;
+}) {
   const { user } = useAuth();
-  const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("IMF"));
-  const { data, loading, error, reload } = useFetch<AgenceImf[]>("/imf/agences");
-  const { data: zones } = useFetch<ZoneImf[]>("/imf/zones");
+  const isSuper =
+    user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes(branche));
+  const { data, loading, error, reload } = useFetch<AgenceImf[]>(`${apiBase}/agences`);
+  const { data: zones } = useFetch<ZoneImf[]>(`${apiBase}/zones`);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
@@ -26,7 +36,7 @@ export default function Agences() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.post("/imf/agences", {
+      await api.post(`${apiBase}/agences`, {
         nom: form.nom,
         zoneId: form.zoneId,
         telephone: form.telephone || undefined,
@@ -45,7 +55,7 @@ export default function Agences() {
   async function remove(a: AgenceImf) {
     if (!confirm(`Supprimer l'agence "${a.nom}" ?`)) return;
     try {
-      await api.del(`/imf/agences/${a.id}`);
+      await api.del(`${apiBase}/agences/${a.id}`);
       notify("Agence supprimée ✓");
       reload();
     } catch (err) {
@@ -57,9 +67,9 @@ export default function Agences() {
 
   return (
     <>
-      <PageHeader title="Agences" subtitle="Institutions de microfinance rattachées à une zone." />
+      {header && <PageHeader title="Agences" subtitle="Institutions de microfinance rattachées à une zone." />}
 
-      <div className="grid-2" style={{ marginTop: 24 }}>
+      <div className="grid-2" style={{ marginTop: header ? 24 : 0 }}>
         <Card title={data ? `${data.length} agences` : "Agences"} noBody>
           {loading && <Loader />}
           {error && <div style={{ padding: 20 }}><ErrorBox message={error} /></div>}
@@ -134,4 +144,8 @@ export default function Agences() {
       {toast && <div className="toast">{toast}</div>}
     </>
   );
+}
+
+export default function Agences() {
+  return <AgencesInner />;
 }

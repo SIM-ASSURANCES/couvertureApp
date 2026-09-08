@@ -6,7 +6,7 @@ import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel } from "../../xlsx";
 
-type Branche = "INCENDIE_ACCIDENT" | "RELAX" | "IMF";
+type Branche = "INCENDIE_ACCIDENT" | "RELAX" | "IMF" | "IMF_PARTENAIRES";
 
 interface Admin {
   id: string;
@@ -28,6 +28,7 @@ const empty = {
 function brancheLabel(b: Branche) {
   if (b === "INCENDIE_ACCIDENT") return "Assurances Accidents et Dommages";
   if (b === "RELAX") return "RelaxMoto et RelaxAuto";
+  if (b === "IMF_PARTENAIRES") return "IMF Partenaires";
   return "IMF";
 }
 
@@ -39,7 +40,7 @@ export default function Administrateurs() {
   // Branches assignables par ce compte : toutes pour un SUPER_ADMIN global,
   // uniquement les siennes pour un BRANCH_SUPER_ADMIN.
   const branchesAssignables: Branche[] = isSuper
-    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"]
+    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF", "IMF_PARTENAIRES"]
     : (user?.branches as Branche[] | undefined) ?? [];
   const { data, loading, error, reload } = useFetch<Admin[]>("/admins");
   const [form, setForm] = useState(empty);
@@ -150,7 +151,15 @@ export default function Administrateurs() {
                           {a.branches.map((b) => (
                             <Badge
                               key={b}
-                              kind={b === "INCENDIE_ACCIDENT" ? "warning" : b === "RELAX" ? "info" : "success"}
+                              kind={
+                                b === "INCENDIE_ACCIDENT"
+                                  ? "warning"
+                                  : b === "RELAX"
+                                  ? "info"
+                                  : b === "IMF_PARTENAIRES"
+                                  ? "neutral"
+                                  : "success"
+                              }
                             >
                               {brancheLabel(b)}
                             </Badge>
@@ -212,7 +221,7 @@ export default function Administrateurs() {
                 </label>
                 {isSuperForm ? (
                   <div className="muted" style={{ fontSize: 12 }}>
-                    Un Super Administrateur a automatiquement accès aux trois branches.
+                    Un Super Administrateur a automatiquement accès à toutes les branches.
                   </div>
                 ) : (
                   <>
@@ -245,6 +254,16 @@ export default function Administrateurs() {
                             onChange={() => toggleBranche("IMF")}
                           />
                           <span>Assurances IMF</span>
+                        </label>
+                      )}
+                      {branchesAssignables.includes("IMF_PARTENAIRES") && (
+                        <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={form.branches.includes("IMF_PARTENAIRES")}
+                            onChange={() => toggleBranche("IMF_PARTENAIRES")}
+                          />
+                          <span>IMF Partenaires</span>
                         </label>
                       )}
                     </div>

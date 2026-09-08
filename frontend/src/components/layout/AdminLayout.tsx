@@ -7,6 +7,7 @@ import { useAuth, type BrancheAcces } from "../../auth";
 const NAV_ID_TO_BRANCHE: Record<string, BrancheAcces> = {
   "incendie-accident": "INCENDIE_ACCIDENT",
   imf: "IMF",
+  "imf-partenaires": "IMF_PARTENAIRES",
 };
 
 export default function AdminLayout() {

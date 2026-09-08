@@ -22,12 +22,12 @@ const identifiantsSchema = z.object({
 });
 
 /**
- * Branches effectives d'un admin : un SUPER_ADMIN a toujours accès aux deux,
+ * Branches effectives d'un admin : un SUPER_ADMIN a toujours accès à toutes,
  * quel que soit le contenu stocké en base.
  */
 function branchesEffectives(admin: { role: string; branches: string[] }): BrancheAcces[] {
   return admin.role === "SUPER_ADMIN"
-    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF"]
+    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF", "IMF_PARTENAIRES"]
     : (admin.branches as BrancheAcces[]);
 }
 
@@ -121,34 +121,65 @@ authRouter.post(
 
     const a = await prisma.agentImf.findUnique({
       where: { email },
-      include: { agence: { include: { zone: true } }, zone: true, zones: true },
+      include: {
+        agence: { include: { zone: true } },
+        zone: true,
+        zones: true,
+        imf: { select: { nom: true, logoUrl: true, couleurPrimaire: true, couleurSecondaire: true } },
+      },
     });
     if (a && (await bcrypt.compare(password, a.passwordHash))) {
-      const token = signToken({
-        sub: a.id,
-        type: "agent_imf",
-        nom: `${a.prenom} ${a.nom}`,
-        agenceId: a.agenceId ?? undefined,
-        zoneIds: a.zones.length ? a.zones.map((z) => z.id) : a.zoneId ? [a.zoneId] : [],
-        roleImf: a.roleImf,
-      });
-      return res.json({
-        token,
-        user: {
-          id: a.id,
-          nom: `${a.prenom} ${a.nom}`,
-          email: a.email,
-          type: "agent_imf",
-          roleImf: a.roleImf,
-          agenceNom: a.agence?.nom ?? null,
-          zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
-        },
-      });
+      return res.json(reponseAgentImf(a));
     }
 
     return res.status(401).json({ error: "Identifiants invalides" });
   })
 );
+
+type AgentImfConnecte = {
+  id: string;
+  nom: string;
+  prenom: string;
+  email: string;
+  roleImf: import("@prisma/client").RoleImf;
+  agenceId: string | null;
+  zoneId: string | null;
+  zones: { id: string; nom: string }[];
+  agence: { nom: string; zone: { nom: string } } | null;
+  zone: { nom: string } | null;
+  imfId: string | null;
+  imf: { nom: string; logoUrl: string | null; couleurPrimaire: string | null; couleurSecondaire: string | null } | null;
+};
+
+/** Réponse commune (token + user) pour les deux points de connexion agent IMF. */
+function reponseAgentImf(a: AgentImfConnecte) {
+  const token = signToken({
+    sub: a.id,
+    type: "agent_imf",
+    nom: `${a.prenom} ${a.nom}`,
+    agenceId: a.agenceId ?? undefined,
+    zoneIds: a.zones.length ? a.zones.map((z) => z.id) : a.zoneId ? [a.zoneId] : [],
+    roleImf: a.roleImf,
+    imfId: a.imfId ?? undefined,
+  });
+  return {
+    token,
+    user: {
+      id: a.id,
+      nom: `${a.prenom} ${a.nom}`,
+      email: a.email,
+      type: "agent_imf" as const,
+      roleImf: a.roleImf,
+      agenceNom: a.agence?.nom ?? null,
+      zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
+      imfId: a.imfId ?? null,
+      imfNom: a.imf?.nom ?? null,
+      imfLogoUrl: a.imf?.logoUrl ?? null,
+      imfCouleurPrimaire: a.imf?.couleurPrimaire ?? null,
+      imfCouleurSecondaire: a.imf?.couleurSecondaire ?? null,
+    },
+  };
+}
 
 authRouter.post(
   "/agent-imf/login",
@@ -156,31 +187,17 @@ authRouter.post(
     const { email, password } = identifiantsSchema.parse(req.body ?? {});
     const a = await prisma.agentImf.findUnique({
       where: { email },
-      include: { agence: { include: { zone: true } }, zone: true, zones: true },
+      include: {
+        agence: { include: { zone: true } },
+        zone: true,
+        zones: true,
+        imf: { select: { nom: true, logoUrl: true, couleurPrimaire: true, couleurSecondaire: true } },
+      },
     });
     if (!a || !(await bcrypt.compare(password ?? "", a.passwordHash))) {
       return res.status(401).json({ error: "Identifiants invalides" });
     }
-    const token = signToken({
-      sub: a.id,
-      type: "agent_imf",
-      nom: `${a.prenom} ${a.nom}`,
-      agenceId: a.agenceId ?? undefined,
-      zoneIds: a.zones.length ? a.zones.map((z) => z.id) : a.zoneId ? [a.zoneId] : [],
-      roleImf: a.roleImf,
-    });
-    res.json({
-      token,
-      user: {
-        id: a.id,
-        nom: `${a.prenom} ${a.nom}`,
-        email: a.email,
-        type: "agent_imf",
-        roleImf: a.roleImf,
-        agenceNom: a.agence?.nom ?? null,
-        zoneNom: a.agence?.zone.nom ?? (a.zones.length ? a.zones.map((z) => z.nom).join(", ") : a.zone?.nom ?? null),
-      },
-    });
+    res.json(reponseAgentImf(a));
   })
 );
 
