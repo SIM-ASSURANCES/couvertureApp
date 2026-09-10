@@ -92,7 +92,7 @@ export default function Dashboard() {
                       <td style={{ textAlign: "right" }} className="muted">{nb(imf.nbAgences)}</td>
                       <td style={{ textAlign: "right" }} className="muted">{nb(imf.nbAgents)}</td>
                       <td style={{ textAlign: "right" }}>
-                        <Link to={`/admin/imfs/${imf.id}/general`} className="btn btn-ghost" style={{ padding: "4px 10px" }}>
+                        <Link to={`/admin/imfs/${imf.id}/tableau-de-bord`} className="btn btn-ghost" style={{ padding: "4px 10px" }}>
                           Ouvrir
                         </Link>
                       </td>

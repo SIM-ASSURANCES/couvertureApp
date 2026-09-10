@@ -769,6 +769,64 @@ imfPartenairesReseauRouter.get(
   })
 );
 
+/**
+ * Tableau de bord de l'IMF : chiffre d'affaires, taxes et accessoires (globaux
+ * et par produit) + évolution mensuelle du CA par produit. Calculé sur les
+ * contrats (souscriptions actives) de l'IMF. Mêmes règles que GET /imf/stats
+ * de la branche « Assurances IMF » (taxes/accessoires ventilés seulement pour
+ * SECURPRO/SECURSTOCK, présents dans `resultat`).
+ */
+imfPartenairesReseauRouter.get(
+  "/stats",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const souscriptions = await prisma.souscriptionImf.findMany({
+      where: { imfId: imfId(req), statut: "active" },
+      select: { produitCode: true, primeTTC: true, resultat: true, createdAt: true },
+    });
+
+    const parProduit: Record<string, { ca: number; taxes: number; accessoires: number; nombre: number }> = {};
+    for (const f of FAMILLES) parProduit[f] = { ca: 0, taxes: 0, accessoires: 0, nombre: 0 };
+
+    const evolutionMap = new Map<string, Record<string, number>>();
+
+    for (const s of souscriptions) {
+      const famille = FAMILLE_PRODUIT[s.produitCode] ?? s.produitCode;
+      if (!parProduit[famille]) parProduit[famille] = { ca: 0, taxes: 0, accessoires: 0, nombre: 0 };
+      const r = (s.resultat ?? {}) as { taxes?: number; accessoires?: number };
+      parProduit[famille].ca += s.primeTTC;
+      parProduit[famille].taxes += Math.round(r.taxes ?? 0);
+      parProduit[famille].accessoires += Math.round(r.accessoires ?? 0);
+      parProduit[famille].nombre += 1;
+
+      const mois = s.createdAt.toISOString().slice(0, 7); // AAAA-MM
+      if (!evolutionMap.has(mois)) evolutionMap.set(mois, {});
+      const m = evolutionMap.get(mois)!;
+      m[famille] = (m[famille] ?? 0) + s.primeTTC;
+    }
+
+    const global = {
+      ca: FAMILLES.reduce((sum, f) => sum + parProduit[f].ca, 0),
+      taxes: FAMILLES.reduce((sum, f) => sum + parProduit[f].taxes, 0),
+      accessoires: FAMILLES.reduce((sum, f) => sum + parProduit[f].accessoires, 0),
+      nombre: souscriptions.length,
+    };
+
+    const evolution = [...evolutionMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mois, valeurs]) => {
+        const point: Record<string, number | string> = { mois };
+        for (const f of FAMILLES) point[f] = valeurs[f] ?? 0;
+        return point;
+      });
+
+    res.json({
+      global,
+      parProduit: FAMILLES.map((f) => ({ famille: f, ...parProduit[f] })),
+      evolution,
+    });
+  })
+);
+
 /* ── Bordereaux ── */
 imfPartenairesReseauRouter.get(
   "/bordereaux",

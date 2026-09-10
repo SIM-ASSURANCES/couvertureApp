@@ -1,5 +1,6 @@
 import { useOutletContext } from "react-router-dom";
 import type { ImfFicheContext } from "../Fiche";
+import { DashboardInner } from "../../imf/Dashboard";
 import OngletGeneral from "./OngletGeneral";
 import OngletReseau from "./OngletReseau";
 import OngletSimulateur from "./OngletSimulateur";
@@ -16,6 +17,9 @@ export function useImfFiche() {
 /* Éléments de route : chaque onglet de la fiche IMF est une route fille
  * `/admin/imfs/:imfId/<onglet>` — ces wrappers injectent le contexte. */
 
+export function RouteTableauDeBord() {
+  return <DashboardInner apiBase={`/imf-partenaires/${useImfFiche().imfId}/reseau`} header={false} />;
+}
 export function RouteGeneral() {
   const c = useImfFiche();
   return <OngletGeneral imf={c.imf} reload={c.reload} notify={c.notify} />;

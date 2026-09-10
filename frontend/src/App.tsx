@@ -41,6 +41,7 @@ import ImfPartenairesDashboard from "./pages/admin/imfs/Dashboard";
 import ImfPartenairesListe from "./pages/admin/imfs/Liste";
 import ImfFicheLayout from "./pages/admin/imfs/Fiche";
 import {
+  RouteTableauDeBord as ImfRouteTableauDeBord,
   RouteGeneral as ImfRouteGeneral,
   RouteReseau as ImfRouteReseau,
   RouteSimulateur as ImfRouteSimulateur,
@@ -120,7 +121,8 @@ export default function App() {
             <Route path="imfs" element={<ImfPartenairesDashboard />} />
             <Route path="imfs/liste" element={<ImfPartenairesListe />} />
             <Route path="imfs/:imfId" element={<ImfFicheLayout />}>
-              <Route index element={<Navigate to="general" replace />} />
+              <Route index element={<Navigate to="tableau-de-bord" replace />} />
+              <Route path="tableau-de-bord" element={<ImfRouteTableauDeBord />} />
               <Route path="general" element={<ImfRouteGeneral />} />
               <Route path="reseau" element={<ImfRouteReseau />} />
               <Route path="simulateur" element={<ImfRouteSimulateur />} />

@@ -91,7 +91,7 @@ export default function Liste() {
                       </td>
                       <td className="muted">{fmtDate(imf.createdAt)}</td>
                       <td style={{ textAlign: "right" }}>
-                        <Link to={`/admin/imfs/${imf.id}/general`} className="btn btn-ghost" style={{ padding: "4px 10px", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <Link to={`/admin/imfs/${imf.id}/tableau-de-bord`} className="btn btn-ghost" style={{ padding: "4px 10px", display: "inline-flex", gap: 6, alignItems: "center" }}>
                           Ouvrir <ExternalLink size={14} />
                         </Link>
                       </td>

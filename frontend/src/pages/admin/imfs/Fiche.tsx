@@ -14,6 +14,7 @@ export type ImfFicheContext = {
 };
 
 const ONGLETS: { seg: string; label: string }[] = [
+  { seg: "tableau-de-bord", label: "Tableau de bord" },
   { seg: "general", label: "Général" },
   { seg: "reseau", label: "Réseau" },
   { seg: "simulateur", label: "Simulateur" },

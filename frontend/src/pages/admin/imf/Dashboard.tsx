@@ -101,12 +101,12 @@ function EvolutionChart({ evolution }: { evolution: StatsImf["evolution"] }) {
   );
 }
 
-export default function Dashboard() {
-  const { data: stats, loading: l0, error: e0 } = useFetch<StatsImf>("/imf/stats");
-  const { data: zones, loading: l1, error: e1 } = useFetch<ZoneImf[]>("/imf/zones");
-  const { data: agences, loading: l2, error: e2 } = useFetch<AgenceImf[]>("/imf/agences");
-  const { data: agents, loading: l3, error: e3 } = useFetch<AgentImf[]>("/imf/agents");
-  const { data: sp } = useFetch<StatsSinistresImf>("/imf/sinistres/stats");
+export function DashboardInner({ apiBase = "/imf", header = true }: { apiBase?: string; header?: boolean }) {
+  const { data: stats, loading: l0, error: e0 } = useFetch<StatsImf>(`${apiBase}/stats`);
+  const { data: zones, loading: l1, error: e1 } = useFetch<ZoneImf[]>(`${apiBase}/zones`);
+  const { data: agences, loading: l2, error: e2 } = useFetch<AgenceImf[]>(`${apiBase}/agences`);
+  const { data: agents, loading: l3, error: e3 } = useFetch<AgentImf[]>(`${apiBase}/agents`);
+  const { data: sp } = useFetch<StatsSinistresImf>(`${apiBase}/sinistres/stats`);
 
   const loading = l0 || l1 || l2 || l3;
   const error = e0 || e1 || e2 || e3;
@@ -115,7 +115,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <PageHeader title="Assurances IMF" subtitle="Chiffre d'affaires, taxes et accessoires du réseau, par produit." />
+      {header && <PageHeader title="Assurances IMF" subtitle="Chiffre d'affaires, taxes et accessoires du réseau, par produit." />}
 
       {loading && <Loader />}
       {error && <div style={{ marginTop: 24 }}><ErrorBox message={error} /></div>}
@@ -238,4 +238,8 @@ export default function Dashboard() {
       )}
     </>
   );
+}
+
+export default function Dashboard() {
+  return <DashboardInner />;
 }
