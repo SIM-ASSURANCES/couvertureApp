@@ -26,6 +26,7 @@ const PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE = new Set([
   "relaxmoto",
   "relaxauto",
   "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
   "relaxaccidents",
   "accident",
 ]);

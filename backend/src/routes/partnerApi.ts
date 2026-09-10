@@ -83,6 +83,7 @@ const PRODUITS_SOUSCRIPTION_API = new Set([
   "relaxmoto",
   "relaxauto",
   "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
 ]);
 
 /**
@@ -357,10 +358,13 @@ partnerApiRouter.post(
     }
     const nombrePeriodes = estCycle ? data.nombrePeriodes ?? 1 : 1;
 
-    // Option Décès : uniquement RelaxAccidents Frais Médicaux ET non-livreur
-    // déclaré — jamais sur la seule foi du champ transmis.
+    // Option Décès : uniquement les produits RelaxAccidents Frais Médicaux.
+    // Version grand public : non-livreur déclaré exigé. Version Livreurs/Taxis :
+    // ouverte d'emblée. Jamais sur la seule foi du champ transmis.
+    const rafGrandPublic = produit.code === "relaxaccidents_fraismedicaux";
+    const rafLivreurs = produit.code === "relaxaccidents_fraismedicaux_livreurs";
     const optionDeces =
-      data.optionDeces && produit.code === "relaxaccidents_fraismedicaux" && data.declarePasLivreur
+      data.optionDeces && (rafLivreurs || (rafGrandPublic && data.declarePasLivreur))
         ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces]
         : null;
     if (data.optionDeces && !optionDeces) {
@@ -368,7 +372,7 @@ partnerApiRouter.post(
         res,
         400,
         "option_deces_indisponible",
-        "L'option Décès n'est disponible que pour RelaxAccidents Frais Médicaux, souscripteur non-livreur."
+        "L'option Décès n'est disponible que pour RelaxAccidents Frais Médicaux (souscripteur non-livreur pour la version grand public)."
       );
     }
 
@@ -382,7 +386,8 @@ partnerApiRouter.post(
       data.signature || optionDeces
         ? {
             signature: data.signature ?? null,
-            ...(optionDeces ? { declarePasLivreur: true, optionDeces } : {}),
+            // `declarePasLivreur` n'a de sens que pour la version grand public.
+            ...(optionDeces ? { ...(rafGrandPublic ? { declarePasLivreur: true } : {}), optionDeces } : {}),
           }
         : undefined;
 

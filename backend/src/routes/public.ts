@@ -57,9 +57,27 @@ const dataUrlImage = z
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
 // refonte Assurances Accidents/Dommages (voir routes /initiate-formule ci-dessous).
-const PRODUITS_FORMULE = ["relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents", "securhome"] as const;
+const PRODUITS_FORMULE = [
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+  "relaxvoyage",
+  "relaxaccidents",
+  "securhome",
+] as const;
 function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
+}
+
+// RelaxAccidents Frais Médicaux existe en deux produits distincts partageant
+// tarifs, formulaire et option Décès : la version « grand public » (exclut les
+// livreurs, d'où la case à cocher) et la version « Livreurs/Taxis » (les
+// couvre justement — aucune déclaration, option Décès ouverte d'emblée).
+const PRODUITS_RAF = ["relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"] as const;
+function estRaf(p: string): boolean {
+  return (PRODUITS_RAF as readonly string[]).includes(p);
+}
+function estRafLivreurs(p: string): boolean {
+  return p === "relaxaccidents_fraismedicaux_livreurs";
 }
 
 // Produits à devis calculé dynamiquement (pas de TarifProduit) — SecurHome+ et
@@ -1555,11 +1573,14 @@ publicRouter.post(
     if (code === "relaxvoyage" && RELAXVOYAGE_CHAMPS_REQUIS.some((champ) => !data[champ])) {
       return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
     }
-    // Option Décès : réservée à RelaxAccidents Frais Médicaux, et seulement
-    // si le souscripteur a bien déclaré ne pas être livreur (comme le reste
-    // du produit) — jamais de confiance dans le seul fait que le client l'ait
-    // envoyée.
-    if (data.optionDeces && (code !== "relaxaccidents_fraismedicaux" || !data.declarePasLivreur)) {
+    // Option Décès : réservée aux produits RelaxAccidents Frais Médicaux.
+    // Version grand public : seulement si le souscripteur a déclaré ne pas
+    // être livreur. Version Livreurs/Taxis : ouverte d'emblée (le produit les
+    // couvre). Jamais de confiance dans le seul fait que le client l'ait envoyée.
+    if (data.optionDeces && !estRaf(code)) {
+      return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
+    }
+    if (data.optionDeces && code === "relaxaccidents_fraismedicaux" && !data.declarePasLivreur) {
       return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
     }
     if (code === "relaxaccidents" && !data.moyenDeplacement) {
@@ -1648,7 +1669,11 @@ publicRouter.post(
             : data.signature || optionDeces
             ? {
                 signature: data.signature ?? null,
-                ...(optionDeces ? { declarePasLivreur: true, optionDeces } : {}),
+                // `declarePasLivreur` n'a de sens que pour la version grand
+                // public — la version Livreurs/Taxis assure justement ce public.
+                ...(optionDeces
+                  ? { ...(code === "relaxaccidents_fraismedicaux" ? { declarePasLivreur: true } : {}), optionDeces }
+                  : {}),
               }
             : undefined,
         paiements: {
@@ -1816,6 +1841,8 @@ publicRouter.get(
       bdgCapital?: number | null;
       nombrePieces?: number | null;
       moyenDeplacement?: string | null;
+      // Option Décès facultative des produits RelaxAccidents Frais Médicaux.
+      optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -1897,6 +1924,9 @@ publicRouter.get(
       camera: donneesSpecifiques?.camera ?? null,
       volContenu: donneesSpecifiques?.volContenu ?? null,
       nombrePieces: donneesSpecifiques?.nombrePieces ?? null,
+      // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis) — affichée
+      // sur le contrat PDF (voir renderContratAccident).
+      optionDeces: donneesSpecifiques?.optionDeces ?? null,
       resultat: s.resultat ?? null,
     });
   })

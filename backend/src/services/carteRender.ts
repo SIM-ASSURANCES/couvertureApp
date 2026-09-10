@@ -19,7 +19,8 @@ export function garantieAffichee(
   produitCode: string,
   capitalGaranti: number
 ): { label: string; montant: number } {
-  if (produitCode === "relaxaccidents_fraismedicaux") return { label: "FMP", montant: capitalGaranti };
+  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs")
+    return { label: "FMP", montant: capitalGaranti };
   if (produitCode === "relaxvoyage") return { label: "DÉCÈS/IPT", montant: capitalGaranti };
   return { label: "CAPITAL GARANTI", montant: capitalGaranti };
 }

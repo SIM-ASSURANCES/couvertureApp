@@ -316,6 +316,52 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     }
   }
 
+  // RelaxAccidents Frais Médicaux Livreurs/Taxis (2026-09-10) — produit
+  // distinct, dédié aux livreurs et chauffeurs de taxi (que le produit
+  // ci-dessus exclut explicitement). Mêmes tarifs et même option Décès :
+  // les lignes TarifProduit sont recopiées à l'identique depuis le produit
+  // ci-dessus (source de vérité, y compris si un admin en a édité les
+  // montants). `update: {}` ensuite : les deux jeux de tarifs évoluent
+  // indépendamment après la création (protège les éventuelles retouches).
+  const rafLivreurs = await prisma.produit.upsert({
+    where: { code: "relaxaccidents_fraismedicaux_livreurs" },
+    update: {},
+    create: {
+      code: "relaxaccidents_fraismedicaux_livreurs",
+      libelle: "RelaxAccidents Frais Médicaux Livreurs/Taxis",
+      branche: "INCENDIE_ACCIDENT",
+      sousBranche: "ASSURANCES_ACCIDENTS",
+      typePaiement: "WAVE",
+      couleurQr: "#004b9c",
+      ordre: 2,
+    },
+  });
+  // Placé juste après le produit "grand public" dans le sélecteur : RelaxVoyage
+  // recule d'un cran (ordre fixé à la création, un `update` ne le rattrape pas
+  // sur une base déjà seedée — même raison que le bloc RelaxAuto plus bas).
+  // `updateMany` (et non `update`) : ne lève pas si RelaxVoyage n'existe pas
+  // encore (base neuve) — il est upserté quelques lignes plus bas avec ordre 3.
+  await prisma.produit.updateMany({ where: { code: "relaxvoyage" }, data: { ordre: 3 } });
+  const rafTarifs = await prisma.tarifProduit.findMany({ where: { produitId: raf.id } });
+  for (const t of rafTarifs) {
+    await prisma.tarifProduit.upsert({
+      where: {
+        produitId_libelleVariante: { produitId: rafLivreurs.id, libelleVariante: t.libelleVariante ?? String(t.prime) },
+      },
+      update: {},
+      create: {
+        produitId: rafLivreurs.id,
+        libelleVariante: t.libelleVariante ?? String(t.prime),
+        prime: t.prime,
+        primeHT: t.primeHT,
+        fg: t.fg,
+        taxes: t.taxes,
+        capitalGaranti: t.capitalGaranti,
+        commission: 0,
+      },
+    });
+  }
+
   // RelaxVoyage — 4 formules (Décès/IPT en capitalGaranti, Frais de Santé +
   // Bagages en donneesSpecifiques).
   const voyage = await prisma.produit.upsert({
@@ -328,7 +374,8 @@ async function seedCatalogueAssurancesAccidentsDommages() {
       sousBranche: "ASSURANCES_ACCIDENTS",
       typePaiement: "WAVE",
       couleurQr: "#004b9c",
-      ordre: 2,
+      // 3 depuis l'ajout de RelaxAccidents Frais Médicaux Livreurs/Taxis (ordre 2).
+      ordre: 3,
     },
   });
   const formulesVoyage = [

@@ -25,11 +25,19 @@ const TYPES_AVEC_CARTE = [
   "incendie",
   "accident",
   "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
   "relaxvoyage",
   "relaxmoto",
   "relaxauto",
 ] as const;
-type TypeCarte = "incendie" | "accident" | "relaxmoto" | "relaxauto" | "relaxaccidents_fraismedicaux" | "relaxvoyage";
+type TypeCarte =
+  | "incendie"
+  | "accident"
+  | "relaxmoto"
+  | "relaxauto"
+  | "relaxaccidents_fraismedicaux"
+  | "relaxaccidents_fraismedicaux_livreurs"
+  | "relaxvoyage";
 
 interface CatalogueEntry {
   sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";

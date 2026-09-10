@@ -128,7 +128,7 @@ clientRouter.get(
     // souscription (voir formuleSchema, routes/public.ts) — stockée
     // directement sur la souscription, contrairement à RelaxVoyage ci-dessus.
     const optionDeces =
-      s.produit.code === "relaxaccidents_fraismedicaux"
+      s.produit.code === "relaxaccidents_fraismedicaux" || s.produit.code === "relaxaccidents_fraismedicaux_livreurs"
         ? ((s.donneesSpecifiques as { optionDeces?: { capital: number; prime: number; dureeMois: number } } | null)
             ?.optionDeces ?? null)
         : null;

@@ -67,7 +67,16 @@ const baseSchema = z.object({
   //   sousBranche tous deux null) — le prospect choisit son Assurance
   //   (Accidents ou Dommages) PUIS son produit après le scan (voir routes
   //   publiques /qr/:token).
-  produit: z.enum(["incendie", "accident", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux"]).optional(),
+  produit: z
+    .enum([
+      "incendie",
+      "accident",
+      "relaxmoto",
+      "relaxauto",
+      "relaxaccidents_fraismedicaux",
+      "relaxaccidents_fraismedicaux_livreurs",
+    ])
+    .optional(),
   sousBranche: z.enum(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"]).optional(),
   email: z.string().min(1, "Email requis").email("Email invalide"),
 });
@@ -82,7 +91,10 @@ function isProduitRelax(p: string): p is ProduitRelax {
 // rattachée à Branche.INCENDIE_ACCIDENT (permissions super-admin inchangées),
 // mais utilise le modèle générique QrCode/Souscription comme Relax, pas les
 // colonnes qrAccidentToken/produitAccident historiques.
-const PRODUITS_ACCIDENTS_GENERIQUE = ["relaxaccidents_fraismedicaux"] as const;
+const PRODUITS_ACCIDENTS_GENERIQUE = [
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+] as const;
 type ProduitAccidentsGenerique = (typeof PRODUITS_ACCIDENTS_GENERIQUE)[number];
 function isProduitAccidentsGenerique(p: string): p is ProduitAccidentsGenerique {
   return (PRODUITS_ACCIDENTS_GENERIQUE as readonly string[]).includes(p);
@@ -93,6 +105,7 @@ function isProduitGenerique(p: string): p is ProduitRelax | ProduitAccidentsGene
 function prefixeQr(produit: string): string {
   if (produit === "relaxmoto") return "rmo";
   if (produit === "relaxauto") return "rau";
+  if (produit === "relaxaccidents_fraismedicaux_livreurs") return "rafl";
   return "raf"; // relaxaccidents_fraismedicaux
 }
 

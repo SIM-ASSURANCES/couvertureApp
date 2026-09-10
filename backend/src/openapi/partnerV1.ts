@@ -290,7 +290,7 @@ export const openapiPartnerV1: Record<string, unknown> = {
         tags: ["Souscriptions"],
         summary: "Crée une souscription en attente de confirmation de paiement",
         description:
-          "Portée requise : `souscriptions:write`. Option B : aucune interaction de paiement ici. Produits supportés à ce jour : `relaxmoto`, `relaxauto`, `relaxaccidents_fraismedicaux`. `pieceIdentiteUrl` + `selfieUrl` obligatoires (KYC).",
+          "Portée requise : `souscriptions:write`. Option B : aucune interaction de paiement ici. Produits supportés à ce jour : `relaxmoto`, `relaxauto`, `relaxaccidents_fraismedicaux`, `relaxaccidents_fraismedicaux_livreurs`. `pieceIdentiteUrl` + `selfieUrl` obligatoires (KYC).",
         parameters: [idempotencyHeader],
         requestBody: {
           required: true,

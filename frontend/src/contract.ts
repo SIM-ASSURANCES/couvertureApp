@@ -413,7 +413,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
     });
     return;
   }
-  if (c.type === "relaxaccidents_fraismedicaux") {
+  if (c.type === "relaxaccidents_fraismedicaux" || c.type === "relaxaccidents_fraismedicaux_livreurs") {
     genererContratRelaxAccidentsFraisMedicaux({
       numeroPolice: c.numeroPolice,
       partenaire: c.partenaire,

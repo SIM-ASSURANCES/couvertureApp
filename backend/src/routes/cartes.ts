@@ -10,7 +10,15 @@ import { SEXE_LABELS, garantieAffichee, resoudreDateNaissance } from "../service
 export const cartesRouter = Router();
 
 const bodySchema = z.object({
-  type: z.enum(["incendie", "accident", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxvoyage"]),
+  type: z.enum([
+    "incendie",
+    "accident",
+    "relaxmoto",
+    "relaxauto",
+    "relaxaccidents_fraismedicaux",
+    "relaxaccidents_fraismedicaux_livreurs",
+    "relaxvoyage",
+  ]),
   souscriptionId: z.string().min(10).max(60),
   // Preuve de paiement, pour le parcours public juste après souscription (le
   // client n'a pas encore de compte à ce moment) — voir autoriserAcces.

@@ -10,6 +10,7 @@ const TYPES_AVEC_CARTE = [
   "incendie",
   "accident",
   "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
   "relaxvoyage",
   "relaxmoto",
   "relaxauto",

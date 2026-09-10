@@ -38,16 +38,28 @@ function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
 // RelaxAccidents Frais Médicaux (nouveau produit, refonte Assurances
 // Accidents/Dommages) reprend exactement le même formulaire qu'Accident
 // (dont il remplace les souscriptions) — mêmes champs, mêmes deux formules.
-function isAccidentLike(p?: string): p is "accident" | "relaxaccidents_fraismedicaux" {
-  return p === "accident" || p === "relaxaccidents_fraismedicaux";
+function isAccidentLike(
+  p?: string
+): p is "accident" | "relaxaccidents_fraismedicaux" | "relaxaccidents_fraismedicaux_livreurs" {
+  return p === "accident" || isRelaxAccidentsFraisMedicaux(p);
 }
 
 // RelaxAccidents Frais Médicaux : pièce d'identité + selfie AVANT le paiement
 // (comme RelaxMoto/RelaxAuto) et carte de prise en charge automatique après
 // paiement — diverge donc de isAccidentLike (qui reste sur signature +
-// photos après paiement pour l'ancien Accident).
-function isRelaxAccidentsFraisMedicaux(p?: string): p is "relaxaccidents_fraismedicaux" {
-  return p === "relaxaccidents_fraismedicaux";
+// photos après paiement pour l'ancien Accident). Deux produits distincts
+// partageant tarifs/formulaire/option Décès : la version « grand public »
+// (exclut les livreurs) et la version « Livreurs/Taxis » (les couvre).
+function isRelaxAccidentsFraisMedicaux(
+  p?: string
+): p is "relaxaccidents_fraismedicaux" | "relaxaccidents_fraismedicaux_livreurs" {
+  return p === "relaxaccidents_fraismedicaux" || p === "relaxaccidents_fraismedicaux_livreurs";
+}
+
+// Version « Livreurs/Taxis » uniquement : pas de case « je ne suis pas
+// livreur », l'option Décès est proposée d'emblée.
+function isRafLivreurs(p?: string): p is "relaxaccidents_fraismedicaux_livreurs" {
+  return p === "relaxaccidents_fraismedicaux_livreurs";
 }
 
 // Accroche marketing affichée en tête du formulaire, entre le bouton retour
@@ -58,6 +70,8 @@ const TAGLINES_PRODUITS: Record<string, string> = {
     "Chauffeurs de VTC, cargo, Gbaka, taxis, camions, faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents: "Faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents_fraismedicaux: "Travailleurs de tous secteurs, faites-vous soigner sans stress en cas d'accident.",
+  relaxaccidents_fraismedicaux_livreurs:
+    "Livreurs, chauffeurs de taxi, faites-vous soigner sans stress en cas d'accident.",
   relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident.",
   securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
   securpro_dommages:
@@ -91,7 +105,14 @@ function libellePeriode(cycle: "mensuel" | "annuel", n: number): string {
 // Sous-branche d'un code produit — utilisé pour sauter directement le niveau
 // "choisir votre Assurance" (QR unique) quand l'URL vise déjà un produit
 // précis (lien "Souscrire" depuis l'espace client, voir Dashboard.tsx).
-const PRODUITS_ACCIDENTS = ["relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxvoyage", "relaxaccidents"];
+const PRODUITS_ACCIDENTS = [
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+  "relaxvoyage",
+  "relaxaccidents",
+];
 const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages", "securhome"];
 function sousBrancheDuProduit(code: string): "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null {
   if (PRODUITS_ACCIDENTS.includes(code)) return "ASSURANCES_ACCIDENTS";
@@ -148,6 +169,7 @@ interface QrInfo {
     | "relaxmoto"
     | "relaxauto"
     | "relaxaccidents_fraismedicaux"
+    | "relaxaccidents_fraismedicaux_livreurs"
     | "relaxvoyage"
     | "relaxaccidents"
     | "securpro_dommages"
@@ -1492,6 +1514,8 @@ export default function Souscription() {
     contenu?: number | null;
     dansMarche?: boolean | null;
     nombrePieces?: number | null;
+    // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis).
+    optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
     resultat?: ResultatTarifImf | ResultatSecurhome | null;
   } | null>(null);
 
@@ -1521,6 +1545,7 @@ export default function Souscription() {
         const generique =
           isRelax(produitEffectif) ||
           produitEffectif === "relaxaccidents_fraismedicaux" ||
+          produitEffectif === "relaxaccidents_fraismedicaux_livreurs" ||
           produitEffectif === "relaxvoyage" ||
           produitEffectif === "relaxaccidents" ||
           produitEffectif === "securpro_dommages" ||
@@ -1608,6 +1633,7 @@ export default function Souscription() {
             contenu: data.contenu ?? null,
             dansMarche: data.dansMarche ?? null,
             nombrePieces: data.nombrePieces ?? null,
+            optionDeces: data.optionDeces ?? null,
             resultat: data.resultat ?? null,
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
@@ -1617,8 +1643,12 @@ export default function Souscription() {
           // téléchargée automatiquement, sans étape manuelle supplémentaire.
           // Utilise directement `data.souscriptionId` (pas `result.souscriptionId`,
           // pas encore à jour dans cette fermeture au moment de l'appel).
-          if (produitEffectif === "relaxaccidents_fraismedicaux" && data.souscriptionId) {
-            telechargerCarte("relaxaccidents_fraismedicaux", data.souscriptionId, paidId ?? undefined).catch((e) =>
+          if (
+            (produitEffectif === "relaxaccidents_fraismedicaux" ||
+              produitEffectif === "relaxaccidents_fraismedicaux_livreurs") &&
+            data.souscriptionId
+          ) {
+            telechargerCarte(produitEffectif, data.souscriptionId, paidId ?? undefined).catch((e) =>
               setCarteErreur(e instanceof Error ? e.message : "Erreur lors de la génération de la carte.")
             );
           }
@@ -1805,14 +1835,13 @@ export default function Souscription() {
       );
       setTarifsAcc(accTriee);
       if (accTriee.length > 0) setSelectedTarifId(accTriee[0].id);
-    } else if (produit === "relaxaccidents_fraismedicaux" || produit === "relaxvoyage") {
+    } else if (isRelaxAccidentsFraisMedicaux(produit) || produit === "relaxvoyage") {
       const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       // RelaxAccidents Frais Médicaux : la formule 1000 FCFA doit apparaître
       // en premier et être sélectionnée par défaut. RelaxVoyage : ordre croissant.
-      const formulesTriees =
-        produit === "relaxaccidents_fraismedicaux"
-          ? [...formules].sort((a, b) => (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime))
-          : [...formules].sort((a, b) => a.prime - b.prime);
+      const formulesTriees = isRelaxAccidentsFraisMedicaux(produit)
+        ? [...formules].sort((a, b) => (a.prime === 1000 ? -1 : b.prime === 1000 ? 1 : a.prime - b.prime))
+        : [...formules].sort((a, b) => a.prime - b.prime);
       setTarifsFormule(formulesTriees);
       if (formulesTriees.length > 0) setSelectedFormule(formulesTriees[0].libelleVariante);
     } else if (isRelaxAccidentsGenerale(produit)) {
@@ -2044,7 +2073,11 @@ export default function Souscription() {
     l.push({ label: "Sexe", valeur: sexeLabel });
     if (isRelaxAccidentsFraisMedicaux(p)) {
       l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
-      l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
+      if (isRafLivreurs(p)) {
+        l.push({ label: "Activité", valeur: "Livreur / Chauffeur de taxi" });
+      } else {
+        l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
+      }
       l.push({
         label: "Option Décès",
         valeur: optionDeces
@@ -2065,7 +2098,7 @@ export default function Souscription() {
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
-    if ((qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
+    if ((isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
@@ -2290,8 +2323,8 @@ export default function Souscription() {
         // Redirection immédiate vers Wave (ou stub = success URL directe)
         window.location.href = data.checkoutUrl;
         return;
-      } else if (qrInfo.produit === "relaxaccidents_fraismedicaux") {
-        const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents_fraismedicaux/initiate-formule`, {
+      } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
+        const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2303,7 +2336,9 @@ export default function Souscription() {
             sexe: sexe || undefined,
             formule: selectedFormule,
             signature,
-            declarePasLivreur,
+            // Version Livreurs/Taxis : pas de déclaration (le produit couvre
+            // justement ce public) — l'option Décès y est ouverte d'emblée.
+            declarePasLivreur: isRafLivreurs(qrInfo.produit) ? undefined : declarePasLivreur,
             optionDeces: optionDeces || undefined,
           }),
         });
@@ -2318,7 +2353,7 @@ export default function Souscription() {
         ].filter((d): d is { type: "CNI" | "Permis" | "Selfie"; url: string } => d !== null);
         await Promise.all(
           documentsFraisMedicaux.map((doc) =>
-            fetch(`${BASE}/public/souscriptions/relaxaccidents_fraismedicaux/${data.souscriptionId}/documents`, {
+            fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/${data.souscriptionId}/documents`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(doc),
@@ -2545,8 +2580,8 @@ export default function Souscription() {
         fraisSante: result.fraisSante ?? null,
         bagages: result.bagages ?? null,
       });
-    } else if (qrInfo.produit === "relaxaccidents_fraismedicaux") {
-      genererContratRelaxAccidentsFraisMedicaux(contrat);
+    } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
+      genererContratRelaxAccidentsFraisMedicaux({ ...contrat, optionDeces: result.optionDeces ?? null });
     } else {
       genererContratAccident(contrat);
     }
@@ -2608,7 +2643,7 @@ export default function Souscription() {
     setCarteErreur("");
     try {
       const type =
-        isRelax(qrInfo.produit) || qrInfo.produit === "relaxaccidents_fraismedicaux" || qrInfo.produit === "relaxvoyage"
+        isRelax(qrInfo.produit) || isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage"
           ? qrInfo.produit
           : "accident";
       // `paidId` sert ici de preuve de paiement pour la route carte (parcours
@@ -2662,6 +2697,8 @@ export default function Souscription() {
               <div style={{ fontSize: 18, fontWeight: 800 }}>
                 {qrInfo.produit === "incendie"
                   ? "Assurance Incendie"
+                  : isRafLivreurs(qrInfo.produit)
+                  ? "RelaxAccidents Frais Médicaux Livreurs/Taxis"
                   : isAccidentLike(qrInfo.produit)
                   ? "RelaxAccidents Frais Médicaux"
                   : qrInfo.produit === "relaxaccidents"
@@ -2927,7 +2964,7 @@ export default function Souscription() {
               )}
 
               {/* Sélecteur de formule pour RelaxAccidents Frais Médicaux / RelaxVoyage */}
-              {(qrInfo?.produit === "relaxaccidents_fraismedicaux" || qrInfo?.produit === "relaxvoyage") && (
+              {(isRelaxAccidentsFraisMedicaux(qrInfo?.produit) || qrInfo?.produit === "relaxvoyage") && (
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
                     Choisissez votre formule
@@ -3381,33 +3418,49 @@ export default function Souscription() {
                     capture="user"
                     required
                   />
-                  <div
-                    style={{
-                      background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12,
-                      padding: "12px 14px", marginTop: 4, marginBottom: 12,
-                    }}
-                  >
-                    <div style={{ fontSize: 12.5, color: "#7c2d12", lineHeight: 1.5, marginBottom: 10 }}>
-                      <strong>Important :</strong> RelaxAccidents Frais Médicaux ne couvre pas les livreurs.
-                      Si vous exercez une activité de livraison, ce contrat ne pourra pas vous indemniser
-                      en cas de sinistre.
+                  {isRafLivreurs(qrInfo?.produit) ? (
+                    /* Version Livreurs/Taxis : aucune déclaration — ce produit
+                       couvre justement les livreurs et chauffeurs de taxi. */
+                    <div
+                      style={{
+                        background: "var(--sim-primary-50, #e6f1fb)", border: "1px solid var(--sim-primary, #004b9c)",
+                        borderRadius: 12, padding: "12px 14px", marginTop: 4, marginBottom: 12,
+                        fontSize: 12.5, color: "#1e3a5f", lineHeight: 1.5,
+                      }}
+                    >
+                      Ce contrat couvre spécifiquement les <strong>livreurs</strong> et les
+                      <strong> chauffeurs de taxi</strong> pour leurs frais médicaux en cas d'accident.
                     </div>
-                    <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={declarePasLivreur}
-                        onChange={(e) => {
-                          setDeclarePasLivreur(e.target.checked);
-                          if (!e.target.checked) setOptionDeces("");
-                        }}
-                        style={{ marginTop: 2, width: 18, height: 18, flex: "none" }}
-                      />
-                      <span>Je déclare ne pas exercer d'activité de livreur. *</span>
-                    </label>
-                  </div>
+                  ) : (
+                    <div
+                      style={{
+                        background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12,
+                        padding: "12px 14px", marginTop: 4, marginBottom: 12,
+                      }}
+                    >
+                      <div style={{ fontSize: 12.5, color: "#7c2d12", lineHeight: 1.5, marginBottom: 10 }}>
+                        <strong>Important :</strong> RelaxAccidents Frais Médicaux ne couvre pas les livreurs.
+                        Si vous exercez une activité de livraison, ce contrat ne pourra pas vous indemniser
+                        en cas de sinistre.
+                      </div>
+                      <label style={{ display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={declarePasLivreur}
+                          onChange={(e) => {
+                            setDeclarePasLivreur(e.target.checked);
+                            if (!e.target.checked) setOptionDeces("");
+                          }}
+                          style={{ marginTop: 2, width: 18, height: 18, flex: "none" }}
+                        />
+                        <span>Je déclare ne pas exercer d'activité de livreur. *</span>
+                      </label>
+                    </div>
+                  )}
 
-                  {/* Option Décès — proposée seulement une fois non-livreur déclaré. */}
-                  {declarePasLivreur && (
+                  {/* Option Décès — version grand public : seulement une fois
+                      non-livreur déclaré. Version Livreurs/Taxis : d'emblée. */}
+                  {(declarePasLivreur || isRafLivreurs(qrInfo?.produit)) && (
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
                         Option Décès (facultative)
@@ -3642,7 +3695,11 @@ export default function Souscription() {
                       !dateNaissance ||
                       (qrInfo?.produit === "accident"
                         ? !selectedTarifId
-                        : !selectedFormule || !sexe || !piecePhotoRx || !selfiePhotoRx || !declarePasLivreur)
+                        : !selectedFormule ||
+                          !sexe ||
+                          !piecePhotoRx ||
+                          !selfiePhotoRx ||
+                          (!isRafLivreurs(qrInfo?.produit) && !declarePasLivreur))
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx
                     : isSecurproDommages(qrInfo?.produit)
@@ -4148,7 +4205,9 @@ export default function Souscription() {
                     🎉 Félicitations !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
-                    Votre assurance RelaxAccidents Frais Médicaux est activée pour <strong>3 mois</strong>.
+                    Votre assurance RelaxAccidents Frais Médicaux
+                    {isRafLivreurs(qrInfo?.produit) ? " Livreurs/Taxis" : ""} est activée pour{" "}
+                    <strong>3 mois</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div
