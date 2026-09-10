@@ -624,10 +624,48 @@ async function seedCatalogueAssurancesAccidentsDommages() {
   console.log("[seed] Catalogue Assurances Accidents/Dommages synchronisé.");
 }
 
+/**
+ * Taux de commission « 20 % de la prime nette » (2026-09) : pose
+ * `Produit.tauxCommission = 0,20` sur les produits Accidents du modèle
+ * générique quand il est encore null (ne touche jamais une valeur déjà
+ * fixée par un admin), et remonte `Parametre.tauxCommissionAccident` de
+ * l'ancien défaut 0,15 à 0,20 (idem, seulement si personne ne l'a changé).
+ * Voir services/commission.ts.
+ */
+async function seedTauxCommissionAccidents() {
+  const CODES_ACCIDENTS_GENERIQUE = [
+    "relaxmoto",
+    "relaxauto",
+    "relaxaccidents_fraismedicaux",
+    "relaxaccidents_fraismedicaux_livreurs",
+    "relaxvoyage",
+    "relaxaccidents",
+  ];
+  const maj = await prisma.produit.updateMany({
+    where: { code: { in: CODES_ACCIDENTS_GENERIQUE }, tauxCommission: null },
+    data: { tauxCommission: 0.2 },
+  });
+  if (maj.count > 0) console.log(`[seed] tauxCommission 0,20 posé sur ${maj.count} produit(s) Accidents.`);
+
+  // Remonte les taux Incendie/Accident restés à l'ancien défaut 0,15 vers
+  // 0,20 (ne touche jamais une valeur déjà réglée à autre chose par un admin).
+  const majAcc = await prisma.parametre.updateMany({
+    where: { id: 1, tauxCommissionAccident: 0.15 },
+    data: { tauxCommissionAccident: 0.2 },
+  });
+  if (majAcc.count > 0) console.log("[seed] Parametre.tauxCommissionAccident 0,15 -> 0,20.");
+  const majInc = await prisma.parametre.updateMany({
+    where: { id: 1, tauxCommissionIncendie: 0.15 },
+    data: { tauxCommissionIncendie: 0.2 },
+  });
+  if (majInc.count > 0) console.log("[seed] Parametre.tauxCommissionIncendie 0,15 -> 0,20.");
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
   await seedCatalogueAssurancesAccidentsDommages();
+  await seedTauxCommissionAccidents();
   await corrigerCapitalGarantiIncendie();
   await seedTarificationImf();
   await corrigerCommissionsImf();

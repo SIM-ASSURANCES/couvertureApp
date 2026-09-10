@@ -14,6 +14,9 @@ interface AgentDistribution {
   createdAt: string;
   nombreSouscriptions: number;
   commissionTotale: number;
+  // Part (%) de la commission qui revient à l'agent (le partenaire touche le
+  // complément). 75 par défaut.
+  tauxCommissionAgentPct: number;
 }
 
 /** Accès (téléphone + mot de passe en clair) d'un agent, affichés une seule fois — jamais récupérables ensuite. */
@@ -73,7 +76,8 @@ interface Qr {
 
 interface SouscriptionAgent {
   id: string;
-  produit: "incendie" | "accident";
+  produit: string;
+  produitLibelle?: string;
   nom: string | null;
   prenom: string | null;
   telephone: string;
@@ -118,9 +122,13 @@ export default function PartenaireAgents() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [acces, setAcces] = useState<AccesAgent | null>(null);
   const [reinitialisant, setReinitialisant] = useState(false);
-  const { data: souscriptions, loading: loadingSouscriptions } = useFetch<{ incendie: SouscriptionAgent[]; accident: SouscriptionAgent[] }>(
-    detailId ? `/me/agents/${detailId}/souscriptions` : null
-  );
+  const { data: souscriptions, loading: loadingSouscriptions } = useFetch<{
+    incendie: SouscriptionAgent[];
+    accident: SouscriptionAgent[];
+    generique: SouscriptionAgent[];
+  }>(detailId ? `/me/agents/${detailId}/souscriptions` : null);
+  const [tauxEnCours, setTauxEnCours] = useState<string>("");
+  const [savingTaux, setSavingTaux] = useState(false);
 
   function notify(m: string) {
     setToast(m);
@@ -173,8 +181,29 @@ export default function PartenaireAgents() {
 
   const agentDetail = data?.find((a) => a.id === detailId) ?? null;
   const souscriptionsAgent = souscriptions
-    ? [...souscriptions.incendie, ...souscriptions.accident].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    ? [...souscriptions.incendie, ...souscriptions.accident, ...souscriptions.generique].sort((a, b) =>
+        b.createdAt.localeCompare(a.createdAt)
+      )
     : [];
+
+  async function enregistrerTaux(a: AgentDistribution) {
+    const pct = Number(tauxEnCours);
+    if (!Number.isInteger(pct) || pct < 0 || pct > 100) {
+      notify("Entrez un pourcentage entier entre 0 et 100.");
+      return;
+    }
+    setSavingTaux(true);
+    try {
+      await api.patch(`/me/agents/${a.id}`, { tauxCommissionAgentPct: pct });
+      notify("Partage de commission mis à jour ✓");
+      setTauxEnCours("");
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setSavingTaux(false);
+    }
+  }
 
   return (
     <>
@@ -197,6 +226,7 @@ export default function PartenaireAgents() {
                     <th>Localisation</th>
                     <th>Souscriptions</th>
                     <th>Commission totale</th>
+                    <th>Partage (agent / vous)</th>
                     <th>Statut</th>
                     <th></th>
                   </tr>
@@ -209,6 +239,9 @@ export default function PartenaireAgents() {
                       <td className="muted">{a.localisation ?? "—"}</td>
                       <td>{a.nombreSouscriptions}</td>
                       <td>{fcfa(a.commissionTotale)}</td>
+                      <td className="muted">
+                        {a.tauxCommissionAgentPct} % / {100 - a.tauxCommissionAgentPct} %
+                      </td>
                       <td>
                         <Badge kind={a.statut === "actif" ? "success" : "neutral"}>
                           {a.statut === "actif" ? "Actif" : "Inactif"}
@@ -232,7 +265,7 @@ export default function PartenaireAgents() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={7}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
+                    <tr><td colSpan={8}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -289,6 +322,48 @@ export default function PartenaireAgents() {
               )}
             </div>
 
+            <div
+              style={{
+                background: "var(--sim-primary-50, #e6f1fb)",
+                borderRadius: 10,
+                padding: "14px 18px",
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>Partage de la commission</div>
+              <p className="muted" style={{ fontSize: 12.5, margin: "0 0 10px" }}>
+                Sur chaque vente de cet agent, la commission (20 % de la prime nette) est partagée : cette
+                part revient à l'agent, le reste vous revient. Par défaut 75 % agent / 25 % vous.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  style={{ width: 90 }}
+                  placeholder={String(agentDetail.tauxCommissionAgentPct)}
+                  value={tauxEnCours}
+                  onChange={(e) => setTauxEnCours(e.target.value)}
+                />
+                <span className="muted" style={{ fontSize: 13 }}>
+                  % pour l'agent
+                  {tauxEnCours !== "" && Number(tauxEnCours) >= 0 && Number(tauxEnCours) <= 100
+                    ? ` → ${100 - Number(tauxEnCours)} % pour vous`
+                    : ` (actuel : ${agentDetail.tauxCommissionAgentPct} % agent / ${100 - agentDetail.tauxCommissionAgentPct} % vous)`}
+                </span>
+                <button
+                  className="btn btn-primary"
+                  style={{ padding: "7px 14px" }}
+                  disabled={savingTaux || tauxEnCours === ""}
+                  onClick={() => enregistrerTaux(agentDetail)}
+                >
+                  {savingTaux ? "…" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+
             <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Souscriptions de cet agent</div>
             {loadingSouscriptions && <Loader />}
             {souscriptions && (
@@ -314,7 +389,9 @@ export default function PartenaireAgents() {
                           {s.produit === "incendie" ? (
                             <Badge kind="warning"><Flame size={12} style={{ verticalAlign: -2 }} /> Incendie</Badge>
                           ) : (
-                            <Badge kind="info"><ShieldCheck size={12} style={{ verticalAlign: -2 }} /> Accidents</Badge>
+                            <Badge kind="info">
+                              <ShieldCheck size={12} style={{ verticalAlign: -2 }} /> {s.produitLibelle ?? "Accidents"}
+                            </Badge>
                           )}
                         </td>
                         <td>{fcfa(s.montantPrime)}</td>

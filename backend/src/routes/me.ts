@@ -394,6 +394,9 @@ meRouter.get(
           createdAt: a.createdAt,
           nombreSouscriptions: nbIncendie + nbAccident + nbGenerique,
           commissionTotale: Math.round(commissionTotale),
+          // Part (%) de la commission qui revient à l'agent — le partenaire
+          // touche le complément. Réglable via PATCH /me/agents/:id.
+          tauxCommissionAgentPct: Math.round((a.tauxCommissionAgent ?? 0.75) * 100),
         };
       })
     );
@@ -475,6 +478,9 @@ const agentPatchSchema = z.object({
   telephone: z.string().min(1).optional(),
   localisation: z.string().min(1).optional(),
   statut: z.enum(["actif", "inactif"]).optional(),
+  // Part de la commission qui revient à l'agent, en POURCENTAGE entier (0 à
+  // 100). 75 par défaut (l'agent touche 75 %, le partenaire 25 %).
+  tauxCommissionAgentPct: z.number().int().min(0).max(100).optional(),
 });
 
 meRouter.patch(
@@ -484,9 +490,16 @@ meRouter.patch(
     if (!agent || agent.partenaireId !== req.user!.sub) {
       return res.status(404).json({ error: "Introuvable" });
     }
-    const data = agentPatchSchema.parse(req.body);
-    const updated = await prisma.agentDistribution.update({ where: { id: agent.id }, data });
-    res.json(updated);
+    const { tauxCommissionAgentPct, ...rest } = agentPatchSchema.parse(req.body);
+    const updated = await prisma.agentDistribution.update({
+      where: { id: agent.id },
+      data: {
+        ...rest,
+        ...(tauxCommissionAgentPct !== undefined ? { tauxCommissionAgent: tauxCommissionAgentPct / 100 } : {}),
+      },
+      select: { id: true, nom: true, telephone: true, localisation: true, statut: true, tauxCommissionAgent: true },
+    });
+    res.json({ ...updated, tauxCommissionAgentPct: Math.round((updated.tauxCommissionAgent ?? 0.75) * 100) });
   })
 );
 
@@ -497,7 +510,7 @@ meRouter.get(
     if (!agent || agent.partenaireId !== req.user!.sub) {
       return res.status(404).json({ error: "Introuvable" });
     }
-    const [incendie, accident] = await Promise.all([
+    const [incendie, accident, generique] = await Promise.all([
       prisma.souscriptionIncendie.findMany({
         where: { agentDistributionId: agent.id },
         orderBy: { createdAt: "desc" },
@@ -506,11 +519,21 @@ meRouter.get(
         where: { agentDistributionId: agent.id },
         orderBy: { createdAt: "desc" },
       }),
+      // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux
+      // [+ Livreurs/Taxis], RelaxVoyage, RelaxAccidents générale, SecurHome+,
+      // SecurPro Dommages) — sans ceci, la production d'un agent qui ne vend
+      // que ces produits n'apparaissait pas du tout dans l'espace du partenaire.
+      prisma.souscription.findMany({
+        where: { agentDistributionId: agent.id, waveStatut: "confirme" },
+        include: { produit: { select: { code: true, libelle: true } } },
+        orderBy: { createdAt: "desc" },
+      }),
     ]);
     res.json({
       incendie: incendie.map((s) => ({
         id: s.id,
         produit: "incendie" as const,
+        produitLibelle: "Incendie Habitation en Inclusion",
         nom: s.nom,
         prenom: s.prenom,
         telephone: s.telephone,
@@ -521,6 +544,18 @@ meRouter.get(
       accident: accident.map((s) => ({
         id: s.id,
         produit: "accident" as const,
+        produitLibelle: "Accidents (historique)",
+        nom: s.nom,
+        prenom: s.prenom,
+        telephone: s.telephone,
+        montantPrime: s.montantPrime,
+        statut: s.waveStatut,
+        createdAt: s.createdAt,
+      })),
+      generique: generique.map((s) => ({
+        id: s.id,
+        produit: s.produit.code,
+        produitLibelle: s.produit.libelle,
         nom: s.nom,
         prenom: s.prenom,
         telephone: s.telephone,

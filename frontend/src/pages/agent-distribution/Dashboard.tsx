@@ -23,6 +23,8 @@ interface Moi {
   // QR sélecteur unique (ni produit précis ni Assurance figée) — refonte 2026-08-07.
   qrUnifie?: boolean;
   forcerChangementMotDePasse: boolean;
+  // Part (%) de la commission qui revient à l'agent — fixée par le partenaire.
+  tauxCommissionAgentPct?: number;
 }
 
 interface Qr {
@@ -375,6 +377,23 @@ export default function AgentDistributionDashboard() {
 
             {onglet === "commissions" && commission && (
               <>
+                {moi?.tauxCommissionAgentPct != null && (
+                  <div
+                    style={{
+                      ...card,
+                      margin: "0 0 16px",
+                      padding: "12px 16px",
+                      background: "#e6f1fb",
+                      fontSize: 12.5,
+                      color: "#1e3a5f",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    Sur chaque vente que vous apportez, vous touchez <strong>{moi.tauxCommissionAgentPct} %</strong> de
+                    la commission (20 % de la prime nette) ; les {100 - moi.tauxCommissionAgentPct} % restants
+                    reviennent à votre partenaire.
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
                   <div style={{ ...card, flex: "1 1 140px", margin: 0, padding: 14, textAlign: "center" }}>
                     <Wallet size={18} color="#004b9c" style={{ marginBottom: 6 }} />

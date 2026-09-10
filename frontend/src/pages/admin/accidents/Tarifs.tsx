@@ -416,6 +416,24 @@ export default function AssurancesAccidentsTarifs() {
         <ProduitTarifsTable code="relaxaccidents" libelle="RelaxAccidents générale (formule = classe_statutCNPS_periodicite, ex. 1_declare_annuel)" />
         <ProduitTarifsTable code="securhome" libelle="SecurHome (formule = nombre de pièces, 1 à 5)" />
 
+        <h3 style={{ margin: "8px 0 16px" }}>
+          Taux de commission — produits Assurances Accidents
+        </h3>
+        <p className="muted" style={{ fontSize: 12.5, margin: "0 0 16px" }}>
+          Taux (%) appliqué sur la <strong>prime nette (HT)</strong> de chaque souscription. 20 % par défaut.
+          Le partenaire répartit ensuite cette commission avec ses sous-agents (75 % / 25 % par défaut, réglable
+          depuis son espace). Le champ « Commission (FCFA) » par formule ci-dessus n'est plus utilisé pour ces produits.
+        </p>
+        <CommissionTauxUniqueCard code="relaxaccidents_fraismedicaux" libelle="RelaxAccidents Frais Médicaux" />
+        <CommissionTauxUniqueCard
+          code="relaxaccidents_fraismedicaux_livreurs"
+          libelle="RelaxAccidents Frais Médicaux Livreurs/Taxis"
+        />
+        <CommissionTauxUniqueCard code="relaxmoto" libelle="RelaxMoto" />
+        <CommissionTauxUniqueCard code="relaxauto" libelle="RelaxAuto" />
+        <CommissionTauxUniqueCard code="relaxvoyage" libelle="RelaxVoyage" />
+        <CommissionTauxUniqueCard code="relaxaccidents" libelle="RelaxAccidents générale" />
+
         <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Assurances Dommages)</h3>
         <CommissionTauxUniqueCard code="securhome_dommages" libelle="SecurHome+" />
         <CommissionSecurproTable />

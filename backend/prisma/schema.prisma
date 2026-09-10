@@ -262,6 +262,13 @@ model AgentDistribution {
   qrIncendie1000Token        String?                @unique
   qrIncendie2000Token        String?                @unique
   qrAccidentToken            String?                @unique
+  // Part (fraction décimale) de la commission qui revient à CET agent sur ses
+  // propres ventes — le reste (1 - tauxCommissionAgent) revient au partenaire.
+  // Par défaut 0,75 (l'agent touche 75 %, le partenaire 25 %), réglable par le
+  // partenaire depuis son espace pour chaque agent. La commission totale reste
+  // celle générée par la vente (taux produit × prime nette) — cette valeur ne
+  // fait que la répartir. Voir services/commission.ts.
+  tauxCommissionAgent        Float                  @default(0.75)
   createdAt                  DateTime               @default(now())
   updatedAt                  DateTime               @updatedAt
   incendie                   SouscriptionIncendie[]
@@ -471,8 +478,12 @@ model Notification {
 
 model Parametre {
   id                              Int   @id @default(1)
+  // Taux de commission (décimal) appliqué sur la prime NETTE (HT) des
+  // souscriptions — Incendie/Accident historiques ici, produits du modèle
+  // générique via Produit.tauxCommission. 0,20 par défaut pour les deux
+  // (aligné sur la règle « 20 % de la prime nette »).
   tauxCommissionIncendie          Float @default(0.20)
-  tauxCommissionAccident          Float @default(0.15)
+  tauxCommissionAccident          Float @default(0.20)
   tauxCommissionMensuelleIncendie Float @default(0.10)
   primeAccident                   Int   @default(2000)
   primeHtIncendie1000             Float @default(800)

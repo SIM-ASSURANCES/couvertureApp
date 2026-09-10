@@ -40,6 +40,9 @@ agentDistributionRouter.get(
       sousBranche: qrSelecteur?.sousBranche ?? null,
       qrUnifie: !!qrSelecteur && qrSelecteur.sousBranche == null,
       forcerChangementMotDePasse: a.forcerChangementMotDePasse,
+      // Part (%) de la commission qui revient à l'agent (le reste au
+      // partenaire) — fixée par le partenaire. 75 par défaut.
+      tauxCommissionAgentPct: Math.round((a.tauxCommissionAgent ?? 0.75) * 100),
     });
   })
 );
