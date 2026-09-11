@@ -55,6 +55,8 @@ export const PALETTE = {
     localityLabel: "#3f3f46",
     cityLabel: "#19307a",
     cityStroke: "#ffffff",
+    // Réseau de distribution : orange de l'offre Accident (charte), distinct du bleu des villes.
+    reseau: "#ea580c",
   },
   dark: {
     accent: "#51aee2",
@@ -72,5 +74,6 @@ export const PALETTE = {
     localityLabel: "#d4d4d8",
     cityLabel: "#fafafa",
     cityStroke: "#18181b",
+    reseau: "#f97316",
   },
 } as const satisfies Record<Theme, Record<string, string | number>>;

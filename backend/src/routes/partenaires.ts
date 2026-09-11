@@ -198,6 +198,47 @@ partenairesRouter.get(
   })
 );
 
+/**
+ * Réseau de distribution pour la carte interactive (page admin « Carte
+ * interactive ») : partenaires de la branche Assurances Accidents et Dommages
+ * et leurs agents de distribution, avec leur localisation en texte libre — le
+ * rapprochement avec les villes/communes se fait côté carte
+ * (frontend/carte/src/lib/reseau.ts). Nom et téléphone des agents réservés au
+ * super-administrateur de la branche, comme pour GET /:id/agents.
+ * Déclarée avant GET /:id pour ne pas être capturée par le paramètre.
+ */
+partenairesRouter.get(
+  "/carte",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    if (!hasBranche(req.user, "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
+    const detailAgents = estSuperAdminBranche(req.user, "INCENDIE_ACCIDENT");
+    const partenaires = await prisma.partenaire.findMany({
+      where: { OR: [{ branche: "INCENDIE_ACCIDENT" }, { branche: null }] },
+      orderBy: { nomCommerce: "asc" },
+      select: {
+        id: true,
+        nomCommerce: true,
+        nomResponsable: true,
+        telephone: true,
+        localisation: true,
+        statut: true,
+        agents: {
+          orderBy: { nom: "asc" },
+          select: { id: true, nom: true, telephone: true, localisation: true, statut: true },
+        },
+      },
+    });
+    res.json(
+      partenaires.map((p) => ({
+        ...p,
+        agents: p.agents.map((a) => (detailAgents ? a : { id: a.id, localisation: a.localisation, statut: a.statut })),
+      }))
+    );
+  })
+);
+
 partenairesRouter.get(
   "/:id",
   asyncHandler(async (req: AuthedRequest, res) => {

@@ -8,7 +8,7 @@ import { useExplorer } from "@/components/explorer/ExplorerProvider";
 import { COUNTRY_BBOX, districtBbox } from "@/lib/admin";
 import { DESKTOP_QUERY, useLatest } from "@/lib/hooks";
 import { CITY_ZOOM, MAP_STYLES, MAX_BOUNDS, MAX_ZOOM, MIN_ZOOM, type Theme } from "@/lib/map/config";
-import { addAppLayers, LAYER, LAYER_GROUPS, SOURCE, setDistrictFocus, setGroupVisibility, type LayerGroup } from "@/lib/map/layers";
+import { addAppLayers, applyReseau, LAYER, LAYER_GROUPS, SOURCE, setDistrictFocus, setGroupVisibility, type LayerGroup } from "@/lib/map/layers";
 import type { LngLat, LocalityProps } from "@/lib/types";
 
 const LOCALE = {
@@ -18,7 +18,7 @@ const LOCALE = {
   "ScaleControl.Kilometers": "km",
 };
 
-type MarkerKind = "city" | "locality" | "user";
+type MarkerKind = "city" | "locality" | "reseau" | "user";
 
 function createMarker(kind: MarkerKind) {
   const el = document.createElement("div");
@@ -85,7 +85,7 @@ export default function MapView() {
 
     map.on("style.load", () => {
       const st = state.current;
-      addAppLayers(map, { theme: themeRef.current, cities: st.cities, visibility: st.layers });
+      addAppLayers(map, { theme: themeRef.current, cities: st.cities, visibility: st.layers, reseau: st.reseauAgrege });
       focusedDistrict.current = null;
       if (st.districtFilter) {
         setDistrictFocus(map, st.districtFilter, null);
@@ -99,16 +99,19 @@ export default function MapView() {
     });
 
     // --- Interactions ---
+    // Les pastilles du réseau de distribution sont au premier plan : elles captent le clic.
+    const surReseau = (point: maplibregl.PointLike) => map.queryRenderedFeatures(point, { layers: [LAYER.reseauPoints] }).length > 0;
+
     map.on("click", LAYER.cities, (e) => {
       const id = e.features?.[0]?.properties?.id as string | undefined;
-      if (!id) return;
+      if (!id || surReseau(e.point)) return;
       state.current.setActiveLocality(null);
       router.push(`/ville/${id}`, { scroll: false });
     });
 
     map.on("click", LAYER.clusters, async (e) => {
       const feature = e.features?.[0];
-      if (!feature) return;
+      if (!feature || surReseau(e.point)) return;
       const source = map.getSource<GeoJSONSource>(SOURCE.localities);
       const zoom = await source?.getClusterExpansionZoom(feature.properties.cluster_id as number);
       map.easeTo({ center: (feature.geometry as GeoJSON.Point).coordinates as LngLat, zoom: (zoom ?? map.getZoom() + 2) + 0.2 });
@@ -116,14 +119,29 @@ export default function MapView() {
 
     map.on("click", LAYER.localities, (e) => {
       const feature = e.features?.[0];
-      if (!feature) return;
+      if (!feature || surReseau(e.point)) return;
       const props = feature.properties as LocalityProps;
       state.current.setActiveLocality({ ...props, coordinates: (feature.geometry as GeoJSON.Point).coordinates as LngLat });
     });
 
+    map.on("click", LAYER.reseauPoints, async (e) => {
+      const feature = e.features?.[0];
+      if (!feature) return;
+      const center = (feature.geometry as GeoJSON.Point).coordinates as LngLat;
+      if (feature.properties.cluster) {
+        const zoom = await map.getSource<GeoJSONSource>(SOURCE.reseau)?.getClusterExpansionZoom(feature.properties.cluster_id as number);
+        map.easeTo({ center, zoom: (zoom ?? map.getZoom() + 2) + 0.2 });
+        return;
+      }
+      state.current.setActiveLieu(feature.properties.key as string);
+    });
+
     map.on("click", (e) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: [LAYER.cities, LAYER.localities, LAYER.clusters] });
-      if (!hits.length) state.current.setActiveLocality(null);
+      const hits = map.queryRenderedFeatures(e.point, { layers: [LAYER.cities, LAYER.localities, LAYER.clusters, LAYER.reseauPoints] });
+      if (!hits.length) {
+        state.current.setActiveLocality(null);
+        state.current.setActiveLieu(null);
+      }
     });
 
     let hovered: { source: string; id: string | number } | null = null;
@@ -148,6 +166,8 @@ export default function MapView() {
     }
     map.on("mouseenter", LAYER.clusters, () => (map.getCanvas().style.cursor = "pointer"));
     map.on("mouseleave", LAYER.clusters, () => (map.getCanvas().style.cursor = ""));
+    map.on("mouseenter", LAYER.reseauPoints, () => (map.getCanvas().style.cursor = "pointer"));
+    map.on("mouseleave", LAYER.reseauPoints, () => (map.getCanvas().style.cursor = ""));
 
     s.setMapApi({
       flyTo: (center, zoom = CITY_ZOOM) => map.flyTo({ center, zoom, padding: padding.current(), speed: 1.4 }),
@@ -187,15 +207,18 @@ export default function MapView() {
     if (selected) mapRef.current?.flyTo({ center: selected.coordinates, zoom: CITY_ZOOM, padding: padding.current(), speed: 1.4 });
   }, [selected, padding]);
 
-  // --- Marqueur de sélection (ville ou localité) ---
+  // --- Marqueur de sélection (ville, localité ou lieu du réseau) ---
+  const lieuActif = ctx.activeLieu ? ctx.reseauAgrege?.lieux.find((l) => l.lieu.key === ctx.activeLieu) : undefined;
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const target = ctx.activeLocality
       ? { kind: "locality" as const, coordinates: ctx.activeLocality.coordinates }
-      : selected
-        ? { kind: "city" as const, coordinates: selected.coordinates }
-        : null;
+      : lieuActif
+        ? { kind: "reseau" as const, coordinates: lieuActif.lieu.coordinates }
+        : selected
+          ? { kind: "city" as const, coordinates: selected.coordinates }
+          : null;
     if (!target) {
       markerRef.current?.remove();
       return;
@@ -203,7 +226,13 @@ export default function MapView() {
     markerRef.current ??= createMarker(target.kind);
     markerRef.current.getElement().dataset.kind = target.kind;
     markerRef.current.setLngLat(target.coordinates).addTo(map);
-  }, [ctx.activeLocality, selected]);
+  }, [ctx.activeLocality, lieuActif, selected]);
+
+  // --- Réseau de distribution (transmis par l'espace admin) ---
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map?.getSource(SOURCE.reseau)) applyReseau(map, ctx.reseauAgrege);
+  }, [ctx.reseauAgrege]);
 
   // --- Filtre par district : mise en avant et cadrage ---
   useEffect(() => {

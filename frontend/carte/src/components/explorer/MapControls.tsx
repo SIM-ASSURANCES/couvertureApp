@@ -26,11 +26,12 @@ function ControlButton({ label, onClick, children, pressed }: { label: string; o
 const LAYER_LABELS: Record<LayerGroup, string> = {
   localities: "Localités (OpenStreetMap)",
   boundaries: "Limites des districts et régions",
+  reseau: "Réseau de distribution (partenaires)",
 };
 
 /** Contrôles de navigation : zoom, vue d'ensemble, géolocalisation, calques et thème. */
 export function MapControls() {
-  const { mapApi, theme, toggleTheme, layers, toggleLayer } = useExplorer();
+  const { mapApi, theme, toggleTheme, layers, toggleLayer, reseau } = useExplorer();
   const [layersOpen, setLayersOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
@@ -105,7 +106,7 @@ export function MapControls() {
           <fieldset className="surface absolute right-[calc(100%+0.5rem)] top-0 w-64 rounded-2xl p-3 animate-fade-in">
             <legend className="sr-only">Calques affichés</legend>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Calques</p>
-            {(Object.keys(LAYER_LABELS) as LayerGroup[]).map((g) => (
+            {(Object.keys(LAYER_LABELS) as LayerGroup[]).filter((g) => g !== "reseau" || reseau).map((g) => (
               <label key={g} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg px-1 py-2 text-sm">
                 {LAYER_LABELS[g]}
                 <input

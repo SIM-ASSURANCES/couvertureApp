@@ -4,6 +4,7 @@ import { ChevronRight, MapPin } from "lucide-react";
 import Link from "next/link";
 
 import { useExplorer } from "@/components/explorer/ExplorerProvider";
+import { ReseauPanel } from "@/components/panel/ReseauPanel";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { ConfidenceBadge } from "@/components/ui/ConfidenceBadge";
 import { COUNTRY_KEY_FACTS } from "@/data/country";
@@ -18,9 +19,18 @@ const LEGEND = [
   { swatch: "h-0.5 w-4 bg-zinc-400", label: "Limite de district" },
 ];
 
+const RESEAU_LEGEND = [
+  {
+    swatch: "grid size-4 place-items-center rounded-full bg-orange-600 text-[8px] font-semibold text-white ring-2 ring-white dark:ring-zinc-900",
+    label: "Réseau : partenaires + sous-agents (nombre) — cliquer pour le détail",
+  },
+  { swatch: "size-3.5 rounded-sm bg-orange-500/35", label: "Région teintée selon la taille du réseau" },
+];
+
 /** Panneau d'accueil : chiffres clés, filtre par district, liste des fiches. */
 export function HomePanel() {
-  const { cities, districtFilter, setDistrictFilter } = useExplorer();
+  const { cities, districtFilter, setDistrictFilter, reseau } = useExplorer();
+  const legend = reseau ? [...RESEAU_LEGEND, ...LEGEND] : LEGEND;
   const list = districtFilter ? cities.filter((c) => c.district === districtFilter) : cities;
   const district = getDistrict(districtFilter);
 
@@ -29,6 +39,8 @@ export function HomePanel() {
       <p className="text-xs font-semibold uppercase tracking-wider text-accent-700 dark:text-accent-400">Carte interactive</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">Explorer la Côte d&apos;Ivoire</h1>
       <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Touchez une ville sur la carte ou recherchez-la pour ouvrir sa fiche.</p>
+
+      <ReseauPanel />
 
       <dl className="mt-5 grid grid-cols-2 gap-2">
         {COUNTRY_KEY_FACTS.map((f) => (
@@ -106,7 +118,7 @@ export function HomePanel() {
           Légende
         </h2>
         <ul className="mt-3 space-y-2">
-          {LEGEND.map((l) => (
+          {legend.map((l) => (
             <li key={l.label} className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-300">
               <span className="grid w-5 place-items-center">
                 <span className={l.swatch} />

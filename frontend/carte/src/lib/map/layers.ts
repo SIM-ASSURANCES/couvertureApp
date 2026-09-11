@@ -1,6 +1,7 @@
-import type { ExpressionSpecification, FilterSpecification, Map as MlMap } from "maplibre-gl";
+import type { ExpressionSpecification, FilterSpecification, GeoJSONSource, Map as MlMap } from "maplibre-gl";
 
 import { DATA_URLS, FONT_MEDIUM, FONT_REGULAR, PALETTE, type Theme } from "@/lib/map/config";
+import { reseauToGeoJSON, type ReseauAgrege } from "@/lib/reseau";
 import type { CitySummary } from "@/lib/types";
 
 export const SOURCE = {
@@ -10,6 +11,7 @@ export const SOURCE = {
   labels: "civ-admin-labels",
   localities: "localities",
   cities: "cities",
+  reseau: "reseau",
 } as const;
 
 export const LAYER = {
@@ -26,11 +28,15 @@ export const LAYER = {
   localityLabels: "app-locality-labels",
   cities: "app-cities",
   cityLabels: "app-city-labels",
+  reseauRegions: "app-reseau-regions-fill",
+  reseauPoints: "app-reseau-points",
+  reseauCount: "app-reseau-count",
 } as const;
 
 export const LAYER_GROUPS = {
   localities: [LAYER.clusters, LAYER.clusterCount, LAYER.localities, LAYER.localityLabels],
   boundaries: [LAYER.regionsLine, LAYER.districtsLine, LAYER.districtLabels, LAYER.regionLabels],
+  reseau: [LAYER.reseauRegions, LAYER.reseauPoints, LAYER.reseauCount],
 } as const;
 export type LayerGroup = keyof typeof LAYER_GROUPS;
 
@@ -58,13 +64,15 @@ interface AddLayersOptions {
   theme: Theme;
   cities: CitySummary[];
   visibility: Record<LayerGroup, boolean>;
+  /** Réseau de distribution (espace admin uniquement). */
+  reseau: ReseauAgrege | null;
 }
 
 const active: ExpressionSpecification = ["boolean", ["feature-state", "active"], false];
 const hover: ExpressionSpecification = ["boolean", ["feature-state", "hover"], false];
 
 /** Ajoute (ou rajoute après un changement de style) toutes les couches de l'application. */
-export function addAppLayers(map: MlMap, { theme, cities, visibility }: AddLayersOptions) {
+export function addAppLayers(map: MlMap, { theme, cities, visibility, reseau }: AddLayersOptions) {
   const c = PALETTE[theme];
   // Les villes à fiche sont retirées de la source avant regroupement : aucun cluster ne les recouvre.
   const notDetailed: FilterSpecification = ["!", ["in", ["get", "osmId"], ["literal", cities.map((city) => city.osmId)]]];
@@ -74,7 +82,7 @@ export function addAppLayers(map: MlMap, { theme, cities, visibility }: AddLayer
 
   map.addSource(SOURCE.country, { type: "geojson", data: DATA_URLS.country });
   map.addSource(SOURCE.districts, { type: "geojson", data: DATA_URLS.districts, promoteId: "id" });
-  map.addSource(SOURCE.regions, { type: "geojson", data: DATA_URLS.regions });
+  map.addSource(SOURCE.regions, { type: "geojson", data: DATA_URLS.regions, promoteId: "id" });
   map.addSource(SOURCE.labels, { type: "geojson", data: DATA_URLS.labels });
   map.addSource(SOURCE.localities, {
     type: "geojson",
@@ -100,6 +108,14 @@ export function addAppLayers(map: MlMap, { theme, cities, visibility }: AddLayer
     type: "fill",
     source: SOURCE.districts,
     paint: { "fill-color": c.mask, "fill-opacity": 0 },
+  });
+  // Régions teintées selon la taille du réseau (opacité réglée par applyReseau).
+  map.addLayer({
+    id: LAYER.reseauRegions,
+    type: "fill",
+    source: SOURCE.regions,
+    layout: { visibility: vis("reseau") },
+    paint: { "fill-color": c.reseau, "fill-opacity": 0 },
   });
 
   // Limites administratives.
@@ -254,6 +270,78 @@ export function addAppLayers(map: MlMap, { theme, cities, visibility }: AddLayer
     },
     paint: { "text-color": c.cityLabel, "text-halo-color": c.halo, "text-halo-width": 1.6 },
   });
+
+  // Réseau de distribution : une pastille par ville/commune (partenaires + sous-agents),
+  // regroupées aux petites échelles en additionnant les effectifs.
+  map.addSource(SOURCE.reseau, {
+    type: "geojson",
+    data: reseauToGeoJSON(reseau),
+    cluster: true,
+    clusterRadius: 36,
+    clusterMaxZoom: 9,
+    clusterProperties: {
+      total: ["+", ["get", "total"]],
+      nbPartenaires: ["+", ["get", "nbPartenaires"]],
+      nbAgents: ["+", ["get", "nbAgents"]],
+    },
+  });
+  map.addLayer({
+    id: LAYER.reseauPoints,
+    type: "circle",
+    source: SOURCE.reseau,
+    layout: { visibility: vis("reseau") },
+    paint: {
+      "circle-color": c.reseau,
+      "circle-opacity": 0.92,
+      "circle-radius": ["interpolate", ["linear"], ["get", "total"], 1, 10, 10, 15, 50, 22, 200, 30],
+      "circle-stroke-width": 2.5,
+      "circle-stroke-color": c.cityStroke,
+    },
+  });
+  map.addLayer({
+    id: LAYER.reseauCount,
+    type: "symbol",
+    source: SOURCE.reseau,
+    layout: {
+      visibility: vis("reseau"),
+      "text-field": ["to-string", ["get", "total"]],
+      "text-font": FONT_MEDIUM,
+      "text-size": 11.5,
+      "text-allow-overlap": true,
+      "text-ignore-placement": true,
+    },
+    paint: { "text-color": "#ffffff" },
+  });
+
+  applyReseau(map, reseau);
+}
+
+/** Met à jour les pastilles du réseau et la teinte des régions (à rappeler après chaque changement de style). */
+export function applyReseau(map: MlMap, reseau: ReseauAgrege | null) {
+  map.getSource<GeoJSONSource>(SOURCE.reseau)?.setData(reseauToGeoJSON(reseau));
+  if (!map.getSource(SOURCE.regions) || !map.getLayer(LAYER.reseauRegions)) return;
+  map.removeFeatureState({ source: SOURCE.regions });
+  let max = 0;
+  for (const r of reseau?.regions ?? []) {
+    if (r.id === "inconnue") continue;
+    const total = r.nbPartenaires + r.nbAgents;
+    map.setFeatureState({ source: SOURCE.regions, id: r.id }, { reseau: total });
+    max = Math.max(max, total);
+  }
+  const n: ExpressionSpecification = ["coalesce", ["feature-state", "reseau"], 0];
+  const teinte = (plafond: number): ExpressionSpecification => [
+    "case",
+    [">", n, 0],
+    ["interpolate", ["linear"], n, 1, plafond / 4, Math.max(2, max), plafond],
+    0,
+  ];
+  // Vue d'ensemble du pays : régions bien teintées ; à l'échelle d'une commune, la teinte s'efface
+  // pour laisser lire le fond de carte (`zoom` doit rester au premier niveau de l'interpolation).
+  map.setPaintProperty(
+    LAYER.reseauRegions,
+    "fill-opacity",
+    max > 0 ? ["interpolate", ["linear"], ["zoom"], 7, teinte(0.42), 10, teinte(0.12), 12, teinte(0.04)] : 0,
+  );
 }
 
 /** Met en avant un district (contour accentué, autres districts estompés). */
