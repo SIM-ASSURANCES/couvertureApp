@@ -31,12 +31,13 @@ interface SouscriptionAssurancesAccidents {
   espaceClientActif?: boolean;
 }
 
-/** RelaxMoto/Auto (cycleFacturation non-null) ont leur propre renouvellement
- * côté espace client. RelaxVoyage (trajet ponctuel de 24h) ne se renouvelle
- * jamais. Tout autre produit confirmé peut être relancé par l'admin, y
- * compris bien avant l'échéance (pas seulement dans la liste "à venir"). */
+/** RelaxVoyage (trajet ponctuel de 24h) ne se renouvelle jamais. Tout autre
+ * produit confirmé peut être relancé par l'admin, y compris RelaxMoto/Auto
+ * (abonnement à cycle — voir POST .../relance-renouvellement, qui recalcule
+ * alors le montant au tarif courant du cycle) et y compris bien avant
+ * l'échéance (pas seulement dans la liste "à venir"). */
 function renouvelable(c: SouscriptionAssurancesAccidents) {
-  return !c.cycleFacturation && c.produit.code !== "relaxvoyage";
+  return c.produit.code !== "relaxvoyage";
 }
 
 function statutRenouvellement(c: SouscriptionAssurancesAccidents) {
@@ -248,7 +249,7 @@ export default function AssurancesAccidentsClients() {
                   <th>Date d'échéance</th>
                   <th>Renouvellement</th>
                   <th>Date d'effet</th>
-                  {isSuper && <th></th>}
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -266,45 +267,47 @@ export default function AssurancesAccidentsClients() {
                     <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
                     <td>{statutRenouvellement(c)}</td>
                     <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
-                    {isSuper && (
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Voir les détails" onClick={() => setDetailFor(c)}>
-                            <Eye size={15} />
-                          </button>
-                          {renouvelable(c) && (
-                            <button
-                              className="btn btn-ghost"
-                              style={{ padding: 8 }}
-                              title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
-                              disabled={!!c.renouvellementEnCoursDepuis}
-                              onClick={() => relancerRenouvellement(c.id)}
-                            >
-                              <Send size={15} />
-                            </button>
-                          )}
+                    <td>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button className="btn btn-ghost" style={{ padding: 8 }} title="Voir les détails" onClick={() => setDetailFor(c)}>
+                          <Eye size={15} />
+                        </button>
+                        {renouvelable(c) && (
                           <button
                             className="btn btn-ghost"
                             style={{ padding: 8 }}
-                            title="Vérifier le paiement Wave (souscription ou renouvellement)"
-                            disabled={verifId === c.id}
-                            onClick={() => verifier(c.id)}
+                            title="Envoyer un SMS de renouvellement dès maintenant (sans attendre l'échéance)"
+                            disabled={!!c.renouvellementEnCoursDepuis}
+                            onClick={() => relancerRenouvellement(c.id)}
                           >
-                            <RefreshCcw size={15} />
+                            <Send size={15} />
                           </button>
-                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Modifier la photo de la carte" onClick={() => setPhotoFor(c)}>
-                            <Camera size={15} />
-                          </button>
-                          <button className="btn btn-ghost" style={{ padding: 8 }} title="Supprimer" onClick={() => remove(c)}>
-                            <Trash2 size={15} color="var(--danger)" />
-                          </button>
-                        </div>
-                      </td>
-                    )}
+                        )}
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: 8 }}
+                          title="Vérifier le paiement Wave (souscription ou renouvellement)"
+                          disabled={verifId === c.id}
+                          onClick={() => verifier(c.id)}
+                        >
+                          <RefreshCcw size={15} />
+                        </button>
+                        {isSuper && (
+                          <>
+                            <button className="btn btn-ghost" style={{ padding: 8 }} title="Modifier la photo de la carte" onClick={() => setPhotoFor(c)}>
+                              <Camera size={15} />
+                            </button>
+                            <button className="btn btn-ghost" style={{ padding: 8 }} title="Supprimer" onClick={() => remove(c)}>
+                              <Trash2 size={15} color="var(--danger)" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {donneesFiltrees.length === 0 && (
-                  <tr><td colSpan={isSuper ? 10 : 9}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
+                  <tr><td colSpan={10}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
                 )}
               </tbody>
             </table>

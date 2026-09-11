@@ -92,6 +92,12 @@ export interface SouscriptionRelax {
   cycleFacturation?: CycleFacturation | null;
   statutAbonnement?: StatutAbonnement | null;
   nombreEcheances?: number | null;
+  nombrePeriodes?: number | null;
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  renouvellementEnCoursDepuis?: string | null;
+  renouveleAt?: string | null;
+  espaceClientActif?: boolean;
   createdAt: string;
 }
 

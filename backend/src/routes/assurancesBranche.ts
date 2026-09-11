@@ -421,11 +421,13 @@ assurancesBrancheRouter.get(
 );
 
 /**
- * Relance le RENOUVELLEMENT d'une souscription générique à formule unique
- * (RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro
- * Dommages — jamais RelaxMoto/Auto, qui ont leur propre renouvellement côté
- * espace client) : crée une nouvelle échéance (Paiement estRenouvellement)
- * pour la même prime, envoie le lien Wave par SMS. Ne touche jamais
+ * Relance le RENOUVELLEMENT d'une souscription générique — formule unique
+ * (RelaxAccidents Frais Médicaux/générale, SecurHome+, SecurPro Dommages) OU
+ * abonnement à cycle (RelaxMoto/RelaxAuto, `cycleFacturation` non-null) :
+ * crée une nouvelle échéance (Paiement estRenouvellement) et envoie le lien
+ * Wave par SMS. Pour un abonnement à cycle, le montant est recalculé au
+ * tarif COURANT du cycle (comme POST /client/renouveler), pas simplement
+ * `s.montantPrime` qui peut dater d'un ancien tarif. Ne touche jamais
  * `Souscription.waveStatut` (reste "confirme" tout du long, contrairement à
  * SouscriptionAccident qui n'a pas de table Paiement séparée) — la couverture
  * en cours n'est donc jamais interrompue pendant l'attente du paiement.
@@ -438,9 +440,6 @@ assurancesBrancheRouter.post(
       include: { produit: { select: { code: true } } },
     });
     if (!s) return res.status(404).json({ error: "Introuvable" });
-    if (s.cycleFacturation) {
-      return res.status(400).json({ error: "Ce produit se renouvelle depuis l'espace client, pas via l'admin." });
-    }
     // Trajet ponctuel de 24h : rien à reconduire, un nouveau voyage suppose
     // une nouvelle souscription (voir aussi POST /client/renouveler).
     if (s.produit.code === "relaxvoyage") {
@@ -457,12 +456,21 @@ assurancesBrancheRouter.post(
     });
     if (!qr) return res.status(400).json({ error: "QR introuvable pour ce partenaire/produit." });
 
+    let montant = s.montantPrime;
+    if (s.cycleFacturation) {
+      const tarif = await prisma.tarifProduit.findFirst({
+        where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
+      });
+      if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit." });
+      montant = tarif.prime * s.nombrePeriodes;
+    }
+
     const dejaExistantes = await prisma.paiement.count({ where: { souscriptionId: s.id } });
     const paiement = await prisma.paiement.create({
       data: {
         souscriptionId: s.id,
         numeroEcheance: dejaExistantes + 1,
-        montant: s.montantPrime,
+        montant,
         dateEcheance: new Date(),
         estRenouvellement: true,
       },
