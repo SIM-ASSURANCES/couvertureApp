@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal, KeyRound, RefreshCw, Send } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
@@ -908,7 +908,9 @@ export default function Partenaires() {
   const { data: souscriptionsClassement, loading: classementLoading } = useFetch<SouscriptionBranche[]>(
     produitClassement ? `/assurances-branche/souscriptions?${classementParams.toString()}` : null
   );
-  const classement = (() => {
+  // Audit perf 2026-09-11 : agrégation recalculée seulement quand la liste
+  // source change, pas à chaque render.
+  const classement = useMemo(() => {
     const parPartenaire = new Map<string, { partenaireId: string; nomCommerce: string; nomResponsable: string; nombre: number; ca: number }>();
     for (const s of souscriptionsClassement ?? []) {
       const ligne = parPartenaire.get(s.partenaireId) ?? {
@@ -923,7 +925,7 @@ export default function Partenaires() {
       parPartenaire.set(s.partenaireId, ligne);
     }
     return [...parPartenaire.values()].sort((a, b) => b.nombre - a.nombre);
-  })();
+  }, [souscriptionsClassement]);
   const maxClassement = Math.max(...classement.map((c) => c.nombre), 1);
 
   function notify(m: string) {

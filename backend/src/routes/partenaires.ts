@@ -13,7 +13,7 @@ import {
   commissionMensuellePartenaire,
 } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
-import { commissionTotaleAgent } from "../services/commission.js";
+import { commissionTotaleAgentsDuPartenaire } from "../services/commission.js";
 import { genererCleApi, SCOPES_API, EVENEMENTS_WEBHOOK } from "../apiKey.js";
 import { emettreWebhook, webhookUrlValide } from "../services/partnerWebhook.js";
 
@@ -575,26 +575,40 @@ partenairesRouter.get(
       where: { partenaireId: req.params.id },
       orderBy: { createdAt: "desc" },
     });
-    const rows = await Promise.all(
-      agents.map(async (a) => {
-        const [nbIncendie, nbAccident, nbGenerique, commissionTotale] = await Promise.all([
-          prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
-          prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
-          prisma.souscription.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
-          commissionTotaleAgent(a.id),
-        ]);
-        return {
-          id: a.id,
-          nom: a.nom,
-          telephone: a.telephone,
-          localisation: a.localisation,
-          statut: a.statut,
-          createdAt: a.createdAt,
-          nombreSouscriptions: nbIncendie + nbAccident + nbGenerique,
-          commissionTotale: Math.round(commissionTotale),
-        };
-      })
-    );
+    // Voir routes/me.ts::GET /agents — même correctif (audit perf 2026-09-11, N+1 critique #1).
+    const agentIds = agents.map((a) => a.id);
+    const [nbIncendieGroups, nbAccidentGroups, nbGeneriqueGroups, commissionParAgent] = await Promise.all([
+      prisma.souscriptionIncendie.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds } },
+        _count: { _all: true },
+      }),
+      prisma.souscriptionAccident.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds }, waveStatut: "confirme" },
+        _count: { _all: true },
+      }),
+      prisma.souscription.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds }, waveStatut: "confirme" },
+        _count: { _all: true },
+      }),
+      commissionTotaleAgentsDuPartenaire(req.params.id, agents),
+    ]);
+    const nbIncendieMap = new Map(nbIncendieGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const nbAccidentMap = new Map(nbAccidentGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const nbGeneriqueMap = new Map(nbGeneriqueGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const rows = agents.map((a) => ({
+      id: a.id,
+      nom: a.nom,
+      telephone: a.telephone,
+      localisation: a.localisation,
+      statut: a.statut,
+      createdAt: a.createdAt,
+      nombreSouscriptions:
+        (nbIncendieMap.get(a.id) ?? 0) + (nbAccidentMap.get(a.id) ?? 0) + (nbGeneriqueMap.get(a.id) ?? 0),
+      commissionTotale: Math.round(commissionParAgent.get(a.id) ?? 0),
+    }));
     res.json(rows);
   })
 );

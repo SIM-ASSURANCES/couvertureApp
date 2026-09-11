@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send, Camera, Search } from "lucide-react";
 import {
   PageHeader,
@@ -56,16 +56,29 @@ export default function ClientsIncendie() {
   const { data: dommagesGenerique, reload: reloadGenerique } = useFetch<SouscriptionBranche[]>(
     `/assurances-branche/souscriptions?${dommagesParams.toString()}`
   );
-  const generiqueSeul = (dommagesGenerique ?? []).filter((r) => r.produit !== "incendie_historique");
+  const generiqueSeul = useMemo(
+    () => (dommagesGenerique ?? []).filter((r) => r.produit !== "incendie_historique"),
+    [dommagesGenerique]
+  );
 
   const [recherche, setRecherche] = useState("");
-  const rechercheMatch = (...valeurs: (string | null | undefined)[]) => {
+  // Recalculés seulement quand les données ou la recherche changent (audit
+  // perf 2026-09-11) — sans useMemo, ce filtrage refaisait un passage complet
+  // sur toute la liste à chaque render (ex. toast/refresh silencieux 30s).
+  const dataFiltree = useMemo(() => {
     const q = recherche.trim().toLowerCase();
-    if (!q) return true;
-    return valeurs.filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
-  };
-  const dataFiltree = (data ?? []).filter((c) => rechercheMatch(c.nom, c.prenom, c.telephone, c.refFacture, c.partenaireNom));
-  const generiqueFiltre = generiqueSeul.filter((r) => rechercheMatch(r.nom, r.prenom, r.telephone, r.partenaireNom, r.produitLibelle));
+    if (!q) return data ?? [];
+    return (data ?? []).filter((c) =>
+      [c.nom, c.prenom, c.telephone, c.refFacture, c.partenaireNom].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [data, recherche]);
+  const generiqueFiltre = useMemo(() => {
+    const q = recherche.trim().toLowerCase();
+    if (!q) return generiqueSeul;
+    return generiqueSeul.filter((r) =>
+      [r.nom, r.prenom, r.telephone, r.partenaireNom, r.produitLibelle].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [generiqueSeul, recherche]);
 
   // Alerte renouvellement (échéance ≤ 5 jours) — Incendie historique +
   // SecurHome+/SecurPro (modèle générique), toutes deux à formule unique de 3
@@ -76,32 +89,36 @@ export default function ClientsIncendie() {
   const { data: genProches, reload: reloadGenProches } = useFetch<SouscriptionBranche[]>(
     "/assurances-branche/souscriptions?sousBranche=ASSURANCES_DOMMAGES&renouvellementProche=1"
   );
-  const renouvellementsProches = [
-    ...(incendieProches ?? []).map((c) => ({
-      id: c.id,
-      genre: "incendie" as const,
-      nom: [c.prenom, c.nom].filter(Boolean).join(" ") || "Non renseigné",
-      telephone: c.telephone,
-      produitLibelle: "Incendie Habitation en Inclusion",
-      partenaireNom: c.partenaireResponsable || c.partenaireNom,
-      dateFin: c.dateFin,
-      renouvellementEnCoursDepuis: c.renouvellementEnCoursDepuis,
-      renouveleAt: c.renouveleAt,
-    })),
-    ...(genProches ?? [])
-      .filter((r) => r.produit !== "incendie_historique")
-      .map((r) => ({
-      id: r.id,
-      genre: "generique" as const,
-      nom: [r.prenom, r.nom].filter(Boolean).join(" ") || "Non renseigné",
-      telephone: r.telephone,
-      produitLibelle: r.produitLibelle,
-      partenaireNom: r.partenaireResponsable || r.partenaireNom,
-      dateFin: r.dateFin,
-      renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis,
-      renouveleAt: r.renouveleAt,
-    })),
-  ].sort((a, b) => new Date(a.dateFin ?? 0).getTime() - new Date(b.dateFin ?? 0).getTime());
+  const renouvellementsProches = useMemo(
+    () =>
+      [
+        ...(incendieProches ?? []).map((c) => ({
+          id: c.id,
+          genre: "incendie" as const,
+          nom: [c.prenom, c.nom].filter(Boolean).join(" ") || "Non renseigné",
+          telephone: c.telephone,
+          produitLibelle: "Incendie Habitation en Inclusion",
+          partenaireNom: c.partenaireResponsable || c.partenaireNom,
+          dateFin: c.dateFin,
+          renouvellementEnCoursDepuis: c.renouvellementEnCoursDepuis,
+          renouveleAt: c.renouveleAt,
+        })),
+        ...(genProches ?? [])
+          .filter((r) => r.produit !== "incendie_historique")
+          .map((r) => ({
+            id: r.id,
+            genre: "generique" as const,
+            nom: [r.prenom, r.nom].filter(Boolean).join(" ") || "Non renseigné",
+            telephone: r.telephone,
+            produitLibelle: r.produitLibelle,
+            partenaireNom: r.partenaireResponsable || r.partenaireNom,
+            dateFin: r.dateFin,
+            renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis,
+            renouveleAt: r.renouveleAt,
+          })),
+      ].sort((a, b) => new Date(a.dateFin ?? 0).getTime() - new Date(b.dateFin ?? 0).getTime()),
+    [incendieProches, genProches]
+  );
 
   const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
   const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);

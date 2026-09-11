@@ -5,7 +5,7 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
-import { commissionStatsPartenaire, commissionTotaleAgent, commissionTotalePartenaire } from "../services/commission.js";
+import { commissionStatsPartenaire, commissionTotaleAgentsDuPartenaire, commissionTotalePartenaire } from "../services/commission.js";
 import { statsGeneriques } from "./stats.js";
 import {
   parseFiltres,
@@ -374,32 +374,48 @@ meRouter.get(
       where: { partenaireId: req.user!.sub },
       orderBy: { createdAt: "desc" },
     });
-    const rows = await Promise.all(
-      agents.map(async (a) => {
-        const [nbIncendie, nbAccident, nbGenerique, commissionTotale] = await Promise.all([
-          prisma.souscriptionIncendie.count({ where: { agentDistributionId: a.id } }),
-          prisma.souscriptionAccident.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
-          // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
-          // SecurHome+, SecurPro Dommages) — sans ceci, un agent qui ne vend
-          // que ces produits affichait toujours 0 souscription ici.
-          prisma.souscription.count({ where: { agentDistributionId: a.id, waveStatut: "confirme" } }),
-          commissionTotaleAgent(a.id),
-        ]);
-        return {
-          id: a.id,
-          nom: a.nom,
-          telephone: a.telephone,
-          localisation: a.localisation,
-          statut: a.statut,
-          createdAt: a.createdAt,
-          nombreSouscriptions: nbIncendie + nbAccident + nbGenerique,
-          commissionTotale: Math.round(commissionTotale),
-          // Part (%) de la commission qui revient à l'agent — le partenaire
-          // touche le complément. Réglable via PATCH /me/agents/:id.
-          tauxCommissionAgentPct: Math.round((a.tauxCommissionAgent ?? 0.75) * 100),
-        };
-      })
-    );
+    // Un seul groupBy par modèle (au lieu d'un count() par agent) + un seul
+    // calcul de commission pour tous les agents (audit perf 2026-09-11, N+1
+    // critique #1) — voir services/commission.ts::commissionTotaleAgentsDuPartenaire.
+    const agentIds = agents.map((a) => a.id);
+    const [nbIncendieGroups, nbAccidentGroups, nbGeneriqueGroups, commissionParAgent] = await Promise.all([
+      prisma.souscriptionIncendie.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds } },
+        _count: { _all: true },
+      }),
+      prisma.souscriptionAccident.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds }, waveStatut: "confirme" },
+        _count: { _all: true },
+      }),
+      // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
+      // SecurHome+, SecurPro Dommages) — sans ceci, un agent qui ne vend
+      // que ces produits affichait toujours 0 souscription ici.
+      prisma.souscription.groupBy({
+        by: ["agentDistributionId"],
+        where: { agentDistributionId: { in: agentIds }, waveStatut: "confirme" },
+        _count: { _all: true },
+      }),
+      commissionTotaleAgentsDuPartenaire(req.user!.sub, agents),
+    ]);
+    const nbIncendieMap = new Map(nbIncendieGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const nbAccidentMap = new Map(nbAccidentGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const nbGeneriqueMap = new Map(nbGeneriqueGroups.map((g) => [g.agentDistributionId, g._count._all]));
+    const rows = agents.map((a) => ({
+      id: a.id,
+      nom: a.nom,
+      telephone: a.telephone,
+      localisation: a.localisation,
+      statut: a.statut,
+      createdAt: a.createdAt,
+      nombreSouscriptions:
+        (nbIncendieMap.get(a.id) ?? 0) + (nbAccidentMap.get(a.id) ?? 0) + (nbGeneriqueMap.get(a.id) ?? 0),
+      commissionTotale: Math.round(commissionParAgent.get(a.id) ?? 0),
+      // Part (%) de la commission qui revient à l'agent — le partenaire
+      // touche le complément. Réglable via PATCH /me/agents/:id.
+      tauxCommissionAgentPct: Math.round((a.tauxCommissionAgent ?? 0.75) * 100),
+    }));
     res.json(rows);
   })
 );

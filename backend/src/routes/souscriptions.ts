@@ -111,9 +111,26 @@ souscriptionsRouter.get(
     const accTarifMap = new Map(tarifsAcc.map((t) => [t.prime, t]));
 
     if (!type || type === "incendie") {
+      // `select` explicite (audit perf 2026-09-11, critique #3) : sans lui,
+      // Prisma ramène aussi pieceIdentiteUrl/selfieUrl (data URL base64,
+      // potentiellement plusieurs Ko chacune) alors qu'elles ne sont jamais
+      // utilisées dans cette liste — seulement `signature`, réellement
+      // affichée/utilisée pour le PDF téléchargé depuis cette page.
       const inc = await prisma.souscriptionIncendie.findMany({
         where: { statut: "complet", createdAt: dateEffetRange },
-        include: {
+        select: {
+          id: true,
+          nom: true,
+          prenom: true,
+          telephone: true,
+          montantPrime: true,
+          capitalGaranti: true,
+          refFacture: true,
+          commune: true,
+          quartier: true,
+          numeroMaison: true,
+          signature: true,
+          createdAt: true,
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -152,9 +169,25 @@ souscriptionsRouter.get(
     }
 
     if (!type || type === "accident") {
+      // `select` explicite (voir commentaire ci-dessus, branche Incendie) —
+      // exclut aussi `formulaireComplement` (JSON libre, non utilisé ici).
       const acc = await prisma.souscriptionAccident.findMany({
         where: { waveStatut: "confirme", dateDebut: dateEffetRange },
-        include: {
+        select: {
+          id: true,
+          numeroPolice: true,
+          nom: true,
+          prenom: true,
+          telephone: true,
+          montantPrime: true,
+          capitalGaranti: true,
+          dateDebut: true,
+          dateFin: true,
+          createdAt: true,
+          dateNaissance: true,
+          signature: true,
+          waveStatut: true,
+          waveTransactionId: true,
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
         },
         orderBy: { createdAt: "desc" },

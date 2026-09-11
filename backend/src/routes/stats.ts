@@ -318,176 +318,235 @@ async function buildPerformance(opts: PerfOpts = {}) {
   const tarifGenMap = new Map(tarifsGeneriques.map((t) => [`${t.produitId}:${t.prime}`, t]));
   const baremeParClasse = new Map(baremesSecurpro.map((b) => [b.classe, b]));
 
-  const rows = await Promise.all(
-    allPartenaires.map(async (p) => {
-      const baseWhere = {
-        partenaireId: p.id,
-        ...(dateRange ? { createdAt: dateRange } : {}),
-      };
-      const incWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
-      const accWhere = { ...baseWhere, ...(montantPrime ? { montantPrime } : {}) };
-      const genWhere = { ...baseWhere, waveStatut: "confirme" as const, ...(montantPrime ? { montantPrime } : {}) };
+  // Un seul aller-retour par table, groupé par partenaireId EN PLUS des
+  // dimensions déjà utilisées, plutôt qu'un jeu de requêtes répété pour
+  // chaque partenaire (audit perf 2026-09-11, N+1 critique #2 — jusqu'à 8
+  // requêtes × N partenaires, ex. 800 requêtes pour 100 partenaires). Le
+  // calcul par partenaire ci-dessous reste identique, seule la source des
+  // données change (Map pré-groupée plutôt qu'une requête dédiée).
+  const partenaireIds = allPartenaires.map((p) => p.id);
+  const baseWhereGlobal = {
+    partenaireId: { in: partenaireIds },
+    ...(dateRange ? { createdAt: dateRange } : {}),
+    ...(montantPrime ? { montantPrime } : {}),
+  };
+  const genWhereGlobal = { ...baseWhereGlobal, waveStatut: "confirme" as const };
 
-      const [incGroups, incCount, accGroups, accCount, incGroupsViaAgents, accGroupsViaAgents, genCatalogueGroups, genDynRows] = await Promise.all([
-        showInc
-          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: incWhere, _count: { _all: true }, _sum: { nombrePaiements: true } })
-          : [],
-        showInc ? prisma.souscriptionIncendie.count({ where: incWhere }) : 0,
-        showAcc
-          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
-          : [],
-        showAcc
-          ? prisma.souscriptionAccident.count({ where: { ...accWhere, waveStatut: "confirme" } })
-          : 0,
-        // Sous-ensemble vendu par un agent de distribution : seuls 25% de leur
-        // commission reviennent au partenaire, le reste (75%) à l'agent — voir
-        // services/commission.ts.
-        showInc
-          ? prisma.souscriptionIncendie.groupBy({ by: ["montantPrime"], where: { ...incWhere, agentDistributionId: { not: null } }, _count: { _all: true }, _sum: { nombrePaiements: true } })
-          : [],
-        showAcc
-          ? prisma.souscriptionAccident.groupBy({ by: ["montantPrime"], where: { ...accWhere, agentDistributionId: { not: null }, waveStatut: "confirme" }, _count: { _all: true }, _sum: { nombrePaiements: true } })
-          : [],
-        (showInc || showAcc) && idsGenCatalogue.length
-          ? prisma.souscription.groupBy({
-              by: ["produitId", "montantPrime", "agentDistributionId"],
-              where: { ...genWhere, produitId: { in: idsGenCatalogue } },
-              _count: { _all: true },
-              _sum: { nombrePaiements: true },
-            })
-          : [],
-        (showInc || showAcc) && idsGenDynamique.length
-          ? prisma.souscription.findMany({
-              where: { ...genWhere, produitId: { in: idsGenDynamique } },
-              select: { produitId: true, montantPrime: true, resultat: true, donneesSpecifiques: true, nombrePaiements: true, agentDistributionId: true },
-            })
-          : [],
-      ]);
+  const [incGroupsAll, accGroupsAll, incGroupsViaAgentsAll, accGroupsViaAgentsAll, genCatalogueGroupsAll, genDynRowsAll] =
+    await Promise.all([
+      showInc
+        ? prisma.souscriptionIncendie.groupBy({
+            by: ["partenaireId", "montantPrime"],
+            where: baseWhereGlobal,
+            _count: { _all: true },
+            _sum: { nombrePaiements: true },
+          })
+        : [],
+      showAcc
+        ? prisma.souscriptionAccident.groupBy({
+            by: ["partenaireId", "montantPrime"],
+            where: { ...baseWhereGlobal, waveStatut: "confirme" },
+            _count: { _all: true },
+            _sum: { nombrePaiements: true },
+          })
+        : [],
+      // Sous-ensemble vendu par un agent de distribution : seuls 25% de leur
+      // commission reviennent au partenaire, le reste (75%) à l'agent — voir
+      // services/commission.ts.
+      showInc
+        ? prisma.souscriptionIncendie.groupBy({
+            by: ["partenaireId", "montantPrime"],
+            where: { ...baseWhereGlobal, agentDistributionId: { not: null } },
+            _count: { _all: true },
+            _sum: { nombrePaiements: true },
+          })
+        : [],
+      showAcc
+        ? prisma.souscriptionAccident.groupBy({
+            by: ["partenaireId", "montantPrime"],
+            where: { ...baseWhereGlobal, agentDistributionId: { not: null }, waveStatut: "confirme" },
+            _count: { _all: true },
+            _sum: { nombrePaiements: true },
+          })
+        : [],
+      (showInc || showAcc) && idsGenCatalogue.length
+        ? prisma.souscription.groupBy({
+            by: ["partenaireId", "produitId", "montantPrime", "agentDistributionId"],
+            where: { ...genWhereGlobal, produitId: { in: idsGenCatalogue } },
+            _count: { _all: true },
+            _sum: { nombrePaiements: true },
+          })
+        : [],
+      (showInc || showAcc) && idsGenDynamique.length
+        ? prisma.souscription.findMany({
+            where: { ...genWhereGlobal, produitId: { in: idsGenDynamique } },
+            select: {
+              partenaireId: true,
+              produitId: true,
+              montantPrime: true,
+              resultat: true,
+              donneesSpecifiques: true,
+              nombrePaiements: true,
+              agentDistributionId: true,
+            },
+          })
+        : [],
+    ]);
 
-      // Commission = taux (Parametre, 20 % par défaut) × prime NETTE (HT) —
-      // aligné sur services/commission.ts (règle « 20 % de la prime nette »).
-      let primesIncendie = 0, primesIncendieHT = 0, caIncendie = 0;
-      let commissionIncendie = 0;
-      for (const g of incGroups) {
-        const t = incMap.get(g.montantPrime);
-        const n = g._sum.nombrePaiements ?? g._count._all;
-        const primeNette = t?.primeHT ?? g.montantPrime;
-        primesIncendie += g.montantPrime * n;
-        primesIncendieHT += primeNette * n;
-        caIncendie += (g.montantPrime - (t?.taxes ?? 0)) * n;
-        commissionIncendie += primeNette * tauxInc * n;
-      }
-      let commissionIncendieViaAgents = 0;
-      for (const g of incGroupsViaAgents) {
-        const n = g._sum.nombrePaiements ?? g._count._all;
-        commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxInc * n;
-      }
-      commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
+  // Regroupement en mémoire par partenaireId — même forme que les tableaux
+  // par-partenaire d'origine, pour garder le calcul ci-dessous inchangé.
+  function grouperPar<T extends { partenaireId: string }>(rows: T[]): Map<string, T[]> {
+    const m = new Map<string, T[]>();
+    for (const r of rows) {
+      const arr = m.get(r.partenaireId);
+      if (arr) arr.push(r);
+      else m.set(r.partenaireId, [r]);
+    }
+    return m;
+  }
+  const incGroupsParPartenaire = grouperPar(incGroupsAll);
+  const accGroupsParPartenaire = grouperPar(accGroupsAll);
+  const incGroupsViaAgentsParPartenaire = grouperPar(incGroupsViaAgentsAll);
+  const accGroupsViaAgentsParPartenaire = grouperPar(accGroupsViaAgentsAll);
+  const genCatalogueGroupsParPartenaire = grouperPar(genCatalogueGroupsAll);
+  const genDynRowsParPartenaire = grouperPar(genDynRowsAll);
 
-      // Pondéré par le nombre de paiements confirmés (1er + renouvellements),
-      // pas par le nombre de lignes — un même client renouvelé génère une
-      // prime/commission à chaque renouvellement (voir services/accident.ts).
-      // `accCount`/`incCount` (nombre de CLIENTS distincts) restent, eux, non pondérés.
-      let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
-      let commissionAccident = 0;
-      for (const g of accGroups) {
-        const t = accMap.get(g.montantPrime);
-        const n = g._sum.nombrePaiements ?? g._count._all;
-        const primeNette = t?.primeHT ?? g.montantPrime;
-        primesAccident += g.montantPrime * n;
-        primesAccidentHT += primeNette * n;
-        caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
-        commissionAccident += primeNette * tauxAcc * n;
-      }
-      let commissionAccidentViaAgents = 0;
-      for (const g of accGroupsViaAgents) {
-        const n = g._sum.nombrePaiements ?? g._count._all;
-        commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxAcc * n;
-      }
-      commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
+  const rows = allPartenaires.map((p) => {
+    const incGroups = incGroupsParPartenaire.get(p.id) ?? [];
+    const accGroups = accGroupsParPartenaire.get(p.id) ?? [];
+    const incGroupsViaAgents = incGroupsViaAgentsParPartenaire.get(p.id) ?? [];
+    const accGroupsViaAgents = accGroupsViaAgentsParPartenaire.get(p.id) ?? [];
+    const genCatalogueGroups = genCatalogueGroupsParPartenaire.get(p.id) ?? [];
+    const genDynRows = genDynRowsParPartenaire.get(p.id) ?? [];
+    // Nombre de clients distincts (non pondéré par nombrePaiements), dérivé
+    // de la somme des _count._all des mêmes groupes ci-dessus plutôt que
+    // d'un count() séparé (une requête de moins).
+    const incCount = incGroups.reduce((s, g) => s + g._count._all, 0);
+    const accCount = accGroups.reduce((s, g) => s + g._count._all, 0);
 
-      // ── Modèle générique, réparti par sous-branche + agent/direct ──
-      let genIncendieCount = 0, genAccidentCount = 0;
-      for (const g of genCatalogueGroups) {
-        const prod = produitGenParId.get(g.produitId);
-        if (!prod?.sousBranche) continue;
-        const t = tarifGenMap.get(`${g.produitId}:${g.montantPrime}`);
-        const nPaiements = g._sum.nombrePaiements ?? g._count._all;
-        const primeHT = t?.primeHT ?? g.montantPrime;
-        const taxes = t?.taxes ?? 0;
-        // Taux du produit (Produit.tauxCommission, 20 % par défaut) × prime nette.
-        const commissionBrute = primeHT * (prod.tauxCommission ?? 0.2) * nPaiements;
-        const commissionPart = g.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
-        if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
-          primesIncendie += g.montantPrime * nPaiements;
-          primesIncendieHT += primeHT * nPaiements;
-          caIncendie += (g.montantPrime - taxes) * nPaiements;
-          commissionIncendie += commissionPart;
-          genIncendieCount += g._count._all;
-        } else {
-          primesAccident += g.montantPrime * nPaiements;
-          primesAccidentHT += primeHT * nPaiements;
-          caAccident += (g.montantPrime - taxes) * nPaiements;
-          commissionAccident += commissionPart;
-          genAccidentCount += g._count._all;
-        }
-      }
-      for (const s of genDynRows) {
-        const prod = produitGenParId.get(s.produitId);
-        const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number; taxes?: number } | null;
-        if (!prod?.sousBranche || !resultat) continue;
-        const nPaiements = s.nombrePaiements ?? 1;
-        const primeHT = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
-        const taxes = resultat.taxes ?? 0;
-        let commissionUnitaire = 0;
-        if (prod.code === "securpro_dommages") {
-          const specs = s.donneesSpecifiques as { classe?: number } | null;
-          const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
-          commissionUnitaire = (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
-        } else {
-          commissionUnitaire = primeHT * (prod.tauxCommission ?? 0);
-        }
-        const commissionBrute = commissionUnitaire * nPaiements;
-        const commissionPart = s.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
-        if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
-          primesIncendie += s.montantPrime * nPaiements;
-          primesIncendieHT += primeHT * nPaiements;
-          caIncendie += (s.montantPrime - taxes) * nPaiements;
-          commissionIncendie += commissionPart;
-          genIncendieCount += 1;
-        } else {
-          primesAccident += s.montantPrime * nPaiements;
-          primesAccidentHT += primeHT * nPaiements;
-          caAccident += (s.montantPrime - taxes) * nPaiements;
-          commissionAccident += commissionPart;
-          genAccidentCount += 1;
-        }
-      }
+    // Commission = taux (Parametre, 20 % par défaut) × prime NETTE (HT) —
+    // aligné sur services/commission.ts (règle « 20 % de la prime nette »).
+    let primesIncendie = 0, primesIncendieHT = 0, caIncendie = 0;
+    let commissionIncendie = 0;
+    for (const g of incGroups) {
+      const t = incMap.get(g.montantPrime);
+      const n = g._sum.nombrePaiements ?? g._count._all;
+      const primeNette = t?.primeHT ?? g.montantPrime;
+      primesIncendie += g.montantPrime * n;
+      primesIncendieHT += primeNette * n;
+      caIncendie += (g.montantPrime - (t?.taxes ?? 0)) * n;
+      commissionIncendie += primeNette * tauxInc * n;
+    }
+    let commissionIncendieViaAgents = 0;
+    for (const g of incGroupsViaAgents) {
+      const n = g._sum.nombrePaiements ?? g._count._all;
+      commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxInc * n;
+    }
+    commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
 
-      const ca = Math.round(caIncendie + caAccident);
-      const clientsIncendie = incCount + genIncendieCount;
-      const clientsAccident = (accCount as number) + genAccidentCount;
+    // Pondéré par le nombre de paiements confirmés (1er + renouvellements),
+    // pas par le nombre de lignes — un même client renouvelé génère une
+    // prime/commission à chaque renouvellement (voir services/accident.ts).
+    // `accCount`/`incCount` (nombre de CLIENTS distincts) restent, eux, non pondérés.
+    let primesAccident = 0, primesAccidentHT = 0, caAccident = 0;
+    let commissionAccident = 0;
+    for (const g of accGroups) {
+      const t = accMap.get(g.montantPrime);
+      const n = g._sum.nombrePaiements ?? g._count._all;
+      const primeNette = t?.primeHT ?? g.montantPrime;
+      primesAccident += g.montantPrime * n;
+      primesAccidentHT += primeNette * n;
+      caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
+      commissionAccident += primeNette * tauxAcc * n;
+    }
+    let commissionAccidentViaAgents = 0;
+    for (const g of accGroupsViaAgents) {
+      const n = g._sum.nombrePaiements ?? g._count._all;
+      commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxAcc * n;
+    }
+    commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
 
-      return {
-        id: p.id,
-        nomCommerce: p.nomCommerce,
-        nomResponsable: p.nomResponsable,
-        localisation: p.localisation,
-        clientsIncendie,
-        clientsAccident,
-        total: clientsIncendie + clientsAccident,
-        primesAccident: Math.round(primesAccident),
-        primesAccidentHT: Math.round(primesAccidentHT),
-        primesIncendie: Math.round(primesIncendie),
-        primesIncendieHT: Math.round(primesIncendieHT),
-        ca,
-        commission: Math.round(commissionIncendie + commissionAccident),
-        commissionIncendie: Math.round(commissionIncendie),
-        commissionAccident: Math.round(commissionAccident),
-        commissionEncaissee: Math.round(encMap.get(p.id) ?? 0),
-      };
-    })
-  );
+    // ── Modèle générique, réparti par sous-branche + agent/direct ──
+    let genIncendieCount = 0, genAccidentCount = 0;
+    for (const g of genCatalogueGroups) {
+      const prod = produitGenParId.get(g.produitId);
+      if (!prod?.sousBranche) continue;
+      const t = tarifGenMap.get(`${g.produitId}:${g.montantPrime}`);
+      const nPaiements = g._sum.nombrePaiements ?? g._count._all;
+      const primeHT = t?.primeHT ?? g.montantPrime;
+      const taxes = t?.taxes ?? 0;
+      // Taux du produit (Produit.tauxCommission, 20 % par défaut) × prime nette.
+      const commissionBrute = primeHT * (prod.tauxCommission ?? 0.2) * nPaiements;
+      const commissionPart = g.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
+      if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
+        primesIncendie += g.montantPrime * nPaiements;
+        primesIncendieHT += primeHT * nPaiements;
+        caIncendie += (g.montantPrime - taxes) * nPaiements;
+        commissionIncendie += commissionPart;
+        genIncendieCount += g._count._all;
+      } else {
+        primesAccident += g.montantPrime * nPaiements;
+        primesAccidentHT += primeHT * nPaiements;
+        caAccident += (g.montantPrime - taxes) * nPaiements;
+        commissionAccident += commissionPart;
+        genAccidentCount += g._count._all;
+      }
+    }
+    for (const s of genDynRows) {
+      const prod = produitGenParId.get(s.produitId);
+      const resultat = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number; taxes?: number } | null;
+      if (!prod?.sousBranche || !resultat) continue;
+      const nPaiements = s.nombrePaiements ?? 1;
+      const primeHT = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
+      const taxes = resultat.taxes ?? 0;
+      let commissionUnitaire = 0;
+      if (prod.code === "securpro_dommages") {
+        const specs = s.donneesSpecifiques as { classe?: number } | null;
+        const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
+        commissionUnitaire = (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
+      } else {
+        commissionUnitaire = primeHT * (prod.tauxCommission ?? 0);
+      }
+      const commissionBrute = commissionUnitaire * nPaiements;
+      const commissionPart = s.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
+      if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
+        primesIncendie += s.montantPrime * nPaiements;
+        primesIncendieHT += primeHT * nPaiements;
+        caIncendie += (s.montantPrime - taxes) * nPaiements;
+        commissionIncendie += commissionPart;
+        genIncendieCount += 1;
+      } else {
+        primesAccident += s.montantPrime * nPaiements;
+        primesAccidentHT += primeHT * nPaiements;
+        caAccident += (s.montantPrime - taxes) * nPaiements;
+        commissionAccident += commissionPart;
+        genAccidentCount += 1;
+      }
+    }
+
+    const ca = Math.round(caIncendie + caAccident);
+    const clientsIncendie = incCount + genIncendieCount;
+    const clientsAccident = accCount + genAccidentCount;
+
+    return {
+      id: p.id,
+      nomCommerce: p.nomCommerce,
+      nomResponsable: p.nomResponsable,
+      localisation: p.localisation,
+      clientsIncendie,
+      clientsAccident,
+      total: clientsIncendie + clientsAccident,
+      primesAccident: Math.round(primesAccident),
+      primesAccidentHT: Math.round(primesAccidentHT),
+      primesIncendie: Math.round(primesIncendie),
+      primesIncendieHT: Math.round(primesIncendieHT),
+      ca,
+      commission: Math.round(commissionIncendie + commissionAccident),
+      commissionIncendie: Math.round(commissionIncendie),
+      commissionAccident: Math.round(commissionAccident),
+      commissionEncaissee: Math.round(encMap.get(p.id) ?? 0),
+    };
+  });
 
   rows.sort((a, b) => b.total - a.total);
   return { rows, taux: { tauxAcc, tauxInc } };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
@@ -60,13 +60,17 @@ export default function AssurancesAccidentsClients() {
   const [recherche, setRecherche] = useState("");
   const [verifId, setVerifId] = useState("");
 
-  const donneesFiltrees = (data ?? []).filter((c) => {
+  // Audit perf 2026-09-11 : recalculé seulement quand data/recherche changent,
+  // pas à chaque render (refresh silencieux 30s, toast, etc.).
+  const donneesFiltrees = useMemo(() => {
     const q = recherche.trim().toLowerCase();
-    if (!q) return true;
-    return [c.nom, c.prenom, c.telephone, c.numeroPolice, c.partenaireNom, c.produit.libelle]
-      .filter(Boolean)
-      .some((v) => String(v).toLowerCase().includes(q));
-  });
+    if (!q) return data ?? [];
+    return (data ?? []).filter((c) =>
+      [c.nom, c.prenom, c.telephone, c.numeroPolice, c.partenaireNom, c.produit.libelle]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [data, recherche]);
 
   function notify(m: string) {
     setToast(m);
