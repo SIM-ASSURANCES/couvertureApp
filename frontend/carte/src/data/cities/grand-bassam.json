@@ -1,0 +1,66 @@
+{
+  "id": "grand-bassam",
+  "name": "Grand-Bassam",
+  "tagline": "Ancienne capitale coloniale, ville historique classée par l'UNESCO",
+  "summary": "Première capitale de la colonie de Côte d'Ivoire (1893-1896), Grand-Bassam conserve un quartier colonial inscrit au patrimoine mondial de l'UNESCO en 2012. Station balnéaire proche d'Abidjan, elle vit du tourisme, de l'artisanat et de la pêche.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/1593622307", "wikidata": "Q582922" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "comoe",
+    "region": "sud-comoe",
+    "department": "Grand-Bassam",
+    "subPrefecture": "Grand-Bassam",
+    "status": ["Chef-lieu de département", "Commune"]
+  },
+  "population": { "value": 124567, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Littoral sud-est, entre l'océan Atlantique et la lagune, à l'embouchure du fleuve Comoé.",
+    "relief": "Cordon littoral sableux.",
+    "hydrography": ["Océan Atlantique", "Lagune Ouladine", "Embouchure du fleuve Comoé"],
+    "landmarks": ["Quartier France (ville historique)", "Phare de Grand-Bassam"]
+  },
+  "economy": {
+    "summary": "Tourisme balnéaire et patrimonial, artisanat, pêche et zone franche technologique.",
+    "sectors": [
+      { "category": "tourism", "items": ["Tourisme balnéaire et patrimonial", "Hôtellerie et restauration de bord de mer"] },
+      { "category": "crafts", "items": ["Centre artisanal (masques, tissus, bijoux)"] },
+      { "category": "fishing", "items": ["Pêche artisanale"] },
+      { "category": "services", "items": [{ "name": "VITIB", "detail": "Zone franche des technologies de l'information et de la biotechnologie" }] }
+    ]
+  },
+  "culture": {
+    "sites": ["Quartier France", { "name": "Musée national du costume", "detail": "Dans l'ancien palais du gouverneur" }, "Plages de Grand-Bassam"],
+    "heritage": [
+      {
+        "name": "Ville historique de Grand-Bassam",
+        "detail": "Patrimoine mondial de l'UNESCO depuis 2012",
+        "confidence": "verified",
+        "source": "unesco-grand-bassam"
+      }
+    ],
+    "events": [{ "name": "Abissa", "detail": "Fête traditionnelle du peuple n'zima, en fin d'année" }],
+    "traditions": ["Culture n'zima", "Culture abouré"]
+  },
+  "services": {
+    "health": ["Hôpital général de Grand-Bassam"],
+    "infrastructure": ["Autoroute Abidjan–Grand-Bassam", "Zone franche VITIB"],
+    "publicServices": ["Préfecture de département"]
+  },
+  "transport": {
+    "roads": ["Autoroute Abidjan–Grand-Bassam", "Route côtière vers Assinie et Aboisso"],
+    "modes": ["Taxis communaux", "Cars et minibus depuis Abidjan"],
+    "airports": [{ "name": "Aéroport international d'Abidjan", "detail": "À proximité, à Port-Bouët" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Équatorial de transition, chaud et humide",
+      "koppen": "Am",
+      "seasons": ["Grande saison des pluies : avril à juillet", "Petite saison des pluies : octobre à novembre", "Grande saison sèche : décembre à mars"]
+    },
+    "languages": ["Français", "N'zima", "Abouré", "Dioula"],
+    "tips": ["Vagues et courants dangereux : baignade en zone surveillée", "Quartier France : visite idéale à pied"]
+  },
+  "sources": ["ins-rgph-2021", "unesco-grand-bassam", "decret-2011-263", "editorial"]
+}

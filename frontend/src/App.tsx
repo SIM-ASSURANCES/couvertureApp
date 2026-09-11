@@ -14,6 +14,7 @@ import AgentDistributionDashboard from "./pages/agent-distribution/Dashboard";
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import Partenaires from "./pages/admin/Partenaires";
+import Carte from "./pages/admin/Carte";
 import ClientsIncendie from "./pages/admin/ClientsIncendie";
 import ClientsAccident from "./pages/admin/ClientsAccident";
 import PaiementsEnAttente from "./pages/admin/PaiementsEnAttente";
@@ -94,6 +95,7 @@ export default function App() {
           >
             <Route index element={<AdminDashboard />} />
             <Route path="partenaires" element={<Partenaires />} />
+            <Route path="carte" element={<Carte />} />
             <Route path="incendie" element={<ClientsIncendie />} />
             <Route path="accident" element={<ClientsAccident />} />
             <Route path="paiements-en-attente" element={<PaiementsEnAttente />} />

@@ -1,0 +1,57 @@
+{
+  "id": "abengourou",
+  "name": "Abengourou",
+  "tagline": "Capitale du royaume agni de l'Indénié",
+  "summary": "Chef-lieu du district de la Comoé, Abengourou est le siège du royaume agni de l'Indénié. La ville est au cœur d'une région historique de production de cacao et de café, proche de la frontière ghanéenne.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/2189893258", "wikidata": "Q1044225" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "comoe",
+    "region": "indenie-djuablin",
+    "department": "Abengourou",
+    "subPrefecture": "Abengourou",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 164424, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Est du pays, en zone forestière, près de la frontière du Ghana.",
+    "relief": "Plateaux forestiers.",
+    "hydrography": ["Fleuve Comoé, à l'ouest"]
+  },
+  "economy": {
+    "summary": "Économie agricole et forestière, commerce transfrontalier avec le Ghana.",
+    "sectors": [
+      { "category": "agriculture", "items": ["Cacao", "Café", "Hévéa", "Cultures vivrières"] },
+      { "category": "industry", "items": ["Industrie du bois"] },
+      { "category": "trade", "items": ["Commerce transfrontalier avec le Ghana"] }
+    ]
+  },
+  "culture": {
+    "sites": [{ "name": "Cour royale de l'Indénié", "detail": "Siège du roi des Agni de l'Indénié" }, "Musée Bieth"],
+    "heritage": ["Royaume agni de l'Indénié"],
+    "events": [{ "name": "Fête de l'igname", "detail": "Célébration traditionnelle agni, date à vérifier" }],
+    "traditions": ["Culture agni", "Chefferie et cour royale traditionnelles"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "infrastructure": [{ "name": "Aérodrome d'Abengourou", "confidence": "to-verify" }],
+    "publicServices": ["Préfecture de région de l'Indénié-Djuablin"]
+  },
+  "transport": {
+    "roads": ["Axe Abidjan–Adzopé–Abengourou", "Axe vers Agnibilékrou et Bondoukou (Nord)", "Axe vers la frontière ghanéenne"],
+    "modes": ["Cars interurbains", "Taxis"],
+    "airports": [{ "name": "Aérodrome d'Abengourou", "detail": "Code IATA : OGO", "confidence": "to-verify" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical humide de transition",
+      "koppen": "Aw",
+      "seasons": ["Saisons des pluies : avril à juin, puis septembre à novembre", "Saison sèche : décembre à mars"]
+    },
+    "languages": ["Français", "Agni", "Dioula"],
+    "tips": ["Cour royale : se renseigner sur les usages protocolaires avant la visite"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

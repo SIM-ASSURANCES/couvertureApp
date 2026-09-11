@@ -1,0 +1,59 @@
+{
+  "id": "korhogo",
+  "name": "Korhogo",
+  "tagline": "Capitale du pays sénoufo et pôle agricole du Nord",
+  "summary": "Chef-lieu du district des Savanes, Korhogo est le grand centre du pays sénoufo. La ville est réputée pour son artisanat, notamment les toiles peintes, et pour les filières coton, anacarde et mangue.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/1599959917", "wikidata": "Q985627" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "savanes",
+    "region": "poro",
+    "department": "Korhogo",
+    "subPrefecture": "Korhogo",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 440926, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Nord du pays, en savane soudanaise, à mi-chemin des frontières du Mali et du Burkina Faso.",
+    "relief": "Plaines ponctuées d'inselbergs.",
+    "landmarks": ["Mont Korhogo"]
+  },
+  "economy": {
+    "summary": "Agriculture et agro-industrie (coton, anacarde, mangue), artisanat et commerce transfrontalier.",
+    "sectors": [
+      { "category": "agriculture", "items": ["Coton", "Anacarde", "Mangue", "Élevage"] },
+      { "category": "industry", "items": ["Égrenage du coton"] },
+      { "category": "crafts", "items": [{ "name": "Toiles de Korhogo", "detail": "Toiles peintes traditionnelles" }, "Sculpture sénoufo", "Forge et poterie"] },
+      { "category": "trade", "items": ["Échanges avec le Mali et le Burkina Faso"] }
+    ]
+  },
+  "culture": {
+    "sites": ["Village de Fakaha (toiles peintes)", "Village de Koni (forgerons)", "Grand marché"],
+    "heritage": ["Société initiatique du Poro"],
+    "traditions": ["Culture sénoufo", "Masques et danses sénoufo (boloye)"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "higherEducation": ["Université Peleforo-Gon-Coulibaly"],
+    "infrastructure": ["Aéroport de Korhogo"],
+    "publicServices": ["Préfecture de région du Poro"]
+  },
+  "transport": {
+    "roads": ["Axe Korhogo–Ferkessédougou (corridor Abidjan–Ouagadougou)", "Axe Korhogo–Boundiali–Odienné", "Axe Korhogo–Bouaké (Sud)"],
+    "modes": ["Cars interurbains", "Taxis-motos"],
+    "airports": [{ "name": "Aéroport de Korhogo", "detail": "Code IATA : HGO" }],
+    "railways": [{ "name": "Gare la plus proche : Ferkessédougou", "detail": "Environ 50 km à vol d'oiseau" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical soudanais : une saison des pluies",
+      "koppen": "Aw",
+      "seasons": ["Saison des pluies : mai à octobre", "Saison sèche : novembre à avril", "Harmattan : décembre à février"]
+    },
+    "languages": ["Français", "Sénoufo", "Dioula"],
+    "tips": ["Fortes chaleurs de février à avril", "Villages artisanaux : visite conseillée avec un guide local"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

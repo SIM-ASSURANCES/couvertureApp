@@ -23,6 +23,7 @@ import {
   Banknote,
   HeartPulse,
   AlertTriangle,
+  Map as MapIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,6 +62,7 @@ export const adminNav: AdminNavEntry[] = [
         items: [
           { to: "/admin", label: "Tableau de bord", icon: LayoutDashboard },
           { to: "/admin/partenaires", label: "Partenaires", icon: Store },
+          { to: "/admin/carte", label: "Carte interactive", icon: MapIcon },
         ],
       },
       {

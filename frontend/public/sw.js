@@ -28,7 +28,19 @@ self.addEventListener("fetch", (event) => {
   // Ne jamais intercepter les appels API : ils doivent échouer nettement en
   // l'absence de réseau pour que la logique hors-ligne applicative (file
   // IndexedDB, calcul local) prenne le relais, pas un cache HTTP silencieux.
-  if (req.method !== "GET" || new URL(req.url).pathname.startsWith("/api/")) {
+  const url = new URL(req.url);
+  if (req.method !== "GET" || url.pathname.startsWith("/api/")) {
+    return;
+  }
+  // Carte interactive (/carte, hors espace agent IMF) : ni ses pages ni ses
+  // tuiles/photos externes (des centaines de requêtes par consultation) ne
+  // doivent remplir ce cache, qui n'a pas d'éviction.
+  if (
+    url.pathname === "/carte" ||
+    url.pathname.startsWith("/carte/") ||
+    url.hostname.endsWith("cartocdn.com") ||
+    url.hostname.endsWith("wikimedia.org")
+  ) {
     return;
   }
 

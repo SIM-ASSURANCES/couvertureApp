@@ -1,0 +1,167 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Charte SIM Assurances : Montserrat (communication institutionnelle), Arial en secours. */
+  --font-sans: var(--font-montserrat), Montserrat, Arial, ui-sans-serif, system-ui, sans-serif;
+
+  /*
+   * Couleurs corporate SIM Assurances (charte graphique) :
+   *   400 = bleu clair  #51AEE2 (Pantone 51AEE2 · R81 V174 B226)
+   *   700 = bleu foncé  #004B9C (Pantone 004B9C · R0 V75 B156)
+   *   900 = bleu marine des bandeaux et dégradés (#19307A)
+   * Contraste : 700 sur blanc = 8,4:1 (texte, boutons) ; 400 réservé aux fonds sombres et aux éléments graphiques.
+   */
+  --color-accent-50: #eef7fd;
+  --color-accent-100: #d9eefa;
+  --color-accent-200: #b5ddf4;
+  --color-accent-300: #86c6ec;
+  --color-accent-400: #51aee2;
+  --color-accent-500: #1f82c8;
+  --color-accent-600: #0a63af;
+  --color-accent-700: #004b9c;
+  --color-accent-800: #083d80;
+  --color-accent-900: #19307a;
+  --color-accent-950: #121f56;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-fade-in: fade-in 180ms var(--ease-out-soft) both;
+  --animate-slide-in: slide-in 260ms var(--ease-out-soft) both;
+  --animate-rise: rise 220ms var(--ease-out-soft) both;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-in {
+    from { opacity: 0; transform: translateX(-12px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    height: 100%;
+    overscroll-behavior: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent-600);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Dégradé signature des bandeaux de la charte (bleu marine → bleu clair). */
+  .brand-band {
+    background: linear-gradient(90deg, #19307a 0%, #194187 45%, #1985b9 100%);
+  }
+  .surface {
+    @apply bg-white/95 shadow-[0_8px_30px_rgb(0_0_0/0.08)] ring-1 ring-black/5 backdrop-blur-md dark:bg-zinc-900/95 dark:ring-white/10;
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(161 161 170 / 0.5) transparent;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* --- Marqueur de sélection (seul élément DOM posé sur la carte) --- */
+.selection-marker {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+.selection-marker::before,
+.selection-marker::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+}
+.selection-marker::before {
+  background: var(--color-accent-700);
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+}
+.selection-marker::after {
+  border: 2px solid var(--color-accent-700);
+  animation: pulse-ring 1.8s var(--ease-out-soft) infinite;
+}
+.dark .selection-marker[data-kind="city"]::before {
+  background: var(--color-accent-400);
+  border-color: #18181b;
+}
+.dark .selection-marker[data-kind="city"]::after {
+  border-color: var(--color-accent-400);
+}
+.selection-marker[data-kind="locality"]::before {
+  background: #3f3f46;
+}
+.selection-marker[data-kind="locality"]::after {
+  border-color: #3f3f46;
+}
+.dark .selection-marker[data-kind="locality"]::before {
+  background: #e4e4e7;
+  border-color: #18181b;
+}
+.dark .selection-marker[data-kind="locality"]::after {
+  border-color: #e4e4e7;
+}
+.selection-marker[data-kind="user"]::before {
+  background: #2563eb;
+}
+.selection-marker[data-kind="user"]::after {
+  border-color: #2563eb;
+}
+@keyframes pulse-ring {
+  from { transform: scale(1); opacity: 0.9; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+
+/* --- Habillage MapLibre --- */
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
+.dark .maplibregl-ctrl-attrib {
+  background: rgb(24 24 27 / 0.8) !important;
+  color: #a1a1aa;
+}
+.dark .maplibregl-ctrl-attrib a {
+  color: #d4d4d8;
+}
+.dark .maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
+.maplibregl-canvas:focus-visible {
+  outline: 2px solid var(--color-accent-600);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

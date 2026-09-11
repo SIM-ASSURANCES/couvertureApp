@@ -1,0 +1,319 @@
+{
+  "generatedAt": "2026-09-10",
+  "cities": {
+    "abengourou": {
+      "coordinates": {
+        "lat": 6.7269,
+        "lon": -3.49684,
+        "source": "osm",
+        "ref": "node/2189893258"
+      },
+      "elevation": {
+        "value": 197,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Abengourou",
+        "url": "https://fr.wikipedia.org/wiki/Abengourou"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/d/dd/RCI-Abengourou-Cour_Royale_de_l%27Ind%C3%A9ni%C3%A9.jpg/960px-RCI-Abengourou-Cour_Royale_de_l%27Ind%C3%A9ni%C3%A9.jpg",
+        "width": 960,
+        "height": 720,
+        "author": "WILLAV-FR",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:RCI-Abengourou-Cour_Royale_de_l%27Ind%C3%A9ni%C3%A9.jpg",
+        "title": "RCI-Abengourou-Cour Royale de l'Indénié"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 204,
+        "durationMin": 194,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "abidjan": {
+      "coordinates": {
+        "lat": 5.32036,
+        "lon": -4.01611,
+        "source": "osm",
+        "ref": "node/1046100133"
+      },
+      "elevation": {
+        "value": 18,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Abidjan",
+        "url": "https://fr.wikipedia.org/wiki/Abidjan"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/93/Plateau_2010%2C_Abidjan.jpg/960px-Plateau_2010%2C_Abidjan.jpg",
+        "width": 960,
+        "height": 577,
+        "author": "RyansWorld",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Plateau_2010,_Abidjan.jpg",
+        "title": "Plateau 2010, Abidjan"
+      }
+    },
+    "bouake": {
+      "coordinates": {
+        "lat": 7.68902,
+        "lon": -5.02836,
+        "source": "osm",
+        "ref": "node/27565008"
+      },
+      "elevation": {
+        "value": 312,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Bouaké",
+        "url": "https://fr.wikipedia.org/wiki/Bouak%C3%A9"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a3/Cibkechu.JPG/960px-Cibkechu.JPG",
+        "width": 960,
+        "height": 720,
+        "author": "Zenman",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Cibkechu.JPG",
+        "title": "Cibkechu"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 344,
+        "durationMin": 242,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "daloa": {
+      "coordinates": {
+        "lat": 6.88692,
+        "lon": -6.45299,
+        "source": "osm",
+        "ref": "node/1597912529"
+      },
+      "elevation": {
+        "value": 299,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Daloa",
+        "url": "https://fr.wikipedia.org/wiki/Daloa"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/5/51/CENTRE_CULTUREL_DE_DALOA_COTE_D%27IVOIRE.jpg/960px-CENTRE_CULTUREL_DE_DALOA_COTE_D%27IVOIRE.jpg",
+        "width": 960,
+        "height": 720,
+        "author": "KAHACHO",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:CENTRE_CULTUREL_DE_DALOA_COTE_D%27IVOIRE.jpg",
+        "title": "CENTRE CULTUREL DE DALOA COTE D'IVOIRE"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 377,
+        "durationMin": 302,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "grand-bassam": {
+      "coordinates": {
+        "lat": 5.21288,
+        "lon": -3.74323,
+        "source": "osm",
+        "ref": "node/1593622307"
+      },
+      "elevation": {
+        "value": 7,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Grand-Bassam",
+        "url": "https://fr.wikipedia.org/wiki/Grand-Bassam"
+      },
+      "image": {
+        "src": "https://upload.wikimedia.org/wikipedia/commons/7/7d/800px-Grand-Bassam.jpg",
+        "width": 960,
+        "height": 610,
+        "author": "Joker-x",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:800px-Grand-Bassam.jpg",
+        "title": "800px-Grand-Bassam"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 38,
+        "durationMin": 36,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "korhogo": {
+      "coordinates": {
+        "lat": 9.45807,
+        "lon": -5.63163,
+        "source": "osm",
+        "ref": "node/1599959917"
+      },
+      "elevation": {
+        "value": 386,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Korhogo",
+        "url": "https://fr.wikipedia.org/wiki/Korhogo"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/63/Mosque_in_Korhogo_ap_001.jpg/960px-Mosque_in_Korhogo_ap_001.jpg",
+        "width": 960,
+        "height": 720,
+        "author": "Ariel Palmon",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Mosque_in_Korhogo_ap_001.jpg",
+        "title": "Mosque in Korhogo ap 001"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 564,
+        "durationMin": 415,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "man": {
+      "coordinates": {
+        "lat": 7.41026,
+        "lon": -7.55037,
+        "source": "osm",
+        "ref": "node/1597913597"
+      },
+      "elevation": {
+        "value": 329,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Man (Côte d'Ivoire)",
+        "url": "https://fr.wikipedia.org/wiki/Man_(C%C3%B4te_d'Ivoire)"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/73/Man_CIV_3713.jpg/960px-Man_CIV_3713.jpg",
+        "width": 960,
+        "height": 640,
+        "author": "GuillaumeG",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Man_CIV_3713.jpg",
+        "title": "Man CIV 3713"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 565,
+        "durationMin": 495,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "odienne": {
+      "coordinates": {
+        "lat": 9.50443,
+        "lon": -7.56194,
+        "source": "osm",
+        "ref": "node/319225802"
+      },
+      "elevation": {
+        "value": 437,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Odienné",
+        "url": "https://fr.wikipedia.org/wiki/Odienn%C3%A9"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/e/e8/Medersa_Odienne_2.JPG/960px-Medersa_Odienne_2.JPG",
+        "width": 960,
+        "height": 643,
+        "author": "Zenman",
+        "license": "CC BY-SA 3.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Medersa_Odienne_2.JPG",
+        "title": "Medersa Odienne 2"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 795,
+        "durationMin": 628,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "san-pedro": {
+      "coordinates": {
+        "lat": 4.759,
+        "lon": -6.64639,
+        "source": "osm",
+        "ref": "node/243642619"
+      },
+      "elevation": {
+        "value": 12,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "San-Pédro",
+        "url": "https://fr.wikipedia.org/wiki/San-P%C3%A9dro"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/79/San_P%C3%A9dro5.JPG/960px-San_P%C3%A9dro5.JPG",
+        "width": 960,
+        "height": 720,
+        "author": "Axe",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:San_P%C3%A9dro5.JPG",
+        "title": "San Pédro5"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 332,
+        "durationMin": 310,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    },
+    "yamoussoukro": {
+      "coordinates": {
+        "lat": 6.82001,
+        "lon": -5.2776,
+        "source": "osm",
+        "ref": "node/319225774"
+      },
+      "elevation": {
+        "value": 214,
+        "source": "wikidata"
+      },
+      "wikipedia": {
+        "title": "Yamoussoukro",
+        "url": "https://fr.wikipedia.org/wiki/Yamoussoukro"
+      },
+      "image": {
+        "src": "https://thumb.wikimedia.org/wikipedia/commons/thumb/9/9f/Inphb_de_Yamoussoukro_%28Bosson%29.jpg/960px-Inphb_de_Yamoussoukro_%28Bosson%29.jpg",
+        "width": 960,
+        "height": 540,
+        "author": "HONORE BOSSON",
+        "license": "CC BY-SA 4.0",
+        "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+        "pageUrl": "https://commons.wikimedia.org/wiki/File:Inphb_de_Yamoussoukro_(Bosson).jpg",
+        "title": "Inphb de Yamoussoukro (Bosson)"
+      },
+      "roadFromAbidjan": {
+        "distanceKm": 237,
+        "durationMin": 169,
+        "source": "osrm",
+        "computedAt": "2026-09-10"
+      }
+    }
+  }
+}

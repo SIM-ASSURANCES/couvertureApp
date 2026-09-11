@@ -1,0 +1,63 @@
+{
+  "id": "yamoussoukro",
+  "name": "Yamoussoukro",
+  "tagline": "Capitale politique et administrative depuis 1983",
+  "summary": "Ville natale de Félix Houphouët-Boigny, Yamoussoukro est la capitale politique du pays depuis 1983. Elle est connue pour ses larges avenues, la basilique Notre-Dame-de-la-Paix et ses établissements d'enseignement supérieur.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/319225774", "wikidata": "Q3768" },
+  "admin": {
+    "confidence": "to-verify",
+    "sources": ["decret-2011-263"],
+    "district": "yamoussoukro",
+    "region": null,
+    "department": "Yamoussoukro",
+    "status": ["Capitale politique", "District autonome"]
+  },
+  "population": { "value": 340234, "year": 2021, "scope": "Ville (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Centre du pays, en zone de transition entre forêt et savane (« V baoulé »).",
+    "relief": "Plateau faiblement ondulé.",
+    "hydrography": ["Lacs artificiels de la ville, dont le lac aux caïmans"],
+    "landmarks": ["Basilique Notre-Dame-de-la-Paix", "Fondation Félix-Houphouët-Boigny"]
+  },
+  "economy": {
+    "summary": "Économie tournée vers l'administration, l'enseignement supérieur, le tourisme et l'agriculture.",
+    "sectors": [
+      { "category": "services", "items": ["Administration publique", "Enseignement supérieur (INP-HB)"] },
+      { "category": "tourism", "items": ["Tourisme religieux, d'affaires et de congrès"] },
+      { "category": "agriculture", "items": ["Cultures vivrières (igname, manioc)", "Cacao et café dans les environs"] }
+    ]
+  },
+  "culture": {
+    "sites": [
+      { "name": "Basilique Notre-Dame-de-la-Paix", "detail": "Consacrée en 1990 par le pape Jean-Paul II" },
+      "Lac aux caïmans",
+      "Fondation Félix-Houphouët-Boigny pour la recherche de la paix",
+      "Grande mosquée de Yamoussoukro"
+    ],
+    "heritage": ["Architecture monumentale des années 1970-1990"],
+    "traditions": ["Culture baoulé", { "name": "Paquinou", "detail": "Fêtes de Pâques en pays baoulé" }]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "education": ["Lycée scientifique de Yamoussoukro"],
+    "higherEducation": [{ "name": "Institut national polytechnique Félix-Houphouët-Boigny (INP-HB)" }],
+    "infrastructure": ["Aéroport de Yamoussoukro", "Autoroute du Nord"],
+    "publicServices": ["Gouvernorat du district autonome"]
+  },
+  "transport": {
+    "roads": ["Autoroute du Nord (Abidjan–Yamoussoukro)", "Axe vers Bouaké et le Nord", "Axe vers Bouaflé et Daloa (Ouest)"],
+    "modes": ["Cars interurbains", "Taxis"],
+    "airports": [{ "name": "Aéroport de Yamoussoukro", "detail": "Code IATA : ASK" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical humide de transition (climat baouléen)",
+      "koppen": "Aw",
+      "seasons": ["Grande saison des pluies : mars à juin", "Seconde saison des pluies : septembre à octobre", "Harmattan possible de décembre à février"]
+    },
+    "languages": ["Français", "Baoulé", "Dioula"],
+    "tips": ["Visites guidées de la basilique", "Sites éloignés les uns des autres : prévoir un véhicule"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

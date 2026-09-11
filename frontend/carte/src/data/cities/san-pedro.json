@@ -1,0 +1,60 @@
+{
+  "id": "san-pedro",
+  "name": "San-Pédro",
+  "tagline": "Deuxième port du pays, tourné vers l'exportation du cacao",
+  "summary": "Ville portuaire du Sud-Ouest développée autour d'un port en eau profonde, San-Pédro est un grand point d'exportation du cacao ivoirien. Elle est aussi une porte d'entrée vers les plages du Bas-Sassandra.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/243642619", "wikidata": "Q609831" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "bas-sassandra",
+    "region": "san-pedro",
+    "department": "San-Pédro",
+    "subPrefecture": "San-Pédro",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 390654, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Littoral sud-ouest, sur le golfe de Guinée.",
+    "relief": "Plaine côtière, forêt dense humide dans l'arrière-pays.",
+    "hydrography": ["Golfe de Guinée", "Fleuve San-Pédro"],
+    "landmarks": ["Port autonome de San-Pédro"]
+  },
+  "economy": {
+    "summary": "Économie portuaire et agro-exportatrice : cacao, bois, hévéa, palmier à huile.",
+    "sectors": [
+      { "category": "logistics", "items": [{ "name": "Port autonome de San-Pédro", "detail": "Grand port d'exportation du cacao" }] },
+      { "category": "agriculture", "items": ["Cacao", "Hévéa", "Palmier à huile", "Café"] },
+      { "category": "industry", "items": ["Transformation du cacao", "Industrie du bois"] },
+      { "category": "tourism", "items": ["Tourisme balnéaire"] }
+    ]
+  },
+  "culture": {
+    "sites": ["Plage de Monogaga", "Baie de Grand-Béréby (à proximité)"],
+    "heritage": [{ "name": "Parc national de Taï", "detail": "Patrimoine mondial de l'UNESCO, dans l'arrière-pays" }],
+    "traditions": ["Peuples krou (bakwé, kroumen)"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "higherEducation": [{ "name": "Université de San-Pédro", "confidence": "to-verify" }],
+    "infrastructure": ["Port autonome de San-Pédro", "Aéroport de San-Pédro"],
+    "publicServices": ["Préfecture de région de San-Pédro"]
+  },
+  "transport": {
+    "roads": ["Côtière Abidjan–Sassandra–San-Pédro", "Axe San-Pédro–Soubré (Centre-Ouest)", "Axe vers Tabou et le Liberia"],
+    "modes": ["Cars interurbains", "Taxis"],
+    "airports": [{ "name": "Aéroport de San-Pédro", "detail": "Code IATA : SPY" }],
+    "ports": ["Port autonome de San-Pédro"]
+  },
+  "practical": {
+    "climate": {
+      "type": "Équatorial chaud et humide, fortes précipitations",
+      "koppen": "Am",
+      "seasons": ["Grande saison des pluies : avril à juillet", "Petite saison des pluies : octobre à novembre"]
+    },
+    "languages": ["Français", "Bakwé", "Kroumen", "Dioula", "Baoulé"],
+    "tips": ["Océan : forts courants, baignade dans les zones surveillées"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

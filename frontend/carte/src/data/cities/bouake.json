@@ -1,0 +1,68 @@
+{
+  "id": "bouake",
+  "name": "Bouaké",
+  "tagline": "Deuxième ville du pays, carrefour commercial du Centre",
+  "summary": "Grande ville du pays baoulé, Bouaké est un nœud routier et ferroviaire majeur entre le Sud et le Nord. Son grand marché et ses activités de transformation en font un pôle commercial régional.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/27565008", "wikidata": "Q271000" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "vallee-du-bandama",
+    "region": "gbeke",
+    "department": "Bouaké",
+    "subPrefecture": "Bouaké",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": {
+    "value": 832371,
+    "year": 2021,
+    "scope": "Localité (périmètre INS)",
+    "source": "ins-rgph-2021",
+    "note": "Certaines publications retiennent environ 740 000 hab. pour la ville au sens strict."
+  },
+  "geography": {
+    "situation": "Centre du pays, en savane, sur le grand axe Abidjan–Ouagadougou.",
+    "relief": "Plateau de savane.",
+    "hydrography": ["Lac de Kossou (Bandama), à l'ouest"],
+    "landmarks": ["Grand marché de Bouaké"]
+  },
+  "economy": {
+    "summary": "Pôle commercial et agro-industriel : négoce, transformation de l'anacarde, textile.",
+    "sectors": [
+      { "category": "trade", "items": ["Grand marché de Bouaké", "Commerce de gros de produits vivriers"] },
+      { "category": "industry", "items": ["Textile", "Transformation de l'anacarde"] },
+      { "category": "agriculture", "items": ["Anacarde (noix de cajou)", "Igname", "Coton"] },
+      { "category": "logistics", "items": ["Carrefour routier et ferroviaire Nord–Sud"] }
+    ]
+  },
+  "culture": {
+    "sites": [{ "name": "Stade de la Paix", "detail": "Stade hôte de la CAN 2023" }, "Grand marché"],
+    "heritage": ["Artisanat baoulé (tissage, sculpture)"],
+    "events": ["Carnaval de Bouaké"],
+    "traditions": ["Culture baoulé", { "name": "Paquinou", "detail": "Fêtes de Pâques en pays baoulé" }]
+  },
+  "services": {
+    "health": ["CHU de Bouaké"],
+    "education": ["Lycées publics et privés"],
+    "higherEducation": ["Université Alassane-Ouattara"],
+    "infrastructure": ["Aéroport de Bouaké", "Gare ferroviaire (ligne Abidjan–Ouagadougou)"],
+    "publicServices": ["Préfecture de région du Gbêkê"]
+  },
+  "transport": {
+    "roads": ["Axe Abidjan–Yamoussoukro–Bouaké", "Axe vers Katiola, Ferkessédougou et le Burkina Faso", "Axe vers Béoumi et l'Ouest"],
+    "modes": ["Train voyageurs (Sitarail)", "Cars interurbains", "Taxis et taxis-motos"],
+    "airports": [{ "name": "Aéroport de Bouaké", "detail": "Code IATA : BYK" }],
+    "railways": ["Gare de Bouaké (ligne Abidjan–Ouagadougou)"]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical humide de transition (climat baouléen)",
+      "koppen": "Aw",
+      "seasons": ["Saison des pluies : mars à juin, puis septembre à octobre", "Saison sèche et harmattan : décembre à février"]
+    },
+    "languages": ["Français", "Baoulé", "Dioula"],
+    "tips": ["Étape pratique sur la route du Nord", "Marchés très animés : vigilance sur les effets personnels"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

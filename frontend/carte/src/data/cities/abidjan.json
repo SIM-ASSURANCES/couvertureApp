@@ -1,0 +1,92 @@
+{
+  "id": "abidjan",
+  "name": "Abidjan",
+  "tagline": "Capitale économique, premier port et premier pôle urbain du pays",
+  "summary": "Métropole bâtie autour de la lagune Ébrié, Abidjan concentre l'essentiel de l'activité économique, portuaire et financière du pays. Le district autonome regroupe environ un cinquième de la population nationale.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/1046100133", "wikidata": "Q1515" },
+  "admin": {
+    "confidence": "to-verify",
+    "sources": ["decret-2011-263"],
+    "district": "abidjan",
+    "region": null,
+    "department": "Abidjan",
+    "status": ["Capitale économique", "District autonome", "10 communes (ville)"]
+  },
+  "population": {
+    "value": 5616633,
+    "year": 2021,
+    "scope": "Ville d'Abidjan (10 communes)",
+    "source": "ins-rgph-2021",
+    "note": "District autonome : 6 321 017 hab. (RGPH 2021)."
+  },
+  "area": {
+    "value": 2119,
+    "unit": "km²",
+    "scope": "District autonome",
+    "source": "wikidata",
+    "confidence": "to-verify",
+    "note": "À confirmer avec le jeu RGPH 2021 publié sur data.gouv.ci."
+  },
+  "geography": {
+    "confidence": "to-verify",
+    "situation": "Littoral sud-est, sur les rives de la lagune Ébrié, ouverte sur le golfe de Guinée par le canal de Vridi.",
+    "relief": "Plateaux côtiers entaillés par la lagune, altitude faible.",
+    "hydrography": ["Lagune Ébrié", { "name": "Canal de Vridi", "detail": "Accès du port à l'océan" }, "Golfe de Guinée"],
+    "landmarks": ["Le Plateau (quartier des affaires)", "Parc national du Banco"]
+  },
+  "economy": {
+    "summary": "Premier centre économique du pays : port, industrie, finance, commerce et sièges d'institutions régionales.",
+    "sectors": [
+      { "category": "logistics", "items": [{ "name": "Port autonome d'Abidjan", "detail": "Premier port du pays" }, "Fret aérien (aéroport FHB)"] },
+      { "category": "industry", "items": ["Zones industrielles de Yopougon, Koumassi et Vridi", "Raffinage pétrolier (Vridi)", "Transformation du cacao"] },
+      {
+        "category": "services",
+        "items": [
+          { "name": "BRVM", "detail": "Siège de la Bourse régionale des valeurs mobilières", "url": "https://www.brvm.org/" },
+          { "name": "Banque africaine de développement", "detail": "Siège", "url": "https://www.afdb.org/" },
+          "Banques, assurances, télécommunications"
+        ]
+      },
+      { "category": "trade", "items": ["Marchés d'Adjamé et de Treichville", "Commerce de gros et de détail"] }
+    ]
+  },
+  "culture": {
+    "sites": ["Cathédrale Saint-Paul (Plateau)", "Parc national du Banco", "Musée des civilisations de Côte d'Ivoire", "Plages de Port-Bouët"],
+    "heritage": ["Architecture moderne du Plateau", "Villages ébrié intégrés à la ville"],
+    "events": [
+      { "name": "FEMUA", "detail": "Festival des musiques urbaines d'Anoumabo" },
+      { "name": "MASA", "detail": "Marché des arts du spectacle d'Abidjan" }
+    ],
+    "traditions": ["Culture ébrié (tchaman)", "Nouchi, parler urbain abidjanais"]
+  },
+  "services": {
+    "health": ["CHU de Cocody", "CHU de Treichville", "CHU de Yopougon", "Institut de cardiologie d'Abidjan"],
+    "education": ["Nombreux lycées publics et privés"],
+    "higherEducation": ["Université Félix-Houphouët-Boigny (Cocody)", "Université Nangui-Abrogoua", "Grandes écoles publiques et privées"],
+    "infrastructure": ["Port autonome d'Abidjan", "Aéroport international Félix-Houphouët-Boigny", "Pont Henri-Konan-Bédié"],
+    "publicServices": ["Ministères et administrations centrales (Plateau)", "Représentations diplomatiques"]
+  },
+  "transport": {
+    "roads": ["Autoroute du Nord vers Yamoussoukro", "Autoroute Abidjan–Grand-Bassam", "Côtière vers San-Pédro", "Axe Abidjan–Aboisso vers le Ghana"],
+    "modes": ["Bus SOTRA", "Bateaux-bus sur la lagune", "Taxis compteurs et woro-woro", "Gbakas (minibus)"],
+    "airports": [{ "name": "Aéroport international Félix-Houphouët-Boigny", "detail": "Code IATA : ABJ" }],
+    "railways": [{ "name": "Ligne Abidjan–Ouagadougou (Sitarail)", "detail": "Gare voyageurs de Treichville" }],
+    "ports": ["Port autonome d'Abidjan"]
+  },
+  "practical": {
+    "climate": {
+      "type": "Équatorial de transition, chaud et humide",
+      "koppen": "Am",
+      "seasons": [
+        "Grande saison des pluies : avril à juillet",
+        "Petite saison sèche : août à septembre",
+        "Petite saison des pluies : octobre à novembre",
+        "Grande saison sèche : décembre à mars"
+      ]
+    },
+    "languages": ["Français", "Nouchi", "Dioula", "Baoulé", "Langues lagunaires (ébrié, attié…)"],
+    "tips": ["Circulation très dense aux heures de pointe", "Privilégier taxis compteurs ou VTC", "Chaleur humide : hydratation et protection solaire"]
+  },
+  "sources": ["ins-rgph-2021", "datagouv-rgph-2021-districts", "decret-2011-263", "editorial"]
+}

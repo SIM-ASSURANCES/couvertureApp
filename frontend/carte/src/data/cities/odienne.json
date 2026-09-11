@@ -1,0 +1,71 @@
+{
+  "id": "odienne",
+  "name": "Odienné",
+  "tagline": "Porte du Nord-Ouest, au pays malinké du Kabadougou",
+  "summary": "Chef-lieu du district du Denguélé, Odienné est la grande ville du Nord-Ouest, proche des frontières de la Guinée et du Mali. La région est connue pour son patrimoine islamique, dont la mosquée soudanaise de Samatiguila.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/319225802", "wikidata": "Q506811" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "denguele",
+    "region": "kabadougou",
+    "department": "Odienné",
+    "subPrefecture": "Odienné",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 86279, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Extrême nord-ouest, en savane soudanaise, près des frontières guinéenne et malienne.",
+    "relief": "Plateaux et collines du Denguélé."
+  },
+  "economy": {
+    "summary": "Agriculture, élevage et commerce transfrontalier.",
+    "sectors": [
+      { "category": "agriculture", "items": ["Anacarde", "Coton", "Riz", "Élevage bovin"] },
+      { "category": "trade", "items": ["Échanges avec la Guinée et le Mali"] },
+      { "category": "resources", "items": [{ "name": "Orpaillage et exploration aurifère dans la région", "confidence": "to-verify" }] }
+    ]
+  },
+  "culture": {
+    "sites": [
+      {
+        "name": "Mosquée de Samatiguila",
+        "detail": "Style soudanais, dans la région du Kabadougou",
+        "confidence": "verified",
+        "source": "unesco-mosquees-soudanaises"
+      },
+      "Médersa d'Odienné"
+    ],
+    "heritage": [
+      {
+        "name": "Mosquées de style soudanais du nord ivoirien",
+        "detail": "Bien en série inscrit au patrimoine mondial en 2021",
+        "confidence": "verified",
+        "source": "unesco-mosquees-soudanaises"
+      }
+    ],
+    "traditions": ["Culture malinké", "Tradition islamique ancienne"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "higherEducation": [{ "name": "Université d'Odienné", "detail": "Ouverture à confirmer", "confidence": "to-verify" }],
+    "infrastructure": ["Aéroport d'Odienné"],
+    "publicServices": ["Préfecture de région du Kabadougou"]
+  },
+  "transport": {
+    "roads": ["Axe Odienné–Boundiali–Korhogo", "Axe Odienné–Touba–Man", "Routes vers la Guinée et le Mali"],
+    "modes": ["Cars interurbains", "Taxis-motos"],
+    "airports": [{ "name": "Aéroport d'Odienné", "detail": "Code IATA : KEO" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical soudanais : une saison des pluies",
+      "koppen": "Aw",
+      "seasons": ["Saison des pluies : mai à octobre", "Saison sèche et harmattan : novembre à mars"]
+    },
+    "languages": ["Français", "Malinké", "Dioula"],
+    "tips": ["Longue route depuis Abidjan : prévoir une étape (Man ou Korhogo)"]
+  },
+  "sources": ["ins-rgph-2021", "unesco-mosquees-soudanaises", "decret-2011-263", "editorial"]
+}

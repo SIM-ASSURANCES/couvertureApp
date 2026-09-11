@@ -1,0 +1,60 @@
+{
+  "id": "man",
+  "name": "Man",
+  "tagline": "La cité des dix-huit montagnes, porte de l'Ouest",
+  "summary": "Nichée au pied de la Dent de Man, la ville est le chef-lieu du district des Montagnes. Reliefs, cascades et traditions des masques dan en font une destination majeure de l'Ouest.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/1597913597", "wikidata": "Q1191011" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "montagnes",
+    "region": "tonkpi",
+    "department": "Man",
+    "subPrefecture": "Man",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 241969, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Ouest du pays, en région montagneuse, près des frontières du Liberia et de la Guinée.",
+    "relief": "Relief montagneux de la dorsale guinéenne.",
+    "hydrography": ["Cascade de Man"],
+    "landmarks": ["Dent de Man", "Mont Tonkpi"]
+  },
+  "economy": {
+    "summary": "Agriculture de montagne, commerce frontalier et tourisme de nature.",
+    "sectors": [
+      { "category": "agriculture", "items": ["Café", "Cacao", "Riz", "Cultures maraîchères"] },
+      { "category": "trade", "items": ["Échanges avec la Guinée et le Liberia"] },
+      { "category": "tourism", "items": ["Randonnée et tourisme de nature"] },
+      { "category": "resources", "items": [{ "name": "Gisements miniers dans la région (fer, nickel)", "confidence": "to-verify" }] }
+    ]
+  },
+  "culture": {
+    "sites": ["Dent de Man", "Cascade de Man", "Mont Tonkpi", "Ponts de lianes de la région"],
+    "heritage": ["Masques dan (yacouba)"],
+    "events": [{ "name": "Festival des masques", "detail": "Date et périodicité à vérifier" }],
+    "traditions": ["Culture dan (yacouba) et wè", "Danseurs échassiers", "Masques jongleurs"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "higherEducation": ["Université de Man"],
+    "infrastructure": ["Aéroport de Man"],
+    "publicServices": ["Préfecture de région du Tonkpi"]
+  },
+  "transport": {
+    "roads": ["Axe Man–Duékoué–Daloa", "Axe Man–Danané (Guinée, Liberia)", "Axe Man–Touba–Odienné"],
+    "modes": ["Cars interurbains", "Taxis", "Taxis-motos"],
+    "airports": [{ "name": "Aéroport de Man", "detail": "Code IATA : MJC" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical de montagne, plus frais et pluvieux",
+      "koppen": "Aw",
+      "seasons": ["Saison des pluies : mars à octobre", "Saison sèche : novembre à février"]
+    },
+    "languages": ["Français", "Dan (yacouba)", "Wè", "Dioula"],
+    "tips": ["Ascension de la Dent de Man : partir tôt, avec un guide", "Soirées plus fraîches qu'au Sud"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}

@@ -1,0 +1,56 @@
+{
+  "id": "daloa",
+  "name": "Daloa",
+  "tagline": "Carrefour commercial du Centre-Ouest, au cœur des zones cacaoyères",
+  "summary": "Chef-lieu du district du Sassandra-Marahoué, Daloa est un grand centre commercial du Centre-Ouest, au cœur d'une région productrice de cacao et de café.",
+  "updatedAt": "2026-09-10",
+  "refs": { "osm": "node/1597912529", "wikidata": "Q860304" },
+  "admin": {
+    "confidence": "verified",
+    "sources": ["decret-2011-263"],
+    "district": "sassandra-marahoue",
+    "region": "haut-sassandra",
+    "department": "Daloa",
+    "subPrefecture": "Daloa",
+    "status": ["Chef-lieu de district", "Chef-lieu de région", "Commune"]
+  },
+  "population": { "value": 421879, "year": 2021, "scope": "Localité (périmètre INS)", "source": "ins-rgph-2021" },
+  "geography": {
+    "situation": "Centre-Ouest du pays, en zone forestière.",
+    "relief": "Plateaux forestiers.",
+    "hydrography": ["Fleuve Sassandra, à l'ouest"]
+  },
+  "economy": {
+    "summary": "Commerce régional et filières agricoles : cacao, café, cultures vivrières.",
+    "sectors": [
+      { "category": "agriculture", "items": ["Cacao", "Café", "Riz et cultures vivrières"] },
+      { "category": "trade", "items": ["Marché central", "Négoce de produits agricoles"] },
+      { "category": "services", "items": ["Administration régionale", "Enseignement supérieur"] }
+    ]
+  },
+  "culture": {
+    "sites": ["Centre culturel de Daloa", "Marché central"],
+    "traditions": ["Culture bété", "Musiques et danses bété"]
+  },
+  "services": {
+    "health": ["Centre hospitalier régional (CHR)"],
+    "higherEducation": ["Université Jean-Lorougnon-Guédé"],
+    "infrastructure": ["Aérodrome de Daloa"],
+    "publicServices": ["Préfecture de région du Haut-Sassandra"]
+  },
+  "transport": {
+    "roads": ["Axe Yamoussoukro–Daloa", "Axe Daloa–Duékoué–Man (Ouest)", "Axe Daloa–Issia–Soubré (vers San-Pédro)", "Axe Daloa–Vavoua–Séguéla"],
+    "modes": ["Cars interurbains", "Taxis", "Taxis-motos"],
+    "airports": [{ "name": "Aérodrome de Daloa", "detail": "Code IATA : DJO" }]
+  },
+  "practical": {
+    "climate": {
+      "type": "Tropical humide de transition",
+      "koppen": "Aw",
+      "seasons": ["Saison des pluies : mars à juin, puis septembre à octobre", "Saison sèche : décembre à février"]
+    },
+    "languages": ["Français", "Bété", "Dioula", "Baoulé"],
+    "tips": ["Base pratique pour rayonner vers l'Ouest et le Sud-Ouest"]
+  },
+  "sources": ["ins-rgph-2021", "decret-2011-263", "editorial"]
+}
