@@ -1,6 +1,6 @@
 import { prisma } from "../db.js";
 import type { Souscription, TarifProduit } from "@prisma/client";
-import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
+import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementDetailRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
 
 /**
  * Aplatit une souscription du modèle générique (RelaxMoto/Auto, RelaxAccidents
@@ -109,13 +109,15 @@ export async function mapperSouscriptionGenerique(
   }
 
   // RelaxAccidents générale — tarif fixe (refonte 2026-08-31) : détail de la
-  // prime (Prime HT/Accessoires/Taxes) lu depuis TarifProduit, affiché sur le
-  // contrat PDF (voir services/contractHtml.ts::renderContratRelaxAccidentsGenerale).
+  // prime (Prime nette/Accessoires/Taxes) lu depuis TarifProduit, affiché sur
+  // le contrat PDF (voir services/contractHtml.ts::renderContratRelaxAccidentsGenerale).
   // Recherché par FORMULE (classe/statut CNPS/périodicité), pas par prime :
-  // le montant payé inclut le supplément moto/tricycle éventuel (voir
-  // surchargeMoyenDeplacementRelaxAccidentsGenerale), qui ne correspond donc
-  // plus au prix d'aucune ligne TarifProduit — le supplément est ajouté ici
-  // à l'Accessoires affiché pour que Prime HT + Accessoires + Taxes = Prime TTC.
+  // le montant payé inclut le supplément moto/tricycle éventuel, qui ne
+  // correspond donc plus au prix d'aucune ligne TarifProduit — sa propre
+  // décomposition (Prime nette 1399/140, Accessoires 0, Taxes 101/10 selon
+  // annuel/mensuel — voir SURCHARGE_MOTO_TRICYCLE_DETAIL_RELAXACCIDENTS_GENERALE)
+  // est ajoutée composante par composante pour que Prime nette + Accessoires
+  // + Taxes = Prime TTC reste vrai.
   let primeHT: number | null = null;
   let fg: number | null = null;
   let taxes: number | null = null;
@@ -125,9 +127,10 @@ export async function mapperSouscriptionGenerique(
   const raMoyenDeplacement = typeof d?.moyenDeplacement === "string" ? d.moyenDeplacement : null;
   if (s.produit.code === "relaxaccidents" && raClasse && raCnpsDeclare != null && raCycle) {
     const tarif = await trouverTarifParVariante(s.produitId, formuleRelaxAccidentsGenerale(raClasse, raCnpsDeclare, raCycle));
-    primeHT = tarif?.primeHT ?? null;
-    taxes = tarif?.taxes ?? null;
-    fg = tarif != null ? (tarif.fg ?? 0) + surchargeMoyenDeplacementRelaxAccidentsGenerale(raMoyenDeplacement, raCycle) : null;
+    const supplement = surchargeMoyenDeplacementDetailRelaxAccidentsGenerale(raMoyenDeplacement, raCycle);
+    primeHT = tarif?.primeHT != null ? tarif.primeHT + supplement.primeNette : null;
+    taxes = tarif?.taxes != null ? tarif.taxes + supplement.taxes : null;
+    fg = tarif != null ? (tarif.fg ?? 0) + supplement.accessoires : null;
   }
 
   const str = (k: string) => (typeof d?.[k] === "string" ? (d[k] as string) : null);

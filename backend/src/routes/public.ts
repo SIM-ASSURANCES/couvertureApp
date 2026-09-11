@@ -24,6 +24,7 @@ import {
   parseFormuleRelaxAccidentsGenerale,
   formuleRelaxAccidentsGenerale,
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
+  surchargeMoyenDeplacementDetailRelaxAccidentsGenerale,
 } from "../services/relaxAccidentsGenerale.js";
 import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
@@ -1854,11 +1855,13 @@ publicRouter.get(
       fraisSante = infos?.fraisSante ?? null;
       bagages = infos?.bagages ?? null;
     }
-    // RelaxAccidents générale — détail de la prime (Prime HT/Accessoires/
+    // RelaxAccidents générale — détail de la prime (Prime nette/Accessoires/
     // Taxes), affiché uniquement sur le contrat PDF (voir contractHtml.ts).
     // Le tarif est recherché par FORMULE (classe/statut/cycle), pas par
     // prime : le montant payé inclut le supplément moto/tricycle éventuel,
-    // qui ne correspond donc plus au prix d'aucune ligne TarifProduit.
+    // qui ne correspond donc plus au prix d'aucune ligne TarifProduit — sa
+    // propre décomposition (voir surchargeMoyenDeplacementDetailRelaxAccidentsGenerale)
+    // est ajoutée composante par composante, comme dans contratGenerique.ts.
     let primeHT: number | null = null;
     let fg: number | null = null;
     let taxes: number | null = null;
@@ -1873,13 +1876,13 @@ publicRouter.get(
           ),
         },
       });
-      primeHT = tarif?.primeHT ?? null;
-      taxes = tarif?.taxes ?? null;
-      fg =
-        tarif != null
-          ? (tarif.fg ?? 0) +
-            surchargeMoyenDeplacementRelaxAccidentsGenerale(donneesSpecifiques.moyenDeplacement, donneesSpecifiques.cycle)
-          : null;
+      const supplement = surchargeMoyenDeplacementDetailRelaxAccidentsGenerale(
+        donneesSpecifiques.moyenDeplacement,
+        donneesSpecifiques.cycle
+      );
+      primeHT = tarif?.primeHT != null ? tarif.primeHT + supplement.primeNette : null;
+      taxes = tarif?.taxes != null ? tarif.taxes + supplement.taxes : null;
+      fg = tarif != null ? (tarif.fg ?? 0) + supplement.accessoires : null;
     }
     res.json({
       souscriptionId: s.id,

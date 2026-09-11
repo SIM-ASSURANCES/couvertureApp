@@ -123,10 +123,35 @@ export const SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE: Record<CycleRelaxA
   mensuel: 150,
 };
 
+/**
+ * Décomposition (Prime nette / Accessoires / Taxes) du supplément
+ * moto/tricycle ci-dessus — Prime nette + Accessoires + Taxes = le total TTC
+ * ci-dessus, pour rester cohérent avec le détail de la prime affiché sur le
+ * contrat PDF (voir services/contractHtml.ts::renderContratRelaxAccidentsGenerale
+ * et services/contratGenerique.ts).
+ */
+export const SURCHARGE_MOTO_TRICYCLE_DETAIL_RELAXACCIDENTS_GENERALE: Record<
+  CycleRelaxAccidentsGenerale,
+  { primeNette: number; accessoires: number; taxes: number }
+> = {
+  annuel: { primeNette: 1_399, accessoires: 0, taxes: 101 },
+  mensuel: { primeNette: 140, accessoires: 0, taxes: 10 },
+};
+
 /** Supplément dû au moyen de déplacement choisi — 0 sauf pour "moto_tricycle". */
 export function surchargeMoyenDeplacementRelaxAccidentsGenerale(
   moyenDeplacement: string | null | undefined,
   cycle: CycleRelaxAccidentsGenerale
 ): number {
   return moyenDeplacement === "moto_tricycle" ? SURCHARGE_MOTO_TRICYCLE_RELAXACCIDENTS_GENERALE[cycle] : 0;
+}
+
+/** Décomposition du supplément dû au moyen de déplacement choisi — {0,0,0} sauf pour "moto_tricycle". */
+export function surchargeMoyenDeplacementDetailRelaxAccidentsGenerale(
+  moyenDeplacement: string | null | undefined,
+  cycle: CycleRelaxAccidentsGenerale
+): { primeNette: number; accessoires: number; taxes: number } {
+  return moyenDeplacement === "moto_tricycle"
+    ? SURCHARGE_MOTO_TRICYCLE_DETAIL_RELAXACCIDENTS_GENERALE[cycle]
+    : { primeNette: 0, accessoires: 0, taxes: 0 };
 }
