@@ -9,7 +9,7 @@ import { COUNTRY_BBOX, districtBbox } from "@/lib/admin";
 import { DESKTOP_QUERY, useLatest } from "@/lib/hooks";
 import { CITY_ZOOM, MAP_STYLES, MAX_BOUNDS, MAX_ZOOM, MIN_ZOOM, type Theme } from "@/lib/map/config";
 import { addAppLayers, applyReseau, LAYER, LAYER_GROUPS, SOURCE, setDistrictFocus, setGroupVisibility, type LayerGroup } from "@/lib/map/layers";
-import type { LngLat, LocalityProps } from "@/lib/types";
+import type { LngLat } from "@/lib/types";
 
 const LOCALE = {
   "Map.Title": "Carte interactive de la Côte d'Ivoire",
@@ -109,21 +109,6 @@ export default function MapView() {
       router.push(`/ville/${id}`, { scroll: false });
     });
 
-    map.on("click", LAYER.clusters, async (e) => {
-      const feature = e.features?.[0];
-      if (!feature || surReseau(e.point)) return;
-      const source = map.getSource<GeoJSONSource>(SOURCE.localities);
-      const zoom = await source?.getClusterExpansionZoom(feature.properties.cluster_id as number);
-      map.easeTo({ center: (feature.geometry as GeoJSON.Point).coordinates as LngLat, zoom: (zoom ?? map.getZoom() + 2) + 0.2 });
-    });
-
-    map.on("click", LAYER.localities, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || surReseau(e.point)) return;
-      const props = feature.properties as LocalityProps;
-      state.current.setActiveLocality({ ...props, coordinates: (feature.geometry as GeoJSON.Point).coordinates as LngLat });
-    });
-
     map.on("click", LAYER.reseauPoints, async (e) => {
       const feature = e.features?.[0];
       if (!feature) return;
@@ -137,7 +122,7 @@ export default function MapView() {
     });
 
     map.on("click", (e) => {
-      const hits = map.queryRenderedFeatures(e.point, { layers: [LAYER.cities, LAYER.localities, LAYER.clusters, LAYER.reseauPoints] });
+      const hits = map.queryRenderedFeatures(e.point, { layers: [LAYER.cities, LAYER.reseauPoints] });
       if (!hits.length) {
         state.current.setActiveLocality(null);
         state.current.setActiveLieu(null);
@@ -150,22 +135,18 @@ export default function MapView() {
       hovered = next;
       if (hovered) map.setFeatureState(hovered, { hover: true });
     };
-    for (const layer of [LAYER.cities, LAYER.localities]) {
-      map.on("mousemove", layer, (e) => {
-        const f = e.features?.[0];
-        if (!f || f.id == null) return;
-        map.getCanvas().style.cursor = "pointer";
-        if (hovered?.id === f.id) return;
-        setHover({ source: f.source, id: f.id });
-        if (layer === LAYER.cities) router.prefetch(`/ville/${f.properties.id}`);
-      });
-      map.on("mouseleave", layer, () => {
-        map.getCanvas().style.cursor = "";
-        setHover(null);
-      });
-    }
-    map.on("mouseenter", LAYER.clusters, () => (map.getCanvas().style.cursor = "pointer"));
-    map.on("mouseleave", LAYER.clusters, () => (map.getCanvas().style.cursor = ""));
+    map.on("mousemove", LAYER.cities, (e) => {
+      const f = e.features?.[0];
+      if (!f || f.id == null) return;
+      map.getCanvas().style.cursor = "pointer";
+      if (hovered?.id === f.id) return;
+      setHover({ source: f.source, id: f.id });
+      router.prefetch(`/ville/${f.properties.id}`);
+    });
+    map.on("mouseleave", LAYER.cities, () => {
+      map.getCanvas().style.cursor = "";
+      setHover(null);
+    });
     map.on("mouseenter", LAYER.reseauPoints, () => (map.getCanvas().style.cursor = "pointer"));
     map.on("mouseleave", LAYER.reseauPoints, () => (map.getCanvas().style.cursor = ""));
 

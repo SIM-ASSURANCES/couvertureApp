@@ -22,9 +22,6 @@ export const LAYER = {
   countryLine: "app-country-line",
   districtLabels: "app-district-labels",
   regionLabels: "app-region-labels",
-  clusters: "app-localities-clusters",
-  clusterCount: "app-localities-cluster-count",
-  localities: "app-localities",
   localityLabels: "app-locality-labels",
   cities: "app-cities",
   cityLabels: "app-city-labels",
@@ -34,7 +31,7 @@ export const LAYER = {
 } as const;
 
 export const LAYER_GROUPS = {
-  localities: [LAYER.clusters, LAYER.clusterCount, LAYER.localities, LAYER.localityLabels],
+  localities: [LAYER.localityLabels],
   boundaries: [LAYER.regionsLine, LAYER.districtsLine, LAYER.districtLabels, LAYER.regionLabels],
   reseau: [LAYER.reseauRegions, LAYER.reseauPoints, LAYER.reseauCount],
 } as const;
@@ -88,9 +85,6 @@ export function addAppLayers(map: MlMap, { theme, cities, visibility, reseau }: 
     type: "geojson",
     data: DATA_URLS.localities,
     filter: notDetailed,
-    cluster: true,
-    clusterRadius: 48,
-    clusterMaxZoom: 8,
     promoteId: "id",
   });
   map.addSource(SOURCE.cities, { type: "geojson", data: citiesToGeoJSON(cities), promoteId: "id" });
@@ -179,61 +173,18 @@ export function addAppLayers(map: MlMap, { theme, cities, visibility, reseau }: 
     paint: { "text-color": c.adminLabel, "text-halo-color": c.halo, "text-halo-width": 1.2, "text-opacity": 0.8 },
   });
 
-  // Localités OSM (regroupées aux petites échelles).
-  map.addLayer({
-    id: LAYER.clusters,
-    type: "circle",
-    source: SOURCE.localities,
-    filter: ["has", "point_count"],
-    layout: { visibility: vis("localities") },
-    paint: {
-      "circle-color": c.cluster,
-      "circle-opacity": 0.75,
-      "circle-radius": ["step", ["get", "point_count"], 11, 8, 14, 20, 17],
-      "circle-stroke-width": 2,
-      "circle-stroke-color": c.clusterStroke,
-    },
-  });
-  map.addLayer({
-    id: LAYER.clusterCount,
-    type: "symbol",
-    source: SOURCE.localities,
-    filter: ["has", "point_count"],
-    layout: {
-      visibility: vis("localities"),
-      "text-field": ["get", "point_count_abbreviated"],
-      "text-font": FONT_MEDIUM,
-      "text-size": 11,
-      "text-allow-overlap": true,
-    },
-    paint: { "text-color": c.clusterText },
-  });
-  map.addLayer({
-    id: LAYER.localities,
-    type: "circle",
-    source: SOURCE.localities,
-    filter: ["!", ["has", "point_count"]],
-    layout: { visibility: vis("localities") },
-    paint: {
-      "circle-color": c.locality,
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, ["case", hover, 5.5, 3.5], 11, ["case", hover, 8, 6]],
-      "circle-stroke-width": 1.5,
-      "circle-stroke-color": c.cityStroke,
-    },
-  });
+  // Noms des localités OSM, sans pastille ni regroupement : seuls les villes à fiche
+  // et le réseau de distribution sont marqués sur la carte.
   map.addLayer({
     id: LAYER.localityLabels,
     type: "symbol",
     source: SOURCE.localities,
     minzoom: 7,
-    filter: ["!", ["has", "point_count"]],
     layout: {
       visibility: vis("localities"),
       "text-field": ["get", "name"],
       "text-font": FONT_REGULAR,
       "text-size": ["interpolate", ["linear"], ["zoom"], 7, 10.5, 11, 12.5],
-      "text-anchor": "top",
-      "text-offset": [0, 0.7],
       "symbol-sort-key": ["-", 0, ["coalesce", ["get", "population"], 0]],
     },
     paint: { "text-color": c.localityLabel, "text-halo-color": c.halo, "text-halo-width": 1.3 },

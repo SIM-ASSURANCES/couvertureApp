@@ -24,7 +24,7 @@ function ControlButton({ label, onClick, children, pressed }: { label: string; o
 }
 
 const LAYER_LABELS: Record<LayerGroup, string> = {
-  localities: "Localités (OpenStreetMap)",
+  localities: "Noms des localités (OpenStreetMap)",
   boundaries: "Limites des districts et régions",
   reseau: "Réseau de distribution (partenaires)",
 };

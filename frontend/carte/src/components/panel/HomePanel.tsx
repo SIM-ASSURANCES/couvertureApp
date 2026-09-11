@@ -14,8 +14,6 @@ import { formatCompact, formatKm } from "@/lib/format";
 
 const LEGEND = [
   { swatch: "size-3 rounded-full bg-accent-700 ring-2 ring-white dark:bg-accent-400 dark:ring-zinc-900", label: "Ville avec fiche détaillée" },
-  { swatch: "size-2.5 rounded-full bg-zinc-600 ring-2 ring-white dark:bg-zinc-400 dark:ring-zinc-900", label: "Localité (OpenStreetMap)" },
-  { swatch: "grid size-4 place-items-center rounded-full bg-zinc-600 text-[8px] text-white dark:bg-zinc-400", label: "Groupe de localités — cliquer pour zoomer" },
   { swatch: "h-0.5 w-4 bg-zinc-400", label: "Limite de district" },
 ];
 
