@@ -608,14 +608,12 @@ export default function ClientsIncendie() {
               produitType="incendie"
               referenceFichier={detailFor.refFacture}
             />
-            {isSuper && (
-              <AccesClientModal
-                souscriptionId={detailFor.id}
-                produitType="incendie"
-                espaceClientActif={!!detailFor.espaceClientActif}
-                onNotify={notify}
-              />
-            )}
+            <AccesClientModal
+              souscriptionId={detailFor.id}
+              produitType="incendie"
+              espaceClientActif={!!detailFor.espaceClientActif}
+              onNotify={notify}
+            />
           </div>
         </div>
       )}
@@ -664,14 +662,12 @@ export default function ClientsIncendie() {
               produitType="generique"
               referenceFichier={detailGenerique.telephone}
             />
-            {isSuper && (
-              <AccesClientModal
-                souscriptionId={detailGenerique.id}
-                produitType="generique"
-                espaceClientActif={!!detailGenerique.espaceClientActif}
-                onNotify={notify}
-              />
-            )}
+            <AccesClientModal
+              souscriptionId={detailGenerique.id}
+              produitType="generique"
+              espaceClientActif={!!detailGenerique.espaceClientActif}
+              onNotify={notify}
+            />
           </div>
         </div>
       )}

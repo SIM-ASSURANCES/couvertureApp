@@ -815,7 +815,6 @@ assurancesBrancheRouter.get(
  */
 assurancesBrancheRouter.post(
   "/clients/:produitType/:id/reinitialiser-mot-de-passe",
-  requireAnySuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const produitType = req.params.produitType as ProduitTypeClient;
     const id = req.params.id;

@@ -388,14 +388,12 @@ export default function ClientsAccident() {
               produitType="accident"
               referenceFichier={detailFor.numeroPolice}
             />
-            {isSuper && (
-              <AccesClientModal
-                souscriptionId={detailFor.id}
-                produitType="accident"
-                espaceClientActif={!!detailFor.espaceClientActif}
-                onNotify={notify}
-              />
-            )}
+            <AccesClientModal
+              souscriptionId={detailFor.id}
+              produitType="accident"
+              espaceClientActif={!!detailFor.espaceClientActif}
+              onNotify={notify}
+            />
           </div>
         </div>
       )}

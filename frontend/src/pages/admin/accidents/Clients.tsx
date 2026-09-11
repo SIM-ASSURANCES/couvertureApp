@@ -370,14 +370,12 @@ export default function AssurancesAccidentsClients() {
               produitType="generique"
               referenceFichier={detailFor.numeroPolice}
             />
-            {isSuper && (
-              <AccesClientModal
-                souscriptionId={detailFor.id}
-                produitType="generique"
-                espaceClientActif={!!detailFor.espaceClientActif}
-                onNotify={notify}
-              />
-            )}
+            <AccesClientModal
+              souscriptionId={detailFor.id}
+              produitType="generique"
+              espaceClientActif={!!detailFor.espaceClientActif}
+              onNotify={notify}
+            />
           </div>
         </div>
       )}
