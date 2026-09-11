@@ -4207,7 +4207,7 @@ export default function Souscription() {
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
                     Votre assurance RelaxAccidents Frais Médicaux
                     {isRafLivreurs(qrInfo?.produit) ? " Livreurs/Taxis" : ""} est activée pour{" "}
-                    <strong>3 mois</strong>.
+                    <strong>{isRafLivreurs(qrInfo?.produit) ? "2 mois" : "3 mois"}</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div
