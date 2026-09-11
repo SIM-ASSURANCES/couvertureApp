@@ -13,6 +13,12 @@ function loadSecret(): string {
 }
 
 const SECRET = loadSecret();
+// Défense en profondeur (audit sécurité 2026-09-11) : fixe explicitement
+// l'algorithme HMAC attendu, plutôt que de laisser jsonwebtoken l'inférer du
+// header du token — sans incidence fonctionnelle (signToken n'a jamais signé
+// qu'en HS256, l'algorithme par défaut de la lib), juste une garantie
+// supplémentaire qu'un token forgé avec `alg` différent est toujours rejeté.
+const JWT_ALGORITHM = "HS256" as const;
 
 export type ActorType = "admin" | "partenaire" | "agent_imf" | "client" | "agent_distribution";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF" | "IMF_PARTENAIRES";
@@ -41,7 +47,7 @@ export interface AuthUser {
 }
 
 export function signToken(user: AuthUser): string {
-  return jwt.sign(user, SECRET, { expiresIn: "12h" });
+  return jwt.sign(user, SECRET, { expiresIn: "12h", algorithm: JWT_ALGORITHM });
 }
 
 export interface AuthedRequest extends Request {
@@ -57,7 +63,7 @@ export interface AuthedRequest extends Request {
 export function lireTokenOptionnel(header: string | undefined): AuthUser | null {
   if (!header?.startsWith("Bearer ")) return null;
   try {
-    return jwt.verify(header.slice(7), SECRET) as AuthUser;
+    return jwt.verify(header.slice(7), SECRET, { algorithms: [JWT_ALGORITHM] }) as AuthUser;
   } catch {
     return null;
   }
@@ -70,7 +76,7 @@ export function requireAuth(...types: ActorType[]) {
       return res.status(401).json({ error: "Non authentifié" });
     }
     try {
-      const payload = jwt.verify(header.slice(7), SECRET) as AuthUser;
+      const payload = jwt.verify(header.slice(7), SECRET, { algorithms: [JWT_ALGORITHM] }) as AuthUser;
       if (types.length && !types.includes(payload.type)) {
         return res.status(403).json({ error: "Accès refusé" });
       }

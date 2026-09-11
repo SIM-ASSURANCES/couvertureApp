@@ -241,21 +241,35 @@ export async function construireChooserProduits(
     }),
   ]);
   const desactivesIds = new Set((avecDesactives?.produitsDesactives ?? []).map((d) => d.id));
-  const items = await Promise.all(
-    produits.map(async (p) => {
-      const tarifDefaut = await prisma.tarifProduit.findFirst({
-        where: { produitId: p.id },
+  // Un seul aller-retour DB pour tous les produits de la sous-branche (audit
+  // perf 2026-09-11 — remplace un findFirst par produit, exécuté à CHAQUE
+  // scan de QR public, point d'entrée le plus fréquenté de toute l'app) :
+  // trié par prime croissante, donc le premier tarif rencontré pour un
+  // produitId donné est forcément le moins cher (celui qu'on veut afficher).
+  const produitIds = produits.map((p) => p.id);
+  const tousLesTarifs = produitIds.length
+    ? await prisma.tarifProduit.findMany({
+        where: { produitId: { in: produitIds } },
         orderBy: { prime: "asc" },
-      });
-      return {
-        code: p.code,
-        libelle: p.libelle,
-        disponible: p.actif && !desactivesIds.has(p.id),
-        montantPrime: tarifDefaut?.prime ?? null,
-        capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
-      };
-    })
-  );
+        select: { produitId: true, prime: true, capitalGaranti: true },
+      })
+    : [];
+  const tarifDefautParProduit = new Map<string, { prime: number; capitalGaranti: number }>();
+  for (const t of tousLesTarifs) {
+    if (!tarifDefautParProduit.has(t.produitId)) {
+      tarifDefautParProduit.set(t.produitId, { prime: t.prime, capitalGaranti: t.capitalGaranti });
+    }
+  }
+  const items = produits.map((p) => {
+    const tarifDefaut = tarifDefautParProduit.get(p.id);
+    return {
+      code: p.code,
+      libelle: p.libelle,
+      disponible: p.actif && !desactivesIds.has(p.id),
+      montantPrime: tarifDefaut?.prime ?? null,
+      capitalGaranti: tarifDefaut?.capitalGaranti ?? null,
+    };
+  });
   return {
     type: "chooser" as const,
     sousBranche,

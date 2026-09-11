@@ -133,6 +133,10 @@ export async function sendSMS(to: string, message: string) {
   if (senderId) payload.senderId = senderId;
 
   try {
+    // Timeout explicite (audit perf 2026-09-11) : sans lui, une dégradation
+    // du fournisseur SMS bloquait indéfiniment la requête admin appelante
+    // (relance, réinitialisation de mot de passe...) jusqu'au timeout par
+    // défaut du client HTTP, potentiellement très long.
     const resp = await fetch(apiUrl, {
       method: "POST",
       headers: {
@@ -140,6 +144,7 @@ export async function sendSMS(to: string, message: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
     });
     const text = (await resp.text().catch(() => "")).trim();
     if (resp.ok) {

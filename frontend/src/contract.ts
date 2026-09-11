@@ -375,7 +375,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       produitLibelle: c.produitLibelle ?? (c.type === "relaxmoto" ? "RelaxMoto" : "RelaxAuto"),
       cycleFacturation: c.cycleFacturation ?? null,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "accident") {
@@ -391,7 +391,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "incendie") {
@@ -410,7 +410,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "relaxaccidents_fraismedicaux" || c.type === "relaxaccidents_fraismedicaux_livreurs") {
@@ -427,7 +427,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
       optionDeces: c.optionDeces ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "relaxvoyage") {
@@ -451,7 +451,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       fraisSante: c.fraisSante ?? null,
       bagages: c.bagages ?? null,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "relaxaccidents") {
@@ -472,7 +472,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       cnpsDeclare: c.cnpsDeclare ?? false,
       cycle: c.cycle ?? null,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "securhome") {
@@ -489,7 +489,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "securhome_dommages") {
@@ -787,12 +787,18 @@ type ContratType =
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
-/** Demande le PDF au serveur (texte réel) et déclenche son téléchargement — pas d'ouverture de fenêtre, pas d'impression. */
-async function telechargerContratPdf(type: ContratType, numeroPolice: string, data: unknown) {
+/**
+ * Demande le PDF au serveur (texte réel) et déclenche son téléchargement —
+ * pas d'ouverture de fenêtre, pas d'impression. `souscriptionId`, quand
+ * connu (audit sécurité 2026-09-11), permet au serveur de relire les
+ * données réelles en base plutôt que de faire confiance à `data` — voir
+ * routes/contrats.ts::chargerDonneesVerifieesServeur.
+ */
+async function telechargerContratPdf(type: ContratType, numeroPolice: string, data: unknown, souscriptionId?: string) {
   const res = await fetch(`${API_BASE}/contrats/pdf`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, data }),
+    body: JSON.stringify(souscriptionId ? { type, souscriptionId, data } : { type, data }),
   });
   if (!res.ok) {
     let message = "Erreur lors de la génération du contrat.";
@@ -815,30 +821,30 @@ async function telechargerContratPdf(type: ContratType, numeroPolice: string, da
   URL.revokeObjectURL(url);
 }
 
-export async function genererContratIncendie(c: ContratIncendie) {
-  await telechargerContratPdf("incendie", c.numeroPolice, c);
+export async function genererContratIncendie(c: ContratIncendie, souscriptionId?: string) {
+  await telechargerContratPdf("incendie", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratAccident(c: ContratAccident) {
-  await telechargerContratPdf("accident", c.numeroPolice, c);
+export async function genererContratAccident(c: ContratAccident, souscriptionId?: string) {
+  await telechargerContratPdf("accident", c.numeroPolice, c, souscriptionId);
 }
 
 // RelaxAccidents Frais Médicaux reprend exactement le même contrat qu'Accident
 // (dont il remplace les souscriptions) — mêmes champs (voir ContratAccident).
-export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident) {
-  await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c);
+export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident, souscriptionId?: string) {
+  await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxMotoAuto(c: ContratRelaxMotoAuto) {
-  await telechargerContratPdf("relaxmoto_relaxauto", c.numeroPolice, c);
+export async function genererContratRelaxMotoAuto(c: ContratRelaxMotoAuto, souscriptionId?: string) {
+  await telechargerContratPdf("relaxmoto_relaxauto", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxVoyage(c: ContratRelaxVoyage) {
-  await telechargerContratPdf("relaxvoyage", c.numeroPolice, c);
+export async function genererContratRelaxVoyage(c: ContratRelaxVoyage, souscriptionId?: string) {
+  await telechargerContratPdf("relaxvoyage", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale) {
-  await telechargerContratPdf("relaxaccidents_generale", c.numeroPolice, c);
+export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale, souscriptionId?: string) {
+  await telechargerContratPdf("relaxaccidents_generale", c.numeroPolice, c, souscriptionId);
 }
 
 export async function genererContratSecurpro(c: ContratSecurpro) {
@@ -856,8 +862,8 @@ export async function genererContratSecurhome(c: ContratSecurhome) {
   await telechargerContratPdf("securhome_dommages", c.numeroPolice, c);
 }
 
-export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie) {
-  await telechargerContratPdf("securhome_incendie", c.numeroPolice, c);
+export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie, souscriptionId?: string) {
+  await telechargerContratPdf("securhome_incendie", c.numeroPolice, c, souscriptionId);
 }
 
 export async function genererContratSecurecolte(c: ContratSecurecolte) {

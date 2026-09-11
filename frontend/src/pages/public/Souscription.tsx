@@ -2460,7 +2460,7 @@ export default function Souscription() {
         cnpsDeclare: result.cnpsDeclare,
         cycle: result.cycle ?? null,
         signature: result.signature ?? null,
-      });
+      }, result.souscriptionId);
       return;
     }
     if (isSecurhomeIncendie(qrInfo.produit)) {
@@ -2480,7 +2480,7 @@ export default function Souscription() {
         montant: result.montant ?? 0,
         capitalGaranti: result.capitalGaranti ?? 0,
         signature: result.signature ?? null,
-      });
+      }, result.souscriptionId);
       return;
     }
     if (qrInfo.produit === "securpro_dommages") {
@@ -2579,11 +2579,11 @@ export default function Souscription() {
         numeroPersonneContact: result.numeroPersonneContact ?? numeroPersonneContact,
         fraisSante: result.fraisSante ?? null,
         bagages: result.bagages ?? null,
-      });
+      }, result.souscriptionId);
     } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
-      genererContratRelaxAccidentsFraisMedicaux({ ...contrat, optionDeces: result.optionDeces ?? null });
+      genererContratRelaxAccidentsFraisMedicaux({ ...contrat, optionDeces: result.optionDeces ?? null }, result.souscriptionId);
     } else {
-      genererContratAccident(contrat);
+      genererContratAccident(contrat, result.souscriptionId);
     }
   }
 

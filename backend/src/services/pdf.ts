@@ -46,35 +46,69 @@ async function bloquerSchemasDangereux(page: import("puppeteer-core").Page): Pro
   });
 }
 
+// Limite de concurrence (audit perf 2026-09-11) : sans elle, un pic légitime
+// (plusieurs admins qui exportent des contrats, plusieurs clients qui
+// téléchargent leur carte après paiement) pouvait ouvrir un nombre non
+// borné de pages Chromium simultanées sur le navigateur unique partagé,
+// épuisant sa mémoire. Sémaphore maison plutôt qu'une dépendance externe —
+// besoin trop simple (une file FIFO) pour la justifier.
+const MAX_PAGES_SIMULTANEES = 4;
+let pagesEnCours = 0;
+const filePages: (() => void)[] = [];
+
+async function acquerirCreneauPage(): Promise<void> {
+  if (pagesEnCours < MAX_PAGES_SIMULTANEES) {
+    pagesEnCours++;
+    return;
+  }
+  await new Promise<void>((resolve) => filePages.push(resolve));
+  pagesEnCours++;
+}
+
+function libererCreneauPage(): void {
+  pagesEnCours--;
+  filePages.shift()?.();
+}
+
 /** Rend un document HTML autonome (avec son <style>) en PDF A4 — texte réel, pas une image. */
 export async function htmlToPdf(html: string): Promise<Buffer> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  await acquerirCreneauPage();
   try {
-    await bloquerSchemasDangereux(page);
-    await page.setContent(html, { waitUntil: "load", timeout: 30000 });
-    const pdf = await page.pdf({
-      format: "a4",
-      printBackground: true,
-      margin: { top: "0", bottom: "0", left: "0", right: "0" },
-    });
-    return Buffer.from(pdf);
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await bloquerSchemasDangereux(page);
+      await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+      const pdf = await page.pdf({
+        format: "a4",
+        printBackground: true,
+        margin: { top: "0", bottom: "0", left: "0", right: "0" },
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await page.close();
+    }
   } finally {
-    await page.close();
+    libererCreneauPage();
   }
 }
 
 /** Rend un document HTML autonome en image PNG, aux dimensions exactes de la fenêtre (ex : carte virtuelle). */
 export async function htmlToPng(html: string, width: number, height: number): Promise<Buffer> {
-  const browser = await getBrowser();
-  const page = await browser.newPage();
+  await acquerirCreneauPage();
   try {
-    await bloquerSchemasDangereux(page);
-    await page.setViewport({ width, height, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: "load", timeout: 30000 });
-    const png = await page.screenshot({ type: "png", omitBackground: false });
-    return Buffer.from(png);
+    const browser = await getBrowser();
+    const page = await browser.newPage();
+    try {
+      await bloquerSchemasDangereux(page);
+      await page.setViewport({ width, height, deviceScaleFactor: 2 });
+      await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+      const png = await page.screenshot({ type: "png", omitBackground: false });
+      return Buffer.from(png);
+    } finally {
+      await page.close();
+    }
   } finally {
-    await page.close();
+    libererCreneauPage();
   }
 }

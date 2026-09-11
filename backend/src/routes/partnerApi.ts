@@ -63,9 +63,13 @@ partnerApiRouter.get("/v1/docs", (_req, res) => {
   );
 });
 
-// Authentifie tout le reste de /v1 (pose req.partner), PUIS limite par clé, PUIS journalise.
-partnerApiRouter.use(requireApiKey());
+// Limite d'abord (par IP tant que req.partner n'est pas encore posé — voir
+// security.ts::partnerLimiter — pour que les tentatives avec une clé
+// invalide soient elles aussi comptabilisées, audit sécurité 2026-09-11),
+// PUIS authentifie (pose req.partner, la limite bascule alors par clé pour
+// la suite de la requête), PUIS journalise.
 partnerApiRouter.use(partnerLimiter);
+partnerApiRouter.use(requireApiKey());
 partnerApiRouter.use(journaliserRequetesPartenaire());
 
 /** Produits vendus à la période (curseur de durée) — les autres sont payés en une fois. */

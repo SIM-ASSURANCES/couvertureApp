@@ -433,6 +433,14 @@ model JournalActivite {
   valeurAvant Json?
   valeurApres Json?
   createdAt   DateTime   @default(now())
+
+  // Table qui grossit à chaque action admin dans toute l'app (dizaines
+  // d'appels logAction) ; GET /journal trie toujours par createdAt et filtre
+  // souvent sur typeAction/objetType (audit perf 2026-09-11 — aucun index
+  // n'existait, chaque affichage du journal d'audit imposait un tri complet).
+  @@index([createdAt])
+  @@index([typeAction, createdAt])
+  @@index([objetType, createdAt])
 }
 
 model DemandeCommission {
@@ -758,6 +766,9 @@ model Paiement {
   updatedAt         DateTime       @updatedAt
 
   @@unique([souscriptionId, numeroEcheance])
+  // GET /relax/echeances (page "Paiements en attente") filtre par statut et
+  // trie par dateEcheance (audit perf 2026-09-11).
+  @@index([statut, dateEcheance])
 }
 
 model Document {
@@ -1209,7 +1220,12 @@ model SouscriptionImf {
   // SimulationImf.offlineId.
   offlineId       String?               @unique
 
+  // audit perf 2026-09-11 : listes/dashboards IMF filtrent en permanence par
+  // agentId (in) et par statut, toujours triés par createdAt — jusqu'ici
+  // seul imfId était indexé.
   @@index([imfId])
+  @@index([agentId, createdAt])
+  @@index([statut, createdAt])
 }
 
 // --- Phase 6 : sinistres IMF ---
@@ -1256,7 +1272,10 @@ model SinistreImf {
   imfId               String?
   imf                 Imf?              @relation(fields: [imfId], references: [id])
 
+  // audit perf 2026-09-11 : filtré par agentId et par statut (dashboards/listes IMF).
   @@index([imfId])
+  @@index([agentId])
+  @@index([statut])
 }
 
 // --- Phase 7 : bordereaux & règlement IMF ---

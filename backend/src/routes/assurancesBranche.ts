@@ -592,9 +592,16 @@ assurancesBrancheRouter.patch(
   })
 );
 
-/** Supprime une souscription du modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage, SecurHome+, SecurPro Dommages). */
+/**
+ * Supprime une souscription du modèle générique (RelaxMoto/Auto,
+ * RelaxAccidents, RelaxVoyage, SecurHome+, SecurPro Dommages) — suppression
+ * définitive, y compris d'un contrat déjà payé/confirmé : réservé au Super
+ * Administrateur, même niveau que PATCH .../photo-carte et la suppression
+ * d'un partenaire (routes/partenaires.ts).
+ */
 assurancesBrancheRouter.delete(
   "/souscriptions/:id",
+  requireAnySuperAdmin,
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscription.findUnique({ where: { id: req.params.id } });
     if (!s) return res.status(404).json({ error: "Introuvable" });
@@ -810,8 +817,10 @@ assurancesBrancheRouter.get(
  * Réinitialise le mot de passe de l'espace client d'une souscription, à la
  * demande du client ou à tout moment — envoyé par SMS, jamais affiché à
  * l'admin (voir services/notify.ts::messageReinitialisationMotDePasse).
- * Réservé au Super Administrateur (global ou de cette branche), même niveau
- * que PATCH .../photo-carte.
+ * Ouvert à tout admin (retiré de isSuper/requireAnySuperAdmin sur demande
+ * explicite — voir mémoire acces-espace-client-tout-admin), contrairement à
+ * PATCH .../photo-carte et DELETE .../souscriptions/:id qui restent réservés
+ * au Super Administrateur.
  */
 assurancesBrancheRouter.post(
   "/clients/:produitType/:id/reinitialiser-mot-de-passe",

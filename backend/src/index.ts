@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import compression from "compression";
 import cron from "node-cron";
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
@@ -59,6 +60,11 @@ app.set("trust proxy", 1);
 
 // En-têtes de sécurité HTTP (anti-clickjacking, MIME-sniffing, HSTS, etc.)
 app.use(helmet());
+
+// Compression gzip/brotli des réponses (audit perf 2026-09-11) — surtout
+// utile sur les listes JSON volumineuses (contrats, souscriptions IMF) et
+// les PDF ; désactivée sous 1kb par défaut (seuil de compression() lui-même).
+app.use(compression());
 
 // CORS restreint au domaine du frontend (configurable via CORS_ORIGIN, sinon APP_PUBLIC_URL).
 // Sans l'un des deux, on refuse de démarrer plutôt que de refléter n'importe

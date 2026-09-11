@@ -424,7 +424,7 @@ export default function SouscriptionComplement() {
               </div>
 
               <button
-                onClick={() => genererContratIncendie(data)}
+                onClick={() => genererContratIncendie(data, data.id)}
                 style={{
                   width: "100%",
                   padding: "14px",
