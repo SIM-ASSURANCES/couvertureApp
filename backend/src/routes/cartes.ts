@@ -18,6 +18,7 @@ const bodySchema = z.object({
     "relaxaccidents_fraismedicaux",
     "relaxaccidents_fraismedicaux_livreurs",
     "relaxvoyage",
+    "relaxaccidents",
   ]),
   souscriptionId: z.string().min(10).max(60),
   // Preuve de paiement, pour le parcours public juste après souscription (le

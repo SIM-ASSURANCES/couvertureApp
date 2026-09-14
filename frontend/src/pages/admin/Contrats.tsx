@@ -18,9 +18,8 @@ import { telechargerCarte } from "../../carte";
 import PhotosClientModal from "../../components/PhotosClientModal";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
-// six, d'un contrat PDF distinct) — RelaxAccidents générale, SecurHome+ et
-// SecurPro Dommages n'en ont pas (police collective/pro ou assurance de biens,
-// pas d'identité individuelle capturée).
+// sept, d'un contrat PDF distinct) — SecurHome+ et SecurPro Dommages n'en
+// ont pas (assurance de biens, pas d'identité individuelle capturée).
 const TYPES_AVEC_CARTE = [
   "incendie",
   "accident",
@@ -29,6 +28,7 @@ const TYPES_AVEC_CARTE = [
   "relaxvoyage",
   "relaxmoto",
   "relaxauto",
+  "relaxaccidents",
 ] as const;
 type TypeCarte =
   | "incendie"
@@ -37,7 +37,8 @@ type TypeCarte =
   | "relaxauto"
   | "relaxaccidents_fraismedicaux"
   | "relaxaccidents_fraismedicaux_livreurs"
-  | "relaxvoyage";
+  | "relaxvoyage"
+  | "relaxaccidents";
 
 interface CatalogueEntry {
   sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";

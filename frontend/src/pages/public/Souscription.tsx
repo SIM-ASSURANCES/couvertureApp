@@ -2643,7 +2643,10 @@ export default function Souscription() {
     setCarteErreur("");
     try {
       const type =
-        isRelax(qrInfo.produit) || isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage"
+        isRelax(qrInfo.produit) ||
+        isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
+        isRelaxAccidentsGenerale(qrInfo.produit) ||
+        qrInfo.produit === "relaxvoyage"
           ? qrInfo.produit
           : "accident";
       // `paidId` sert ici de preuve de paiement pour la route carte (parcours
@@ -4198,6 +4201,32 @@ export default function Souscription() {
                   >
                     ⬇ Télécharger mon contrat
                   </button>
+
+                  <button
+                    onClick={telechargerCarteVirtuelle}
+                    disabled={carteBusy}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#fff",
+                      color: "#004b9c",
+                      border: "1.5px solid #004b9c",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: carteBusy ? "default" : "pointer",
+                      marginTop: 12,
+                      opacity: carteBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {carteBusy ? "Génération…" : "⬇ Télécharger ma carte de prise en charge"}
+                  </button>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
+                    Générée automatiquement à partir des photos fournies avant le paiement.
+                  </div>
+                  {carteErreur && (
+                    <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{carteErreur}</div>
+                  )}
                 </>
               ) : isRelaxAccidentsFraisMedicaux(qrInfo?.produit) ? (
                 <>
