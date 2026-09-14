@@ -14,6 +14,7 @@ const TYPES_AVEC_CARTE = [
   "relaxvoyage",
   "relaxmoto",
   "relaxauto",
+  "relaxaccidents",
 ];
 
 /**
