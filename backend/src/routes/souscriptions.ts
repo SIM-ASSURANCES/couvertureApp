@@ -441,7 +441,7 @@ souscriptionsRouter.get(
             : undefined,
         partenaireId: partenaireId || undefined,
         ...(procheDeLecheance
-          ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
+          ? { dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
           : {}),
       },
       include: {
@@ -471,7 +471,9 @@ souscriptionsRouter.get(
  * est passé (utilisé par la page dédiée « Paiement en attente », qui liste les
  * PREMIERS paiements en attente ET échoués — jamais les renouvellements, qui
  * ne touchent pas `waveStatut`). `renouvellementProche=1` filtre en plus sur les
- * échéances (`dateFin`) dans les 2 semaines à venir, pour la page d'alerte.
+ * échéances (`dateFin`) à J-5 ou déjà dépassées (pas de borne basse — un
+ * client en retard doit rester visible tant qu'il n'a pas renouvelé), pour la
+ * page d'alerte.
  */
 souscriptionsRouter.get(
   "/accident",
@@ -498,7 +500,7 @@ souscriptionsRouter.get(
         numeroPolice: attente === "1" ? undefined : { not: null },
         dateFin:
           renouvellementProche === "1"
-            ? { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) }
+            ? { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) }
             : undefined,
         partenaireId: partenaireId || undefined,
       },

@@ -91,8 +91,9 @@ const RENOUVELLEMENT_FENETRE_MS = 5 * 24 * 60 * 60 * 1000;
 
 /**
  * Liste des souscriptions de la sous-branche, filtrable par produit /
- * partenaire / attente. `renouvellementProche=1` : uniquement les échéances
- * (dateFin) dans les 2 semaines à venir, pour la section d'alerte — exclut
+ * partenaire / attente. `renouvellementProche=1` : échéances (dateFin) à J-5
+ * ou déjà dépassées — pas de borne basse, un client en retard doit rester
+ * visible tant qu'il n'a pas renouvelé — pour la section d'alerte ; exclut
  * toujours RelaxMoto/Auto (cycleFacturation non-null, leur propre
  * renouvellement se fait côté espace client, pas via relance admin).
  */
@@ -124,7 +125,7 @@ assurancesAccidentsRouter.get(
               // ne doit donc jamais apparaître dans l'alerte "renouvellements
               // à venir" (voir aussi POST .../relance-renouvellement).
               produit: { code: { not: "relaxvoyage" } },
-              dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
+              dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
             }
           : {}),
       },

@@ -89,11 +89,13 @@ export interface Filtres {
   // le modèle générique, utile pour un total qui ne doit jamais faire
   // doublon avec des compteurs déjà basés sur les modèles historiques.
   generiqueSeul?: boolean;
-  // Ne renvoie que les souscriptions dont l'échéance (dateFin) tombe dans les
-  // 2 semaines à venir — pour la section d'alerte "Renouvellements à venir".
-  // N'inclut jamais un abonnement RelaxMoto/Auto (cycleFacturation non-null,
-  // son propre renouvellement côté espace client) ni Incendie (traité à part
-  // via routes/souscriptions.ts, même politique que Accident historique).
+  // Ne renvoie que les souscriptions dont l'échéance (dateFin) est à J-5 ou
+  // déjà dépassée — pas de borne basse, un client en retard doit rester
+  // visible tant qu'il n'a pas renouvelé — pour la section d'alerte
+  // "Renouvellements à venir". N'inclut jamais un abonnement RelaxMoto/Auto
+  // (cycleFacturation non-null, son propre renouvellement côté espace
+  // client) ni Incendie (traité à part via routes/souscriptions.ts, même
+  // politique que Accident historique).
   renouvellementProche?: boolean;
 }
 
@@ -193,7 +195,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, lim
       ...(f.renouvellementProche
         ? {
             cycleFacturation: null,
-            dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
+            dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) },
           }
         : {}),
     },
@@ -244,7 +246,7 @@ export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promi
       statut: f.statut === "confirme" ? "complet" : undefined,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
       ...(f.renouvellementProche
-        ? { dateFin: { gte: new Date(), lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
+        ? { dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
         : {}),
     },
     include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },

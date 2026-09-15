@@ -11,6 +11,7 @@ import {
   fcfa,
   fmtDate,
   fmtDateHeure,
+  EcheanceDate,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
@@ -279,7 +280,7 @@ export default function ClientsIncendie() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 5 jours)"
+        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -307,7 +308,7 @@ export default function ClientsIncendie() {
                     <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
                   </td>
                   <td>{r.partenaireNom}</td>
-                  <td className="muted">{r.dateFin ? fmtDate(r.dateFin) : "—"}</td>
+                  <td className="muted"><EcheanceDate date={r.dateFin} /></td>
                   <td>{statutRenouvellement(r)}</td>
                   <td>
                     <button
@@ -331,7 +332,7 @@ export default function ClientsIncendie() {
                 </tr>
               ))}
               {renouvellementsProches.length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -413,7 +414,7 @@ export default function ClientsIncendie() {
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{c.refFacture ?? <span className="muted">—</span>}</td>
                     <td>{statutIncendieBadge(c.statut)}</td>
-                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                    <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                     <td>{statutRenouvellement(c)}</td>
                     <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
                     <td>
@@ -516,7 +517,7 @@ export default function ClientsIncendie() {
                     <td><strong>{fcfa(r.montantPrime)}</strong></td>
                     <td><span className="muted">—</span></td>
                     <td>{waveBadge(r.statut)}</td>
-                    <td className="muted">{r.dateFin ? fmtDate(r.dateFin) : "—"}</td>
+                    <td className="muted"><EcheanceDate date={r.dateFin} /></td>
                     <td>{statutRenouvellement(r)}</td>
                     <td className="muted">{r.dateDebut ? fmtDate(r.dateDebut) : "—"}</td>
                     <td>
@@ -594,7 +595,7 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">N° de maison</td><td>{detailFor.numeroMaison || "—"}</td></tr>
                 <tr><td className="muted">Statut</td><td>{statutIncendieBadge(detailFor.statut)}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
-                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailFor.dateFin} /></td></tr>
                 <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailFor)}</td></tr>
                 <tr><td className="muted">Relances SMS</td><td>{detailFor.relanceCount ?? 0}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailFor.createdAt)}</td></tr>
@@ -655,7 +656,7 @@ export default function ClientsIncendie() {
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailGenerique.dateDebut ? fmtDate(detailGenerique.dateDebut) : "—"}</td></tr>
-                <tr><td className="muted">Date d'échéance</td><td>{detailGenerique.dateFin ? fmtDate(detailGenerique.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailGenerique.dateFin} /></td></tr>
                 <tr><td className="muted">Renouvellement</td><td>{statutRenouvellement(detailGenerique)}</td></tr>
                 <tr><td className="muted">Date de souscription</td><td>{fmtDate(detailGenerique.createdAt)}</td></tr>
               </tbody>

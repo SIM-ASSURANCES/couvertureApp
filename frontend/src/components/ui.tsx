@@ -395,3 +395,30 @@ export function fmtDateHeure(d: string) {
   const heure = date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
   return `${jour} à ${heure}`;
 }
+
+/**
+ * Date d'échéance avec un marqueur de couleur : vert tant qu'elle n'est pas
+ * dépassée, rouge dès qu'elle l'est. `dateFin` étant repoussée dans le futur
+ * dès qu'un renouvellement est confirmé (voir services/paiementWave.ts), un
+ * contrat renouvelé à temps redevient/reste automatiquement vert — pas de
+ * statut séparé à maintenir.
+ */
+export function EcheanceDate({ date }: { date?: string | null }) {
+  if (!date) return <span className="muted">—</span>;
+  const enRetard = new Date(date).getTime() < Date.now();
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+      <span
+        title={enRetard ? "Échéance dépassée" : "Échéance à venir"}
+        style={{
+          width: 8,
+          height: 8,
+          minWidth: 8,
+          borderRadius: "50%",
+          background: enRetard ? "var(--danger)" : "var(--success)",
+        }}
+      />
+      {fmtDate(date)}
+    </span>
+  );
+}

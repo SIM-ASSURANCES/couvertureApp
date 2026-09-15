@@ -10,6 +10,7 @@ import {
   fcfa,
   fmtDate,
   fmtDateHeure,
+  EcheanceDate,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
@@ -136,7 +137,7 @@ export default function ClientsAccident() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 5 jours)"
+        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -160,7 +161,7 @@ export default function ClientsAccident() {
                     <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                   </td>
                   <td>{c.partenaireResponsable || c.partenaireNom}</td>
-                  <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                  <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -187,7 +188,7 @@ export default function ClientsAccident() {
                 </tr>
               ))}
               {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
+                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -236,7 +237,7 @@ export default function ClientsAccident() {
                       <strong>{c.prenom} {c.nom}</strong>
                       <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
-                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                    <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                     <td>
                       <strong>{c.partenaireResponsable || c.partenaireNom}</strong>
                       {c.partenaireResponsable && (
@@ -344,7 +345,7 @@ export default function ClientsAccident() {
                   <td>{detailFor.statutDossier === "complet" ? <Badge kind="success">Complet</Badge> : <Badge kind="warning">Formulaire en attente</Badge>}</td>
                 </tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
-                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailFor.dateFin} /></td></tr>
                 <tr>
                   <td className="muted">Renouvellement</td>
                   <td style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

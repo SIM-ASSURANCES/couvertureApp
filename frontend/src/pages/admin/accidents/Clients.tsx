@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge, EcheanceDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
@@ -160,7 +160,7 @@ export default function AssurancesAccidentsClients() {
       />
 
       <Card
-        title="Renouvellements à venir (échéance ≤ 5 jours)"
+        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
         extra={<Bell size={18} color="#b45309" />}
         style={{ marginTop: 24 }}
         noBody
@@ -186,7 +186,7 @@ export default function AssurancesAccidentsClients() {
                   </td>
                   <td>{c.produit.libelle}</td>
                   <td>{c.partenaireResponsable || c.partenaireNom}</td>
-                  <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                  <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                   <td>{statutRenouvellement(c)}</td>
                   <td>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -213,7 +213,7 @@ export default function AssurancesAccidentsClients() {
                 </tr>
               ))}
               {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir dans les 5 prochains jours.</div></td></tr>
+                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -268,7 +268,7 @@ export default function AssurancesAccidentsClients() {
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{waveBadge(c.waveStatut ?? "en_attente")}</td>
                     <td className="muted">{c.numeroPolice ?? "—"}</td>
-                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                    <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                     <td>{statutRenouvellement(c)}</td>
                     <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
                     <td>
@@ -339,7 +339,7 @@ export default function AssurancesAccidentsClients() {
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailFor.waveStatut ?? "en_attente")}</td></tr>
                 <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice ?? "—"}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
-                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailFor.dateFin} /></td></tr>
                 <tr>
                   <td className="muted">Renouvellement</td>
                   <td style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

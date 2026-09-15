@@ -8,6 +8,7 @@ import {
   Badge,
   fcfa,
   fmtDate,
+  EcheanceDate,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
@@ -291,7 +292,7 @@ export default function Contrats() {
                     </td>
                     <td className="muted">{fcfa(c.capitalGaranti)}</td>
                     <td className="muted">
-                      {c.dateFin ? fmtDate(c.dateFin) : "—"}
+                      <EcheanceDate date={c.dateFin} />
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
@@ -487,7 +488,7 @@ export default function Contrats() {
                   </tr>
                   <tr>
                     <td className="muted">Date d'échéance</td>
-                    <td>{detail.dateFin ? fmtDate(detail.dateFin) : "—"}</td>
+                    <td><EcheanceDate date={detail.dateFin} /></td>
                   </tr>
                   <tr>
                     <td className="muted">Souscrit le</td>

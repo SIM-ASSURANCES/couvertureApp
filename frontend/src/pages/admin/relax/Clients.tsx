@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, FileSpreadsheet, Eye, X, Send, RefreshCcw, Camera } from "lucide-react";
-import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge } from "../../../components/ui";
+import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge, EcheanceDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
 import { exportExcel } from "../../../xlsx";
@@ -139,7 +139,7 @@ export default function RelaxClients({ produit, libelle }: { produit: ProduitRel
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{c.cycleFacturation ? CYCLE_LABEL[c.cycleFacturation] : "—"}</td>
                     <td>{waveBadge(c.waveStatut ?? "en_attente")}</td>
-                    <td className="muted">{c.dateFin ? fmtDate(c.dateFin) : "—"}</td>
+                    <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                     <td>{statutRenouvellement(c)}</td>
                     <td className="muted">{c.numeroPolice ?? "—"}</td>
                     <td className="muted">{fmtDate(c.createdAt)}</td>
@@ -201,7 +201,7 @@ export default function RelaxClients({ produit, libelle }: { produit: ProduitRel
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailFor.waveStatut ?? "en_attente")}</td></tr>
                 <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice ?? "—"}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
-                <tr><td className="muted">Date d'échéance</td><td>{detailFor.dateFin ? fmtDate(detailFor.dateFin) : "—"}</td></tr>
+                <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailFor.dateFin} /></td></tr>
                 <tr>
                   <td className="muted">Renouvellement</td>
                   <td style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
