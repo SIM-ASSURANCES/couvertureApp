@@ -716,7 +716,19 @@ async function corrigerEcheanceRelaxVoyage() {
  */
 async function rattacherHistoriqueImfVersRcmec() {
   const candidats = await prisma.imf.findMany({ where: { nom: { contains: "RCMEC", mode: "insensitive" } } });
-  if (candidats.length === 0) return; // pas encore créée côté admin — rien à faire pour l'instant.
+  if (candidats.length === 0) {
+    // Diagnostic explicite (plutôt qu'un no-op silencieux) : si une IMF existe
+    // déjà mais sous un nom qui ne contient pas "RCMEC" (faute de frappe,
+    // variante d'orthographe...), ce log le révèle immédiatement sans avoir à
+    // interroger la base à la main.
+    const toutes = await prisma.imf.findMany({ select: { nom: true } });
+    console.log(
+      toutes.length === 0
+        ? `[seed] Rattachement IMF historique → RCMEC : aucune IMF créée pour l'instant, rien à faire.`
+        : `[seed] Rattachement IMF historique → RCMEC : aucune IMF ne correspond à "RCMEC" parmi les ${toutes.length} existante(s) : ${toutes.map((i) => i.nom).join(", ")}.`
+    );
+    return;
+  }
   if (candidats.length > 1) {
     console.warn(
       `[seed] Plusieurs IMF correspondent à "RCMEC" (${candidats.map((i) => i.nom).join(", ")}) — rattachement ignoré, à faire manuellement.`
