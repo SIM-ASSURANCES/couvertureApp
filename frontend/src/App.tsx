@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 // chunk, chargé seulement quand la route est visitée.
 const Souscription = lazy(() => import("./pages/public/Souscription"));
 const SouscriptionComplement = lazy(() => import("./pages/public/SouscriptionComplement"));
+const SimulationImfPublique = lazy(() => import("./pages/public/SimulationImf"));
 const ClientLogin = lazy(() => import("./pages/client/Login"));
 const ClientDashboard = lazy(() => import("./pages/client/Dashboard"));
 const AgentDistributionLogin = lazy(() => import("./pages/agent-distribution/Login"));
@@ -185,6 +186,7 @@ export default function App() {
             <Route path="/souscription/:token" element={<Souscription />} />
             <Route path="/s/:produit/complement/:token" element={<SouscriptionComplement />} />
             <Route path="/s/:produit/:token" element={<Souscription />} />
+            <Route path="/imf/:token" element={<SimulationImfPublique />} />
 
             <Route path="/client/connexion" element={<ClientLogin />} />
             <Route path="/client" element={<ClientDashboard />} />

@@ -37,9 +37,7 @@ export default function OngletReseau({ imfId }: { imfId: string }) {
 
       {sous === "zones" && <ZonesInner apiBase={apiBase} branche="IMF_PARTENAIRES" header={false} />}
       {sous === "agences" && <AgencesInner apiBase={apiBase} branche="IMF_PARTENAIRES" header={false} />}
-      {sous === "agents" && (
-        <AgentsInner apiBase={apiBase} branche="IMF_PARTENAIRES" header={false} showQr={false} />
-      )}
+      {sous === "agents" && <AgentsInner apiBase={apiBase} branche="IMF_PARTENAIRES" header={false} />}
     </div>
   );
 }
