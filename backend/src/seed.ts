@@ -696,6 +696,56 @@ async function corrigerEcheanceRelaxVoyage() {
   }
 }
 
+/**
+ * Rattache ponctuellement toutes les données de l'ancienne branche « Assurances
+ * IMF » historique (zones/agences/agents/simulations/souscriptions/sinistres/
+ * bordereaux avec `imfId` encore null) à l'institution RCMEC une fois que
+ * celle-ci a été créée côté admin (Gérer les IMF → Nouvelle IMF, avec les
+ * vraies coordonnées du responsable — ce script ne les invente pas). Tant que
+ * cette IMF n'existe pas encore, ne fait rien.
+ *
+ * Rattachement (UPDATE du imfId), PAS une copie : plusieurs champs de ces
+ * modèles sont uniques dans toute la base (AgentImf.email, SouscriptionImf.
+ * numeroPolice, SinistreImf.numeroSinistre, BordereauImf.numero) — dupliquer
+ * les lignes échouerait sur ces contraintes. Un rattachement préserve aussi
+ * automatiquement toutes les relations internes (zoneId, agenceId, agentId…)
+ * sans aucun remappage d'identifiants.
+ *
+ * Idempotent : une fois `imfId` renseigné, ces lignes ne sont plus jamais
+ * reprises par les `where: { imfId: null }` ci-dessous.
+ */
+async function rattacherHistoriqueImfVersRcmec() {
+  const candidats = await prisma.imf.findMany({ where: { nom: { contains: "RCMEC", mode: "insensitive" } } });
+  if (candidats.length === 0) return; // pas encore créée côté admin — rien à faire pour l'instant.
+  if (candidats.length > 1) {
+    console.warn(
+      `[seed] Plusieurs IMF correspondent à "RCMEC" (${candidats.map((i) => i.nom).join(", ")}) — rattachement ignoré, à faire manuellement.`
+    );
+    return;
+  }
+  const rcmecId = candidats[0].id;
+
+  const [zones, agences, agents, simulations, souscriptions, sinistres, bordereaux] = await Promise.all([
+    prisma.zoneImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.agenceImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.agentImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.simulationImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.souscriptionImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.sinistreImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+    prisma.bordereauImf.updateMany({ where: { imfId: null }, data: { imfId: rcmecId } }),
+  ]);
+
+  const total = zones.count + agences.count + agents.count + simulations.count + souscriptions.count + sinistres.count + bordereaux.count;
+  if (total > 0) {
+    console.log(
+      `[seed] Historique IMF rattaché à RCMEC (${candidats[0].nom}) : ` +
+        `${zones.count} zone(s), ${agences.count} agence(s), ${agents.count} agent(s), ` +
+        `${simulations.count} simulation(s), ${souscriptions.count} souscription(s), ` +
+        `${sinistres.count} sinistre(s), ${bordereaux.count} bordereau(x).`
+    );
+  }
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
@@ -705,6 +755,7 @@ async function main() {
   await corrigerEcheanceRelaxVoyage();
   await seedTarificationImf();
   await corrigerCommissionsImf();
+  await rattacherHistoriqueImfVersRcmec();
 }
 
 main()
