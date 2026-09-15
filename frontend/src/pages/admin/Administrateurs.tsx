@@ -40,7 +40,7 @@ export default function Administrateurs() {
   // Branches assignables par ce compte : toutes pour un SUPER_ADMIN global,
   // uniquement les siennes pour un BRANCH_SUPER_ADMIN.
   const branchesAssignables: Branche[] = isSuper
-    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF", "IMF_PARTENAIRES"]
+    ? ["INCENDIE_ACCIDENT", "RELAX", "IMF_PARTENAIRES"]
     : (user?.branches as Branche[] | undefined) ?? [];
   const { data, loading, error, reload } = useFetch<Admin[]>("/admins");
   const [form, setForm] = useState(empty);

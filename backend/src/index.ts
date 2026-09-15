@@ -23,7 +23,7 @@ import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
 import { assurancesAccidentsRouter } from "./routes/assurancesAccidents.js";
 import { assurancesBrancheRouter } from "./routes/assurancesBranche.js";
-import { imfRouter, agentImfRouter, publicImfRouter } from "./routes/imf.js";
+import { agentImfRouter, publicImfRouter } from "./routes/imf.js";
 import { imfPartenairesRouter } from "./routes/imfPartenaires.js";
 import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
@@ -158,12 +158,6 @@ app.use(
   requireAuth("admin"),
   requireBranche("INCENDIE_ACCIDENT"),
   assurancesBrancheRouter
-);
-app.use(
-  "/api/imf",
-  requireAuth("admin"),
-  requireBranche("IMF"),
-  imfRouter
 );
 // Branche « IMF Partenaires » — gestion multi-IMF (chaque IMF = un Partenaire
 // avec son paramétrage propre). Voir routes/imfPartenaires.ts.

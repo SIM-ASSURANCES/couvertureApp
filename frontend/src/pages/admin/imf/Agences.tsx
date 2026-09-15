@@ -145,7 +145,3 @@ export function AgencesInner({
     </>
   );
 }
-
-export default function Agences() {
-  return <AgencesInner />;
-}

@@ -13,7 +13,6 @@ import Login from "./pages/Login";
 // chunk, chargé seulement quand la route est visitée.
 const Souscription = lazy(() => import("./pages/public/Souscription"));
 const SouscriptionComplement = lazy(() => import("./pages/public/SouscriptionComplement"));
-const SimulationImfPublique = lazy(() => import("./pages/public/SimulationImf"));
 const ClientLogin = lazy(() => import("./pages/client/Login"));
 const ClientDashboard = lazy(() => import("./pages/client/Dashboard"));
 const AgentDistributionLogin = lazy(() => import("./pages/agent-distribution/Login"));
@@ -45,7 +44,6 @@ const RelaxPaiementsEnAttente = lazy(() => import("./pages/admin/relax/Paiements
 const RelaxContrats = lazy(() => import("./pages/admin/relax/Contrats"));
 const RelaxPerformance = lazy(() => import("./pages/admin/relax/Performance"));
 
-const ImfDashboard = lazy(() => import("./pages/admin/imf/Dashboard"));
 const ImfPartenairesDashboard = lazy(() => import("./pages/admin/imfs/Dashboard"));
 const ImfPartenairesListe = lazy(() => import("./pages/admin/imfs/Liste"));
 const ImfFicheLayout = lazy(() => import("./pages/admin/imfs/Fiche"));
@@ -77,16 +75,6 @@ const ImfRouteBaremes = lazy(() =>
 const ImfRouteDocuments = lazy(() =>
   import("./pages/admin/imfs/fiche/OngletRoutes").then((m) => ({ default: m.RouteDocuments }))
 );
-const ImfZones = lazy(() => import("./pages/admin/imf/Zones"));
-const ImfAgences = lazy(() => import("./pages/admin/imf/Agences"));
-const ImfAgents = lazy(() => import("./pages/admin/imf/Agents"));
-const ImfBaremes = lazy(() => import("./pages/admin/imf/Baremes"));
-const ImfIndiceArc = lazy(() => import("./pages/admin/imf/IndiceArc"));
-const ImfSimulateur = lazy(() => import("./pages/admin/imf/Simulateur"));
-const ImfContrats = lazy(() => import("./pages/admin/imf/Contrats"));
-const ImfSinistres = lazy(() => import("./pages/admin/imf/Sinistres"));
-const ImfBordereaux = lazy(() => import("./pages/admin/imf/Bordereaux"));
-
 const PartenaireLayout = lazy(() => import("./components/layout/PartenaireLayout"));
 const PartenaireDashboard = lazy(() => import("./pages/partenaire/Dashboard"));
 const PartenaireSouscriptions = lazy(() => import("./pages/partenaire/Souscriptions"));
@@ -146,7 +134,6 @@ export default function App() {
               <Route path="relax/contrats" element={<RelaxContrats />} />
               <Route path="relax/performance" element={<RelaxPerformance />} />
 
-              <Route path="imf" element={<ImfDashboard />} />
               <Route path="imfs" element={<ImfPartenairesDashboard />} />
               <Route path="imfs/liste" element={<ImfPartenairesListe />} />
               <Route path="imfs/:imfId" element={<ImfFicheLayout />}>
@@ -160,15 +147,6 @@ export default function App() {
                 <Route path="baremes" element={<ImfRouteBaremes />} />
                 <Route path="documents" element={<ImfRouteDocuments />} />
               </Route>
-              <Route path="imf/zones" element={<ImfZones />} />
-              <Route path="imf/agences" element={<ImfAgences />} />
-              <Route path="imf/agents" element={<ImfAgents />} />
-              <Route path="imf/baremes" element={<ImfBaremes />} />
-              <Route path="imf/indice-arc" element={<ImfIndiceArc />} />
-              <Route path="imf/simulateur" element={<ImfSimulateur />} />
-              <Route path="imf/contrats" element={<ImfContrats />} />
-              <Route path="imf/sinistres" element={<ImfSinistres />} />
-              <Route path="imf/bordereaux" element={<ImfBordereaux />} />
             </Route>
 
             <Route
@@ -207,7 +185,6 @@ export default function App() {
             <Route path="/souscription/:token" element={<Souscription />} />
             <Route path="/s/:produit/complement/:token" element={<SouscriptionComplement />} />
             <Route path="/s/:produit/:token" element={<Souscription />} />
-            <Route path="/imf/:token" element={<SimulationImfPublique />} />
 
             <Route path="/client/connexion" element={<ClientLogin />} />
             <Route path="/client" element={<ClientDashboard />} />

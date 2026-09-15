@@ -281,7 +281,3 @@ export function BordereauxInner({
     </>
   );
 }
-
-export default function Bordereaux() {
-  return <BordereauxInner />;
-}

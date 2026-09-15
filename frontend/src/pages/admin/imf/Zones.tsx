@@ -121,7 +121,3 @@ export function ZonesInner({
     </>
   );
 }
-
-export default function Zones() {
-  return <ZonesInner />;
-}

@@ -16,7 +16,7 @@ commissionsRouter.get(
     // Un admin ne voit que les demandes des partenaires de sa/ses branche(s)
     // (un SUPER_ADMIN voit tout) — les commissions sont un flux financier,
     // pas seulement une donnée de lecture.
-    const branchesAutorisees = (["INCENDIE_ACCIDENT", "RELAX", "IMF"] as BrancheAcces[]).filter((b) =>
+    const branchesAutorisees = (["INCENDIE_ACCIDENT", "RELAX"] as BrancheAcces[]).filter((b) =>
       hasBranche(req.user, b)
     );
     const rows = await prisma.demandeCommission.findMany({

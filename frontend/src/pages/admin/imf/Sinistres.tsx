@@ -467,7 +467,3 @@ export function SinistresInner({
     </>
   );
 }
-
-export default function Sinistres() {
-  return <SinistresInner />;
-}

@@ -84,7 +84,3 @@ export function ContratsInner({
     </>
   );
 }
-
-export default function Contrats() {
-  return <ContratsInner />;
-}

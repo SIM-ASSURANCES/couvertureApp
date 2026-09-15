@@ -380,7 +380,3 @@ export function AgentsInner({
     </>
   );
 }
-
-export default function Agents() {
-  return <AgentsInner />;
-}

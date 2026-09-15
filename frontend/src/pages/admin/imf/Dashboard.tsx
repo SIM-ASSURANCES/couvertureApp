@@ -239,7 +239,3 @@ export function DashboardInner({ apiBase = "/imf", header = true }: { apiBase?: 
     </>
   );
 }
-
-export default function Dashboard() {
-  return <DashboardInner />;
-}

@@ -17,10 +17,8 @@ import {
   MapPin,
   Building2,
   Percent,
-  CloudRain,
   Calculator,
   LifeBuoy,
-  Banknote,
   HeartPulse,
   AlertTriangle,
   Map as MapIcon,
@@ -82,39 +80,6 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/tarifs-accidents", label: "Tarifs", icon: Percent },
           { to: "/admin/conditions-generales", label: "Conditions Générales", icon: FileText },
           { to: "/admin/performance", label: "Performance & Commissions", icon: TrendingUp },
-        ],
-      },
-    ],
-  },
-  {
-    id: "imf",
-    label: "Assurances IMF",
-    icon: Landmark,
-    homeTo: "/admin/imf",
-    groups: [
-      {
-        section: "Réseau",
-        items: [
-          { to: "/admin/imf", label: "Tableau de bord", icon: LayoutDashboard },
-          { to: "/admin/imf/zones", label: "Zones", icon: MapPin },
-          { to: "/admin/imf/agences", label: "Agences", icon: Building2 },
-          { to: "/admin/imf/agents", label: "Agents", icon: Users },
-        ],
-      },
-      {
-        section: "Tarification",
-        items: [
-          { to: "/admin/imf/baremes", label: "Barèmes", icon: Percent },
-          { to: "/admin/imf/indice-arc", label: "Indice ARC", icon: CloudRain },
-        ],
-      },
-      {
-        section: "Portefeuille",
-        items: [
-          { to: "/admin/imf/simulateur", label: "Simulateur", icon: Calculator },
-          { to: "/admin/imf/contrats", label: "Contrats", icon: IdCard },
-          { to: "/admin/imf/sinistres", label: "Sinistres", icon: LifeBuoy },
-          { to: "/admin/imf/bordereaux", label: "Bordereaux", icon: Banknote },
         ],
       },
     ],
