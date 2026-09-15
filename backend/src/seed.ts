@@ -661,12 +661,48 @@ async function seedTauxCommissionAccidents() {
   if (majInc.count > 0) console.log("[seed] Parametre.tauxCommissionIncendie 0,15 -> 0,20.");
 }
 
+/**
+ * Correction ponctuelle : RelaxVoyage ne couvre que le trajet déclaré (24h),
+ * jamais 3 mois — corrigé côté confirmation de paiement par le commit
+ * 0f81b21 (2026-08-27, voir services/paiementWave.ts::confirmerEcheance),
+ * mais les souscriptions confirmées avant cette date ont gardé leur échéance
+ * à 3 mois en base, jamais recalculée automatiquement. Ne touche que les
+ * lignes dont l'écart dateFin - dateDebut n'est pas déjà ~24h, pour ne
+ * jamais écraser un ajustement manuel légitime.
+ */
+async function corrigerEcheanceRelaxVoyage() {
+  const produit = await prisma.produit.findUnique({ where: { code: "relaxvoyage" } });
+  if (!produit) return;
+
+  const DUREE_ATTENDUE_H = 24;
+  const TOLERANCE_H = 1;
+
+  const rows = await prisma.souscription.findMany({
+    where: { produitId: produit.id, waveStatut: "confirme", dateDebut: { not: null }, dateFin: { not: null } },
+    select: { id: true, dateDebut: true, dateFin: true },
+  });
+
+  let corrections = 0;
+  for (const s of rows) {
+    const ecartH = (s.dateFin!.getTime() - s.dateDebut!.getTime()) / (1000 * 60 * 60);
+    if (Math.abs(ecartH - DUREE_ATTENDUE_H) <= TOLERANCE_H) continue;
+    const dateFin = new Date(s.dateDebut!);
+    dateFin.setHours(dateFin.getHours() + DUREE_ATTENDUE_H);
+    await prisma.souscription.update({ where: { id: s.id }, data: { dateFin } });
+    corrections++;
+  }
+  if (corrections > 0) {
+    console.log(`[seed] RelaxVoyage : ${corrections} souscription(s) corrigée(s) (échéance ramenée à 24h).`);
+  }
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
   await seedCatalogueAssurancesAccidentsDommages();
   await seedTauxCommissionAccidents();
   await corrigerCapitalGarantiIncendie();
+  await corrigerEcheanceRelaxVoyage();
   await seedTarificationImf();
   await corrigerCommissionsImf();
 }
