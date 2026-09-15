@@ -124,7 +124,7 @@ cartesRouter.post(
       if (!selfie) {
         return res.status(400).json({ error: "Photo selfie introuvable pour cette souscription." });
       }
-      const { label, montant } = garantieAffichee(s.produit.code, s.capitalGaranti);
+      const { label, montant } = garantieAffichee(s.produit.code, s.capitalGaranti, s.donneesSpecifiques);
       carte = {
         matricule: s.numeroPolice ?? "",
         nom: s.nom ?? "",

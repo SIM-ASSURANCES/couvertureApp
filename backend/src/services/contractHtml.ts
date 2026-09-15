@@ -525,8 +525,10 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
 // Garanties RelaxMoto/RelaxAuto — fixes par produit, indépendantes du cycle
 // annuel/mensuel souscrit. À garder synchronisé avec la constante miroir
 // GARANTIES_RELAX_MOTO_AUTO côté frontend (pages/public/Souscription.tsx),
-// qui affiche les mêmes montants pendant la souscription.
-const GARANTIES_RELAX_MOTO_AUTO = {
+// qui affiche les mêmes montants pendant la souscription. Exportée pour être
+// réutilisée par services/carteRender.ts (montant FMP de la carte de prise
+// en charge, refonte 2026-09-15).
+export const GARANTIES_RELAX_MOTO_AUTO = {
   relaxmoto: {
     indemniteJournaliere: 3_500,
     dureeMaxJours: 30,
