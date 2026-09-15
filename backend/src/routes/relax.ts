@@ -159,7 +159,22 @@ relaxRouter.post(
     if (!process.env.WAVE_API_KEY) {
       return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
     }
-    const qr = await prisma.qrCode.findFirst({ where: { partenaireId: s.partenaireId, produitId: s.produitId } });
+    // Même résolution que le scan public (routes/public.ts::resoudreQrCodeGenerique) :
+    // un QR scopé exactement à ce produit, OU le QR sélecteur de sa sous-branche, OU
+    // le QR unique du partenaire (produitId/sousBranche tous deux null) conviennent
+    // tous les trois pour rebâtir le lien de paiement — se limiter au premier cas
+    // faisait échouer la relance dès qu'un partenaire n'avait jamais eu de QR dédié
+    // à ce produit précis.
+    const qr = await prisma.qrCode.findFirst({
+      where: {
+        partenaireId: s.partenaireId,
+        OR: [
+          { produitId: s.produitId },
+          ...(s.produit.sousBranche ? [{ produitId: null, sousBranche: s.produit.sousBranche }] : []),
+          { produitId: null, sousBranche: null },
+        ],
+      },
+    });
     if (!qr) return res.status(400).json({ error: "QR introuvable pour ce partenaire/produit." });
 
     const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";

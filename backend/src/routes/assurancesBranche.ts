@@ -439,7 +439,7 @@ assurancesBrancheRouter.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const s = await prisma.souscription.findUnique({
       where: { id: req.params.id },
-      include: { produit: { select: { code: true } } },
+      include: { produit: { select: { code: true, sousBranche: true } } },
     });
     if (!s) return res.status(404).json({ error: "Introuvable" });
     // Trajet ponctuel de 24h : rien à reconduire, un nouveau voyage suppose
@@ -453,8 +453,21 @@ assurancesBrancheRouter.post(
     if (!process.env.WAVE_API_KEY) {
       return res.status(400).json({ error: "Wave n'est pas configuré (WAVE_API_KEY manquant)." });
     }
+    // Même résolution que le scan public (routes/public.ts::resoudreQrCodeGenerique) :
+    // un QR scopé exactement à ce produit, OU le QR sélecteur de sa sous-branche,
+    // OU le QR unique du partenaire (produitId/sousBranche tous deux null, refonte
+    // du 2026-08-07) conviennent tous les trois pour rebâtir le lien de paiement —
+    // se limiter au premier cas faisait échouer la relance dès qu'un partenaire
+    // n'avait jamais eu de QR dédié à ce produit précis.
     const qr = await prisma.qrCode.findFirst({
-      where: { partenaireId: s.partenaireId, produitId: s.produitId },
+      where: {
+        partenaireId: s.partenaireId,
+        OR: [
+          { produitId: s.produitId },
+          ...(s.produit.sousBranche ? [{ produitId: null, sousBranche: s.produit.sousBranche }] : []),
+          { produitId: null, sousBranche: null },
+        ],
+      },
     });
     if (!qr) return res.status(400).json({ error: "QR introuvable pour ce partenaire/produit." });
 
