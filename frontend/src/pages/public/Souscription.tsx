@@ -73,7 +73,7 @@ const TAGLINES_PRODUITS: Record<string, string> = {
   relaxaccidents: "Faites-vous soigner sans stress en cas d'accident et assurez vos arrières.",
   relaxaccidents_fraismedicaux: "Travailleurs de tous secteurs, faites-vous soigner sans stress en cas d'accident.",
   relaxaccidents_fraismedicaux_livreurs:
-    "Livreurs, chauffeurs de taxi, faites-vous soigner sans stress en cas d'accident.",
+    "Livreurs, conducteurs de Mototaxi, faites-vous soigner sans stress en cas d'accident.",
   relaxvoyage: "Voyageurs, ne voyagez plus sans votre couverture accident.",
   securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
   securpro_dommages:
@@ -2251,7 +2251,7 @@ export default function Souscription() {
     if (isRelaxAccidentsFraisMedicaux(p)) {
       l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
       if (isRafLivreurs(p)) {
-        l.push({ label: "Activité", valeur: "Livreur / Chauffeur de taxi" });
+        l.push({ label: "Activité", valeur: "Livreur / Conducteur de Mototaxi" });
       } else {
         l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
       }
@@ -3669,8 +3669,8 @@ export default function Souscription() {
                     required
                   />
                   {isRafLivreurs(qrInfo?.produit) ? (
-                    /* Version Livreurs/Taxis : aucune déclaration — ce produit
-                       couvre justement les livreurs et chauffeurs de taxi. */
+                    /* Version Livreurs/MotoTaxis : aucune déclaration — ce produit
+                       couvre justement les livreurs et conducteurs de Mototaxi. */
                     <div
                       style={{
                         background: "var(--sim-primary-50, #e6f1fb)", border: "1px solid var(--sim-primary, #004b9c)",
@@ -3679,7 +3679,7 @@ export default function Souscription() {
                       }}
                     >
                       Ce contrat couvre spécifiquement les <strong>livreurs</strong> et les
-                      <strong> chauffeurs de taxi</strong> pour leurs frais médicaux en cas d'accident.
+                      <strong> conducteurs de Mototaxi</strong> pour leurs frais médicaux en cas d'accident.
                     </div>
                   ) : (
                     <div
