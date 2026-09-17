@@ -9,6 +9,7 @@ import {
   genererContratRelaxAccidentsGenerale,
   genererContratSecurproDommages,
   genererContratSecurhome,
+  genererContratSecurMoto,
   genererContratSecurhomeIncendie,
 } from "../../contract";
 import { telechargerCarte } from "../../carte";
@@ -27,6 +28,7 @@ import {
 } from "../../relaxAccidentsGenerale";
 import { calculerSecurpro, type BaremeClasseSecurpro, type ResultatTarifImf } from "../../offline/tarification";
 import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommages";
+import { calculerSecurMoto, type ResultatSecurMoto, type AgeMoto } from "../../securMoto";
 import { DateNaissanceInput } from "../../components/ui";
 import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
 const BASE = API_BASE;
@@ -76,6 +78,7 @@ const TAGLINES_PRODUITS: Record<string, string> = {
   securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
   securpro_dommages:
     "Entrepreneur, commerçant, protégez votre local contre l'incendie, les vols et bien d'autres dommages.",
+  securmoto: "Propriétaire de moto, protégez-la contre les dommages accidentels et le vol.",
 };
 
 // Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
@@ -113,7 +116,7 @@ const PRODUITS_ACCIDENTS = [
   "relaxvoyage",
   "relaxaccidents",
 ];
-const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages", "securhome"];
+const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages", "securhome", "securmoto"];
 function sousBrancheDuProduit(code: string): "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null {
   if (PRODUITS_ACCIDENTS.includes(code)) return "ASSURANCES_ACCIDENTS";
   if (PRODUITS_DOMMAGES.includes(code)) return "ASSURANCES_DOMMAGES";
@@ -137,6 +140,12 @@ function isSecurproDommages(p?: string): p is "securpro_dommages" {
 // frontend/src/securhomeDommages.ts (miroir de backend/src/services/securhomeDommages.ts).
 function isSecurhomeDommages(p?: string): p is "securhome_dommages" {
   return p === "securhome_dommages";
+}
+
+// SecurMoto (2026-09-17, Assurances Dommages) — moteur de calcul propre, voir
+// frontend/src/securMoto.ts (miroir de backend/src/services/securMoto.ts).
+function isSecurMoto(p?: string): p is "securmoto" {
+  return p === "securmoto";
 }
 
 // SecurHome (2026-09-03, Assurances Dommages) — distinct de SecurHome+ :
@@ -174,7 +183,8 @@ interface QrInfo {
     | "relaxaccidents"
     | "securpro_dommages"
     | "securhome_dommages"
-    | "securhome";
+    | "securhome"
+    | "securmoto";
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -1224,6 +1234,136 @@ function SecurhomeDommagesForm({
   );
 }
 
+// SecurMoto (2026-09-17) — Assurances Dommages, deux-roues : le prospect
+// déclare la valeur à neuf, l'âge et une garantie Vol optionnelle (motos
+// neuves uniquement) — capital garanti et prime TTC recalculés en direct
+// (voir frontend/src/securMoto.ts).
+function SecurMotoForm({
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
+  telephone,
+  setTelephone,
+  valeurMoto,
+  setValeurMoto,
+  ageMoto,
+  setAgeMoto,
+  garantieVol,
+  setGarantieVol,
+  sigRef,
+}: {
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  valeurMoto: string;
+  setValeurMoto: (v: string) => void;
+  ageMoto: AgeMoto;
+  setAgeMoto: (v: AgeMoto) => void;
+  garantieVol: boolean;
+  setGarantieVol: (v: boolean) => void;
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  let resultat: ResultatSecurMoto | null = null;
+  let erreur = "";
+  try {
+    resultat = calculerSecurMoto({ valeurMoto: Number(valeurMoto || 0), ageMoto, garantieVol });
+  } catch (e) {
+    erreur = e instanceof Error ? e.message : "Entrées invalides.";
+  }
+
+  return (
+    <>
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Valeur de la moto à neuf (FCFA) * (limité à 700 000 FCFA)">
+        <input
+          value={valeurMoto}
+          onChange={(e) => setValeurMoto(e.target.value.replace(/\D/g, ""))}
+          type="text"
+          inputMode="numeric"
+          placeholder="Ex. 615 000"
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="Âge de la moto * (par rapport à la date d'acquisition)">
+        <select
+          value={ageMoto}
+          onChange={(e) => {
+            const v = e.target.value as AgeMoto;
+            setAgeMoto(v);
+            if (v !== "NEUVE") setGarantieVol(false);
+          }}
+          style={inputStyle}
+        >
+          <option value="NEUVE">Neuve</option>
+          <option value="1 AN">1 an</option>
+          <option value="2 ANS">2 ans</option>
+        </select>
+      </FieldRow>
+      {ageMoto === "NEUVE" && (
+        <FieldRow label="Garantie Vol">
+          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="checkbox" checked={garantieVol} onChange={(e) => setGarantieVol(e.target.checked)} />
+            Souscrire (uniquement pour les motos neuves)
+          </label>
+        </FieldRow>
+      )}
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+
+      <div
+        style={{
+          background: "var(--sim-primary-50, #e6f1fb)",
+          borderRadius: 12,
+          padding: "14px 16px",
+          margin: "18px 0",
+        }}
+      >
+        <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 10, color: "#004b9c" }}>Aperçu du devis</div>
+        {resultat ? (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Capital garanti</span>
+              <span>{fcfa(resultat.capitalGaranti)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Prime nette HT</span>
+              <span>{fcfa(resultat.primeNetteHT)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
+              <span>Accessoires</span>
+              <span>{fcfa(resultat.accessoires)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 8 }}>
+              <span>Taxes</span>
+              <span>{fcfa(resultat.taxes)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
+              <span>PRIME TTC</span>
+              <span>{fcfa(resultat.primeTTC)}</span>
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: "#5b6b80" }}>
+            {erreur || "Renseignez les champs ci-dessus pour voir le montant de votre prime."}
+          </div>
+        )}
+      </div>
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
 // SecurHome (2026-09-03) — Assurances Dommages, incendie uniquement, tarif
 // fixe par nombre de pièces (pas de devis calculé, contrairement à
 // SecurHome+) : le prospect choisit son nombre de pièces (capital garanti +
@@ -1447,6 +1587,13 @@ export default function Souscription() {
   const [deCapitalSh, setDeCapitalSh] = useState("");
   const [bdgCapitalSh, setBdgCapitalSh] = useState("");
 
+  // Champs SecurMoto (Assurances Dommages) — moteur en dur (pas de barème
+  // admin), voir frontend/src/securMoto.ts. `nom`/`prenom`/`telephone`/
+  // `sigRef` partagés avec les branches ci-dessus.
+  const [valeurMotoSm, setValeurMotoSm] = useState("");
+  const [ageMotoSm, setAgeMotoSm] = useState<AgeMoto>("NEUVE");
+  const [garantieVolSm, setGarantieVolSm] = useState(false);
+
   // Champs SecurHome (Assurances Dommages, incendie uniquement, tarif fixe
   // par nombre de pièces) — `nom`/`prenom`/`telephone`/`sigRef` partagés avec
   // les branches ci-dessus.
@@ -1516,7 +1663,11 @@ export default function Souscription() {
     nombrePieces?: number | null;
     // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis).
     optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
-    resultat?: ResultatTarifImf | ResultatSecurhome | null;
+    // SecurMoto (Assurances Dommages).
+    valeurMoto?: number | null;
+    ageMoto?: AgeMoto | null;
+    garantieVol?: boolean | null;
+    resultat?: ResultatTarifImf | ResultatSecurhome | ResultatSecurMoto | null;
   } | null>(null);
 
   // Prime d'UN cycle pour la formule RelaxMoto/RelaxAuto sélectionnée — sert
@@ -1550,7 +1701,8 @@ export default function Souscription() {
           produitEffectif === "relaxaccidents" ||
           produitEffectif === "securpro_dommages" ||
           produitEffectif === "securhome_dommages" ||
-          produitEffectif === "securhome";
+          produitEffectif === "securhome" ||
+          produitEffectif === "securmoto";
         const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
@@ -1634,6 +1786,9 @@ export default function Souscription() {
             dansMarche: data.dansMarche ?? null,
             nombrePieces: data.nombrePieces ?? null,
             optionDeces: data.optionDeces ?? null,
+            valeurMoto: data.valeurMoto ?? null,
+            ageMoto: data.ageMoto ?? null,
+            garantieVol: data.garantieVol ?? null,
             resultat: data.resultat ?? null,
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
@@ -1806,7 +1961,7 @@ export default function Souscription() {
       }
       return;
     }
-    if (isSecurproDommages(produit) || isSecurhomeDommages(produit)) {
+    if (isSecurproDommages(produit) || isSecurhomeDommages(produit) || isSecurMoto(produit)) {
       if (p.nom) setNom(p.nom);
       if (p.prenom) setPrenom(p.prenom);
       if (telephoneClient) setTelephone(telephoneClient);
@@ -1984,6 +2139,12 @@ export default function Souscription() {
           deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
           bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
         }).primeTTC;
+      if (isSecurMoto(p))
+        return calculerSecurMoto({
+          valeurMoto: Number(valeurMotoSm || 0),
+          ageMoto: ageMotoSm,
+          garantieVol: garantieVolSm,
+        }).primeTTC;
     } catch {
       // Saisie encore incomplète : on n'affiche simplement pas de montant.
     }
@@ -2055,6 +2216,16 @@ export default function Souscription() {
       return l;
     }
 
+    if (isSecurMoto(p)) {
+      l.push({ label: "Prénom", valeur: prenom });
+      l.push({ label: "Nom", valeur: nom });
+      l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Valeur de la moto à neuf", valeur: fcfa(Number(valeurMotoSm || 0)) });
+      l.push({ label: "Âge de la moto", valeur: ageMotoSm });
+      l.push({ label: "Garantie Vol", valeur: oui(garantieVolSm) });
+      return l;
+    }
+
     if (p === "incendie") {
       l.push({ label: "Prénom", valeur: prenomInc });
       l.push({ label: "Nom", valeur: nomInc });
@@ -2101,6 +2272,7 @@ export default function Souscription() {
     if ((isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
+    if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
@@ -2112,6 +2284,7 @@ export default function Souscription() {
       isRelaxAccidentsGenerale(qrInfo.produit) ||
       isSecurproDommages(qrInfo.produit) ||
       isSecurhomeDommages(qrInfo.produit) ||
+      isSecurMoto(qrInfo.produit) ||
       isSecurhomeIncendie(qrInfo.produit) ||
       isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
       isRelax(qrInfo.produit)
@@ -2255,6 +2428,31 @@ export default function Souscription() {
             ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
             deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
             bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
+          resultat: data.resultat,
+        });
+        window.location.href = data.checkoutUrl;
+        return;
+      } else if (qrInfo.produit === "securmoto") {
+        const res = await fetch(`${BASE}/public/souscriptions/securmoto/initiate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            telephone,
+            signature,
+            valeurMoto: Number(valeurMotoSm || 0),
+            ageMoto: ageMotoSm,
+            garantieVol: garantieVolSm,
           }),
         });
         const data = await res.json();
@@ -2553,6 +2751,31 @@ export default function Souscription() {
       });
       return;
     }
+    if (qrInfo.produit === "securmoto") {
+      const resultat = result.resultat as ResultatSecurMoto | undefined;
+      if (!resultat) return;
+      genererContratSecurMoto({
+        numeroPolice: result.numeroPolice ?? "",
+        partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
+        dateDebut: result.dateDebut ?? new Date().toISOString(),
+        dateFin:
+          result.dateFin ??
+          new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString(),
+        nom: result.nom ?? nom,
+        prenom: result.prenom ?? prenom,
+        telephone: result.telephone ?? telephone,
+        valeurMoto: result.valeurMoto ?? Number(valeurMotoSm || 0),
+        ageMoto: result.ageMoto ?? ageMotoSm,
+        garantieVol: result.garantieVol ?? garantieVolSm,
+        capitalGaranti: resultat.capitalGaranti,
+        primeNetteHT: resultat.primeNetteHT,
+        accessoires: resultat.accessoires,
+        taxes: resultat.taxes,
+        primeTTC: resultat.primeTTC,
+        signature: result.signature ?? null,
+      });
+      return;
+    }
     const contrat = {
       numeroPolice: result.numeroPolice ?? "",
       partenaire: result.partenaire ?? qrInfo.partenaire.nomCommerce,
@@ -2714,6 +2937,8 @@ export default function Souscription() {
                   ? "SecurHome+"
                   : qrInfo.produit === "securhome"
                   ? "SecurHome"
+                  : qrInfo.produit === "securmoto"
+                  ? "SecurMoto"
                   : qrInfo.produit === "relaxmoto"
                   ? "RelaxMoto"
                   : "RelaxAuto"}
@@ -3228,6 +3453,22 @@ export default function Souscription() {
                   setDeCapital={setDeCapitalSh}
                   bdgCapital={bdgCapitalSh}
                   setBdgCapital={setBdgCapitalSh}
+                  sigRef={sigRef}
+                />
+              ) : isSecurMoto(qrInfo?.produit) ? (
+                <SecurMotoForm
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  valeurMoto={valeurMotoSm}
+                  setValeurMoto={setValeurMotoSm}
+                  ageMoto={ageMotoSm}
+                  setAgeMoto={setAgeMotoSm}
+                  garantieVol={garantieVolSm}
+                  setGarantieVol={setGarantieVolSm}
                   sigRef={sigRef}
                 />
               ) : isSecurproDommages(qrInfo?.produit) ? (
@@ -3770,6 +4011,19 @@ export default function Souscription() {
                           return true;
                         }
                       })()
+                    : isSecurMoto(qrInfo?.produit)
+                    ? !nom ||
+                      !prenom ||
+                      !valeurMotoSm ||
+                      phoneInvalid(telephone) ||
+                      (() => {
+                        try {
+                          calculerSecurMoto({ valeurMoto: Number(valeurMotoSm || 0), ageMoto: ageMotoSm, garantieVol: garantieVolSm });
+                          return false;
+                        } catch {
+                          return true;
+                        }
+                      })()
                     : phoneInvalid(telephoneInc) || !villeInc || !communeInc || !refFactureInc);
                 return (
                   <button
@@ -4050,6 +4304,59 @@ export default function Souscription() {
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
                     Votre assurance SecurHome+ est activée.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.resultat && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isSecurMoto(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre assurance SecurMoto est activée.
                   </div>
                   {result?.numeroPolice && (
                     <div

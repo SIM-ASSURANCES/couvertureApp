@@ -68,6 +68,10 @@ export interface DonneesContratGenerique {
   camera: boolean | null;
   volContenu: boolean | null;
   nombrePieces: number | null;
+  // SecurMoto uniquement.
+  valeurMoto: number | null;
+  ageMoto: "NEUVE" | "1 AN" | "2 ANS" | null;
+  garantieVol: boolean | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultat: any;
 }
@@ -198,6 +202,9 @@ export async function mapperSouscriptionGenerique(
     camera: bool("camera"),
     volContenu: bool("volContenu"),
     nombrePieces: num("nombrePieces"),
+    valeurMoto: num("valeurMoto"),
+    ageMoto: (d?.ageMoto as "NEUVE" | "1 AN" | "2 ANS" | undefined) ?? null,
+    garantieVol: bool("garantieVol"),
     resultat: s.resultat ?? null,
   };
 }

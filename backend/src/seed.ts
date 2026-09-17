@@ -554,6 +554,10 @@ async function seedCatalogueAssurancesAccidentsDommages() {
   const produitsDommagesActives = [
     { code: "securhome_dommages", libelle: "SecurHome+", ordre: 1 },
     { code: "securpro_dommages", libelle: "SecurPro", ordre: 2 },
+    // SecurMoto (2026-09-17) — assurance dommages moto, prime calculée
+    // dynamiquement à partir de la valeur déclarée (services/securMoto.ts),
+    // même mécanisme que SecurHome+/SecurPro.
+    { code: "securmoto", libelle: "SecurMoto", ordre: 3 },
   ];
   for (const p of produitsDommagesActives) {
     await prisma.produit.upsert({

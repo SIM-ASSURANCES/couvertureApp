@@ -138,6 +138,28 @@ export interface ContratSecurhome {
   signature?: string | null;
 }
 
+// SecurMoto (2026-09-17) — assurance dommages moto, prime calculée à partir
+// de la valeur déclarée (services/securMoto.ts), même principe que
+// SecurHome+ ci-dessus mais un seul bien (pas de liste de garanties/lignes).
+export interface ContratSecurMoto {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  valeurMoto: number;
+  ageMoto: "NEUVE" | "1 AN" | "2 ANS";
+  garantieVol: boolean;
+  capitalGaranti: number;
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 // SecurHome (2026-09-03) — distinct de SecurHome+ ci-dessus : ne couvre que
 // l'incendie, tarif fixe selon le nombre de pièces (pas de devis calculé),
 // voir services/relaxAccidentsGenerale.ts pour le principe équivalent côté
@@ -791,6 +813,43 @@ export async function renderContratSecurhome(c: ContratSecurhome): Promise<strin
   <table>
     <tr><td class="k">Garantie</td><td class="k">Capital</td><td class="k">Prime</td></tr>
     ${c.lignes.map((l) => `<tr><td>${val(l.garantie)}</td><td>${l.capital ? fcfa(l.capital) : "—"}</td><td>${fcfa(l.prime)}</td></tr>`).join("")}
+  </table>
+
+  <table>
+    <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales Contrat SECUR DOMMAGE (MFB/DGTCP/DA/N° 01498 du 19 JUIN 2025) et les présentes Conditions Particulières,
+    lesquelles annulent et remplacent toute disposition plus restrictive des conditions générales.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCG("incendie");
+  const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECUR DOMMAGE</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function renderContratSecurMoto(c: ContratSecurMoto): Promise<string> {
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — SECURMOTO</h1>
+  <div class="sub">Assurance Dommages Moto · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Valeur de la moto à neuf</td><td>${fcfa(c.valeurMoto)}</td><td class="k">Âge de la moto</td><td>${val(c.ageMoto)}</td></tr>
+    <tr><td class="k">Garantie Vol</td><td>${c.garantieVol ? "Oui" : "Non"}</td><td class="k">Capital garanti (dommages)</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Téléphone</td><td>${val(c.telephone)}</td><td class="k"></td><td></td></tr>
   </table>
 
   <table>

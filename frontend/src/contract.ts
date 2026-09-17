@@ -129,6 +129,28 @@ export interface ContratSecurhome {
   signature?: string | null;
 }
 
+// SecurMoto (2026-09-17) — assurance dommages moto, prime calculée à partir
+// de la valeur déclarée (voir frontend/src/securMoto.ts), même principe que
+// SecurHome+ ci-dessus mais un seul bien (pas de lignes de garantie).
+export interface ContratSecurMoto {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  valeurMoto: number;
+  ageMoto: "NEUVE" | "1 AN" | "2 ANS";
+  garantieVol: boolean;
+  capitalGaranti: number;
+  primeNetteHT: number;
+  accessoires: number;
+  taxes: number;
+  primeTTC: number;
+  signature?: string | null;
+}
+
 // SecurHome (2026-09-03) — distinct de SecurHome+ ci-dessus : ne couvre que
 // l'incendie, tarif fixe selon le nombre de pièces, pas de devis calculé.
 export interface ContratSecurhomeIncendie {
@@ -347,6 +369,10 @@ export interface DonneesContrat {
   contenu?: number | null;
   dansMarche?: boolean | null;
   nombrePieces?: number | null;
+  // SecurMoto uniquement.
+  valeurMoto?: number | null;
+  ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
+  garantieVol?: boolean | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultat?: any;
 }
@@ -511,6 +537,28 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       valeurBatimentOuLoyer: statutFinal === "locataire" ? c.loyerMensuel ?? 0 : c.valeurBatiment ?? 0,
       contenu: c.contenu ?? 0,
       lignes: r.lignes ?? [],
+      primeNetteHT: r.primeNetteHT ?? 0,
+      accessoires: r.accessoires ?? 0,
+      taxes: r.taxes ?? 0,
+      primeTTC: r.primeTTC ?? c.montant,
+      signature: c.signature ?? null,
+    });
+    return;
+  }
+  if (c.type === "securmoto") {
+    const r = c.resultat ?? {};
+    genererContratSecurMoto({
+      numeroPolice: c.numeroPolice,
+      partenaire: c.partenaire,
+      dateDebut: debut,
+      dateFin: fin,
+      nom: c.nom,
+      prenom: c.prenom,
+      telephone: c.telephone,
+      valeurMoto: c.valeurMoto ?? 0,
+      ageMoto: c.ageMoto ?? "NEUVE",
+      garantieVol: c.garantieVol ?? false,
+      capitalGaranti: r.capitalGaranti ?? c.capitalGaranti,
       primeNetteHT: r.primeNetteHT ?? 0,
       accessoires: r.accessoires ?? 0,
       taxes: r.taxes ?? 0,
@@ -780,6 +828,7 @@ type ContratType =
   | "securpro"
   | "securpro_dommages"
   | "securhome_dommages"
+  | "securmoto"
   | "securhome_incendie"
   | "securstock"
   | "securecolte"
@@ -860,6 +909,10 @@ export async function genererContratSecurproDommages(c: ContratSecurpro) {
 
 export async function genererContratSecurhome(c: ContratSecurhome) {
   await telechargerContratPdf("securhome_dommages", c.numeroPolice, c);
+}
+
+export async function genererContratSecurMoto(c: ContratSecurMoto) {
+  await telechargerContratPdf("securmoto", c.numeroPolice, c);
 }
 
 export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie, souscriptionId?: string) {

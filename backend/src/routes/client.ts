@@ -472,17 +472,24 @@ clientRouter.get(
 );
 
 /**
- * Produits volontairement absents de l'espace client :
+ * Produits volontairement absents des suggestions "autres produits
+ * disponibles" de l'espace client (n'empêche pas leurs propres souscripteurs
+ * d'avoir un espace client — juste de se voir proposer CES produits-ci en
+ * cross-sell) :
  * - SecurHome+ et SecurPro assurent un local ou un bâtiment et supposent une
  *   évaluation (valeur du bâtiment, contenu, garanties optionnelles) qui se
  *   fait avec le partenaire, pas en libre-service. Ils restent souscriptibles
  *   via le QR du partenaire.
+ * - SecurMoto (2026-09-17) ajouté par cohérence avec les deux produits
+ *   Dommages ci-dessus, même si son calcul est déjà self-service (pas
+ *   d'évaluation partenaire nécessaire) — à retirer d'ici s'il doit être
+ *   proposé en cross-sell.
  * - "incendie" (Incendie Habitation en Inclusion) n'est qu'une ligne
  *   présentationnelle du catalogue générique (voir seed.ts) — le flux réel
  *   passe par le modèle historique SouscriptionIncendie (achat en boutique
  *   avec réf. facture), pas par ce chooser/cette souscription générique.
  */
-const PRODUITS_HORS_ESPACE_CLIENT = new Set(["securhome_dommages", "securpro_dommages", "incendie"]);
+const PRODUITS_HORS_ESPACE_CLIENT = new Set(["securhome_dommages", "securpro_dommages", "securmoto", "incendie"]);
 
 /** Autres produits actifs du partenaire d'origine, non encore souscrits (confirmés) par ce même numéro chez ce partenaire. */
 clientRouter.get(

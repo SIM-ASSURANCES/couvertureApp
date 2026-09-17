@@ -436,6 +436,7 @@ export default function AssurancesAccidentsTarifs() {
 
         <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Assurances Dommages)</h3>
         <CommissionTauxUniqueCard code="securhome_dommages" libelle="SecurHome+" />
+        <CommissionTauxUniqueCard code="securmoto" libelle="SecurMoto" />
         <CommissionSecurproTable />
       </div>
     </>

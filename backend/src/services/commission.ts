@@ -143,7 +143,7 @@ async function commissionSouscriptionsGeneriques(where: {
  * commission est désormais couverte par commissionSouscriptionsGeneriques
  * ci-dessus, comme RelaxMoto/RelaxAuto.
  */
-export const PRODUITS_COMMISSION_DYNAMIQUE = ["securhome_dommages", "securpro_dommages"] as const;
+export const PRODUITS_COMMISSION_DYNAMIQUE = ["securhome_dommages", "securpro_dommages", "securmoto"] as const;
 
 async function commissionSouscriptionsDynamiques(where: {
   partenaireId?: string;

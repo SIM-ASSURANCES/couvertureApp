@@ -28,6 +28,7 @@ import {
 } from "../services/relaxAccidentsGenerale.js";
 import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
+import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
@@ -81,11 +82,12 @@ function estRafLivreurs(p: string): boolean {
   return p === "relaxaccidents_fraismedicaux_livreurs";
 }
 
-// Produits à devis calculé dynamiquement (pas de TarifProduit) — SecurHome+ et
-// SecurPro (Assurances Dommages). RelaxAccidents générale est passée à un
-// tarif fixe (refonte 2026-08-31, voir services/relaxAccidentsGenerale.ts) :
-// elle rejoint désormais PRODUITS_FORMULE ci-dessus.
-const PRODUITS_CALCUL_DYNAMIQUE = ["securhome_dommages", "securpro_dommages"] as const;
+// Produits à devis calculé dynamiquement (pas de TarifProduit) — SecurHome+,
+// SecurPro et SecurMoto (Assurances Dommages). RelaxAccidents générale est
+// passée à un tarif fixe (refonte 2026-08-31, voir
+// services/relaxAccidentsGenerale.ts) : elle rejoint désormais PRODUITS_FORMULE
+// ci-dessus.
+const PRODUITS_CALCUL_DYNAMIQUE = ["securhome_dommages", "securpro_dommages", "securmoto"] as const;
 function isProduitCalculDynamique(p: string): p is (typeof PRODUITS_CALCUL_DYNAMIQUE)[number] {
   return (PRODUITS_CALCUL_DYNAMIQUE as readonly string[]).includes(p);
 }
@@ -1421,6 +1423,125 @@ publicRouter.post(
   })
 );
 
+/**
+ * SecurMoto (Assurances Dommages) — moteur de calcul propre, voir
+ * services/securMoto.ts. Enregistrée AVANT la route générique
+ * `/souscriptions/:produit/initiate` ci-dessous, même piège d'ordre de
+ * routage Express que SecurHome+. Souscription individuelle (effectif=1,
+ * pas de réduction de groupe — voir services/securMoto.ts).
+ */
+const securMotoSchema = z.object({
+  qrToken: z.string(),
+  nom: z.string().min(1).max(120),
+  prenom: z.string().min(1).max(120),
+  telephone: z.string().min(6),
+  signature: dataUrlImage.optional(),
+  valeurMoto: z.number().finite().min(1).max(700_000),
+  ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+  garantieVol: z.boolean(),
+});
+
+publicRouter.post(
+  "/souscriptions/securmoto/initiate",
+  asyncHandler(async (req, res) => {
+    const data = securMotoSchema.parse(req.body);
+
+    if (data.garantieVol && data.ageMoto !== "NEUVE") {
+      return res.status(400).json({ error: "La garantie Vol n'est disponible que pour une moto neuve." });
+    }
+
+    const resolu = await resoudreQrCodeGenerique("securmoto", data.qrToken);
+    if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
+    const { produit: prod, qr } = resolu;
+
+    if (await produitDesactivePourPartenaire(qr.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
+
+    const input: SecurMotoInput = {
+      valeurMoto: data.valeurMoto,
+      ageMoto: data.ageMoto as AgeMoto,
+      garantieVol: data.garantieVol,
+    };
+    let resultat;
+    try {
+      resultat = calculerSecurMoto(input);
+    } catch (e) {
+      return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
+    }
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: qr.partenaireId,
+        agentDistributionId: qr.agentDistributionId,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        montantPrime: resultat.primeTTC,
+        capitalGaranti: resultat.capitalGaranti,
+        waveStatut: "en_attente",
+        nombreEcheances: 1,
+        donneesSpecifiques: {
+          signature: data.signature ?? null,
+          nom: data.nom,
+          prenom: data.prenom,
+          valeurMoto: data.valeurMoto,
+          ageMoto: data.ageMoto,
+          garantieVol: data.garantieVol,
+        },
+        resultat: JSON.parse(JSON.stringify(resultat)),
+        paiements: {
+          create: { numeroEcheance: 1, montant: resultat.primeTTC, dateEcheance: new Date() },
+        },
+      },
+    });
+
+    const echeance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/s/securmoto/${data.qrToken}?paid=${echeance.id}`;
+    const errorUrl = `${appUrl}/s/securmoto/${data.qrToken}?paiement=echec`;
+
+    let checkoutUrl: string;
+    let transactionId: string;
+
+    if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      qr.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${resultat.primeTTC} FCFA) via votre QR code.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: echeance.id,
+      montant: resultat.primeTTC,
+      resultat,
+      checkoutUrl,
+      transactionId,
+    });
+  })
+);
+
 publicRouter.post(
   "/souscriptions/:produit/initiate",
   asyncHandler(async (req, res) => {
@@ -1858,6 +1979,10 @@ publicRouter.get(
       moyenDeplacement?: string | null;
       // Option Décès facultative des produits RelaxAccidents Frais Médicaux.
       optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
+      // SecurMoto (Assurances Dommages).
+      valeurMoto?: number | null;
+      ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
+      garantieVol?: boolean | null;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -1944,6 +2069,10 @@ publicRouter.get(
       // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis) — affichée
       // sur le contrat PDF (voir renderContratAccident).
       optionDeces: donneesSpecifiques?.optionDeces ?? null,
+      // SecurMoto (Assurances Dommages).
+      valeurMoto: donneesSpecifiques?.valeurMoto ?? null,
+      ageMoto: donneesSpecifiques?.ageMoto ?? null,
+      garantieVol: donneesSpecifiques?.garantieVol ?? null,
       resultat: s.resultat ?? null,
     });
   })

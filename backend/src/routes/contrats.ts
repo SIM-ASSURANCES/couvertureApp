@@ -13,6 +13,7 @@ import {
   renderContratRelaxAccidentsGenerale,
   renderContratSecurpro,
   renderContratSecurhome,
+  renderContratSecurMoto,
   renderContratSecurhomeIncendie,
   renderContratSecurecolte,
   renderContratSecurstock,
@@ -282,6 +283,31 @@ const securhomeDommagesSchema = z.object({
   }),
 });
 
+// SecurMoto (2026-09-17) — assurance dommages moto, prime calculée à partir
+// de la valeur déclarée (voir services/securMoto.ts), même principe que
+// securhomeDommagesSchema ci-dessus mais un seul bien (pas de lignes de garantie).
+const securMotoSchema = z.object({
+  type: z.literal("securmoto"),
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    valeurMoto: montant,
+    ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+    garantieVol: z.boolean(),
+    capitalGaranti: montant,
+    primeNetteHT: montant,
+    accessoires: montant,
+    taxes: montant,
+    primeTTC: montant,
+    signature: dataUrlSignature,
+  }),
+});
+
 // SecurHome (2026-09-03) — distinct de securhomeDommagesSchema ci-dessus :
 // tarif fixe selon le nombre de pièces, pas de devis calculé.
 const securhomeIncendieSchema = z.object({
@@ -426,6 +452,7 @@ const bodySchema = z.discriminatedUnion("type", [
   securproSchema,
   securproDommagesSchema,
   securhomeDommagesSchema,
+  securMotoSchema,
   securhomeIncendieSchema,
   securstockSchema,
   securecolteSchema,
@@ -675,6 +702,9 @@ contratsRouter.post(
         break;
       case "securhome_dommages":
         html = await renderContratSecurhome(body.data);
+        break;
+      case "securmoto":
+        html = await renderContratSecurMoto(body.data);
         break;
       case "securhome_incendie":
         html = await renderContratSecurhomeIncendie(body.data);

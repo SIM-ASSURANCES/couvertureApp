@@ -92,6 +92,10 @@ souscriptionsRouter.get(
       camera?: boolean | null;
       volContenu?: boolean | null;
       nombrePieces?: number | null;
+      // SecurMoto uniquement.
+      valeurMoto?: number | null;
+      ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
+      garantieVol?: boolean | null;
       /** RelaxMoto/RelaxAuto : périodicité mentionnée sur le contrat PDF. */
       cycleFacturation?: "mensuel" | "annuel" | null;
       // Référence de la transaction Wave, uniquement quand le paiement est
@@ -369,6 +373,9 @@ souscriptionsRouter.get(
             camera: d.camera,
             volContenu: d.volContenu,
             nombrePieces: d.nombrePieces,
+            valeurMoto: d.valeurMoto,
+            ageMoto: d.ageMoto,
+            garantieVol: d.garantieVol,
             resultat: d.resultat,
             cycleFacturation: s.cycleFacturation,
             referenceWave:
