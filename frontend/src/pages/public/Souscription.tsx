@@ -82,13 +82,19 @@ const TAGLINES_PRODUITS: Record<string, string> = {
 };
 
 // Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
-// prix de la formule choisie, garantie pour une durée propre de 2 mois.
-// À garder synchronisé avec OPTIONS_DECES_FRAIS_MEDICAUX côté serveur
+// prix de la formule choisie, garantie pour une durée propre : 2 mois pour
+// le grand public, 1 mois pour la version Livreurs/MotoTaxis (voir
+// dureeOptionDecesMois ci-dessous). À garder synchronisé avec
+// OPTIONS_DECES_FRAIS_MEDICAUX + dureeOptionDecesMois côté serveur
 // (routes/public.ts), qui recalcule toujours le montant réel côté serveur.
 const OPTIONS_DECES_FRAIS_MEDICAUX = {
   "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
   "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
 } as const;
+
+function dureeOptionDecesMois(produitCode?: string): number {
+  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
+}
 
 function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
@@ -2252,7 +2258,7 @@ export default function Souscription() {
       l.push({
         label: "Option Décès",
         valeur: optionDeces
-          ? `${fcfa(OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].capital)} pendant ${OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].dureeMois} mois`
+          ? `${fcfa(OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].capital)} pendant ${dureeOptionDecesMois(p)} mois`
           : "Aucune",
       });
     }
@@ -2924,7 +2930,7 @@ export default function Souscription() {
                 {qrInfo.produit === "incendie"
                   ? "Assurance Incendie"
                   : isRafLivreurs(qrInfo.produit)
-                  ? "RelaxAccidents Frais Médicaux Livreurs/Taxis"
+                  ? "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis"
                   : isAccidentLike(qrInfo.produit)
                   ? "RelaxAccidents Frais Médicaux"
                   : qrInfo.produit === "relaxaccidents"
@@ -3703,7 +3709,8 @@ export default function Souscription() {
                   )}
 
                   {/* Option Décès — version grand public : seulement une fois
-                      non-livreur déclaré. Version Livreurs/Taxis : d'emblée. */}
+                      non-livreur déclaré (2 mois). Version Livreurs/MotoTaxis :
+                      d'emblée (1 mois, voir dureeOptionDecesMois). */}
                   {(declarePasLivreur || isRafLivreurs(qrInfo?.produit)) && (
                     <div style={{ marginBottom: 16 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
@@ -3731,7 +3738,8 @@ export default function Souscription() {
                           >
                             <input type="radio" checked={optionDeces === cle} onChange={() => setOptionDeces(cle)} />
                             <span>
-                              <strong>{fcfa(opt.prime)}</strong> — Décès garanti {fcfa(opt.capital)} pendant {opt.dureeMois} mois
+                              <strong>{fcfa(opt.prime)}</strong> — Décès garanti {fcfa(opt.capital)} pendant{" "}
+                              {dureeOptionDecesMois(qrInfo?.produit)} mois
                             </span>
                           </label>
                         ))}
@@ -4542,8 +4550,8 @@ export default function Souscription() {
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
                     Votre assurance RelaxAccidents Frais Médicaux
-                    {isRafLivreurs(qrInfo?.produit) ? " Livreurs/Taxis" : ""} est activée pour{" "}
-                    <strong>{isRafLivreurs(qrInfo?.produit) ? "2 mois" : "3 mois"}</strong>.
+                    {isRafLivreurs(qrInfo?.produit) ? " Livreurs/MotoTaxis" : ""} est activée pour{" "}
+                    <strong>{isRafLivreurs(qrInfo?.produit) ? "1 mois" : "3 mois"}</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div

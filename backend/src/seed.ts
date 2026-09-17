@@ -328,7 +328,7 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     update: {},
     create: {
       code: "relaxaccidents_fraismedicaux_livreurs",
-      libelle: "RelaxAccidents Frais Médicaux Livreurs/Taxis",
+      libelle: "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis",
       branche: "INCENDIE_ACCIDENT",
       sousBranche: "ASSURANCES_ACCIDENTS",
       typePaiement: "WAVE",
@@ -762,6 +762,22 @@ async function rattacherHistoriqueImfVersRcmec() {
   }
 }
 
+/**
+ * Correction ponctuelle : renomme "RelaxAccidents Frais Médicaux
+ * Livreurs/Taxis" en "...Livreurs/MotoTaxis" (2026-09-17) — ne touche que
+ * les bases déjà seedées avec l'ancien libellé, pour ne jamais écraser un
+ * renommage manuel fait depuis via l'admin.
+ */
+async function corrigerLibelleRafLivreurs() {
+  const r = await prisma.produit.updateMany({
+    where: { code: "relaxaccidents_fraismedicaux_livreurs", libelle: "RelaxAccidents Frais Médicaux Livreurs/Taxis" },
+    data: { libelle: "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis" },
+  });
+  if (r.count > 0) {
+    console.log("[seed] Produit relaxaccidents_fraismedicaux_livreurs : libellé renommé en Livreurs/MotoTaxis.");
+  }
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
@@ -769,6 +785,7 @@ async function main() {
   await seedTauxCommissionAccidents();
   await corrigerCapitalGarantiIncendie();
   await corrigerEcheanceRelaxVoyage();
+  await corrigerLibelleRafLivreurs();
   await seedTarificationImf();
   await corrigerCommissionsImf();
   await rattacherHistoriqueImfVersRcmec();

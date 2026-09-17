@@ -408,7 +408,7 @@ export default function AssurancesAccidentsTarifs() {
         <ProduitTarifsTable code="relaxaccidents_fraismedicaux" libelle="RelaxAccidents Frais Médicaux" />
         <ProduitTarifsTable
           code="relaxaccidents_fraismedicaux_livreurs"
-          libelle="RelaxAccidents Frais Médicaux Livreurs/Taxis"
+          libelle="RelaxAccidents Frais Médicaux Livreurs/MotoTaxis"
         />
         <ProduitTarifsTable code="relaxmoto" libelle="RelaxMoto" />
         <ProduitTarifsTable code="relaxauto" libelle="RelaxAuto" />
@@ -427,7 +427,7 @@ export default function AssurancesAccidentsTarifs() {
         <CommissionTauxUniqueCard code="relaxaccidents_fraismedicaux" libelle="RelaxAccidents Frais Médicaux" />
         <CommissionTauxUniqueCard
           code="relaxaccidents_fraismedicaux_livreurs"
-          libelle="RelaxAccidents Frais Médicaux Livreurs/Taxis"
+          libelle="RelaxAccidents Frais Médicaux Livreurs/MotoTaxis"
         />
         <CommissionTauxUniqueCard code="relaxmoto" libelle="RelaxMoto" />
         <CommissionTauxUniqueCard code="relaxauto" libelle="RelaxAuto" />

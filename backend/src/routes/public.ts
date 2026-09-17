@@ -1681,14 +1681,20 @@ const formuleSchema = z.object({
 
 /**
  * Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
- * prix de la formule choisie, garantie pour une durée propre de 2 mois
- * (distincte de la durée du contrat principal). Réservée aux souscripteurs
- * non-livreurs, comme le reste du produit.
+ * prix de la formule choisie, garantie pour une durée propre (distincte de
+ * la durée du contrat principal) : 2 mois pour le grand public, 1 mois pour
+ * la version Livreurs/MotoTaxis (2026-09-17, alignée sur la durée de son
+ * propre contrat — voir paiementWave.ts::dureeFormuleMois).
  */
 const OPTIONS_DECES_FRAIS_MEDICAUX: Record<"200000" | "100000", { prime: number; capital: number; dureeMois: number }> = {
   "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
   "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
 };
+
+/** Durée (mois) de l'option Décès pour un produit donné — voir OPTIONS_DECES_FRAIS_MEDICAUX. */
+function dureeOptionDecesMois(produitCode: string): number {
+  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
+}
 
 const RELAXVOYAGE_CHAMPS_REQUIS = [
   "compagnie",
@@ -1756,7 +1762,9 @@ publicRouter.post(
     // Le total payé recalculé ici, jamais confié au client : prime de la
     // formule + prime de l'option Décès si choisie + supplément moto/tricycle
     // pour RelaxAccidents générale.
-    const optionDeces = data.optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces] : null;
+    const optionDeces = data.optionDeces
+      ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces], dureeMois: dureeOptionDecesMois(code) }
+      : null;
     const surchargeDeplacement = relaxAccidentsGenerale
       ? surchargeMoyenDeplacementRelaxAccidentsGenerale(data.moyenDeplacement, relaxAccidentsGenerale.cycle)
       : 0;

@@ -92,7 +92,8 @@ const PRODUITS_SOUSCRIPTION_API = new Set([
 
 /**
  * Option Décès en supplément de RelaxAccidents Frais Médicaux — doit rester
- * alignée sur OPTIONS_DECES_FRAIS_MEDICAUX de routes/public.ts.
+ * alignée sur OPTIONS_DECES_FRAIS_MEDICAUX + dureeOptionDecesMois de
+ * routes/public.ts. Durée : 2 mois grand public, 1 mois Livreurs/MotoTaxis.
  */
 const OPTIONS_DECES_FRAIS_MEDICAUX: Record<
   "200000" | "100000",
@@ -101,6 +102,10 @@ const OPTIONS_DECES_FRAIS_MEDICAUX: Record<
   "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
   "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
 };
+
+function dureeOptionDecesMois(produitCode: string): number {
+  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
+}
 
 // Data URL image bornée + regex stricte — même régime que routes/public.ts
 // (aucun caractère de sortie d'attribut HTML jusqu'au rendu PDF/carte).
@@ -369,7 +374,7 @@ partnerApiRouter.post(
     const rafLivreurs = produit.code === "relaxaccidents_fraismedicaux_livreurs";
     const optionDeces =
       data.optionDeces && (rafLivreurs || (rafGrandPublic && data.declarePasLivreur))
-        ? OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces]
+        ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces], dureeMois: dureeOptionDecesMois(produit.code) }
         : null;
     if (data.optionDeces && !optionDeces) {
       return apiError(
