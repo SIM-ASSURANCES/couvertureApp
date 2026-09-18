@@ -78,7 +78,7 @@ const TAGLINES_PRODUITS: Record<string, string> = {
   securhome_dommages: "Propriétaire, locataire, agence immobilière, protégez votre bien contre l'incendie.",
   securpro_dommages:
     "Entrepreneur, commerçant, protégez votre local contre l'incendie, les vols et bien d'autres dommages.",
-  securmoto: "Propriétaire de moto, protégez-la contre les dommages accidentels et le vol.",
+  securmoto: "Propriétaire de moto, protégez-la contre les dommages accidentels.",
 };
 
 // Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
@@ -1241,9 +1241,8 @@ function SecurhomeDommagesForm({
 }
 
 // SecurMoto (2026-09-17) — Assurances Dommages, deux-roues : le prospect
-// déclare la valeur à neuf, l'âge et une garantie Vol optionnelle (motos
-// neuves uniquement) — capital garanti et prime TTC recalculés en direct
-// (voir frontend/src/securMoto.ts).
+// déclare la valeur à neuf et l'âge — capital garanti et prime TTC
+// recalculés en direct (voir frontend/src/securMoto.ts).
 function SecurMotoForm({
   nom,
   setNom,
@@ -1255,8 +1254,6 @@ function SecurMotoForm({
   setValeurMoto,
   ageMoto,
   setAgeMoto,
-  garantieVol,
-  setGarantieVol,
   sigRef,
 }: {
   nom: string;
@@ -1269,14 +1266,12 @@ function SecurMotoForm({
   setValeurMoto: (v: string) => void;
   ageMoto: AgeMoto;
   setAgeMoto: (v: AgeMoto) => void;
-  garantieVol: boolean;
-  setGarantieVol: (v: boolean) => void;
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
   let resultat: ResultatSecurMoto | null = null;
   let erreur = "";
   try {
-    resultat = calculerSecurMoto({ valeurMoto: Number(valeurMoto || 0), ageMoto, garantieVol });
+    resultat = calculerSecurMoto({ valeurMoto: Number(valeurMoto || 0), ageMoto });
   } catch (e) {
     erreur = e instanceof Error ? e.message : "Entrées invalides.";
   }
@@ -1302,11 +1297,7 @@ function SecurMotoForm({
       <FieldRow label="Âge de la moto * (par rapport à la date d'acquisition)">
         <select
           value={ageMoto}
-          onChange={(e) => {
-            const v = e.target.value as AgeMoto;
-            setAgeMoto(v);
-            if (v !== "NEUVE") setGarantieVol(false);
-          }}
+          onChange={(e) => setAgeMoto(e.target.value as AgeMoto)}
           style={inputStyle}
         >
           <option value="NEUVE">Neuve</option>
@@ -1314,14 +1305,6 @@ function SecurMotoForm({
           <option value="2 ANS">2 ans</option>
         </select>
       </FieldRow>
-      {ageMoto === "NEUVE" && (
-        <FieldRow label="Garantie Vol">
-          <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-            <input type="checkbox" checked={garantieVol} onChange={(e) => setGarantieVol(e.target.checked)} />
-            Souscrire (uniquement pour les motos neuves)
-          </label>
-        </FieldRow>
-      )}
       <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
         <PhoneInput value={telephone} onChange={setTelephone} />
       </FieldRow>
@@ -1598,7 +1581,6 @@ export default function Souscription() {
   // `sigRef` partagés avec les branches ci-dessus.
   const [valeurMotoSm, setValeurMotoSm] = useState("");
   const [ageMotoSm, setAgeMotoSm] = useState<AgeMoto>("NEUVE");
-  const [garantieVolSm, setGarantieVolSm] = useState(false);
 
   // Champs SecurHome (Assurances Dommages, incendie uniquement, tarif fixe
   // par nombre de pièces) — `nom`/`prenom`/`telephone`/`sigRef` partagés avec
@@ -1672,7 +1654,6 @@ export default function Souscription() {
     // SecurMoto (Assurances Dommages).
     valeurMoto?: number | null;
     ageMoto?: AgeMoto | null;
-    garantieVol?: boolean | null;
     resultat?: ResultatTarifImf | ResultatSecurhome | ResultatSecurMoto | null;
   } | null>(null);
 
@@ -1794,7 +1775,6 @@ export default function Souscription() {
             optionDeces: data.optionDeces ?? null,
             valeurMoto: data.valeurMoto ?? null,
             ageMoto: data.ageMoto ?? null,
-            garantieVol: data.garantieVol ?? null,
             resultat: data.resultat ?? null,
           });
           setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
@@ -2149,7 +2129,6 @@ export default function Souscription() {
         return calculerSecurMoto({
           valeurMoto: Number(valeurMotoSm || 0),
           ageMoto: ageMotoSm,
-          garantieVol: garantieVolSm,
         }).primeTTC;
     } catch {
       // Saisie encore incomplète : on n'affiche simplement pas de montant.
@@ -2228,7 +2207,6 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Valeur de la moto à neuf", valeur: fcfa(Number(valeurMotoSm || 0)) });
       l.push({ label: "Âge de la moto", valeur: ageMotoSm });
-      l.push({ label: "Garantie Vol", valeur: oui(garantieVolSm) });
       return l;
     }
 
@@ -2458,7 +2436,6 @@ export default function Souscription() {
             signature,
             valeurMoto: Number(valeurMotoSm || 0),
             ageMoto: ageMotoSm,
-            garantieVol: garantieVolSm,
           }),
         });
         const data = await res.json();
@@ -2772,7 +2749,6 @@ export default function Souscription() {
         telephone: result.telephone ?? telephone,
         valeurMoto: result.valeurMoto ?? Number(valeurMotoSm || 0),
         ageMoto: result.ageMoto ?? ageMotoSm,
-        garantieVol: result.garantieVol ?? garantieVolSm,
         capitalGaranti: resultat.capitalGaranti,
         primeNetteHT: resultat.primeNetteHT,
         accessoires: resultat.accessoires,
@@ -3473,8 +3449,6 @@ export default function Souscription() {
                   setValeurMoto={setValeurMotoSm}
                   ageMoto={ageMotoSm}
                   setAgeMoto={setAgeMotoSm}
-                  garantieVol={garantieVolSm}
-                  setGarantieVol={setGarantieVolSm}
                   sigRef={sigRef}
                 />
               ) : isSecurproDommages(qrInfo?.produit) ? (
@@ -4026,7 +4000,7 @@ export default function Souscription() {
                       phoneInvalid(telephone) ||
                       (() => {
                         try {
-                          calculerSecurMoto({ valeurMoto: Number(valeurMotoSm || 0), ageMoto: ageMotoSm, garantieVol: garantieVolSm });
+                          calculerSecurMoto({ valeurMoto: Number(valeurMotoSm || 0), ageMoto: ageMotoSm });
                           return false;
                         } catch {
                           return true;

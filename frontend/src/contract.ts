@@ -142,7 +142,6 @@ export interface ContratSecurMoto {
   telephone: string;
   valeurMoto: number;
   ageMoto: "NEUVE" | "1 AN" | "2 ANS";
-  garantieVol: boolean;
   capitalGaranti: number;
   primeNetteHT: number;
   accessoires: number;
@@ -372,7 +371,6 @@ export interface DonneesContrat {
   // SecurMoto uniquement.
   valeurMoto?: number | null;
   ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
-  garantieVol?: boolean | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultat?: any;
 }
@@ -557,7 +555,6 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       telephone: c.telephone,
       valeurMoto: c.valeurMoto ?? 0,
       ageMoto: c.ageMoto ?? "NEUVE",
-      garantieVol: c.garantieVol ?? false,
       capitalGaranti: r.capitalGaranti ?? c.capitalGaranti,
       primeNetteHT: r.primeNetteHT ?? 0,
       accessoires: r.accessoires ?? 0,

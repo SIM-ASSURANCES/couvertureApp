@@ -298,7 +298,6 @@ const securMotoSchema = z.object({
     telephone: texte(40),
     valeurMoto: montant,
     ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
-    garantieVol: z.boolean(),
     capitalGaranti: montant,
     primeNetteHT: montant,
     accessoires: montant,

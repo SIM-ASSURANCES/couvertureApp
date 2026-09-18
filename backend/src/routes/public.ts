@@ -1438,17 +1438,12 @@ const securMotoSchema = z.object({
   signature: dataUrlImage.optional(),
   valeurMoto: z.number().finite().min(1).max(700_000),
   ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
-  garantieVol: z.boolean(),
 });
 
 publicRouter.post(
   "/souscriptions/securmoto/initiate",
   asyncHandler(async (req, res) => {
     const data = securMotoSchema.parse(req.body);
-
-    if (data.garantieVol && data.ageMoto !== "NEUVE") {
-      return res.status(400).json({ error: "La garantie Vol n'est disponible que pour une moto neuve." });
-    }
 
     const resolu = await resoudreQrCodeGenerique("securmoto", data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -1464,7 +1459,6 @@ publicRouter.post(
     const input: SecurMotoInput = {
       valeurMoto: data.valeurMoto,
       ageMoto: data.ageMoto as AgeMoto,
-      garantieVol: data.garantieVol,
     };
     let resultat;
     try {
@@ -1491,7 +1485,6 @@ publicRouter.post(
           prenom: data.prenom,
           valeurMoto: data.valeurMoto,
           ageMoto: data.ageMoto,
-          garantieVol: data.garantieVol,
         },
         resultat: JSON.parse(JSON.stringify(resultat)),
         paiements: {
@@ -1990,7 +1983,6 @@ publicRouter.get(
       // SecurMoto (Assurances Dommages).
       valeurMoto?: number | null;
       ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
-      garantieVol?: boolean | null;
     } | null;
     let fraisSante: number | null = null;
     let bagages: string | null = null;
@@ -2080,7 +2072,6 @@ publicRouter.get(
       // SecurMoto (Assurances Dommages).
       valeurMoto: donneesSpecifiques?.valeurMoto ?? null,
       ageMoto: donneesSpecifiques?.ageMoto ?? null,
-      garantieVol: donneesSpecifiques?.garantieVol ?? null,
       resultat: s.resultat ?? null,
     });
   })

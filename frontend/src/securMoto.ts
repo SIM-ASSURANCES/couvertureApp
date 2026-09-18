@@ -15,8 +15,8 @@ const TAUX_CAPITAL_GARANTI: Record<AgeMoto, number> = {
   "2 ANS": 0.2,
 };
 
-function tauxPrimeNette(ageMoto: AgeMoto, garantieVol: boolean): number {
-  if (ageMoto === "NEUVE") return garantieVol ? 0.097 : 0.047;
+function tauxPrimeNette(ageMoto: AgeMoto): number {
+  if (ageMoto === "NEUVE") return 0.047;
   if (ageMoto === "1 AN") return 0.035;
   return 0.025; // "2 ANS"
 }
@@ -24,7 +24,6 @@ function tauxPrimeNette(ageMoto: AgeMoto, garantieVol: boolean): number {
 export interface SecurMotoInput {
   valeurMoto: number;
   ageMoto: AgeMoto;
-  garantieVol: boolean;
 }
 
 export interface ResultatSecurMoto {
@@ -44,16 +43,13 @@ export function validerEntreesSecurMoto(input: SecurMotoInput): void {
   if (input.valeurMoto > VALEUR_MOTO_MAX) {
     throw new Error(`La valeur de la moto est limitée à ${VALEUR_MOTO_MAX.toLocaleString("fr-FR")} FCFA.`);
   }
-  if (input.garantieVol && input.ageMoto !== "NEUVE") {
-    throw new Error("La garantie Vol n'est disponible que pour une moto neuve.");
-  }
 }
 
 export function calculerSecurMoto(input: SecurMotoInput): ResultatSecurMoto {
   validerEntreesSecurMoto(input);
 
   const capitalGaranti = round(input.valeurMoto * TAUX_CAPITAL_GARANTI[input.ageMoto]);
-  const primeNetteHT = round(input.valeurMoto * tauxPrimeNette(input.ageMoto, input.garantieVol));
+  const primeNetteHT = round(input.valeurMoto * tauxPrimeNette(input.ageMoto));
   const accessoires = ACCESSOIRES;
   const taxes = round((primeNetteHT + accessoires) * TAUX_TAXE);
   const primeTTC = primeNetteHT + accessoires + taxes;

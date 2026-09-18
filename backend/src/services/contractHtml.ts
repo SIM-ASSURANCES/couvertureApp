@@ -151,7 +151,6 @@ export interface ContratSecurMoto {
   telephone: string;
   valeurMoto: number;
   ageMoto: "NEUVE" | "1 AN" | "2 ANS";
-  garantieVol: boolean;
   capitalGaranti: number;
   primeNetteHT: number;
   accessoires: number;
@@ -844,7 +843,7 @@ export async function renderContratSecurMoto(c: ContratSecurMoto): Promise<strin
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
     <tr><td class="k">Valeur de la moto à neuf</td><td>${fcfa(c.valeurMoto)}</td><td class="k">Âge de la moto</td><td>${val(c.ageMoto)}</td></tr>
-    <tr><td class="k">Garantie Vol</td><td>${c.garantieVol ? "Oui" : "Non"}</td><td class="k">Capital garanti (dommages)</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+    <tr><td class="k">Capital garanti (dommages)</td><td>${fcfa(c.capitalGaranti)}</td><td class="k"></td><td></td></tr>
   </table>
 
   <table>
