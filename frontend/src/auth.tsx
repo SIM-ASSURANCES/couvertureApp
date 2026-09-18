@@ -39,7 +39,12 @@ export interface SessionUser {
 
 interface AuthCtx {
   user: SessionUser | null;
-  login: (email: string, password: string) => Promise<SessionUser>;
+  // `endpoint` : page de connexion dédiée (admin/partenaire, voir
+  // pages/admin/Login.tsx et pages/partenaire/Login.tsx) — par défaut la
+  // route unifiée historique (auto-détection admin/partenaire/agent IMF),
+  // gardée pour compat mais plus appelée par aucune page depuis la
+  // séparation des espaces de connexion (2026-09-18).
+  login: (email: string, password: string, endpoint?: string) => Promise<SessionUser>;
   logout: () => void;
 }
 
@@ -51,9 +56,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => getUser() as SessionUser | null
   );
 
-  async function login(email: string, password: string): Promise<SessionUser> {
+  async function login(email: string, password: string, endpoint = "/auth/login"): Promise<SessionUser> {
     const res = await api.post<{ token: string; user: SessionUser }>(
-      "/auth/login",
+      endpoint,
       { email, password }
     );
     localStorage.setItem("sim_token", res.token);

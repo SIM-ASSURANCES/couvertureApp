@@ -35,7 +35,11 @@ async function request<T>(
   if (res.status === 401) {
     localStorage.removeItem("sim_token");
     localStorage.removeItem("sim_user");
-    if (!location.pathname.startsWith("/login") && location.pathname !== "/") {
+    if (
+      !location.pathname.startsWith("/login") &&
+      !location.pathname.endsWith("/connexion") &&
+      location.pathname !== "/"
+    ) {
       location.href = "/";
     }
   }
