@@ -12,7 +12,6 @@ import {
   fetchGenerique,
   fetchIncendieHistorique,
   fetchAccidentHistorique,
-  CODE_INCENDIE_HISTORIQUE,
   CODE_ACCIDENT_HISTORIQUE,
 } from "./assurancesBranche.js";
 import { genererMotDePasseClient } from "../services/notify.js";
@@ -156,7 +155,8 @@ meRouter.get(
     });
     res.json([
       { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accidents (historique)" },
-      { sousBranche: "ASSURANCES_DOMMAGES", code: CODE_INCENDIE_HISTORIQUE, libelle: "Incendie Habitation en Inclusion" },
+      // "Incendie Habitation en Inclusion" volontairement absent (masqué, 2026-09-18) —
+      // voir assurancesBranche.ts, même raison.
       ...produits.map((p) => ({ sousBranche: p.sousBranche, code: p.code, libelle: p.libelle })),
     ]);
   })

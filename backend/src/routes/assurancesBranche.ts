@@ -151,7 +151,10 @@ assurancesBrancheRouter.get(
     });
     res.json([
       { sousBranche: "ASSURANCES_ACCIDENTS", code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accidents (historique)" },
-      { sousBranche: "ASSURANCES_DOMMAGES", code: CODE_INCENDIE_HISTORIQUE, libelle: "Incendie Habitation en Inclusion" },
+      // "Incendie Habitation en Inclusion" (CODE_INCENDIE_HISTORIQUE) volontairement
+      // absent de ce catalogue filtrable (masqué à la demande, 2026-09-18) : produit
+      // historique, plus vendu. Les clients déjà souscrits restent visibles dans les
+      // listes générales (ClientsIncendie.tsx notamment), seul le filtre disparaît.
       ...produits.map((p) => ({ sousBranche: p.sousBranche as SousBranche, code: p.code, libelle: p.libelle })),
     ]);
   })
