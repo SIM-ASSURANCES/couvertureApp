@@ -2,113 +2,194 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  height: 44,
-  border: "1px solid #dde3ec",
-  borderRadius: 10,
-  padding: "0 12px",
-  fontSize: 14,
-  fontFamily: "inherit",
-  outline: "none",
-  boxSizing: "border-box",
-  color: "#0f1b2d",
-};
-
 export default function PartenaireLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
-  const [motDePasse, setMotDePasse] = useState("");
-  const [erreur, setErreur] = useState("");
-  const [chargement, setChargement] = useState(false);
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setChargement(true);
-    setErreur("");
+    setLoading(true);
+    setError("");
     try {
       // Un même compte "Partenaire" peut être un partenaire classique ou un
       // agent d'une IMF partenaire : on tente d'abord l'endpoint partenaire,
       // puis on se replie sur agent-imf en cas d'échec.
       try {
-        const u = await login(email, motDePasse, "/auth/partenaire/login");
+        const u = await login(email, password, "/auth/partenaire/login");
         navigate(u.type === "agent_imf" ? "/agent-imf" : "/partenaire");
       } catch {
-        const u = await login(email, motDePasse, "/auth/agent-imf/login");
+        const u = await login(email, password, "/auth/agent-imf/login");
         navigate(u.type === "agent_imf" ? "/agent-imf" : "/partenaire");
       }
     } catch (err) {
-      setErreur(err instanceof Error ? err.message : "Erreur de connexion");
+      setError((err as Error).message);
     } finally {
-      setChargement(false);
+      setLoading(false);
     }
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f5f8fc",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px 16px",
-        fontFamily: "'Montserrat', system-ui, sans-serif",
-      }}
-    >
-      <div style={{ width: "100%", maxWidth: 420, background: "#fff", borderRadius: 20, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
-        <div style={{ background: "linear-gradient(135deg, #004b9c 0%, #16215e 100%)", padding: "28px 32px 24px", color: "#fff" }}>
-          <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 48, marginBottom: 16, display: "block" }} />
-          <div style={{ fontSize: 18, fontWeight: 800 }}>Espace partenaire</div>
-          <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>Partenaires et agents IMF</div>
+    <div className="login-layout">
+
+      {/* ── Panneau gauche ── */}
+      <div className="login-left">
+        <svg
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 640 960"
+          preserveAspectRatio="xMidYMid slice"
+        >
+          <polygon points="580,40 720,180 580,320 440,180" fill="rgba(255,255,255,0.06)" />
+          <polygon points="600,60 710,170 600,280 490,170" fill="rgba(255,255,255,0.04)" />
+          <polygon points="-40,350 120,510 -40,670 -200,510" fill="rgba(255,255,255,0.05)" />
+          <polygon points="220,260 440,480 220,700 0,480" fill="rgba(255,255,255,0.04)" />
+          <polygon points="260,300 440,480 260,660 80,480" fill="rgba(81,174,226,0.06)" />
+          <polygon points="440,680 640,880 440,1080 240,880" fill="rgba(255,255,255,0.05)" />
+          <polygon points="460,700 620,860 460,1020 300,860" fill="rgba(81,174,226,0.07)" />
+          <polygon points="60,60 180,180 60,300 -60,180" fill="rgba(255,255,255,0.04)" />
+        </svg>
+
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 64, objectFit: "contain" }} />
         </div>
-        <form onSubmit={handleSubmit} style={{ padding: "28px 32px" }}>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-              Email
-            </label>
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              autoComplete="username"
-              style={inputStyle}
-            />
+
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <h1 style={{ color: "#fff", fontSize: 42, fontWeight: 800, lineHeight: 1.2, margin: 0, marginBottom: 20 }}>
+            Espace<br />
+            <span style={{ color: "#51aee2" }}>Partenaire</span><br />
+            SIM Assurances
+          </h1>
+          <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 15, lineHeight: 1.6, maxWidth: 360, margin: 0 }}>
+            Suivez vos souscriptions, vos commissions et votre réseau
+            en tant que partenaire de SIM Assurances CI.
+          </p>
+        </div>
+
+        <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 12, position: "relative", zIndex: 1 }}>
+          © 2026 SIM Assurances CI — Tous droits réservés
+        </div>
+      </div>
+
+      {/* ── Panneau droit ── */}
+      <div className="login-right">
+        <div style={{ width: "100%", maxWidth: 420 }}>
+          <div style={{
+            background: "#fff",
+            borderRadius: 16,
+            padding: "40px 40px 36px",
+            boxShadow: "0 4px 32px rgba(0,0,0,.07)",
+          }}>
+            <h2 style={{ color: "#004b9c", fontWeight: 800, fontSize: 24, margin: 0, marginBottom: 4 }}>
+              Connexion partenaire
+            </h2>
+            <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 28px" }}>
+              Entrez vos identifiants pour accéder à votre espace.
+            </p>
+
+            <form onSubmit={submit}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Votre adresse email"
+                  autoComplete="username"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontFamily: "Montserrat, sans-serif",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                    transition: "border-color .15s",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#004b9c")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+                />
+              </div>
+
+              <div style={{ marginBottom: error ? 14 : 24 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                  Mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontFamily: "Montserrat, sans-serif",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                    transition: "border-color .15s",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#004b9c")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+                />
+              </div>
+
+              {error && (
+                <div style={{
+                  background: "#fef2f2",
+                  color: "#dc2626",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  marginBottom: 16,
+                  borderLeft: "3px solid #dc2626",
+                }}>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  background: loading ? "#6b9fd4" : "#004b9c",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  fontFamily: "Montserrat, sans-serif",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  transition: "background .2s",
+                  letterSpacing: ".02em",
+                }}
+                onMouseEnter={(e) => { if (!loading) (e.currentTarget.style.background = "#003a7a"); }}
+                onMouseLeave={(e) => { if (!loading) (e.currentTarget.style.background = "#004b9c"); }}
+              >
+                {loading ? "Connexion en cours…" : "Se connecter"}
+              </button>
+            </form>
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-              Mot de passe
-            </label>
-            <input
-              value={motDePasse}
-              onChange={(e) => setMotDePasse(e.target.value)}
-              type="password"
-              autoComplete="current-password"
-              style={inputStyle}
-            />
-          </div>
-          {erreur && (
-            <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 14 }}>{erreur}</div>
-          )}
-          <button
-            disabled={chargement || !email || !motDePasse}
-            style={{
-              width: "100%",
-              padding: "13px 0",
-              background: "#004b9c",
-              color: "#fff",
-              border: "none",
-              borderRadius: 12,
-              fontWeight: 700,
-              fontSize: 15,
-              cursor: "pointer",
-              opacity: chargement || !email || !motDePasse ? 0.5 : 1,
-            }}
-          >
-            {chargement ? "Connexion…" : "Se connecter"}
-          </button>
-        </form>
+
+          <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 12, marginTop: 20 }}>
+            QRApp v1.0 — SIM Assurances CI
+          </p>
+        </div>
       </div>
     </div>
   );
