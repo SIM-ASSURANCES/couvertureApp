@@ -969,10 +969,12 @@ export default function Partenaires() {
     }
   }
 
+  const lienConnexionPartenaire = `${window.location.origin}/partenaire/connexion`;
+
   function copyCredentials() {
     if (!credentials) return;
     navigator.clipboard.writeText(
-      `Email : ${credentials.email}\nMot de passe : ${credentials.motDePasse}`
+      `Lien de connexion : ${lienConnexionPartenaire}\nEmail : ${credentials.email}\nMot de passe : ${credentials.motDePasse}`
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -1469,9 +1471,15 @@ export default function Partenaires() {
               </button>
             </div>
             <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
-              Transmettez ces identifiants au partenaire. Le mot de passe ne sera plus affiché après fermeture.
+              Transmettez ce lien et ces identifiants au partenaire. Le mot de passe ne sera plus affiché après fermeture.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Lien de connexion</div>
+                <div style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontFamily: "monospace", fontSize: 13, wordBreak: "break-all" }}>
+                  {lienConnexionPartenaire}
+                </div>
+              </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Email</div>
                 <div style={{ background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "10px 14px", fontFamily: "monospace", fontSize: 14 }}>

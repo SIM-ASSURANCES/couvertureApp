@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { QrCode, Power, Trash2, Search, X } from "lucide-react";
+import { QrCode, Power, Trash2, Search, X, Copy, Check } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, PhoneInput } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
@@ -24,6 +24,17 @@ export default function RelaxPartenaires() {
   const [toast, setToast] = useState("");
   const [qr, setQr] = useState<{ url: string; label: string } | null>(null);
   const [credentials, setCredentials] = useState<{ nomCommerce: string; email: string; motDePasse: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const lienConnexionPartenaire = `${window.location.origin}/partenaire/connexion`;
+
+  function copyCredentials() {
+    if (!credentials) return;
+    navigator.clipboard.writeText(
+      `Lien de connexion : ${lienConnexionPartenaire}\nEmail : ${credentials.email}\nMot de passe : ${credentials.motDePasse}`
+    );
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   function notify(m: string) {
     setToast(m);
@@ -218,9 +229,19 @@ export default function RelaxPartenaires() {
           <div className="card" onClick={(e) => e.stopPropagation()} style={{ padding: 24, width: 380, maxWidth: "100%" }}>
             <strong>{credentials.nomCommerce} créé ✓</strong>
             <p className="muted" style={{ fontSize: 13 }}>Accès partenaire (à transmettre) :</p>
+            <div style={{ fontSize: 13, marginBottom: 4 }}>Lien de connexion :</div>
+            <div style={{ fontSize: 13, fontFamily: "monospace", wordBreak: "break-all", marginBottom: 10, background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+              {lienConnexionPartenaire}
+            </div>
             <div style={{ fontSize: 14 }}>Email : <strong>{credentials.email}</strong></div>
             <div style={{ fontSize: 14, marginBottom: 16 }}>Mot de passe : <strong>{credentials.motDePasse}</strong></div>
-            <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => setCredentials(null)}>Fermer</button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={copyCredentials}>
+                {copied ? <Check size={16} /> : <Copy size={16} />}
+                {copied ? "Copié !" : "Copier"}
+              </button>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setCredentials(null)}>Fermer</button>
+            </div>
           </div>
         </div>
       )}

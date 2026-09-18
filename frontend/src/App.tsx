@@ -6,7 +6,6 @@ import { Loader } from "./components/ui";
 
 import Login from "./pages/Login";
 
-const AdminLogin = lazy(() => import("./pages/admin/Login"));
 const PartenaireLogin = lazy(() => import("./pages/partenaire/Login"));
 
 // Découpage par chargement paresseux (audit perf 2026-09-11) : sans lui,
@@ -103,7 +102,6 @@ export default function App() {
         <Suspense fallback={<Loader />}>
           <Routes>
             <Route path="/" element={<Login />} />
-            <Route path="/admin/connexion" element={<AdminLogin />} />
             <Route path="/partenaire/connexion" element={<PartenaireLogin />} />
 
             <Route

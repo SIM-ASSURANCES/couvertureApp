@@ -1,6 +1,29 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth";
 
 export default function Login() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      await login(email, password, "/auth/admin/login");
+      navigate("/admin");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="login-layout">
 
@@ -43,7 +66,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* ── Panneau droit : choix de l'espace ── */}
+      {/* ── Panneau droit ── */}
       <div className="login-right">
         <div style={{ width: "100%", maxWidth: 420 }}>
           <div style={{
@@ -56,53 +79,101 @@ export default function Login() {
               Connexion
             </h2>
             <p style={{ color: "#6b7280", fontSize: 14, margin: "0 0 28px" }}>
-              Choisissez votre espace pour continuer.
+              Entrez vos identifiants pour accéder à votre espace.
             </p>
 
-            <Link
-              to="/admin/connexion"
-              style={{
-                display: "block",
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "16px 18px",
-                marginBottom: 14,
-                background: "#004b9c",
-                color: "#fff",
-                border: "none",
-                borderRadius: 10,
-                fontSize: 15,
-                fontWeight: 700,
-                fontFamily: "Montserrat, sans-serif",
-                textDecoration: "none",
-                textAlign: "center",
-                letterSpacing: ".02em",
-              }}
-            >
-              Administration
-            </Link>
+            <form onSubmit={submit}>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Votre adresse email"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontFamily: "Montserrat, sans-serif",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                    transition: "border-color .15s",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#004b9c")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+                />
+              </div>
 
-            <Link
-              to="/partenaire/connexion"
-              style={{
-                display: "block",
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "16px 18px",
-                background: "#fff",
-                color: "#004b9c",
-                border: "1.5px solid #004b9c",
-                borderRadius: 10,
-                fontSize: 15,
-                fontWeight: 700,
-                fontFamily: "Montserrat, sans-serif",
-                textDecoration: "none",
-                textAlign: "center",
-                letterSpacing: ".02em",
-              }}
-            >
-              Partenaire
-            </Link>
+              <div style={{ marginBottom: error ? 14 : 24 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                  Mot de passe
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontFamily: "Montserrat, sans-serif",
+                    outline: "none",
+                    boxSizing: "border-box",
+                    color: "#111827",
+                    transition: "border-color .15s",
+                  }}
+                  onFocus={(e) => (e.target.style.borderColor = "#004b9c")}
+                  onBlur={(e) => (e.target.style.borderColor = "#e5e7eb")}
+                />
+              </div>
+
+              {error && (
+                <div style={{
+                  background: "#fef2f2",
+                  color: "#dc2626",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  marginBottom: 16,
+                  borderLeft: "3px solid #dc2626",
+                }}>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                style={{
+                  width: "100%",
+                  padding: "13px",
+                  background: loading ? "#6b9fd4" : "#004b9c",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  fontFamily: "Montserrat, sans-serif",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  transition: "background .2s",
+                  letterSpacing: ".02em",
+                }}
+                onMouseEnter={(e) => { if (!loading) (e.currentTarget.style.background = "#003a7a"); }}
+                onMouseLeave={(e) => { if (!loading) (e.currentTarget.style.background = "#004b9c"); }}
+              >
+                {loading ? "Connexion en cours…" : "Se connecter"}
+              </button>
+            </form>
           </div>
 
           <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 12, marginTop: 20 }}>

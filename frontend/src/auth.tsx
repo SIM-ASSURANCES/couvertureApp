@@ -39,11 +39,11 @@ export interface SessionUser {
 
 interface AuthCtx {
   user: SessionUser | null;
-  // `endpoint` : page de connexion dédiée (admin/partenaire, voir
-  // pages/admin/Login.tsx et pages/partenaire/Login.tsx) — par défaut la
-  // route unifiée historique (auto-détection admin/partenaire/agent IMF),
-  // gardée pour compat mais plus appelée par aucune page depuis la
-  // séparation des espaces de connexion (2026-09-18).
+  // `endpoint` : page de connexion dédiée (pages/Login.tsx = admin, voir
+  // aussi pages/partenaire/Login.tsx) — par défaut la route unifiée
+  // historique (auto-détection admin/partenaire/agent IMF), gardée pour
+  // compat mais plus appelée par aucune page depuis la séparation des
+  // espaces de connexion (2026-09-18).
   login: (email: string, password: string, endpoint?: string) => Promise<SessionUser>;
   logout: () => void;
 }

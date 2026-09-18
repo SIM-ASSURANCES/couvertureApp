@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
 
 const inputStyle: React.CSSProperties = {
@@ -108,11 +108,6 @@ export default function PartenaireLogin() {
           >
             {chargement ? "Connexion…" : "Se connecter"}
           </button>
-          <div style={{ textAlign: "center", marginTop: 18 }}>
-            <Link to="/" style={{ fontSize: 13, color: "#5b6b80", textDecoration: "none" }}>
-              ← Retour
-            </Link>
-          </div>
         </form>
       </div>
     </div>
