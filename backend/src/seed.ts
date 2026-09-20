@@ -410,16 +410,21 @@ async function seedCatalogueAssurancesAccidentsDommages() {
 
   // Incendie : ligne présentationnelle uniquement (flux réel = SouscriptionIncendie,
   // voir POST /public/souscriptions/incendie). `update` renomme le libellé
-  // même sur une base déjà seedée (nouveau scénario : plus de QR dédié par
-  // formule, le sélecteur suffit — voir resoudreQrCodeGenerique).
+  // même sur une base déjà seedée. `sousBranche: null` (demande explicite,
+  // 2026-09-20) : masque complètement ce produit historique de toute liste
+  // scopée à une sous-branche (chooser public, catalogues filtrables,
+  // "Produits actifs pour ce partenaire"…) — TOUTES ces requêtes filtrent
+  // par `Produit.sousBranche`, donc ce seul champ suffit à le faire
+  // disparaître partout sans toucher au flux réel de souscription (QR
+  // dédiés qrIncendie1000Token/2000Token, non liés à cette table).
   const incendieProduit = await prisma.produit.upsert({
     where: { code: "incendie" },
-    update: { libelle: "Incendie Habitation en Inclusion" },
+    update: { libelle: "Incendie Habitation en Inclusion", sousBranche: null },
     create: {
       code: "incendie",
       libelle: "Incendie Habitation en Inclusion",
       branche: "INCENDIE_ACCIDENT",
-      sousBranche: "ASSURANCES_DOMMAGES",
+      sousBranche: null,
       typePaiement: "FACTURE",
     },
   });
