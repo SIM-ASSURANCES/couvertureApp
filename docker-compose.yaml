@@ -17,7 +17,7 @@ services:
       - couverture
 
   backend:
-    image: ghcr.io/sim-assurances/couvertureapp-backend:v49
+    image: ghcr.io/sim-assurances/couvertureapp-backend:v176
     restart: unless-stopped
     depends_on:
       postgres:
@@ -26,7 +26,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL}
-      CORS_ORIGIN: ${APP_PUBLIC_URL}
+      # https://localhost : origine utilisée par l'app Android (Capacitor),
+      # qui charge son bundle localement plutôt que depuis APP_PUBLIC_URL.
+      CORS_ORIGIN: ${APP_PUBLIC_URL},https://localhost
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
       SUPER_ADMIN_NOM: ${SUPER_ADMIN_NOM}
@@ -35,13 +37,16 @@ services:
       SMS_API_KEY: ${SMS_API_KEY}
       SMS_API_URL: ${SMS_API_URL}
       SMS_SENDER: ${SMS_SENDER}
-      NOVELIA_API_KEY: ${NOVELIA_API_KEY}
+      NOVELIA_BASE_URL: ${NOVELIA_BASE_URL}
+      NOVELIA_SLUG: ${NOVELIA_SLUG}
+      NOVELIA_EMAIL: ${NOVELIA_EMAIL}
+      NOVELIA_PASSWORD: ${NOVELIA_PASSWORD}
       PORT: 4000
     networks:
       - couverture
 
   frontend:
-    image: ghcr.io/sim-assurances/couvertureapp-frontend:v60
+    image: ghcr.io/sim-assurances/couvertureapp-frontend:v219
     restart: unless-stopped
     depends_on:
       - backend

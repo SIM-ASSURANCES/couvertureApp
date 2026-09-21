@@ -1,5 +1,7 @@
 node_modules
 dist
+dist-mobile
+android
 carte/node_modules
 carte/.next
 carte/out

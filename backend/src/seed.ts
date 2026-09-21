@@ -783,6 +783,57 @@ async function corrigerLibelleRafLivreurs() {
   }
 }
 
+/**
+ * Partenaire virtuel "Souscription directe" + son QR unique — point d'entrée
+ * public de l'app mobile permettant de souscrire à un produit Assurances
+ * Accidents/Dommages sans intermédiaire humain (voir AppMobile.tsx côté
+ * frontend). Réutilise tel quel le mécanisme de QR unique par partenaire
+ * (produitId ET sousBranche null → réponse "chooser-branche", voir GET
+ * /qr/:token dans routes/public.ts) : ce partenaire n'a simplement jamais
+ * d'agent humain derrière lui (pas d'email de connexion réel, pas de
+ * commission versée). Identifié par un email sentinelle (unique) pour rester
+ * idempotent d'un redémarrage à l'autre ; le token du QR est fixe et
+ * volontairement lisible, embarqué en dur côté app mobile — voir
+ * frontend/.env.mobile (VITE_DIRECT_QR_TOKEN), qui DOIT rester synchronisé
+ * avec la constante ci-dessous.
+ */
+const EMAIL_PARTENAIRE_DIRECT = "souscription-directe@simassurances.internal";
+export const TOKEN_QR_DIRECT = "app-mobile-direct";
+// Affiché tel quel côté client ("via {nomCommerce}", voir Souscription.tsx)
+// — volontairement court, "Souscription directe (app mobile)" y était
+// redondant avec le contexte (l'app mobile elle-même).
+const NOM_COMMERCE_PARTENAIRE_DIRECT = "SIM Assurances";
+
+async function seedPartenaireSouscriptionDirecte() {
+  const partenaire = await prisma.partenaire.upsert({
+    where: { email: EMAIL_PARTENAIRE_DIRECT },
+    // `update` (pas seulement `create`) pour que renommer la constante
+    // ci-dessus corrige aussi une base déjà seedée, pas uniquement une
+    // nouvelle installation.
+    update: { nomCommerce: NOM_COMMERCE_PARTENAIRE_DIRECT },
+    create: {
+      nomCommerce: NOM_COMMERCE_PARTENAIRE_DIRECT,
+      nomResponsable: "SIM Assurances",
+      telephone: "0000000000",
+      email: EMAIL_PARTENAIRE_DIRECT,
+      statut: "actif",
+      branche: "INCENDIE_ACCIDENT",
+    },
+  });
+
+  const qr = await prisma.qrCode.upsert({
+    where: { token: TOKEN_QR_DIRECT },
+    update: {},
+    create: {
+      partenaireId: partenaire.id,
+      token: TOKEN_QR_DIRECT,
+      actif: true,
+    },
+  });
+
+  console.log(`[seed] Partenaire "Souscription directe" prêt (QR ${qr.token}).`);
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
@@ -791,6 +842,7 @@ async function main() {
   await corrigerCapitalGarantiIncendie();
   await corrigerEcheanceRelaxVoyage();
   await corrigerLibelleRafLivreurs();
+  await seedPartenaireSouscriptionDirecte();
   await seedTarificationImf();
   await corrigerCommissionsImf();
   await rattacherHistoriqueImfVersRcmec();
