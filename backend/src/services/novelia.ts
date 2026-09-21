@@ -197,7 +197,19 @@ function construireDonneesCarte(
 
 type ResultatSouscriptionNovelia =
   | { ok: true; numeroPolice: string; numeroCarte: string; lien: string }
-  | { ok: false; erreur: string };
+  | {
+      ok: false;
+      erreur: string;
+      // false = NOVELIA a déjà traité la demande (succès ou rejet métier
+      // explicite) : renvoyer la MÊME requête créerait une police en double
+      // côté NOVELIA. Seul un échec de transport (réseau/HTTP/token) est
+      // rejouable sans risque — voir l'incident du 2026-09-21 où une clé de
+      // réponse mal devinée ("lien" au lieu de "carteDigitale") a fait
+      // rejouer un succès 4-5 fois de suite, créant autant de polices en
+      // double chez NOVELIA pour les mêmes souscripteurs.
+      rejouable: boolean;
+      partiel?: { numeroPolice?: string; numeroCarte?: string; lien?: string };
+    };
 
 function extraireChaine(obj: Record<string, unknown>, cles: string[]): string | null {
   for (const cle of cles) {
@@ -220,7 +232,7 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
   try {
     token = await obtenirToken();
   } catch (e) {
-    return { ok: false, erreur: (e as Error).message };
+    return { ok: false, erreur: (e as Error).message, rejouable: true };
   }
 
   let resp: Response;
@@ -237,7 +249,7 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
       signal: AbortSignal.timeout(TIMEOUT_REQUETE_MS),
     });
   } catch (e) {
-    return { ok: false, erreur: `Requête NOVELIA impossible : ${(e as Error).message}` };
+    return { ok: false, erreur: `Requête NOVELIA impossible : ${(e as Error).message}`, rejouable: true };
   }
 
   const texte = await resp.text().catch(() => "");
@@ -250,7 +262,17 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
 
   if (!resp.ok) {
     const message = extraireChaine(corps, ["message", "error", "erreur"]) ?? texte.slice(0, 300);
-    return { ok: false, erreur: `Erreur NOVELIA (${resp.status}) : ${message}` };
+    return { ok: false, erreur: `Erreur NOVELIA (${resp.status}) : ${message}`, rejouable: true };
+  }
+
+  // `hasError` : rejet métier explicite malgré un HTTP 200 (format constaté en
+  // prod le 2026-09-21 : { hasError, statutCode, statutMessage, data }). Un
+  // rejet de ce type ne doit jamais être rejoué tel quel (même requête =
+  // même rejet, ou pire, traitement en double si NOVELIA a côté elle déjà
+  // partiellement enregistré la demande).
+  if (corps.hasError === true) {
+    const message = extraireChaine(corps, ["statutMessage", "message", "error", "erreur"]) ?? texte.slice(0, 500);
+    return { ok: false, erreur: `NOVELIA a rejeté la demande : ${message}`, rejouable: false };
   }
 
   // La charge utile peut être imbriquée sous "data"/"resultat".
@@ -259,10 +281,24 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
 
   const numeroPolice = extraireChaine(racine, ["numeroPolice", "police", "noPolice", "policeNumero"]);
   const numeroCarte = extraireChaine(racine, ["numeroCarte", "carte", "noCarte", "carteNumero"]);
-  const lien = extraireChaine(racine, ["lienTelechargement", "lien", "lienCarte", "downloadUrl", "urlCarte", "url"]);
+  const lien = extraireChaine(racine, ["carteDigitale", "lienTelechargement", "lien", "lienCarte", "downloadUrl", "urlCarte", "url"]);
 
   if (!numeroPolice || !numeroCarte || !lien) {
-    return { ok: false, erreur: `Réponse NOVELIA inattendue (champs introuvables) : ${texte.slice(0, 500)}` };
+    // NOVELIA a répondu sans indiquer d'erreur (`hasError` absent/false) :
+    // elle a donc déjà traité la demande côté elle. Rejouer la même requête
+    // créerait une police en double — on n'y touche plus, mais on conserve
+    // tout ce qu'on a pu extraire pour ne rien perdre (voir syncDerniereErreur
+    // pour ajuster le mapping de clé manquant).
+    return {
+      ok: false,
+      erreur: `Réponse NOVELIA inattendue (champs introuvables) : ${texte.slice(0, 1500)}`,
+      rejouable: false,
+      partiel: {
+        numeroPolice: numeroPolice ?? undefined,
+        numeroCarte: numeroCarte ?? undefined,
+        lien: lien ?? undefined,
+      },
+    };
   }
   return { ok: true, numeroPolice, numeroCarte, lien };
 }
@@ -315,7 +351,10 @@ async function synchroniserNovelia(carte: Carte): Promise<void> {
 
   const tentatives = carte.syncTentatives + 1;
   const cycleDepuis = carte.syncCycleDepuis ?? carte.dateGeneration;
-  const abandon = tentatives > BACKOFF_MINUTES.length || Date.now() - cycleDepuis.getTime() > DELAI_ABANDON_MS;
+  const abandon =
+    !resultat.rejouable ||
+    tentatives > BACKOFF_MINUTES.length ||
+    Date.now() - cycleDepuis.getTime() > DELAI_ABANDON_MS;
   const delaiMin = BACKOFF_MINUTES[Math.min(tentatives - 1, BACKOFF_MINUTES.length - 1)];
 
   await prisma.carte.update({
@@ -325,6 +364,11 @@ async function synchroniserNovelia(carte: Carte): Promise<void> {
       syncTentatives: tentatives,
       syncDerniereErreur: resultat.erreur,
       syncProchaineTentativeAt: abandon ? null : new Date(Date.now() + delaiMin * 60_000),
+      // Conservé même en échec définitif : évite de perdre un numéro de
+      // police/carte déjà attribué par NOVELIA faute d'avoir pu lire le lien.
+      ...(resultat.partiel?.numeroPolice ? { numeroPoliceNovelia: resultat.partiel.numeroPolice } : {}),
+      ...(resultat.partiel?.numeroCarte ? { noveliaRef: resultat.partiel.numeroCarte } : {}),
+      ...(resultat.partiel?.lien ? { lienTelechargement: resultat.partiel.lien } : {}),
     },
   });
 }
