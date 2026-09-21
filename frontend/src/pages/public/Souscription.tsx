@@ -341,6 +341,66 @@ function SexeField({
   );
 }
 
+/**
+ * Champs requis par l'intégration NOVELIA (services/novelia.ts, backend) pour
+ * la carte de prise en charge — civilité, ville, commune, adresse et numéro
+ * de pièce d'identité. Partagé par RelaxMoto/Auto, RelaxVoyage, RelaxAccidents
+ * Frais Médicaux[_livreurs] et RelaxAccidents générale.
+ */
+function NoveliaIdentiteFields({
+  civilite,
+  setCivilite,
+  ville,
+  setVille,
+  commune,
+  setCommune,
+  adresse,
+  setAdresse,
+  numeroPieceIdentite,
+  setNumeroPieceIdentite,
+}: {
+  civilite: "M." | "MLLE" | "MME" | "";
+  setCivilite: (v: "M." | "MLLE" | "MME") => void;
+  ville: string;
+  setVille: (v: string) => void;
+  commune: string;
+  setCommune: (v: string) => void;
+  adresse: string;
+  setAdresse: (v: string) => void;
+  numeroPieceIdentite: string;
+  setNumeroPieceIdentite: (v: string) => void;
+}) {
+  return (
+    <>
+      <FieldRow label="Civilité *">
+        <select value={civilite} onChange={(e) => setCivilite(e.target.value as "M." | "MLLE" | "MME")} style={inputStyle}>
+          <option value="">Sélectionnez...</option>
+          <option value="M.">M.</option>
+          <option value="MLLE">Mlle</option>
+          <option value="MME">Mme</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Ville *">
+        <input value={ville} onChange={(e) => setVille(e.target.value)} placeholder="Ex. Abidjan" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Commune *">
+        <input value={commune} onChange={(e) => setCommune(e.target.value)} placeholder="Ex. Cocody" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Adresse *">
+        <input value={adresse} onChange={(e) => setAdresse(e.target.value)} placeholder="Ex. Rue des Jardins, Lot 45" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Numéro de la pièce d'identité *">
+        <input
+          value={numeroPieceIdentite}
+          onChange={(e) => setNumeroPieceIdentite(e.target.value)}
+          placeholder="Numéro figurant sur la pièce"
+          style={inputStyle}
+        />
+      </FieldRow>
+    </>
+  );
+}
+
 function TarifCard({
   prime,
   capitalGaranti,
@@ -439,6 +499,16 @@ function RelaxAccidentsGeneraleForm({
   setPiecePhoto,
   selfiePhoto,
   setSelfiePhoto,
+  civilite,
+  setCivilite,
+  ville,
+  setVille,
+  commune,
+  setCommune,
+  adresse,
+  setAdresse,
+  numeroPieceIdentite,
+  setNumeroPieceIdentite,
   tarifsFormule,
   sigRef,
 }: {
@@ -466,6 +536,16 @@ function RelaxAccidentsGeneraleForm({
   setPiecePhoto: (v: string | null) => void;
   selfiePhoto: string | null;
   setSelfiePhoto: (v: string | null) => void;
+  civilite: "M." | "MLLE" | "MME" | "";
+  setCivilite: (v: "M." | "MLLE" | "MME") => void;
+  ville: string;
+  setVille: (v: string) => void;
+  commune: string;
+  setCommune: (v: string) => void;
+  adresse: string;
+  setAdresse: (v: string) => void;
+  numeroPieceIdentite: string;
+  setNumeroPieceIdentite: (v: string) => void;
   tarifsFormule: TarifFormule[];
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
@@ -489,6 +569,18 @@ function RelaxAccidentsGeneraleForm({
         <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
       </FieldRow>
       <SexeField value={sexe} onChange={setSexe} />
+      <NoveliaIdentiteFields
+        civilite={civilite}
+        setCivilite={setCivilite}
+        ville={ville}
+        setVille={setVille}
+        commune={commune}
+        setCommune={setCommune}
+        adresse={adresse}
+        setAdresse={setAdresse}
+        numeroPieceIdentite={numeroPieceIdentite}
+        setNumeroPieceIdentite={setNumeroPieceIdentite}
+      />
       <FieldRow label="Secteur d'activité *">
         <select
           value={classe}
@@ -1485,6 +1577,13 @@ export default function Souscription() {
   // Affiché sur la carte de prise en charge (refonte Novelia) — partagé par
   // les branches accident-like, RelaxVoyage et RelaxMoto/RelaxAuto.
   const [sexe, setSexe] = useState<"masculin" | "feminin" | "">("");
+  // Requis par l'intégration NOVELIA (services/novelia.ts) — partagés par
+  // RelaxVoyage et RelaxAccidents Frais Médicaux[_livreurs].
+  const [civilite, setCivilite] = useState<"M." | "MLLE" | "MME" | "">("");
+  const [ville, setVille] = useState("");
+  const [commune, setCommune] = useState("");
+  const [adresse, setAdresse] = useState("");
+  const [numeroPieceIdentite, setNumeroPieceIdentite] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
   // Capturée au moment de quitter l'étape "infos" (avant l'écran de
   // récapitulatif) : le pavé de signature est démonté dès que step passe à
@@ -1532,6 +1631,12 @@ export default function Souscription() {
   const [typePieceRa, setTypePieceRa] = useState<"CNI" | "Passeport">("CNI");
   const [piecePhotoRa, setPiecePhotoRa] = useState<string | null>(null);
   const [selfiePhotoRa, setSelfiePhotoRa] = useState<string | null>(null);
+  // Requis par l'intégration NOVELIA (services/novelia.ts).
+  const [civiliteRa, setCiviliteRa] = useState<"M." | "MLLE" | "MME" | "">("");
+  const [villeRa, setVilleRa] = useState("");
+  const [communeRa, setCommuneRa] = useState("");
+  const [adresseRa, setAdresseRa] = useState("");
+  const [numeroPieceRa, setNumeroPieceRa] = useState("");
 
   // Champs SecurPro (Assurances Dommages) — réutilise calculerSecurpro déjà
   // utilisé côté IMF (offline/tarification.ts). `nom`/`prenom`/`telephone`/
@@ -1599,6 +1704,12 @@ export default function Souscription() {
   const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
   const [piecePhotoRx, setPiecePhotoRx] = useState<string | null>(null);
   const [selfiePhotoRx, setSelfiePhotoRx] = useState<string | null>(null);
+  // Requis par l'intégration NOVELIA (services/novelia.ts).
+  const [civiliteRx, setCiviliteRx] = useState<"M." | "MLLE" | "MME" | "">("");
+  const [villeRx, setVilleRx] = useState("");
+  const [communeRx, setCommuneRx] = useState("");
+  const [adresseRx, setAdresseRx] = useState("");
+  const [numeroPieceRx, setNumeroPieceRx] = useState("");
   // RelaxAccidents Frais Médicaux : le produit exclut les livreurs, le
   // souscripteur doit le déclarer explicitement avant de pouvoir payer.
   const [declarePasLivreur, setDeclarePasLivreur] = useState(false);
@@ -1932,6 +2043,11 @@ export default function Souscription() {
       if (p.typePiece === "CNI" || p.typePiece === "Permis") setTypePieceRx(p.typePiece);
       if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
       if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
+      if (p.civilite) setCiviliteRx(p.civilite);
+      if (p.ville) setVilleRx(p.ville);
+      if (p.commune) setCommuneRx(p.commune);
+      if (p.adresse) setAdresseRx(p.adresse);
+      if (p.numeroPieceIdentite) setNumeroPieceRx(p.numeroPieceIdentite);
       return;
     }
     if (isRelaxAccidentsFraisMedicaux(produit) || isRelaxVoyage(produit)) {
@@ -1940,6 +2056,11 @@ export default function Souscription() {
       if (telephoneClient) setTelephone(telephoneClient);
       if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
       if (p.sexe) setSexe(p.sexe);
+      if (p.civilite) setCivilite(p.civilite);
+      if (p.ville) setVille(p.ville);
+      if (p.commune) setCommune(p.commune);
+      if (p.adresse) setAdresse(p.adresse);
+      if (p.numeroPieceIdentite) setNumeroPieceIdentite(p.numeroPieceIdentite);
       if (isRelaxAccidentsFraisMedicaux(produit)) {
         if (p.typePiece === "CNI" || p.typePiece === "Permis") setTypePieceRx(p.typePiece);
         if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
@@ -1962,6 +2083,11 @@ export default function Souscription() {
       if (p.typePiece === "CNI" || p.typePiece === "Passeport") setTypePieceRa(p.typePiece);
       if (p.pieceIdentiteUrl) setPiecePhotoRa(p.pieceIdentiteUrl);
       if (p.selfieUrl) setSelfiePhotoRa(p.selfieUrl);
+      if (p.civilite) setCiviliteRa(p.civilite);
+      if (p.ville) setVilleRa(p.ville);
+      if (p.commune) setCommuneRa(p.commune);
+      if (p.adresse) setAdresseRa(p.adresse);
+      if (p.numeroPieceIdentite) setNumeroPieceRa(p.numeroPieceIdentite);
     }
   }
 
@@ -2291,6 +2417,11 @@ export default function Souscription() {
             formule: formuleRelaxAccidentsGenerale(classeRelaxAccidents, cnpsDeclare, cycle),
             moyenDeplacement: moyenDeplacementRa,
             signature,
+            civilite: civiliteRa || undefined,
+            ville: villeRa,
+            commune: communeRa,
+            adresse: adresseRa,
+            numeroPieceIdentite: numeroPieceRa,
           }),
         });
         const data = await res.json();
@@ -2467,6 +2598,11 @@ export default function Souscription() {
             numeroTicket,
             dateDepart,
             numeroPersonneContact,
+            civilite: civilite || undefined,
+            ville,
+            commune,
+            adresse,
+            numeroPieceIdentite,
           }),
         });
         const data = await res.json();
@@ -2521,6 +2657,11 @@ export default function Souscription() {
             // justement ce public) — l'option Décès y est ouverte d'emblée.
             declarePasLivreur: isRafLivreurs(qrInfo.produit) ? undefined : declarePasLivreur,
             optionDeces: optionDeces || undefined,
+            civilite: civilite || undefined,
+            ville,
+            commune,
+            adresse,
+            numeroPieceIdentite,
           }),
         });
         const data = await res.json();
@@ -2565,6 +2706,11 @@ export default function Souscription() {
             cycle,
             nombrePeriodes,
             signature,
+            civilite: civiliteRx || undefined,
+            ville: villeRx,
+            commune: communeRx,
+            adresse: adresseRx,
+            numeroPieceIdentite: numeroPieceRx,
           }),
         });
         const data = await res.json();
@@ -2932,7 +3078,10 @@ export default function Souscription() {
           )}
           {!qrInfo && !chooserInfo && chooserBrancheInfo && (
             <div>
-              <div style={{ fontSize: 18, fontWeight: 800 }}>Assurances Accidents et Dommages</div>
+              {/* Libellé plus long que les autres en-têtes de cet écran
+                  (noms de produits courts) — taille réduite pour ne pas
+                  déborder sur deux lignes de façon disproportionnée. */}
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Assurances Accidents et Dommages</div>
               <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
                 via {chooserBrancheInfo.partenaire.nomCommerce}
               </div>
@@ -3526,6 +3675,16 @@ export default function Souscription() {
                   setPiecePhoto={setPiecePhotoRa}
                   selfiePhoto={selfiePhotoRa}
                   setSelfiePhoto={setSelfiePhotoRa}
+                  civilite={civiliteRa}
+                  setCivilite={setCiviliteRa}
+                  ville={villeRa}
+                  setVille={setVilleRa}
+                  commune={communeRa}
+                  setCommune={setCommuneRa}
+                  adresse={adresseRa}
+                  setAdresse={setAdresseRa}
+                  numeroPieceIdentite={numeroPieceRa}
+                  setNumeroPieceIdentite={setNumeroPieceRa}
                   tarifsFormule={tarifsFormule}
                   sigRef={sigRef}
                 />
@@ -3544,6 +3703,18 @@ export default function Souscription() {
                     <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
+                  <NoveliaIdentiteFields
+                    civilite={civilite}
+                    setCivilite={setCivilite}
+                    ville={ville}
+                    setVille={setVille}
+                    commune={commune}
+                    setCommune={setCommune}
+                    adresse={adresse}
+                    setAdresse={setAdresse}
+                    numeroPieceIdentite={numeroPieceIdentite}
+                    setNumeroPieceIdentite={setNumeroPieceIdentite}
+                  />
                   <FieldRow label="Compagnie de transport *">
                     <input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} placeholder="Ex. UTB" style={inputStyle} />
                   </FieldRow>
@@ -3616,6 +3787,18 @@ export default function Souscription() {
                     <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
+                  <NoveliaIdentiteFields
+                    civilite={civilite}
+                    setCivilite={setCivilite}
+                    ville={ville}
+                    setVille={setVille}
+                    commune={commune}
+                    setCommune={setCommune}
+                    adresse={adresse}
+                    setAdresse={setAdresse}
+                    numeroPieceIdentite={numeroPieceIdentite}
+                    setNumeroPieceIdentite={setNumeroPieceIdentite}
+                  />
                   <FieldRow label="Pièce d'identité *">
                     <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
                       <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
@@ -3748,6 +3931,18 @@ export default function Souscription() {
                     <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
+                  <NoveliaIdentiteFields
+                    civilite={civiliteRx}
+                    setCivilite={setCiviliteRx}
+                    ville={villeRx}
+                    setVille={setVilleRx}
+                    commune={communeRx}
+                    setCommune={setCommuneRx}
+                    adresse={adresseRx}
+                    setAdresse={setAdresseRx}
+                    numeroPieceIdentite={numeroPieceRx}
+                    setNumeroPieceIdentite={setNumeroPieceRx}
+                  />
                   <FieldRow label="Pièce d'identité *">
                     <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
                       <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>

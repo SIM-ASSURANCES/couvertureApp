@@ -640,6 +640,13 @@ model Souscription {
   // uniquement pour les produits qui génèrent cette carte (Frais Médicaux,
   // RelaxMoto/Auto, RelaxVoyage), pas pour Incendie.
   sexe                 Sexe?
+  // Champs requis par l'intégration NOVELIA (services/novelia.ts) — mêmes
+  // produits que `sexe` ci-dessus. `commune` existait déjà (utilisé par
+  // l'ancien modèle Incendie) et est réutilisé ici pour ces produits.
+  civilite             String?
+  ville                String?
+  adresse              String?
+  numeroPieceIdentite  String?
   commune              String?
   quartier             String?
   numeroMaison         String?
@@ -784,21 +791,49 @@ model Document {
 }
 
 /**
- * Carte de prise en charge — génération via NOVELIA (mode stub tant que l'API n'est pas branchée)
+ * Carte de prise en charge — génération via NOVELIA (mode stub tant que
+ * NOVELIA_EMAIL/NOVELIA_PASSWORD ne sont pas définis, voir services/novelia.ts).
+ * `numero` reste l'identifiant interne SIM (généré localement, toujours
+ * disponible) ; `noveliaRef`/`numeroPoliceNovelia`/`lienTelechargement` ne sont
+ * renseignés qu'une fois la synchronisation NOVELIA réussie.
  */
 model Carte {
-  id                 String       @id @default(uuid())
-  souscriptionId     String       @unique
-  souscription       Souscription @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
-  numero             String       @unique
-  statut             StatutCarte  @default(generee)
-  noveliaRef         String?
-  dateGeneration     DateTime     @default(now())
-  dateEnvoi          DateTime?
-  dateActivation     DateTime?
-  dateRenouvellement DateTime?
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
+  id                       String            @id @default(uuid())
+  souscriptionId           String            @unique
+  souscription             Souscription      @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numero                   String            @unique
+  statut                   StatutCarte       @default(generee)
+  // Numéro de carte NOVELIA (réponse de l'API souscription).
+  noveliaRef               String?
+  numeroPoliceNovelia      String?
+  lienTelechargement       String?
+  // Suivi de la synchronisation NOVELIA (retry en cas d'échec réseau/API —
+  // voir novelia.ts::rejouerCartesNoveliaEnAttente, rejoué par cron dans
+  // index.ts). "echec" sans `syncProchaineTentativeAt` = abandon définitif
+  // (données manquantes, ou nombre de tentatives/délai dépassé).
+  syncNovelia              SyncNoveliaStatut @default(en_attente)
+  syncTentatives           Int               @default(0)
+  syncProchaineTentativeAt DateTime?
+  syncDerniereErreur       String?
+  // Point de départ du cycle de tentatives en cours (création ou dernier
+  // renouvellement) — référence pour l'abandon après 24h, indépendante de
+  // `dateGeneration` qui ne change jamais après la création de la carte.
+  syncCycleDepuis          DateTime?
+  dateGeneration           DateTime          @default(now())
+  dateEnvoi                DateTime?
+  dateActivation           DateTime?
+  dateRenouvellement       DateTime?
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+
+  // Rejoué par cron : ne balaie que les cartes en attente de nouvelle tentative.
+  @@index([syncNovelia, syncProchaineTentativeAt])
+}
+
+enum SyncNoveliaStatut {
+  ok
+  en_attente
+  echec
 }
 
 enum StatutSinistreRelax {

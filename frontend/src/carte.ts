@@ -38,6 +38,17 @@ export async function telechargerCarte(type: TypeCarte, souscriptionId: string, 
     }
     throw new Error(message);
   }
+
+  // Une fois la carte NOVELIA synchronisée, le backend répond en JSON avec le
+  // lien de téléchargement de la carte digitale au lieu de rendre un PNG
+  // local (voir routes/cartes.ts) — on l'ouvre simplement dans un nouvel
+  // onglet plutôt que de tenter un fetch/blob sur un domaine externe.
+  if (res.headers.get("content-type")?.includes("application/json")) {
+    const { lien } = (await res.json()) as { lien?: string };
+    if (lien) window.open(lien, "_blank", "noopener,noreferrer");
+    return;
+  }
+
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

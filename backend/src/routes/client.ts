@@ -577,7 +577,19 @@ clientRouter.get(
     const mesSouscriptions = await prisma.souscription.findMany({
       where: { telephone },
       orderBy: { createdAt: "desc" },
-      select: { id: true, nom: true, prenom: true, dateNaissance: true, sexe: true, pieceIdentiteUrl: true },
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        dateNaissance: true,
+        sexe: true,
+        pieceIdentiteUrl: true,
+        civilite: true,
+        ville: true,
+        commune: true,
+        adresse: true,
+        numeroPieceIdentite: true,
+      },
     });
 
     let nom: string | null = null;
@@ -585,12 +597,22 @@ clientRouter.get(
     let dateNaissance: Date | null = null;
     let sexe: string | null = null;
     let pieceIdentiteUrl: string | null = null;
+    let civilite: string | null = null;
+    let ville: string | null = null;
+    let commune: string | null = null;
+    let adresse: string | null = null;
+    let numeroPieceIdentite: string | null = null;
     for (const s of mesSouscriptions) {
       nom ??= s.nom;
       prenom ??= s.prenom;
       dateNaissance ??= s.dateNaissance;
       sexe ??= s.sexe;
       pieceIdentiteUrl ??= s.pieceIdentiteUrl;
+      civilite ??= s.civilite;
+      ville ??= s.ville;
+      commune ??= s.commune;
+      adresse ??= s.adresse;
+      numeroPieceIdentite ??= s.numeroPieceIdentite;
     }
 
     let typePiece: string | null = null;
@@ -633,6 +655,11 @@ clientRouter.get(
       typePiece,
       pieceIdentiteUrl,
       selfieUrl,
+      civilite,
+      ville,
+      commune,
+      adresse,
+      numeroPieceIdentite,
     });
   })
 );

@@ -1060,6 +1060,17 @@ publicRouter.patch(
  * montant. Seule la 1ère échéance est payée immédiatement via Wave ; elle
  * active l'abonnement (police + carte de prise en charge).
  */
+// Champs requis par l'intégration NOVELIA (services/novelia.ts) pour les 6
+// produits Accidents (RelaxMoto/Auto, RelaxVoyage, RelaxAccidents Frais
+// Médicaux[_livreurs]/générale) — partagés entre relaxSchema et formuleSchema.
+const champsNovelia = {
+  civilite: z.enum(["M.", "MLLE", "MME"]).optional(),
+  ville: z.string().min(1).max(120).optional(),
+  commune: z.string().min(1).max(120).optional(),
+  adresse: z.string().min(1).max(200).optional(),
+  numeroPieceIdentite: z.string().min(1).max(60).optional(),
+};
+
 const relaxSchema = z.object({
   qrToken: z.string(),
   nom: z.string().min(1),
@@ -1080,6 +1091,7 @@ const relaxSchema = z.object({
   // Photo CNI/Permis + selfie (data URL), capturées depuis le téléphone du
   // souscripteur — voir documentSchema pour le dépôt effectif après création
   // de la souscription (id requis).
+  ...champsNovelia,
 });
 
 /**
@@ -1580,6 +1592,11 @@ publicRouter.post(
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
         sexe: data.sexe ?? null,
+        civilite: data.civilite ?? null,
+        ville: data.ville ?? null,
+        commune: data.commune ?? null,
+        adresse: data.adresse ?? null,
+        numeroPieceIdentite: data.numeroPieceIdentite ?? null,
         montantPrime: montantTotal,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
@@ -1670,6 +1687,7 @@ const formuleSchema = z.object({
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
   // SecurHome uniquement — locataire ou propriétaire de la maison assurée.
   statutOccupation: z.enum(["proprietaire", "locataire"]).optional(),
+  ...champsNovelia,
 });
 
 /**
@@ -1773,6 +1791,11 @@ publicRouter.post(
         telephone: data.telephone,
         dateNaissance: data.dateNaissance ?? null,
         sexe: data.sexe ?? null,
+        civilite: data.civilite ?? null,
+        ville: data.ville ?? null,
+        commune: data.commune ?? null,
+        adresse: data.adresse ?? null,
+        numeroPieceIdentite: data.numeroPieceIdentite ?? null,
         montantPrime: montantTotal,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",

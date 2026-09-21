@@ -213,6 +213,14 @@ export function messageClientRelax(
 }
 
 /**
+ * Activation RelaxVoyage : contrat confirmé, sans accès espace client
+ * (couverture 24h non renouvelable — un compte n'aurait aucune utilité).
+ */
+export function messageRelaxVoyageActive(prenom: string, numeroPolice: string) {
+  return `SIM Assurances : ${prenom}, votre RelaxVoyage est activé. N° police : ${numeroPolice}. Bon voyage !`;
+}
+
+/**
  * Réinitialisation du mot de passe client par un admin (à la demande du
  * client, ou pour tout autre motif) — texte dédié, distinct de
  * `messageClientRelax` dont le "contrat activé" serait trompeur ici.

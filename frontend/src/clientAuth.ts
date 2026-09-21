@@ -50,6 +50,11 @@ export interface ClientProfilIdentite {
   typePiece: "CNI" | "Permis" | "Passeport" | null;
   pieceIdentiteUrl: string | null;
   selfieUrl: string | null;
+  civilite: "M." | "MLLE" | "MME" | null;
+  ville: string | null;
+  commune: string | null;
+  adresse: string | null;
+  numeroPieceIdentite: string | null;
 }
 
 /**

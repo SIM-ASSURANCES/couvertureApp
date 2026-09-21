@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, sendSMS, dateDebutPremiereActivation } from "./notify.js";
-import { genererCarte } from "./novelia.js";
+import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, messageRelaxVoyageActive, sendSMS, dateDebutPremiereActivation } from "./notify.js";
+import { genererCarte, renouvelerCarte } from "./novelia.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -93,6 +93,7 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
         nombrePaiements: { increment: 1 },
       },
     });
+    await renouvelerCarte(s.id);
     return;
   }
 
@@ -125,16 +126,18 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
       // n'est donc jamais renouvelable (voir POST /client/renouveler et
       // /assurances-branche/souscriptions/:id/relance-renouvellement, qui
       // rejettent ce produit).
-      if (s.produit.code === "relaxvoyage") {
+      const estRelaxVoyage = s.produit.code === "relaxvoyage";
+      if (estRelaxVoyage) {
         dateFin.setHours(dateFin.getHours() + 24);
       } else {
         dateFin.setMonth(dateFin.getMonth() + dureeFormuleMois(s.produit.code, s.donneesSpecifiques));
       }
       const numeroPolice = newNumeroPolice();
 
-      // Accès espace client (voir branche abonnement ci-dessous) — désormais
-      // ouvert à tous les produits, pas seulement RelaxMoto/Auto.
-      const motDePasse = genererMotDePasseClient();
+      // Accès espace client — ouvert à tous les produits formule unique SAUF
+      // RelaxVoyage : couverture 24h non renouvelable, un compte n'aurait
+      // aucune utilité (décision 2026-09-18).
+      const motDePasse = estRelaxVoyage ? null : genererMotDePasseClient();
 
       await prisma.souscription.update({
         where: { id: s.id },
@@ -145,11 +148,15 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
           dateFin,
           statut: "complet",
           commissionCalculee: tarif?.commission ?? null,
-          clientPasswordHash: await bcrypt.hash(motDePasse, 10),
+          ...(motDePasse ? { clientPasswordHash: await bcrypt.hash(motDePasse, 10) } : {}),
         },
       });
       await genererCarte(s.id);
-      await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+      if (motDePasse) {
+        await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+      } else {
+        await sendSMS(s.telephone, messageRelaxVoyageActive(s.prenom ?? "", numeroPolice));
+      }
       return;
     }
 

@@ -8,6 +8,7 @@ import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { envoyerRelancesEcheance } from "./services/relances.js";
 import { rejouerWebhooksEnAttente } from "./services/partnerWebhook.js";
+import { rejouerCartesNoveliaEnAttente } from "./services/novelia.js";
 
 import { authRouter } from "./routes/auth.js";
 import { partenairesRouter } from "./routes/partenaires.js";
@@ -217,6 +218,12 @@ cron.schedule(
 // 24 h) — voir services/partnerWebhook.ts.
 cron.schedule("*/2 * * * *", () => {
   rejouerWebhooksEnAttente().catch((e) => console.error("[partnerWebhook] rejeu", e));
+});
+
+// Rejeu des synchronisations NOVELIA (carte de prise en charge) en échec
+// réseau/API — voir services/novelia.ts.
+cron.schedule("*/5 * * * *", () => {
+  rejouerCartesNoveliaEnAttente().catch((e) => console.error("[novelia] rejeu", e));
 });
 
 const PORT = Number(process.env.PORT) || 4000;

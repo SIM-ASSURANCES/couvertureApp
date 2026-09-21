@@ -118,6 +118,15 @@ cartesRouter.post(
         include: { documents: true, produit: { select: { code: true } } },
       });
       if (!s || s.waveStatut !== "confirme") return res.status(404).json({ error: "Souscription non disponible" });
+
+      // Une fois la carte NOVELIA synchronisée, son lien de téléchargement
+      // remplace entièrement le PNG rendu localement (repli tant que la
+      // synchronisation n'a pas encore réussi — voir services/novelia.ts).
+      const carteNovelia = await prisma.carte.findUnique({ where: { souscriptionId: s.id } });
+      if (carteNovelia?.lienTelechargement) {
+        return res.json({ lien: carteNovelia.lienTelechargement });
+      }
+
       const selfie = s.documents
         .filter((d) => d.type === "Selfie")
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
