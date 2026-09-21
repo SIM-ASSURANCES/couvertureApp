@@ -6,6 +6,7 @@ import { asyncHandler } from "../util.js";
 import { htmlToPng } from "../services/pdf.js";
 import { renderCarteHtml, CARTE_WIDTH, CARTE_HEIGHT, type CarteData } from "../services/carteHtml.js";
 import { SEXE_LABELS, garantieAffichee, resoudreDateNaissance } from "../services/carteRender.js";
+import { bordereauDepuisLien, lienCarteNovelia } from "../services/novelia.js";
 
 export const cartesRouter = Router();
 
@@ -122,9 +123,14 @@ cartesRouter.post(
       // Une fois la carte NOVELIA synchronisée, son lien de téléchargement
       // remplace entièrement le PNG rendu localement (repli tant que la
       // synchronisation n'a pas encore réussi — voir services/novelia.ts).
+      // Le lien est TOUJOURS reconstruit avec un jeton frais : celui figé à la
+      // souscription expire en ~45 min et renvoie ensuite un fichier vide.
       const carteNovelia = await prisma.carte.findUnique({ where: { souscriptionId: s.id } });
       if (carteNovelia?.lienTelechargement) {
-        return res.json({ lien: carteNovelia.lienTelechargement });
+        const bordereau =
+          carteNovelia.noveliaBordereau ?? bordereauDepuisLien(carteNovelia.lienTelechargement);
+        const lien = bordereau ? await lienCarteNovelia(bordereau) : null;
+        return res.json({ lien: lien ?? carteNovelia.lienTelechargement });
       }
 
       const selfie = s.documents

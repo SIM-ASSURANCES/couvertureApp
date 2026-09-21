@@ -806,6 +806,13 @@ model Carte {
   // Numéro de carte NOVELIA (réponse de l'API souscription).
   noveliaRef               String?
   numeroPoliceNovelia      String?
+  // Identifiant du bordereau d'impression NOVELIA (champ `code` de leur
+  // réponse, ex. "260000429-1-1-0") : c'est LUI qui permet de reconstruire un
+  // lien de carte valide à la demande. `lienTelechargement` n'est conservé
+  // que pour dépannage/repli — le jeton qu'il contient expire au bout de
+  // ~45 min et le lien renvoie alors un fichier VIDE en HTTP 200 (vérifié le
+  // 2026-09-21), d'où la reconstruction systématique côté routes/cartes.ts.
+  noveliaBordereau         String?
   lienTelechargement       String?
   // Suivi de la synchronisation NOVELIA (retry en cas d'échec réseau/API —
   // voir novelia.ts::rejouerCartesNoveliaEnAttente, rejoué par cron dans

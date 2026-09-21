@@ -196,7 +196,7 @@ function construireDonneesCarte(
 // ---- Appel de l'API souscription ----
 
 type ResultatSouscriptionNovelia =
-  | { ok: true; numeroPolice: string; numeroCarte: string; lien: string }
+  | { ok: true; numeroPolice: string; numeroCarte: string; lien: string; bordereau: string | null }
   | {
       ok: false;
       erreur: string;
@@ -208,7 +208,7 @@ type ResultatSouscriptionNovelia =
       // rejouer un succès 4-5 fois de suite, créant autant de polices en
       // double chez NOVELIA pour les mêmes souscripteurs.
       rejouable: boolean;
-      partiel?: { numeroPolice?: string; numeroCarte?: string; lien?: string };
+      partiel?: { numeroPolice?: string; numeroCarte?: string; lien?: string; bordereau?: string };
     };
 
 function extraireChaine(obj: Record<string, unknown>, cles: string[]): string | null {
@@ -282,6 +282,7 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
   const numeroPolice = extraireChaine(racine, ["numeroPolice", "police", "noPolice", "policeNumero"]);
   const numeroCarte = extraireChaine(racine, ["numeroCarte", "carte", "noCarte", "carteNumero"]);
   const lien = extraireChaine(racine, ["carteDigitale", "lienTelechargement", "lien", "lienCarte", "downloadUrl", "urlCarte", "url"]);
+  const bordereau = extraireChaine(racine, ["code", "bordereau"]) ?? (lien ? bordereauDepuisLien(lien) : null);
 
   if (!numeroPolice || !numeroCarte || !lien) {
     // NOVELIA a répondu sans indiquer d'erreur (`hasError` absent/false) :
@@ -297,10 +298,42 @@ async function appellerSouscriptionNovelia(donnees: DonneesSouscriptionNovelia):
         numeroPolice: numeroPolice ?? undefined,
         numeroCarte: numeroCarte ?? undefined,
         lien: lien ?? undefined,
+        bordereau: bordereau ?? undefined,
       },
     };
   }
-  return { ok: true, numeroPolice, numeroCarte, lien };
+  return { ok: true, numeroPolice, numeroCarte, lien, bordereau };
+}
+
+/** Extrait le paramètre `bordereau` d'un lien de carte NOVELIA déjà stocké. */
+export function bordereauDepuisLien(lien: string): string | null {
+  try {
+    return new URL(lien).searchParams.get("bordereau");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Reconstruit un lien de téléchargement de carte valide à l'instant T.
+ *
+ * Le lien renvoyé par l'API souscription embarque le jeton d'authentification
+ * NOVELIA, qui expire au bout d'environ 45 minutes : passé ce délai, il répond
+ * HTTP 200 avec un corps VIDE (vérifié le 2026-09-21), soit un téléchargement
+ * blanc côté client. On ne sert donc jamais le lien figé, on le reconstruit
+ * avec un jeton frais à chaque demande.
+ */
+export async function lienCarteNovelia(bordereau: string): Promise<string | null> {
+  if (!noveliaConfigure()) return null;
+  try {
+    const token = await obtenirToken();
+    return `${NOVELIA_BASE_URL}/eden/v1/impression/carteSanteBordereau?slug=${encodeURIComponent(
+      NOVELIA_SLUG
+    )}&token=${encodeURIComponent(token)}&bordereau=${encodeURIComponent(bordereau)}`;
+  } catch (e) {
+    console.error("[novelia] lienCarteNovelia", e);
+    return null;
+  }
 }
 
 // ---- Cycle de synchronisation (création, renouvellement, retry) ----
@@ -340,6 +373,7 @@ async function synchroniserNovelia(carte: Carte): Promise<void> {
       data: {
         noveliaRef: resultat.numeroCarte,
         numeroPoliceNovelia: resultat.numeroPolice,
+        noveliaBordereau: resultat.bordereau,
         lienTelechargement: resultat.lien,
         syncNovelia: "ok",
         syncDerniereErreur: null,
@@ -368,6 +402,7 @@ async function synchroniserNovelia(carte: Carte): Promise<void> {
       // police/carte déjà attribué par NOVELIA faute d'avoir pu lire le lien.
       ...(resultat.partiel?.numeroPolice ? { numeroPoliceNovelia: resultat.partiel.numeroPolice } : {}),
       ...(resultat.partiel?.numeroCarte ? { noveliaRef: resultat.partiel.numeroCarte } : {}),
+      ...(resultat.partiel?.bordereau ? { noveliaBordereau: resultat.partiel.bordereau } : {}),
       ...(resultat.partiel?.lien ? { lienTelechargement: resultat.partiel.lien } : {}),
     },
   });
