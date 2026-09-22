@@ -82,18 +82,23 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
             d.setMonth(d.getMonth() + dureeFormuleMois(s.produit.code, s.donneesSpecifiques));
             return d;
           })();
+    // Police conservée si le renouvellement tombe dans le délai de grâce
+    // (2 jours après l'échéance) ; police neuve au-delà. La carte NOVELIA suit
+    // exactement la même règle — voir novelia.ts::renouvelerCarte.
+    const numeroPolice = numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);
+    const creerNouvellePolice = numeroPolice !== s.numeroPolice;
     await prisma.souscription.update({
       where: { id: s.id },
       data: {
         dateFin,
-        numeroPolice: numeroPoliceRenouvellement(s.numeroPolice, s.dateFin),
+        numeroPolice,
         statutAbonnement: s.cycleFacturation ? "actif" : s.statutAbonnement,
         renouvellementEnCoursDepuis: null,
         renouveleAt: new Date(),
         nombrePaiements: { increment: 1 },
       },
     });
-    await renouvelerCarte(s.id);
+    await renouvelerCarte(s.id, { creerNouvellePolice });
     return;
   }
 

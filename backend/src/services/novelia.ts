@@ -437,10 +437,32 @@ export async function genererCarte(souscriptionId: string): Promise<void> {
  * Renouvelle une carte existante (nouvelle période de couverture) : relance
  * une synchronisation NOVELIA complète avec les nouvelles dateDebut/dateFin.
  */
-export async function renouvelerCarte(souscriptionId: string): Promise<void> {
+export async function renouvelerCarte(
+  souscriptionId: string,
+  { creerNouvellePolice }: { creerNouvellePolice: boolean }
+): Promise<void> {
   const existante = await prisma.carte.findUnique({ where: { souscriptionId } });
   if (!existante) return;
 
+  // Renouvellement dans le délai de grâce : le contrat est prolongé, police et
+  // matricule inchangés. On ne renvoie donc RIEN à NOVELIA — leur endpoint de
+  // souscription crée une police neuve à chaque appel (vérifié le 2026-09-21
+  // sur les doublons 260000426/427/429), il ne prolonge pas l'existante. La
+  // prolongation à transmettre est marquée pour ne pas être perdue.
+  if (!creerNouvellePolice) {
+    await prisma.carte.update({
+      where: { souscriptionId },
+      data: {
+        dateRenouvellement: new Date(),
+        prolongationRequiseDepuis: existante.prolongationRequiseDepuis ?? new Date(),
+      },
+    });
+    return;
+  }
+
+  // Hors délai : le contrat repart sur une police neuve, et le matricule
+  // désactivé est réactivé pour la nouvelle durée — c'est exactement ce que
+  // produit une souscription NOVELIA complète.
   const carte = await prisma.carte.update({
     where: { souscriptionId },
     data: {
@@ -450,6 +472,7 @@ export async function renouvelerCarte(souscriptionId: string): Promise<void> {
       syncNovelia: "en_attente",
       syncDerniereErreur: null,
       syncProchaineTentativeAt: null,
+      prolongationRequiseDepuis: null,
     },
   });
 

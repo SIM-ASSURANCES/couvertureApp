@@ -52,14 +52,24 @@ export function dateDebutPremiereActivation(produitCode: string): Date {
  * génère un numéro neuf. Centralise la règle pour rester cohérente entre le
  * modèle générique (paiementWave.ts) et Accident historique (accident.ts).
  */
+/**
+ * Un renouvellement confirmé au plus 2 jours après l'ancienne échéance
+ * prolonge le contrat existant (numéro de police conservé, matricule de la
+ * carte toujours actif jusqu'à la nouvelle échéance) ; au-delà, le contrat est
+ * considéré comme rompu et repart sur une police neuve. Définition unique de
+ * la règle, partagée par numeroPoliceRenouvellement ci-dessous et par la
+ * synchronisation NOVELIA (services/novelia.ts::renouvelerCarte).
+ */
+export function dansDelaiGraceRenouvellement(ancienneDateFin: Date | null): boolean {
+  if (!ancienneDateFin) return true;
+  return Date.now() - ancienneDateFin.getTime() <= DELAI_GRACE_RENOUVELLEMENT_MS;
+}
+
 export function numeroPoliceRenouvellement(
   ancienNumeroPolice: string | null,
   ancienneDateFin: Date | null
 ): string {
-  const horsDelai = ancienneDateFin
-    ? Date.now() - ancienneDateFin.getTime() > DELAI_GRACE_RENOUVELLEMENT_MS
-    : false;
-  if (!horsDelai && ancienNumeroPolice) return ancienNumeroPolice;
+  if (dansDelaiGraceRenouvellement(ancienneDateFin) && ancienNumeroPolice) return ancienNumeroPolice;
   return newNumeroPolice();
 }
 

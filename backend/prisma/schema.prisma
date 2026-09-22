@@ -814,6 +814,15 @@ model Carte {
   // 2026-09-21), d'où la reconstruction systématique côté routes/cartes.ts.
   noveliaBordereau         String?
   lienTelechargement       String?
+  // Renouvellement intervenu dans le délai de grâce (2 jours) : la police et
+  // le matricule sont conservés, mais NOVELIA doit être informée de la
+  // nouvelle échéance. Leur API ne propose à ce jour qu'un endpoint de
+  // CRÉATION (/eden/souscription), qui fabrique une police neuve à chaque
+  // appel (constaté le 2026-09-21) — on ne rappelle donc rien et on marque
+  // ici la prolongation restant à transmettre, en attendant le mécanisme
+  // officiel côté NOVELIA. Requête de suivi : WHERE prolongationRequiseDepuis
+  // IS NOT NULL.
+  prolongationRequiseDepuis DateTime?
   // Suivi de la synchronisation NOVELIA (retry en cas d'échec réseau/API —
   // voir novelia.ts::rejouerCartesNoveliaEnAttente, rejoué par cron dans
   // index.ts). "echec" sans `syncProchaineTentativeAt` = abandon définitif

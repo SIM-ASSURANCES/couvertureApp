@@ -3,7 +3,12 @@ import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
-import { sendSMS, messageRelancePaiement, initiateWavePayment } from "../services/notify.js";
+import {
+  sendSMS,
+  messageRelancePaiement,
+  initiateWavePayment,
+  dansDelaiGraceRenouvellement,
+} from "../services/notify.js";
 import { verifierPaiementEcheance } from "../services/paiementWave.js";
 import { renouvelerCarte } from "../services/novelia.js";
 
@@ -391,7 +396,17 @@ relaxRouter.post(
 relaxRouter.post(
   "/souscriptions/:id/carte/renouveler",
   asyncHandler(async (req: AuthedRequest, res) => {
-    await renouvelerCarte(req.params.id);
+    // Même règle que le renouvellement payé (paiementWave.ts) : tant que le
+    // contrat est dans le délai de grâce, on prolonge sans créer de police
+    // NOVELIA supplémentaire — sinon un clic de trop suffirait à dupliquer la
+    // police chez eux.
+    const souscription = await prisma.souscription.findUnique({
+      where: { id: req.params.id },
+      select: { dateFin: true },
+    });
+    await renouvelerCarte(req.params.id, {
+      creerNouvellePolice: !dansDelaiGraceRenouvellement(souscription?.dateFin ?? null),
+    });
     const carte = await prisma.carte.findUnique({ where: { souscriptionId: req.params.id } });
     if (!carte) return res.status(404).json({ error: "Carte non disponible" });
     await logAction({
