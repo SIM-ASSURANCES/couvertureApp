@@ -490,18 +490,31 @@ export default function ClientDashboard() {
                 <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Autres produits disponibles</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {autresProduits.produits.map((p) => (
-                    <a
+                    <div
                       key={p.code}
-                      href={autresProduits.qrToken ? `/s/${p.code}/${autresProduits.qrToken}?client=1` : undefined}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (!autresProduits.qrToken) return;
+                        navigate(`/s/${p.code}/${autresProduits.qrToken}?client=1`);
+                      }}
+                      onKeyDown={(e) => {
+                        if ((e.key === "Enter" || e.key === " ") && autresProduits.qrToken) {
+                          e.preventDefault();
+                          navigate(`/s/${p.code}/${autresProduits.qrToken}?client=1`);
+                        }
+                      }}
                       style={{
                         display: "flex", justifyContent: "space-between", alignItems: "center",
                         background: "#f5f8fc", borderRadius: 10, padding: "12px 14px",
                         textDecoration: "none", color: "#0f1b2d",
+                        cursor: autresProduits.qrToken ? "pointer" : "default",
+                        opacity: autresProduits.qrToken ? 1 : 0.5,
                       }}
                     >
                       <span style={{ fontSize: 13.5, fontWeight: 600 }}>{p.libelle}</span>
                       <span style={{ fontSize: 12.5, color: "#004b9c", fontWeight: 700 }}>Souscrire →</span>
-                    </a>
+                    </div>
                   ))}
                 </div>
               </div>
