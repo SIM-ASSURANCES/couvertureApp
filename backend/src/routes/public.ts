@@ -1015,13 +1015,31 @@ publicRouter.post(
       return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
     }
 
-    const compte = await rechercherPayeurDjogana(data.telephone);
+    // Les appels à l'API Djogana ne doivent jamais remonter comme une 500
+    // générique (invisible côté client) — on renvoie le message réel de
+    // l'échec pour pouvoir diagnostiquer sans accès aux logs serveur.
+    let compte;
+    try {
+      compte = await rechercherPayeurDjogana(data.telephone);
+    } catch (e) {
+      console.error("[Djogana] recherche payeur", e);
+      return res.status(502).json({
+        error: `Djogana indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+      });
+    }
     if (!compte) {
       return res.status(404).json({
         error: "Aucun compte Djogana/Peya Pay trouvé pour ce numéro. Le client doit d'abord en créer un.",
       });
     }
-    await envoyerOtpDjogana(data.telephone);
+    try {
+      await envoyerOtpDjogana(data.telephone);
+    } catch (e) {
+      console.error("[Djogana] envoi OTP", e);
+      return res.status(502).json({
+        error: `Djogana indisponible (envoi du code) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+      });
+    }
     res.json({ ok: true });
   })
 );
