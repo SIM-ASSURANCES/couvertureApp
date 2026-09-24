@@ -369,6 +369,8 @@ model SouscriptionAccident {
   commissionCalculee   Float?
   waveNumero           String?
   waveTransactionId    String?
+  // Voir Paiement.djoganaTransactionId.
+  djoganaTransactionId String?
   waveStatut           WaveStatut         @default(en_attente)
   numeroPolice         String?            @unique
   dateDebut            DateTime?
@@ -764,6 +766,10 @@ model Paiement {
   dateEcheance      DateTime
   datePaiement      DateTime?
   waveTransactionId String?
+  // Référence de paiement Djogana (Peya Pay) — voir services/djogana.ts.
+  // Renseigné uniquement si l'échéance a été payée par ce moyen (alternative
+  // à Wave, sans redirection : validation par OTP puis débit direct).
+  djoganaTransactionId String?
   // Paiement de renouvellement (RelaxMoto/Auto : depuis l'espace client ;
   // formule unique : relance admin) plutôt qu'échéance du cycle initial —
   // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le

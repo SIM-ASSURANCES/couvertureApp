@@ -21,6 +21,12 @@ import { confirmerAccident, verifierPaiementAccident } from "../services/acciden
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import {
+  rechercherPayeurDjogana,
+  envoyerOtpDjogana,
+  validerOtpDjogana,
+  creerPaiementDjogana,
+} from "../services/djogana.js";
+import {
   parseFormuleRelaxAccidentsGenerale,
   formuleRelaxAccidentsGenerale,
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
@@ -55,6 +61,12 @@ const dataUrlImage = z
   .string()
   .max(2_000_000)
   .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
+// Moyen de paiement choisi par le client — Wave (redirection, comportement
+// historique) ou Djogana/Peya Pay (validation par OTP, sans redirection, voir
+// POST /public/paiement-djogana/*). Partagé par tous les schémas de
+// souscription payante ci-dessous.
+const moyenPaiementField = { moyenPaiement: z.enum(["wave", "djogana"]).default("wave") };
 
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
@@ -702,6 +714,7 @@ const accSchema = z.object({
   dateNaissance: z.coerce.date(),
   tarifAccidentId: z.number().int().positive().optional(),
   signature: dataUrlImage.optional(),
+  ...moyenPaiementField,
 });
 
 publicRouter.post(
@@ -776,10 +789,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/accident/${data.qrToken}?paid=${s.id}`;
     const errorUrl = `${appUrl}/s/accident/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, le client valide un OTP puis
+      // confirme via POST /public/paiement-djogana/confirmer (type "accident").
+    } else if (!process.env.WAVE_API_KEY) {
       // Mode stub (dev / pas encore de clé) : confirmer immédiatement, via
       // confirmerAccident (comme le webhook Wave réel) plutôt qu'une
       // réimplémentation locale — sans quoi ce chemin divergeait du délai
@@ -806,7 +822,17 @@ publicRouter.post(
       "/partenaire/souscriptions"
     );
 
-    res.status(201).json({ souscriptionId: s.id, montant, capitalGaranti, checkoutUrl, transactionId });
+    res.status(201).json({
+      souscriptionId: s.id,
+      montant,
+      capitalGaranti,
+      checkoutUrl,
+      // Paiement Djogana (pas de redirection Wave) : URL vers laquelle
+      // naviguer côté client une fois le paiement confirmé par OTP.
+      successUrl,
+      transactionId,
+      moyenPaiement: data.moyenPaiement,
+    });
   })
 );
 
@@ -943,6 +969,114 @@ publicRouter.post(
 
     await confirmerEcheance(p);
     res.json({ ok: true, statut: "paye" });
+  })
+);
+
+/**
+ * Paiement Djogana (Peya Pay) — générique à tous les produits payants, voir
+ * services/djogana.ts. `type`/`id` identifient la ligne à payer : "accident"
+ * pointe vers SouscriptionAccident, "echeance" vers Paiement (tous les autres
+ * produits, formule unique ou abonnement, passent par ce modèle générique).
+ * Le montant n'est jamais pris dans la requête, toujours relu en base.
+ */
+const djoganaRefSchema = z.object({
+  type: z.enum(["accident", "echeance"]),
+  id: z.string().min(1),
+  telephone: z.string().min(6),
+});
+
+/** Récupère (montant, téléphone attendu) pour une référence de paiement Djogana. */
+async function resoudreReferenceDjogana(
+  type: "accident" | "echeance",
+  id: string
+): Promise<{ montant: number; telephone: string } | null> {
+  if (type === "accident") {
+    const s = await prisma.souscriptionAccident.findUnique({
+      where: { id },
+      select: { montantPrime: true, telephone: true },
+    });
+    return s ? { montant: s.montantPrime, telephone: s.telephone } : null;
+  }
+  const p = await prisma.paiement.findUnique({
+    where: { id },
+    select: { montant: true, souscription: { select: { telephone: true } } },
+  });
+  return p ? { montant: p.montant, telephone: p.souscription.telephone } : null;
+}
+
+/** Étape 1 : vérifie que le téléphone a un compte Djogana puis envoie l'OTP. */
+publicRouter.post(
+  "/paiement-djogana/otp",
+  asyncHandler(async (req, res) => {
+    const data = djoganaRefSchema.parse(req.body);
+    const ref = await resoudreReferenceDjogana(data.type, data.id);
+    if (!ref) return res.status(404).json({ error: "Paiement introuvable" });
+    if (ref.telephone !== data.telephone) {
+      return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
+    }
+
+    const compte = await rechercherPayeurDjogana(data.telephone);
+    if (!compte) {
+      return res.status(404).json({
+        error: "Aucun compte Djogana/Peya Pay trouvé pour ce numéro. Le client doit d'abord en créer un.",
+      });
+    }
+    await envoyerOtpDjogana(data.telephone);
+    res.json({ ok: true });
+  })
+);
+
+/** Étape 2 : valide l'OTP, débite le compte du client et confirme la souscription. */
+publicRouter.post(
+  "/paiement-djogana/confirmer",
+  asyncHandler(async (req, res) => {
+    const data = djoganaRefSchema.extend({ otp: z.string().min(3).max(10) }).parse(req.body);
+
+    if (data.type === "accident") {
+      const s = await prisma.souscriptionAccident.findUnique({ where: { id: data.id } });
+      if (!s) return res.status(404).json({ error: "Souscription introuvable" });
+      if (s.telephone !== data.telephone) {
+        return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
+      }
+      if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) {
+        return res.json({ statut: "paye" }); // déjà confirmé (idempotence)
+      }
+      const otpValide = await validerOtpDjogana(data.telephone, data.otp);
+      if (!otpValide) return res.status(400).json({ error: "Code incorrect ou expiré" });
+      const paiement = await creerPaiementDjogana(data.telephone, s.montantPrime, s.id);
+      if (!paiement.reussi) {
+        return res.status(402).json({ error: paiement.message || "Paiement refusé" });
+      }
+      await prisma.souscriptionAccident.update({
+        where: { id: s.id },
+        data: { djoganaTransactionId: paiement.transactionId },
+      });
+      await confirmerAccident(s);
+      return res.json({ statut: "paye" });
+    }
+
+    const p = await prisma.paiement.findUnique({
+      where: { id: data.id },
+      include: { souscription: { select: { telephone: true } } },
+    });
+    if (!p) return res.status(404).json({ error: "Échéance introuvable" });
+    if (p.souscription.telephone !== data.telephone) {
+      return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
+    }
+    if (p.statut === "paye") return res.json({ statut: "paye" }); // déjà confirmé (idempotence)
+
+    const otpValide = await validerOtpDjogana(data.telephone, data.otp);
+    if (!otpValide) return res.status(400).json({ error: "Code incorrect ou expiré" });
+    const paiement = await creerPaiementDjogana(data.telephone, p.montant, p.id);
+    if (!paiement.reussi) {
+      return res.status(402).json({ error: paiement.message || "Paiement refusé" });
+    }
+    await prisma.paiement.update({
+      where: { id: p.id },
+      data: { djoganaTransactionId: paiement.transactionId },
+    });
+    await confirmerEcheance(p);
+    res.json({ statut: "paye" });
   })
 );
 
@@ -1092,6 +1226,7 @@ const relaxSchema = z.object({
   // souscripteur — voir documentSchema pour le dépôt effectif après création
   // de la souscription (id requis).
   ...champsNovelia,
+  ...moyenPaiementField,
 });
 
 /**
@@ -1129,6 +1264,7 @@ const securproDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  ...moyenPaiementField,
 });
 
 publicRouter.post(
@@ -1246,10 +1382,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
       transactionId = `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
@@ -1275,7 +1414,9 @@ publicRouter.post(
       montant: resultat.primeTTC,
       resultat,
       checkoutUrl,
+      successUrl,
       transactionId,
+      moyenPaiement: data.moyenPaiement,
     });
   })
 );
@@ -1309,6 +1450,7 @@ const securhomeDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  ...moyenPaiementField,
 });
 
 publicRouter.post(
@@ -1401,10 +1543,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
       transactionId = `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
@@ -1430,7 +1575,9 @@ publicRouter.post(
       montant: resultat.primeTTC,
       resultat,
       checkoutUrl,
+      successUrl,
       transactionId,
+      moyenPaiement: data.moyenPaiement,
     });
   })
 );
@@ -1450,6 +1597,7 @@ const securMotoSchema = z.object({
   signature: dataUrlImage.optional(),
   valeurMoto: z.number().finite().min(1).max(700_000),
   ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+  ...moyenPaiementField,
 });
 
 publicRouter.post(
@@ -1513,10 +1661,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securmoto/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securmoto/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
       transactionId = `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
@@ -1542,7 +1693,9 @@ publicRouter.post(
       montant: resultat.primeTTC,
       resultat,
       checkoutUrl,
+      successUrl,
       transactionId,
+      moyenPaiement: data.moyenPaiement,
     });
   })
 );
@@ -1618,10 +1771,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${premiereEcheance.id}`;
     const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
       transactionId = `STUB-${premiereEcheance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...premiereEcheance, waveTransactionId: transactionId });
@@ -1648,7 +1804,9 @@ publicRouter.post(
       nombreEcheances: 1,
       capitalGaranti: tarif.capitalGaranti,
       checkoutUrl,
+      successUrl,
       transactionId,
+      moyenPaiement: data.moyenPaiement,
     });
   })
 );
@@ -1688,6 +1846,7 @@ const formuleSchema = z.object({
   // SecurHome uniquement — locataire ou propriétaire de la maison assurée.
   statutOccupation: z.enum(["proprietaire", "locataire"]).optional(),
   ...champsNovelia,
+  ...moyenPaiementField,
 });
 
 /**
@@ -1850,10 +2009,13 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
 
-    let checkoutUrl: string;
-    let transactionId: string;
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
 
-    if (!process.env.WAVE_API_KEY) {
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
       transactionId = `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
@@ -1879,7 +2041,9 @@ publicRouter.post(
       montant: montantTotal,
       capitalGaranti: tarif.capitalGaranti,
       checkoutUrl,
+      successUrl,
       transactionId,
+      moyenPaiement: data.moyenPaiement,
     });
   })
 );

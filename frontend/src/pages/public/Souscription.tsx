@@ -258,7 +258,16 @@ interface TarifFormule {
   donneesSpecifiques?: { fraisSante?: number; bagages?: string } | null;
 }
 
-type Step = "loading" | "choose-branche" | "choose-produit" | "infos" | "confirm" | "retry" | "success" | "error";
+type Step =
+  | "loading"
+  | "choose-branche"
+  | "choose-produit"
+  | "infos"
+  | "confirm"
+  | "retry"
+  | "djogana-otp"
+  | "success"
+  | "error";
 
 const PHONE_PREFIX = "+225";
 function phoneLocalPart(v: string) {
@@ -1717,6 +1726,22 @@ export default function Souscription() {
   // proposée seulement si non-livreur est déclaré. "" = aucune option.
   const [optionDeces, setOptionDeces] = useState<"" | "200000" | "100000">("");
 
+  // Moyen de paiement choisi à l'écran de vérification — Wave (redirection,
+  // historique) ou Djogana/Peya Pay (OTP, sans redirection).
+  const [moyenPaiement, setMoyenPaiement] = useState<"wave" | "djogana">("wave");
+  // Paiement Djogana en cours : référence de la ligne à payer (renseignée par
+  // finaliserApresInitiate une fois l'OTP envoyé) et état de l'écran de saisie
+  // du code — voir POST /public/paiement-djogana/*.
+  const [djoganaPaiement, setDjoganaPaiement] = useState<{
+    type: "accident" | "echeance";
+    id: string;
+    telephone: string;
+    successUrl?: string;
+  } | null>(null);
+  const [djoganaOtp, setDjoganaOtp] = useState("");
+  const [djoganaSubmitting, setDjoganaSubmitting] = useState(false);
+  const [djoganaError, setDjoganaError] = useState("");
+
   // Résultat souscription
   const [result, setResult] = useState<{
     checkoutUrl?: string;
@@ -2376,6 +2401,99 @@ export default function Souscription() {
     return l;
   }
 
+  /**
+   * Appelée à la fin de chaque branche de handleSubmit une fois la
+   * souscription/échéance créée côté backend. Deux cas selon le moyen de
+   * paiement choisi :
+   * - Wave (comportement historique) : `data.checkoutUrl` est renseigné, on
+   *   redirige directement (page hébergée Wave, ou stub = successUrl direct).
+   * - Djogana : pas de checkoutUrl — on envoie l'OTP puis bascule sur l'écran
+   *   de saisie du code (étape "djogana-otp"), qui débitera le compte du
+   *   client à la validation (voir confirmerDjogana ci-dessous).
+   */
+  async function finaliserApresInitiate(data: {
+    checkoutUrl?: string | null;
+    successUrl?: string;
+    souscriptionId?: string;
+    echeanceId?: string;
+  }) {
+    if (data.checkoutUrl) {
+      window.location.href = data.checkoutUrl;
+      return;
+    }
+    const telephoneUtilise = isRelax(qrInfo?.produit) ? telephoneRx : telephone;
+    const type: "accident" | "echeance" = data.echeanceId ? "echeance" : "accident";
+    const id = data.echeanceId ?? data.souscriptionId;
+    if (!id) {
+      setErrorMsg("Erreur inattendue : référence de paiement manquante");
+      return;
+    }
+    try {
+      const res = await fetch(`${BASE}/public/paiement-djogana/otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, id, telephone: telephoneUtilise }),
+      });
+      const otpData = await res.json();
+      if (!res.ok) throw new Error(otpData.error || "Erreur lors de l'envoi du code Djogana");
+      setDjoganaPaiement({ type, id, telephone: telephoneUtilise, successUrl: data.successUrl });
+      setDjoganaOtp("");
+      setDjoganaError("");
+      setStep("djogana-otp");
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Djogana");
+    }
+  }
+
+  /** Renvoie un nouveau code OTP pour le paiement Djogana en cours. */
+  async function renvoyerOtpDjogana() {
+    if (!djoganaPaiement) return;
+    setDjoganaSubmitting(true);
+    setDjoganaError("");
+    try {
+      const res = await fetch(`${BASE}/public/paiement-djogana/otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: djoganaPaiement.type,
+          id: djoganaPaiement.id,
+          telephone: djoganaPaiement.telephone,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erreur lors de l'envoi du code");
+    } catch (e: unknown) {
+      setDjoganaError(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setDjoganaSubmitting(false);
+    }
+  }
+
+  /** Valide le code OTP saisi : débite le compte Djogana du client et confirme la souscription. */
+  async function confirmerDjogana() {
+    if (!djoganaPaiement || !djoganaOtp) return;
+    setDjoganaSubmitting(true);
+    setDjoganaError("");
+    try {
+      const res = await fetch(`${BASE}/public/paiement-djogana/confirmer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: djoganaPaiement.type,
+          id: djoganaPaiement.id,
+          telephone: djoganaPaiement.telephone,
+          otp: djoganaOtp,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Code incorrect ou expiré");
+      if (djoganaPaiement.successUrl) window.location.href = djoganaPaiement.successUrl;
+    } catch (e: unknown) {
+      setDjoganaError(e instanceof Error ? e.message : "Erreur");
+      setDjoganaSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     if (!qrInfo || !token) return;
     if (qrInfo.produit === "accident" && !selectedTarifId) return;
@@ -2422,6 +2540,7 @@ export default function Souscription() {
             commune: communeRa,
             adresse: adresseRa,
             numeroPieceIdentite: numeroPieceRa,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2450,7 +2569,7 @@ export default function Souscription() {
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (isSecurhomeIncendie(qrInfo.produit)) {
         if (!nombrePiecesSecurhome || !statutOccupationSecurhome) return;
@@ -2465,6 +2584,7 @@ export default function Souscription() {
             formule: nombrePiecesSecurhome,
             statutOccupation: statutOccupationSecurhome,
             signature,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2475,7 +2595,7 @@ export default function Souscription() {
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (qrInfo.produit === "securpro_dommages") {
         const res = await fetch(`${BASE}/public/souscriptions/securpro_dommages/initiate`, {
@@ -2506,6 +2626,7 @@ export default function Souscription() {
             ddeCapital: ddeCapitalSp ? Number(ddeCapitalSp) : undefined,
             deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
             bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2516,7 +2637,7 @@ export default function Souscription() {
           montant: data.montant,
           resultat: data.resultat,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (qrInfo.produit === "securhome_dommages") {
         const res = await fetch(`${BASE}/public/souscriptions/securhome_dommages/initiate`, {
@@ -2543,6 +2664,7 @@ export default function Souscription() {
             ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
             deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
             bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2553,7 +2675,7 @@ export default function Souscription() {
           montant: data.montant,
           resultat: data.resultat,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (qrInfo.produit === "securmoto") {
         const res = await fetch(`${BASE}/public/souscriptions/securmoto/initiate`, {
@@ -2567,6 +2689,7 @@ export default function Souscription() {
             signature,
             valeurMoto: Number(valeurMotoSm || 0),
             ageMoto: ageMotoSm,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2577,7 +2700,7 @@ export default function Souscription() {
           montant: data.montant,
           resultat: data.resultat,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (qrInfo.produit === "relaxvoyage") {
         const res = await fetch(`${BASE}/public/souscriptions/relaxvoyage/initiate-formule`, {
@@ -2603,6 +2726,7 @@ export default function Souscription() {
             commune,
             adresse,
             numeroPieceIdentite,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2613,7 +2737,7 @@ export default function Souscription() {
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (qrInfo.produit === "accident") {
         const res = await fetch(`${BASE}/public/souscriptions/accident/initiate`, {
@@ -2627,6 +2751,7 @@ export default function Souscription() {
             dateNaissance,
             tarifAccidentId: selectedTarifId,
             signature,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2638,7 +2763,7 @@ export default function Souscription() {
           capitalGaranti: data.capitalGaranti,
         });
         // Redirection immédiate vers Wave (ou stub = success URL directe)
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
         const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
@@ -2662,6 +2787,7 @@ export default function Souscription() {
             commune,
             adresse,
             numeroPieceIdentite,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2689,7 +2815,7 @@ export default function Souscription() {
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
         });
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else if (isRelax(qrInfo.produit)) {
         const produit = qrInfo.produit;
@@ -2711,6 +2837,7 @@ export default function Souscription() {
             commune: communeRx,
             adresse: adresseRx,
             numeroPieceIdentite: numeroPieceRx,
+            moyenPaiement,
           }),
         });
         const data = await res.json();
@@ -2732,7 +2859,7 @@ export default function Souscription() {
           )
         );
 
-        window.location.href = data.checkoutUrl;
+        await finaliserApresInitiate(data);
         return;
       } else {
         const res = await fetch(`${BASE}/public/souscriptions/incendie`, {
@@ -4290,6 +4417,48 @@ export default function Souscription() {
                 );
               })()}
 
+              {qrInfo.produit !== "incendie" && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ fontSize: 12.5, color: "#5b6b80", fontWeight: 600, marginBottom: 6 }}>
+                    Moyen de paiement
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {(
+                      [
+                        { value: "wave" as const, label: "Wave", logo: null },
+                        { value: "djogana" as const, label: "Djogana", logo: "/logo_djogana.png" },
+                      ]
+                    ).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setMoyenPaiement(opt.value)}
+                        style={{
+                          flex: 1,
+                          padding: "10px 0",
+                          borderRadius: 10,
+                          border: moyenPaiement === opt.value ? "1.5px solid #004b9c" : "1.5px solid #dde3ec",
+                          background: moyenPaiement === opt.value ? "#e6f1fb" : "#fff",
+                          color: moyenPaiement === opt.value ? "#004b9c" : "#5b6b80",
+                          fontWeight: 700,
+                          fontSize: 14,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                        }}
+                      >
+                        {opt.logo && (
+                          <img src={opt.logo} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
+                        )}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {errorMsg && (
                 <div style={{ marginTop: 14, color: "#dc2626", fontSize: 13.5, textAlign: "center" }}>{errorMsg}</div>
               )}
@@ -4322,6 +4491,82 @@ export default function Souscription() {
                 }}
               >
                 ← Modifier mes informations
+              </button>
+            </div>
+          )}
+
+          {/* ── PAIEMENT DJOGANA (validation OTP, sans redirection) ── */}
+          {step === "djogana-otp" && djoganaPaiement && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <img src="/logo_djogana.png" alt="" style={{ width: 26, height: 26, borderRadius: "50%" }} />
+                <div style={{ fontWeight: 800, fontSize: 17 }}>Code de paiement Djogana</div>
+              </div>
+              <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 18 }}>
+                Un code a été envoyé par SMS au {djoganaPaiement.telephone}. Saisissez-le pour valider le paiement
+                depuis votre compte Djogana/Peya Pay.
+              </div>
+
+              <input
+                value={djoganaOtp}
+                onChange={(e) => setDjoganaOtp(e.target.value.replace(/[^0-9]/g, ""))}
+                placeholder="Code reçu par SMS"
+                inputMode="numeric"
+                autoFocus
+                style={{
+                  width: "100%",
+                  padding: "13px 14px",
+                  borderRadius: 12,
+                  border: "1.5px solid #dde3ec",
+                  fontSize: 18,
+                  letterSpacing: 4,
+                  textAlign: "center",
+                  boxSizing: "border-box",
+                }}
+              />
+
+              {djoganaError && (
+                <div style={{ marginTop: 14, color: "#dc2626", fontSize: 13.5, textAlign: "center" }}>
+                  {djoganaError}
+                </div>
+              )}
+
+              <button
+                onClick={confirmerDjogana}
+                disabled={djoganaSubmitting || !djoganaOtp}
+                style={{
+                  marginTop: 18, width: "100%", padding: "13px 0", background: "#004b9c", color: "#fff",
+                  border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer",
+                  opacity: djoganaSubmitting || !djoganaOtp ? 0.5 : 1,
+                }}
+              >
+                {djoganaSubmitting ? "Traitement…" : "Valider le paiement →"}
+              </button>
+              <button
+                onClick={renvoyerOtpDjogana}
+                disabled={djoganaSubmitting}
+                style={{
+                  marginTop: 10, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                  border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14,
+                  cursor: "pointer", opacity: djoganaSubmitting ? 0.5 : 1,
+                }}
+              >
+                Renvoyer le code
+              </button>
+              <button
+                onClick={() => {
+                  setDjoganaError("");
+                  setDjoganaPaiement(null);
+                  setStep("confirm");
+                }}
+                disabled={djoganaSubmitting}
+                style={{
+                  marginTop: 10, width: "100%", padding: "10px 0", background: "transparent", color: "#5b6b80",
+                  border: "none", fontWeight: 600, fontSize: 13, cursor: "pointer",
+                  opacity: djoganaSubmitting ? 0.5 : 1,
+                }}
+              >
+                ← Retour
               </button>
             </div>
           )}
