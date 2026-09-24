@@ -7,7 +7,7 @@ import SignaturePad, { type SignaturePadHandle } from "../../components/Signatur
 import { useOnline } from "../../offline/useOnline";
 import { useBaremeCache } from "../../offline/useBaremes";
 import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
-import { calculerCoupsdursHorsLigne, calculerSecurecolteHorsLigne } from "../../offline/catalogue";
+import { calculerCoupsdursHorsLigne, calculerSecurecolteHorsLigne, calculerDecesHorsLigne } from "../../offline/catalogue";
 import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
 import type { SouscriptionImf, SimulationImf } from "../../types";
 
@@ -16,15 +16,17 @@ const PRODUIT_LABEL: Record<string, string> = {
   securstock: "SECURSTOCK",
   coupsdurs: "Coups Durs",
   securecolte: "SECURECOLTE",
+  deces: "Décès",
 };
 
-type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte";
+type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte" | "deces";
 
 const PRODUITS: { code: ProduitCode; label: string }[] = [
   { code: "securpro", label: "SECURPRO" },
   { code: "securstock", label: "SECURSTOCK" },
   { code: "coupsdurs", label: "Coups Durs" },
   { code: "securecolte", label: "SECURECOLTE" },
+  { code: "deces", label: "Décès" },
 ];
 
 const VOL_CAISSE_CAPITAUX = [25000, 50000, 100000, 250000, 500000];
@@ -265,6 +267,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
         valeurPackage: (e.valeurPackage as number) ?? 0,
         superficieHa: (e.superficieHa as number) ?? 0,
       });
+    } else if (b.produitCode === "deces") {
+      setBeneficiaires((e.beneficiaires as Beneficiaire[]) ?? []);
     }
     notify("Brouillon repris — vérifiez le devis avant de souscrire.");
   }
@@ -329,7 +333,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   // jamais les deux) — voir calculerCoupsdursHorsLigne().
   const [cd, setCd] = useState({ deces: false, incapacite: null as null | "plafond_500000" | "plafond_1000000", dureeMois: 12 });
   const estCoupsdurs = produitCode === "coupsdurs";
-  const necessiteBeneficiaires = estCoupsdurs && cd.deces;
+  const estDeces = produitCode === "deces";
+  const necessiteBeneficiaires = (estCoupsdurs && cd.deces) || estDeces;
 
   // COUPS DURS : déclaration de bonne santé + bénéficiaires (si Décès coché)
   const [sante, setSante] = useState(defaultSante());
@@ -445,6 +450,13 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
           beneficiaires: cd.deces ? beneficiaires : undefined,
           dureeMois: cd.dureeMois,
         };
+        nextResultat = r;
+        nextPrimeTTC = r.primeTTC;
+      }
+    } else if (produitCode === "deces") {
+      const r = calculerDecesHorsLigne();
+      if (r) {
+        nextEntrees = { beneficiaires };
         nextResultat = r;
         nextPrimeTTC = r.primeTTC;
       }
@@ -799,6 +811,15 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
                 <select className="select" value={variante} onChange={(e) => setVariante(e.target.value)}>
                   <option value="pack">Pack SECURECOLTE</option>
                 </select>
+              </div>
+            )}
+
+            {estDeces && (
+              <div className="field">
+                <div className="muted" style={{ fontSize: 13 }}>
+                  Garantie Décès / Invalidité Permanente Totale (IPT) — capital et prime fixes, sans saisie
+                  supplémentaire. Renseignez uniquement les bénéficiaires ci-dessous.
+                </div>
               </div>
             )}
 

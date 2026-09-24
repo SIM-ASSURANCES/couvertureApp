@@ -188,6 +188,15 @@ async function seedTarificationImf() {
         { libelleVariante: "pack", prime: 31300, capitalGaranti: 250_000, commission: 0 },
       ],
     },
+    {
+      // Cotation JEVEBARA (2026-09-22) : garantie Décès/IPT unique, capital et
+      // prime fixes, pas de taxe (0%) — voir routes/imf.ts::calculerDevisImf.
+      code: "deces",
+      libelle: "Décès",
+      tarifs: [
+        { libelleVariante: "standard", prime: 3000, primeHT: 2400, fg: 600, taxes: 0, capitalGaranti: 400_000, commission: 0.2 },
+      ],
+    },
   ];
 
   for (const p of produits) {

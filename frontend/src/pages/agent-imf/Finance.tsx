@@ -94,7 +94,7 @@ export default function Finance() {
               </table>
             </div>
             <div className="muted" style={{ fontSize: 12, padding: "10px 16px 4px" }}>
-              Commission calculée sur la prime nette HT (jamais la prime TTC), aux taux en vigueur : 20% (SECURPRO/SECURSTOCK),
+              Commission calculée sur la prime nette HT (jamais la prime TTC), aux taux en vigueur : 20% (SECURPRO/SECURSTOCK/Décès),
               10% (Coups Durs), 22% (SECURECOLTE).
             </div>
           </Card>

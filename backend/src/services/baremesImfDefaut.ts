@@ -30,7 +30,7 @@ export const PALIERS_SECURECOLTE_DEFAUT = [
 ];
 
 export interface TarifFixeDefaut {
-  produitCode: "coupsdurs" | "securecolte";
+  produitCode: "coupsdurs" | "securecolte" | "deces";
   libelleVariante: string;
   prime: number;
   primeHT?: number;
@@ -46,7 +46,9 @@ export const TARIFS_FIXES_DEFAUT: TarifFixeDefaut[] = [
   { produitCode: "coupsdurs", libelleVariante: "plafond_500000", prime: 4000, primeHT: 3229, fg: 1500, taxes: 271, capitalGaranti: 500_000, commission: 0.1 },
   { produitCode: "coupsdurs", libelleVariante: "plafond_1000000", prime: 6000, primeHT: 5094, fg: 1500, taxes: 406, capitalGaranti: 1_000_000, commission: 0.1 },
   { produitCode: "securecolte", libelleVariante: "pack", prime: 31300, capitalGaranti: 250_000, commission: 0.22 },
+  // DECES — cotation JEVEBARA (2026-09-22) : garantie unique, pas de taxe (0%).
+  { produitCode: "deces", libelleVariante: "standard", prime: 3000, primeHT: 2400, fg: 600, taxes: 0, capitalGaranti: 400_000, commission: 0.2 },
 ];
 
 /** Produits IMF à prix fixe (par opposition aux produits à formule SECURPRO/SECURSTOCK). */
-export const PRODUITS_TARIF_FIXE_IMF = ["coupsdurs", "securecolte"] as const;
+export const PRODUITS_TARIF_FIXE_IMF = ["coupsdurs", "securecolte", "deces"] as const;

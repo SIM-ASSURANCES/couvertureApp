@@ -287,6 +287,28 @@ export interface LigneCoupsdurs {
   prime: number;
 }
 
+// DECES (cotation JEVEBARA, 2026-09-22) — IMF Partenaires : garantie unique
+// à prix fixe (pas de combinaison de garanties ni de déclaration de santé,
+// contrairement à COUPS DURS), voir routes/imf.ts::calculerDevisImf.
+export interface ContratDeces {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  capitalGaranti: number;
+  primeTTC: number;
+  beneficiaires?: BeneficiaireCoupsdurs[] | null;
+  signature?: string | null;
+}
+
 export interface ContratCoupsdurs {
   numeroPolice: string;
   intermediaire: string;
@@ -1095,6 +1117,69 @@ export async function renderContratCoupsdurs(c: ContratCoupsdurs): Promise<strin
     <ul style="margin:6px 0 0 18px;">
       ${prestations.map((p) => `<li>${p}</li>`).join("")}
     </ul>
+  </div>
+  ${RECLAMATION}`;
+
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+export async function renderContratDeces(c: ContratDeces): Promise<string> {
+  const beneficiairesSection =
+    c.beneficiaires && c.beneficiaires.length > 0
+      ? `
+  <h2>Bénéficiaires en cas de décès</h2>
+  <table>
+    <tr><td class="k">Nom et prénoms</td><td class="k">Contact</td><td class="k">Lien avec l'assuré</td><td class="k">Part (%)</td></tr>
+    ${c.beneficiaires.map((b) => `<tr><td>${val(b.nom)}</td><td>${val(b.contact)}</td><td>${val(b.lien)}</td><td>${b.pourcentage}%</td></tr>`).join("")}
+  </table>`
+      : "";
+
+  const cp = `
+  ${header(c.numeroPolice, true)}
+  <h1>Conditions Particulières — DECES</h1>
+  <div class="sub">Décès / Invalidité Permanente Totale · Distribué via ${val(c.intermediaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.intermediaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date de souscription</td><td>${dfr(c.dateSouscription)}</td></tr>
+    <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>
+
+  <h2>Garantie souscrite</h2>
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital garanti</td><td class="k">Prime</td></tr>
+    <tr><td>Décès / IPT</td><td>${fcfa(c.capitalGaranti)}</td><td>${fcfa(c.primeTTC)}</td></tr>
+  </table>
+
+  <table>
+    <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
+    <tr><td class="k">Numéro d'identification</td><td>${c.numeroPiece ? `${pieceLabel(c.typePiece)} ${val(c.numeroPiece)}` : "—"}</td><td class="k">Téléphone</td><td>${val(c.telephone)}</td></tr>
+    <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune ou quartier</td><td>${val(c.communeQuartier)}</td></tr>
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est régi par les
+    Conditions Générales du contrat DECES et les présentes Conditions Particulières.
+  </div>
+  ${beneficiairesSection}
+  ${signatures(c.signature)}`;
+
+  const cgSection = `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — DECES</h1>
+  <div class="note">
+    <b>Risque couvert :</b> Décès ou Invalidité Permanente Totale (IPT) de l'assuré.
+    <br/><br/>
+    <b>Bénéficiaire(s) :</b> Ayants-droits de l'assuré.
+    <br/><br/>
+    <b>Tranche d'âge :</b> Entrée à 14 ans, sortie à 65 ans.
+    <br/><br/>
+    <b>Délai de carence :</b> 48 heures à compter de la date d'effet.
+    <br/><br/>
+    <b>Délai d'indemnisation :</b> 10 jours à compter de la complétude du dossier de réclamation.
+    <br/><br/>
+    <b>Territorialité :</b> Côte d'Ivoire.
   </div>
   ${RECLAMATION}`;
 

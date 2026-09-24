@@ -298,6 +298,27 @@ export interface ContratCoupsdurs {
   signature?: string | null;
 }
 
+// DECES (cotation JEVEBARA, 2026-09-22) — IMF Partenaires : garantie unique à
+// prix fixe, pas de combinaison de garanties ni de déclaration de santé.
+export interface ContratDeces {
+  numeroPolice: string;
+  intermediaire: string;
+  dateDebut: string;
+  dateFin: string;
+  dateSouscription: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  typePiece?: string | null;
+  numeroPiece?: string | null;
+  ville?: string | null;
+  communeQuartier?: string | null;
+  capitalGaranti: number;
+  primeTTC: number;
+  beneficiaires?: BeneficiaireCoupsdurs[] | null;
+  signature?: string | null;
+}
+
 const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   1: "Classe 1 — Bureau",
   2: "Classe 2 — Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
@@ -598,7 +619,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
 /** true si un contrat PDF est disponible pour ce produit IMF. */
 export function contratImfDisponible(produitCode: string): boolean {
   return [
-    "securpro", "securstock", "securecolte", "coupsdurs", "coupsdurs_classique", "coupsdurs_incapacite",
+    "securpro", "securstock", "securecolte", "coupsdurs", "coupsdurs_classique", "coupsdurs_incapacite", "deces",
   ].includes(produitCode);
 }
 
@@ -609,6 +630,7 @@ export function genererContratImf(s: SouscriptionImf): void {
   else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s));
   else if (s.produitCode === "coupsdurs" || s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
     genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s));
+  else if (s.produitCode === "deces") genererContratDeces(souscriptionImfToContratDeces(s));
 }
 
 const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
@@ -688,6 +710,34 @@ export function souscriptionImfToContratCoupsdurs(s: SouscriptionImf): ContratCo
     lignes,
     primeTTC: s.primeTTC,
     sante: entrees.sante ?? null,
+    beneficiaires: entrees.beneficiaires ?? null,
+    signature: s.signature ?? null,
+  };
+}
+
+/** Reconstitue les champs du contrat DECES à partir d'une souscription IMF (produit catalogue). */
+export function souscriptionImfToContratDeces(s: SouscriptionImf): ContratDeces {
+  const entrees = s.entrees as { beneficiaires?: BeneficiaireCoupsdurs[] };
+  const resultat = s.resultat as { lignes?: { capital: number; prime: number }[] };
+  const debut = new Date(s.createdAt);
+  const fin = new Date(debut);
+  fin.setFullYear(fin.getFullYear() + 1);
+
+  return {
+    numeroPolice: s.numeroPolice,
+    intermediaire: [s.agentNom, s.agenceNom ?? s.zoneNom].filter(Boolean).join(" — "),
+    dateDebut: debut.toISOString(),
+    dateFin: fin.toISOString(),
+    dateSouscription: s.createdAt,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    typePiece: s.typePiece,
+    numeroPiece: s.numeroPiece,
+    ville: s.ville,
+    communeQuartier: s.communeQuartier,
+    capitalGaranti: resultat.lignes?.[0]?.capital ?? 0,
+    primeTTC: s.primeTTC,
     beneficiaires: entrees.beneficiaires ?? null,
     signature: s.signature ?? null,
   };
@@ -829,7 +879,8 @@ type ContratType =
   | "securhome_incendie"
   | "securstock"
   | "securecolte"
-  | "coupsdurs";
+  | "coupsdurs"
+  | "deces";
 
 const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
@@ -926,4 +977,8 @@ export async function genererContratSecurstock(c: ContratSecurstock) {
 
 export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
   await telechargerContratPdf("coupsdurs", c.numeroPolice, c);
+}
+
+export async function genererContratDeces(c: ContratDeces) {
+  await telechargerContratPdf("deces", c.numeroPolice, c);
 }

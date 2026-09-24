@@ -11,7 +11,7 @@ import type {
   ImfTarifFixeLigne,
 } from "../../../../types";
 
-const LIBELLE_PRODUIT: Record<string, string> = { coupsdurs: "Coups Durs", securecolte: "SECURECOLTE" };
+const LIBELLE_PRODUIT: Record<string, string> = { coupsdurs: "Coups Durs", securecolte: "SECURECOLTE", deces: "Décès" };
 const LIBELLE_SEUIL: Record<string, string> = { forte: "Sécheresse forte", moyenne: "Sécheresse moyenne", faible: "Sécheresse faible" };
 
 /** Champ numérique compact ; `value` en string pour distinguer "vide" de 0. */

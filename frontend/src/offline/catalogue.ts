@@ -1,5 +1,5 @@
 /**
- * Tarifs catalogue (COUPS DURS) pour le mode hors-ligne. Prix fixe (pas de
+ * Tarifs catalogue (COUPS DURS, DECES) pour le mode hors-ligne. Prix fixe (pas de
  * moteur de calcul) : la table ci-dessous est une copie figée des valeurs de
  * référence semées côté serveur (backend/src/seed.ts). Si ces tarifs
  * évoluent un jour, cette table doit être mise à jour manuellement — elle ne
@@ -19,6 +19,9 @@ export const CATALOGUE_HORS_LIGNE: Record<string, TarifCatalogue[]> = {
     { libelleVariante: "deces", prime: 4000, capitalGaranti: 500_000 },
     { libelleVariante: "plafond_500000", prime: 4000, capitalGaranti: 500_000 },
     { libelleVariante: "plafond_1000000", prime: 6000, capitalGaranti: 1_000_000 },
+  ],
+  deces: [
+    { libelleVariante: "standard", prime: 3000, capitalGaranti: 400_000 },
   ],
 };
 
@@ -104,4 +107,14 @@ export function calculerCoupsdursHorsLigne(
   if (lignes.some((l) => l === null)) return null;
   const bonnes = lignes as { garantie: string; capital: number; prime: number }[];
   return { lignes: bonnes, primeTTC: bonnes.reduce((s, l) => s + l.prime, 0) };
+}
+
+/**
+ * DECES (cotation JEVEBARA) : garantie unique à prix fixe, pas de calcul.
+ * Miroir hors-ligne de la branche "deces" de calculerDevisImf() côté serveur.
+ */
+export function calculerDecesHorsLigne(): { lignes: { garantie: string; capital: number; prime: number }[]; primeTTC: number } | null {
+  const t = tarifCatalogueHorsLigne("deces", "standard");
+  if (!t) return null;
+  return { lignes: [{ garantie: "Décès / IPT", capital: t.capitalGaranti, prime: t.prime }], primeTTC: t.prime };
 }

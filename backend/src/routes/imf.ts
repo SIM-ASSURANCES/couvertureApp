@@ -249,6 +249,15 @@ const beneficiaireSchema = z.object({
 });
 
 /**
+ * DECES (cotation JEVEBARA) : garantie unique à prix fixe (pas de classe, pas
+ * de formule) — seule donnée variable, la répartition des bénéficiaires de
+ * l'indemnité (parts en %, doivent totaliser 100, exigées côté frontend).
+ */
+const decesInputSchema = z.object({
+  beneficiaires: z.array(beneficiaireSchema).optional(),
+});
+
+/**
  * COUPS DURS (produit unique fusionné) : Maladie Coups Durs est incluse
  * d'office (garantie socle, toujours facturée), Décès suite à Coups Durs est
  * une case à cocher facultative, Incapacité temporaire de l'emprunteur est un
@@ -286,7 +295,7 @@ const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
 };
 
 export const simulationSchema = z.object({
-  produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte"]),
+  produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte", "deces"]),
   entrees: z.record(z.unknown()),
   // Clé d'idempotence PWA (mode hors-ligne) — voir SimulationImf.offlineId.
   offlineId: z.string().min(1).optional(),
@@ -386,6 +395,28 @@ export async function calculerDevisImf(
     const primeTTC = lignes.reduce((s, l) => s + l.prime, 0);
     return { ok: true, resultat: { lignes, primeTTC, dureeMois: input.dureeMois }, primeTTC };
   }
+  if (produitCode === "deces") {
+    const input = decesInputSchema.parse(entrees);
+    let tarif: { prime: number; capitalGaranti: number } | undefined;
+    if (imfId) {
+      const rows = await prisma.imfTarifFixe.findMany({ where: { imfId, produitCode: "deces", libelleVariante: "standard" } });
+      tarif = rows[0];
+    } else {
+      const produit = await prisma.produit.findUnique({ where: { code: "deces" } });
+      if (!produit) return { ok: false, error: "Produit introuvable" };
+      const rows = await prisma.tarifProduit.findMany({ where: { produitId: produit.id, libelleVariante: "standard" } });
+      tarif = rows[0];
+    }
+    if (!tarif) return { ok: false, error: "Tarif introuvable dans le catalogue" };
+    const capitalGaranti = plafondImf != null ? Math.min(tarif.capitalGaranti, plafondImf) : tarif.capitalGaranti;
+    const lignes = [{ garantie: "Décès / IPT", capital: capitalGaranti, prime: tarif.prime }];
+    return {
+      ok: true,
+      resultat: { lignes, primeTTC: tarif.prime, beneficiaires: input.beneficiaires ?? [] },
+      primeTTC: tarif.prime,
+    };
+  }
+
   // Catalogue restant : SECURECOLTE — modèle actuariel ARC, prime calculée
   // à partir de la valeur du package (1 hectare = 1 pack).
   const { superficieHa, valeurPackage } = catalogueInputSchema.parse(entrees);
@@ -931,7 +962,7 @@ agentImfRouter.get(
 );
 
 /**
- * Regroupe les 5 codes produit en 4 familles commerciales (les deux variantes
+ * Regroupe les 6 codes produit en 5 familles commerciales (les deux variantes
  * COUPS DURS sont fusionnées) pour le tableau de bord.
  */
 export const FAMILLE_PRODUIT: Record<string, string> = {
@@ -942,8 +973,9 @@ export const FAMILLE_PRODUIT: Record<string, string> = {
   coupsdurs_classique: "COUPS DURS",
   coupsdurs_incapacite: "COUPS DURS",
   securecolte: "SECURECOLTE",
+  deces: "DECES",
 };
-export const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE"];
+export const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE", "DECES"];
 
 /* ────────────────────────────────────────────────────────────────────────
  * Phase 6 — Sinistres IMF
@@ -1006,6 +1038,19 @@ export function checklistImf(produitCode: string, typeEvenement: string): string
     return typeEvenement === "incapacite_temporaire"
       ? [...commun, "Échéancier du prêt en cours auprès de l'institution financière"]
       : [...commun, "Certificat d'arrêt de travail (indemnité journalière), si applicable"];
+  }
+  if (produitCode === "deces") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Carte d'assuré et pièce d'identité",
+      "Acte de décès",
+      "Certificat de genre de mort",
+      "Extrait de naissance du (des) bénéficiaire(s)",
+      "Pièce d'identité du (des) bénéficiaire(s)",
+      "Acte de mariage du conjoint (si nécessaire)",
+      "Procès-verbal de constat de gendarmerie/police (si accident de la circulation)",
+      "Certificat d'individualité (si nécessaire)",
+    ];
   }
   return [];
 }

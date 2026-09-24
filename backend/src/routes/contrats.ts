@@ -18,6 +18,7 @@ import {
   renderContratSecurecolte,
   renderContratSecurstock,
   renderContratCoupsdurs,
+  renderContratDeces,
 } from "../services/contractHtml.js";
 
 export const contratsRouter = Router();
@@ -31,7 +32,7 @@ export const contratsRouter = Router();
 // ci-dessous) — sans ce champ (routes non encore migrées, ou produits IMF à
 // devis dont la relecture n'est pas encore implémentée : securpro,
 // securpro_dommages, securhome_dommages, securstock, securecolte,
-// coupsdurs), le comportement historique (confiance dans `data`) est
+// coupsdurs, deces), le comportement historique (confiance dans `data`) est
 // inchangé. Objectif : empêcher la génération d'un PDF de contrat "officiel"
 // avec des montants/identités arbitraires quand l'id réel est connu.
 const souscriptionIdSchema = z.string().max(60).optional();
@@ -441,6 +442,38 @@ const coupsdursSchema = z.object({
   }),
 });
 
+const decesSchema = z.object({
+  type: z.literal("deces"),
+  data: z.object({
+    numeroPolice: texte(60),
+    intermediaire: texte(200),
+    dateDebut: texte(40),
+    dateFin: texte(40),
+    dateSouscription: texte(40),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40),
+    typePiece: texteOpt(40),
+    numeroPiece: texteOpt(60),
+    ville: texteOpt(120),
+    communeQuartier: texteOpt(120),
+    capitalGaranti: montant,
+    primeTTC: montant,
+    beneficiaires: z
+      .array(
+        z.object({
+          nom: texte(120),
+          contact: texte(60),
+          lien: texte(60),
+          pourcentage: z.number().finite().min(0).max(100),
+        })
+      )
+      .max(20)
+      .nullish(),
+    signature: dataUrlSignature,
+  }),
+});
+
 const bodySchema = z.discriminatedUnion("type", [
   incendieSchema,
   accidentSchema,
@@ -456,6 +489,7 @@ const bodySchema = z.discriminatedUnion("type", [
   securstockSchema,
   securecolteSchema,
   coupsdursSchema,
+  decesSchema,
 ]);
 
 type TypeAvecVerification =
@@ -716,6 +750,9 @@ contratsRouter.post(
         break;
       case "coupsdurs":
         html = await renderContratCoupsdurs(body.data);
+        break;
+      case "deces":
+        html = await renderContratDeces(body.data);
         break;
     }
 

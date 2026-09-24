@@ -1,6 +1,6 @@
 /**
  * Catalogue de référence des produits de la branche IMF (SECURPRO, SECURSTOCK,
- * COUPS DURS, SECURECOLTE) et de leurs garanties.
+ * COUPS DURS, SECURECOLTE, DÉCÈS) et de leurs garanties.
  *
  * Sert de gabarit au paramétrage PAR IMF (branche « IMF Partenaires », phase 2) :
  * à la création d'une IMF, une ligne `ImfProduit` est provisionnée par produit,
@@ -63,6 +63,14 @@ export const CATALOGUE_PRODUITS_IMF: ProduitImfCatalogue[] = [
     garanties: [
       { code: "secheresse", libelle: "Sécheresse (paliers indice ARC)" },
       { code: "deces", libelle: "Décès de l'exploitant" },
+    ],
+  },
+  {
+    code: "deces",
+    libelle: "Décès",
+    aFormule: false,
+    garanties: [
+      { code: "standard", libelle: "Décès / IPT" },
     ],
   },
 ];
