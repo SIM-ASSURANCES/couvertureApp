@@ -4425,7 +4425,7 @@ export default function Souscription() {
                   <div style={{ display: "flex", gap: 8 }}>
                     {(
                       [
-                        { value: "wave" as const, label: "Wave", logo: null },
+                        { value: "wave" as const, label: "Wave", logo: "/logo_wave.png" },
                         { value: "djogana" as const, label: "Djogana", logo: "/logo_djogana.png" },
                       ]
                     ).map((opt) => (
