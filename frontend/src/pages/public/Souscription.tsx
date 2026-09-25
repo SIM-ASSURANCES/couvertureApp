@@ -3894,7 +3894,7 @@ export default function Souscription() {
                     <input value={numeroTicket} onChange={(e) => setNumeroTicket(e.target.value)} placeholder="N° du ticket de voyage" style={inputStyle} />
                   </FieldRow>
                   <FieldRow label="Date de départ *">
-                    <DateNaissanceInput value={dateDepart} onChange={setDateDepart} label="de départ" maxToday={false} />
+                    <DateNaissanceInput value={dateDepart} onChange={setDateDepart} label="de départ" maxToday={false} minToday />
                   </FieldRow>
                   <FieldRow label="Numéro de la personne à contacter *">
                     <PhoneInput value={numeroPersonneContact} onChange={setNumeroPersonneContact} />

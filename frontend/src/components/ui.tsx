@@ -224,6 +224,7 @@ export function DateNaissanceInput({
   required,
   label = "de naissance",
   maxToday = true,
+  minToday = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -232,11 +233,13 @@ export function DateNaissanceInput({
   label?: string;
   /** Plafonne le calendrier à aujourd'hui (vrai pour une naissance, faux pour une date future comme un départ). */
   maxToday?: boolean;
+  /** Plancher à aujourd'hui : interdit une date déjà passée (ex. départ d'un voyage). */
+  minToday?: boolean;
 }) {
   const [jour, setJour] = useState("");
   const [mois, setMois] = useState("");
   const [annee, setAnnee] = useState("");
-  const [erreurFuture, setErreurFuture] = useState(false);
+  const [erreur, setErreur] = useState<"future" | "passee" | null>(null);
   const moisRef = useRef<HTMLInputElement>(null);
   const anneeRef = useRef<HTMLInputElement>(null);
 
@@ -272,21 +275,29 @@ export function DateNaissanceInput({
   // notifiait jamais le formulaire englobant du changement.
   function commit(j: string, m: string, a: string) {
     if (j.length !== 2 || m.length !== 2 || a.length !== 4) {
-      setErreurFuture(false);
+      setErreur(null);
       onChange("");
       return;
     }
     const iso = `${a}-${m}-${j}`;
-    // Saisie manuelle (JJ/MM/AAAA) : le calendrier natif applique déjà `max`,
-    // mais taper directement dans les champs le contourne — sans ce contrôle,
-    // une date future y passait sans erreur (concerne tous les produits,
-    // `maxToday` est vrai par défaut).
-    if (maxToday && iso > new Date().toISOString().slice(0, 10)) {
-      setErreurFuture(true);
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    // Saisie manuelle (JJ/MM/AAAA) : le calendrier natif applique déjà
+    // `max`/`min`, mais taper directement dans les champs les contourne —
+    // sans ce contrôle, une date invalide y passait sans erreur (concerne
+    // tous les produits : `maxToday` est vrai par défaut pour une naissance,
+    // `minToday` sert aux dates futures comme un départ de voyage, qui ne
+    // peut pas être déjà passé).
+    if (maxToday && iso > aujourdhui) {
+      setErreur("future");
       onChange("");
       return;
     }
-    setErreurFuture(false);
+    if (minToday && iso < aujourdhui) {
+      setErreur("passee");
+      onChange("");
+      return;
+    }
+    setErreur(null);
     onChange(iso);
   }
 
@@ -361,6 +372,7 @@ export function DateNaissanceInput({
           onChange={(e) => onChange(e.target.value)}
           required={required && !value}
           max={maxToday ? new Date().toISOString().slice(0, 10) : undefined}
+          min={minToday ? new Date().toISOString().slice(0, 10) : undefined}
           style={{
             position: "absolute",
             inset: 0,
@@ -393,9 +405,11 @@ export function DateNaissanceInput({
         />
       </div>
     </div>
-    {erreurFuture && (
+    {erreur && (
       <div style={{ color: "var(--danger, #dc2626)", fontSize: 12, marginTop: 4 }}>
-        La date {label} ne peut pas être dans le futur.
+        {erreur === "future"
+          ? `La date ${label} ne peut pas être dans le futur.`
+          : `La date ${label} ne peut pas être déjà passée.`}
       </div>
     )}
     </div>
