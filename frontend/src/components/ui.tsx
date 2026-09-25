@@ -236,6 +236,7 @@ export function DateNaissanceInput({
   const [jour, setJour] = useState("");
   const [mois, setMois] = useState("");
   const [annee, setAnnee] = useState("");
+  const [erreurFuture, setErreurFuture] = useState(false);
   const moisRef = useRef<HTMLInputElement>(null);
   const anneeRef = useRef<HTMLInputElement>(null);
 
@@ -270,7 +271,23 @@ export function DateNaissanceInput({
   // valeur à zéro), modifier un seul segment d'une date déjà complète ne
   // notifiait jamais le formulaire englobant du changement.
   function commit(j: string, m: string, a: string) {
-    onChange(j.length === 2 && m.length === 2 && a.length === 4 ? `${a}-${m}-${j}` : "");
+    if (j.length !== 2 || m.length !== 2 || a.length !== 4) {
+      setErreurFuture(false);
+      onChange("");
+      return;
+    }
+    const iso = `${a}-${m}-${j}`;
+    // Saisie manuelle (JJ/MM/AAAA) : le calendrier natif applique déjà `max`,
+    // mais taper directement dans les champs le contourne — sans ce contrôle,
+    // une date future y passait sans erreur (concerne tous les produits,
+    // `maxToday` est vrai par défaut).
+    if (maxToday && iso > new Date().toISOString().slice(0, 10)) {
+      setErreurFuture(true);
+      onChange("");
+      return;
+    }
+    setErreurFuture(false);
+    onChange(iso);
   }
 
   const segStyle: CSSProperties = {
@@ -285,6 +302,7 @@ export function DateNaissanceInput({
   };
 
   return (
+    <div>
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <input
         value={jour}
@@ -374,6 +392,12 @@ export function DateNaissanceInput({
           }}
         />
       </div>
+    </div>
+    {erreurFuture && (
+      <div style={{ color: "var(--danger, #dc2626)", fontSize: 12, marginTop: 4 }}>
+        La date {label} ne peut pas être dans le futur.
+      </div>
+    )}
     </div>
   );
 }
