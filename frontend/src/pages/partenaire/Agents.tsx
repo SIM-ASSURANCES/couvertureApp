@@ -3,7 +3,6 @@ import { Plus, Power, Download, X, Flame, ShieldCheck, Copy, KeyRound } from "lu
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
-import { useAuth } from "../../auth";
 
 interface AgentDistribution {
   id: string;
@@ -69,7 +68,7 @@ function EncartAcces({ acces, onClose }: { acces: AccesAgent; onClose: () => voi
 }
 
 interface Qr {
-  produit: string;
+  label: string;
   token: string;
   dataUrl: string;
 }
@@ -92,27 +91,33 @@ function statutBadge(s: string) {
   return <Badge kind="warning">En cours</Badge>;
 }
 
-function QrMini({ agentId, produit, label }: { agentId: string; produit: "incendie1000" | "incendie2000" | "accident"; label: string }) {
-  const { data, loading } = useFetch<Qr>(`/me/agents/${agentId}/qr/${produit}`);
+/**
+ * Résout automatiquement TOUS les QR disponibles pour cet agent, quel que
+ * soit le modèle du partenaire qui l'a créé (anciens QR par palier/Assurance,
+ * ou QR générique figé/unique — voir GET /me/agents/:id/qr côté serveur) :
+ * plus besoin de deviner quel paramètre envoyer selon le partenaire.
+ */
+function QrAgent({ agentId }: { agentId: string }) {
+  const { data, loading, error } = useFetch<Qr[]>(`/me/agents/${agentId}/qr`);
+  if (loading) return <Loader label="Génération…" />;
+  if (error) return <ErrorBox message={error} />;
+  if (!data || data.length === 0) return <div className="empty">Aucun QR disponible pour cet agent.</div>;
   return (
-    <div style={{ textAlign: "center" }}>
-      <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{label}</div>
-      {loading && <Loader label="Génération…" />}
-      {data && (
-        <>
-          <img src={data.dataUrl} alt={label} style={{ width: 150, height: 150, border: "1px solid var(--border)", borderRadius: 10, padding: 6, background: "#fff" }} />
-          <a className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} href={data.dataUrl} download={`qr-agent-${produit}.png`}>
+    <>
+      {data.map((qr) => (
+        <div key={qr.token} style={{ textAlign: "center" }}>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{qr.label}</div>
+          <img src={qr.dataUrl} alt={qr.label} style={{ width: 150, height: 150, border: "1px solid var(--border)", borderRadius: 10, padding: 6, background: "#fff" }} />
+          <a className="btn btn-ghost" style={{ marginTop: 8, fontSize: 12 }} href={qr.dataUrl} download={`qr-agent-${qr.token}.png`}>
             <Download size={13} /> Télécharger
           </a>
-        </>
-      )}
-    </div>
+        </div>
+      ))}
+    </>
   );
 }
 
 export default function PartenaireAgents() {
-  const { user } = useAuth();
-  const produit = user?.produit ?? "accident";
   const { data, loading, error, reload } = useFetch<AgentDistribution[]>("/me/agents");
   const [nom, setNom] = useState("");
   const [telephone, setTelephone] = useState("");
@@ -312,14 +317,7 @@ export default function PartenaireAgents() {
             }
           >
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 24 }}>
-              {produit === "incendie" ? (
-                <>
-                  <QrMini agentId={agentDetail.id} produit="incendie1000" label="QR — jusqu'à 250 000 FCFA" />
-                  <QrMini agentId={agentDetail.id} produit="incendie2000" label="QR — au-dessus de 250 000 FCFA" />
-                </>
-              ) : (
-                <QrMini agentId={agentDetail.id} produit="accident" label="QR Accidents" />
-              )}
+              <QrAgent agentId={agentDetail.id} />
             </div>
 
             <div

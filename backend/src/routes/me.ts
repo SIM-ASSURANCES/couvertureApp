@@ -583,34 +583,62 @@ meRouter.get(
   })
 );
 
+/**
+ * Tous les QR d'un agent, quel que soit le modèle du partenaire qui l'a créé
+ * — un partenaire peut avoir jusqu'à 3 QR historiques par palier (Incendie)
+ * ou un seul (Accident), ou un QR générique (refonte 2026-08-07 : figé sur
+ * une sous-branche, ou "unique" — ni produit ni sous-branche, le client
+ * choisit tout après le scan). Remplace l'ancien /agents/:id/qr/:produit
+ * (le frontend devait deviner le bon paramètre selon le partenaire — cause
+ * du bug "le QR code du sous-agent ne s'affiche pas" pour tout partenaire
+ * créé après la refonte). Même logique de résolution que
+ * agentDistributionRouter's /qr/:produit (vue "self-service" de l'agent).
+ */
 meRouter.get(
-  "/agents/:id/qr/:produit",
+  "/agents/:id/qr",
   asyncHandler(async (req: AuthedRequest, res) => {
     const agent = await prisma.agentDistribution.findUnique({ where: { id: req.params.id } });
     if (!agent || agent.partenaireId !== req.user!.sub) {
       return res.status(404).json({ error: "Introuvable" });
     }
-    const produit = req.params.produit as
-      | "incendie1000"
-      | "incendie2000"
-      | "accident"
-      | "ASSURANCES_ACCIDENTS"
-      | "ASSURANCES_DOMMAGES";
 
-    if (produit === "ASSURANCES_ACCIDENTS" || produit === "ASSURANCES_DOMMAGES") {
-      const qr = await prisma.qrCode.findFirst({ where: { agentDistributionId: agent.id, sousBranche: produit } });
-      if (!qr) return res.status(404).json({ error: "QR non disponible" });
-      const couleur = produit === "ASSURANCES_ACCIDENTS" ? "#15803d" : "#b45309";
-      return res.json({ produit, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    const items: { label: string; token: string; dataUrl: string }[] = [];
+
+    if (agent.qrIncendie1000Token) {
+      items.push({
+        label: "QR — jusqu'à 250 000 FCFA",
+        token: agent.qrIncendie1000Token,
+        dataUrl: await qrDataUrl("incendie", agent.qrIncendie1000Token),
+      });
+    }
+    if (agent.qrIncendie2000Token) {
+      items.push({
+        label: "QR — au-dessus de 250 000 FCFA",
+        token: agent.qrIncendie2000Token,
+        dataUrl: await qrDataUrl("incendie", agent.qrIncendie2000Token),
+      });
+    }
+    if (agent.qrAccidentToken) {
+      items.push({
+        label: "QR Accidents",
+        token: agent.qrAccidentToken,
+        dataUrl: await qrDataUrl("accident", agent.qrAccidentToken),
+      });
     }
 
-    const token =
-      produit === "incendie1000" ? agent.qrIncendie1000Token
-      : produit === "incendie2000" ? agent.qrIncendie2000Token
-      : agent.qrAccidentToken;
-    if (!token) return res.status(404).json({ error: "QR non disponible" });
+    const qrGeneriques = await prisma.qrCode.findMany({ where: { agentDistributionId: agent.id } });
+    for (const qr of qrGeneriques) {
+      const label =
+        qr.sousBranche === "ASSURANCES_ACCIDENTS" ? "QR Assurances Accidents"
+        : qr.sousBranche === "ASSURANCES_DOMMAGES" ? "QR Assurances Dommages"
+        : "QR (le client choisit son Assurance puis son produit)";
+      const couleur =
+        qr.sousBranche === "ASSURANCES_ACCIDENTS" ? "#15803d"
+        : qr.sousBranche === "ASSURANCES_DOMMAGES" ? "#b45309"
+        : "#004b9c";
+      items.push({ label, token: qr.token, dataUrl: await qrDataUrl("choisir", qr.token, couleur) });
+    }
 
-    const qrProduit: "incendie" | "accident" = produit === "accident" ? "accident" : "incendie";
-    res.json({ produit, token, dataUrl: await qrDataUrl(qrProduit, token) });
+    res.json(items);
   })
 );
