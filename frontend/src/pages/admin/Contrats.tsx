@@ -19,14 +19,14 @@ import { telechargerCarte } from "../../carte";
 import PhotosClientModal from "../../components/PhotosClientModal";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
-// sept, d'un contrat PDF distinct) — SecurHome+ et SecurPro Dommages n'en
-// ont pas (assurance de biens, pas d'identité individuelle capturée).
+// six, d'un contrat PDF distinct) — SecurHome+ et SecurPro Dommages n'en ont
+// pas (assurance de biens, pas d'identité individuelle capturée), ni
+// RelaxVoyage (pièce d'identité collectée, pas de selfie — 2026-09-25).
 const TYPES_AVEC_CARTE = [
   "incendie",
   "accident",
   "relaxaccidents_fraismedicaux",
   "relaxaccidents_fraismedicaux_livreurs",
-  "relaxvoyage",
   "relaxmoto",
   "relaxauto",
   "relaxaccidents",
@@ -38,7 +38,6 @@ type TypeCarte =
   | "relaxauto"
   | "relaxaccidents_fraismedicaux"
   | "relaxaccidents_fraismedicaux_livreurs"
-  | "relaxvoyage"
   | "relaxaccidents";
 
 interface CatalogueEntry {

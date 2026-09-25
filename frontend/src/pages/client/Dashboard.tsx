@@ -441,17 +441,21 @@ export default function ClientDashboard() {
                 </div>
               )}
 
-              <button
-                onClick={voirCarte}
-                disabled={telechargementCarte}
-                style={{
-                  marginTop: 14, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
-                  border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                  opacity: telechargementCarte ? 0.5 : 1,
-                }}
-              >
-                {telechargementCarte ? "Génération…" : "🪪 Voir ma carte de prise en charge"}
-              </button>
+              {/* RelaxVoyage : pièce d'identité collectée, pas de photo
+                  selfie ni de carte de prise en charge (voir Souscription.tsx). */}
+              {moi.produitCode !== "relaxvoyage" && (
+                <button
+                  onClick={voirCarte}
+                  disabled={telechargementCarte}
+                  style={{
+                    marginTop: 14, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                    border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                    opacity: telechargementCarte ? 0.5 : 1,
+                  }}
+                >
+                  {telechargementCarte ? "Génération…" : "🪪 Voir ma carte de prise en charge"}
+                </button>
+              )}
               <button
                 onClick={telechargerContrat}
                 disabled={telechargementContrat}

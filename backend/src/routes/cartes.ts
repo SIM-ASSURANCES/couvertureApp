@@ -11,6 +11,8 @@ import { bordereauDepuisLien, lienCarteNovelia } from "../services/novelia.js";
 export const cartesRouter = Router();
 
 const bodySchema = z.object({
+  // RelaxVoyage n'a PAS de carte de prise en charge (pièce d'identité
+  // collectée, pas de selfie — 2026-09-25).
   type: z.enum([
     "incendie",
     "accident",
@@ -18,7 +20,6 @@ const bodySchema = z.object({
     "relaxauto",
     "relaxaccidents_fraismedicaux",
     "relaxaccidents_fraismedicaux_livreurs",
-    "relaxvoyage",
     "relaxaccidents",
   ]),
   souscriptionId: z.string().min(10).max(60),

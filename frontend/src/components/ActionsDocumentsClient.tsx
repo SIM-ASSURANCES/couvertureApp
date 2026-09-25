@@ -6,12 +6,13 @@ import { genererContratDepuisDonnees, type DonneesContrat } from "../contract";
 
 // Produits assurant une personne — seuls ceux-là ont une carte de prise en
 // charge (mêmes codes que TYPES_AVEC_CARTE dans pages/admin/Contrats.tsx).
+// RelaxVoyage n'en a PAS (pièce d'identité collectée, pas de selfie — voir
+// pages/public/Souscription.tsx, 2026-09-25).
 const TYPES_AVEC_CARTE = [
   "incendie",
   "accident",
   "relaxaccidents_fraismedicaux",
   "relaxaccidents_fraismedicaux_livreurs",
-  "relaxvoyage",
   "relaxmoto",
   "relaxauto",
   "relaxaccidents",

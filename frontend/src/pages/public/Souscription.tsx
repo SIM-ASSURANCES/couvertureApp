@@ -1593,6 +1593,10 @@ export default function Souscription() {
   const [commune, setCommune] = useState("");
   const [adresse, setAdresse] = useState("");
   const [numeroPieceIdentite, setNumeroPieceIdentite] = useState("");
+  // RelaxVoyage uniquement : pièce d'identité SANS selfie (pas de carte de
+  // prise en charge pour ce produit, voir composants/ActionsDocumentsClient.tsx).
+  const [typePieceVoyage, setTypePieceVoyage] = useState<"CNI" | "Passeport">("CNI");
+  const [piecePhotoVoyage, setPiecePhotoVoyage] = useState<string | null>(null);
   const sigRef = useRef<SignaturePadHandle>(null);
   // Capturée au moment de quitter l'étape "infos" (avant l'écran de
   // récapitulatif) : le pavé de signature est démonté dès que step passe à
@@ -2090,6 +2094,10 @@ export default function Souscription() {
         if (p.typePiece === "CNI" || p.typePiece === "Permis") setTypePieceRx(p.typePiece);
         if (p.pieceIdentiteUrl) setPiecePhotoRx(p.pieceIdentiteUrl);
         if (p.selfieUrl) setSelfiePhotoRx(p.selfieUrl);
+      } else if (isRelaxVoyage(produit)) {
+        // Pas de selfie repris (RelaxVoyage n'en collecte pas).
+        if (p.typePiece === "CNI" || p.typePiece === "Passeport") setTypePieceVoyage(p.typePiece);
+        if (p.pieceIdentiteUrl) setPiecePhotoVoyage(p.pieceIdentiteUrl);
       }
       return;
     }
@@ -2392,6 +2400,7 @@ export default function Souscription() {
       });
     }
     if (isRelaxVoyage(p)) {
+      l.push({ label: "Pièce d'identité", valeur: typePieceVoyage === "CNI" ? "CNI" : "Passeport" });
       l.push({ label: "Compagnie", valeur: compagnie });
       l.push({ label: "Trajet", valeur: [lieuDepart, lieuArrivee].filter(Boolean).join(" → ") || "—" });
       l.push({ label: "N° de ticket", valeur: numeroTicket });
@@ -2731,6 +2740,17 @@ export default function Souscription() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+
+        // Pièce d'identité seule (pas de selfie, pas de carte de prise en
+        // charge pour RelaxVoyage) — déposée AVANT le paiement, best-effort.
+        if (piecePhotoVoyage) {
+          await fetch(`${BASE}/public/souscriptions/relaxvoyage/${data.souscriptionId}/documents`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: typePieceVoyage, url: piecePhotoVoyage }),
+          }).catch(() => null);
+        }
+
         setResult({
           checkoutUrl: data.checkoutUrl,
           souscriptionId: data.souscriptionId,
@@ -3842,6 +3862,25 @@ export default function Souscription() {
                     numeroPieceIdentite={numeroPieceIdentite}
                     setNumeroPieceIdentite={setNumeroPieceIdentite}
                   />
+                  <FieldRow label="Pièce d'identité *">
+                    <div style={{ display: "flex", gap: 16, marginBottom: 10 }}>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceVoyage === "CNI"} onChange={() => setTypePieceVoyage("CNI")} />
+                        CNI
+                      </label>
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePieceVoyage === "Passeport"} onChange={() => setTypePieceVoyage("Passeport")} />
+                        Passeport
+                      </label>
+                    </div>
+                  </FieldRow>
+                  <PhotoCapture
+                    label={`Photo de votre ${typePieceVoyage === "CNI" ? "CNI" : "passeport"}`}
+                    value={piecePhotoVoyage}
+                    onChange={setPiecePhotoVoyage}
+                    capture="environment"
+                    required
+                  />
                   <FieldRow label="Compagnie de transport *">
                     <input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} placeholder="Ex. UTB" style={inputStyle} />
                   </FieldRow>
@@ -4229,6 +4268,7 @@ export default function Souscription() {
                       phoneInvalid(telephone) ||
                       !dateNaissance ||
                       !sexe ||
+                      !piecePhotoVoyage ||
                       !selectedFormule ||
                       !compagnie ||
                       !lieuDepart ||
