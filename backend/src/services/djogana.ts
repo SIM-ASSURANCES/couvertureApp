@@ -83,14 +83,25 @@ type PayeurDjogana = { compte: string };
 export async function rechercherPayeurDjogana(telephone: string): Promise<PayeurDjogana | null> {
   if (!djoganaConfigure()) return { compte: telephone };
 
-  const data = await djoganaFetch<{
+  let data: {
     items?: Array<{
       codeClient?: string;
       datasCompte?: Array<{ numerocomptecomplet?: string }>;
     }>;
-  }>("/wClients/recherchePayeur", {
-    data: { gsmPrincipale: telephone, codePaysResidence: "CI" },
-  });
+  };
+  try {
+    data = await djoganaFetch("/wClients/recherchePayeur", {
+      data: { gsmPrincipale: telephone, codePaysResidence: "CI" },
+    });
+  } catch (e) {
+    // L'API répond hasError:true avec un message du type "Donnee inexistante:
+    // Le N° telephone est inconnu" quand ce numéro n'a simplement pas de
+    // compte Djogana — un cas normal (le client doit alors en créer un),
+    // pas une panne. Seul un échec d'AUTHENTIFICATION (jeton, identifiants)
+    // est une vraie erreur d'intégration à remonter.
+    if (e instanceof Error && e.message.startsWith("Djogana authentification échouée")) throw e;
+    return null;
+  }
   const item = data.items?.[0];
   const compte = item?.datasCompte?.[0]?.numerocomptecomplet || item?.codeClient;
   return compte ? { compte } : null;
