@@ -62,6 +62,16 @@ const dataUrlImage = z
   .max(2_000_000)
   .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
 
+// Champ date facultatif : le frontend envoie souvent une chaîne vide ""
+// plutôt que d'omettre le champ (état React initialisé à "" et jamais
+// rempli) — `z.coerce.date()` la transformerait en "Invalid Date" et ferait
+// échouer tout le schéma ("Données invalides") au lieu de traiter le champ
+// comme absent.
+const optionalDate = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.date().optional()
+);
+
 // Moyen de paiement choisi par le client — Wave (redirection, comportement
 // historique) ou Djogana/Peya Pay (validation par OTP, sans redirection, voir
 // POST /public/paiement-djogana/*). Partagé par tous les schémas de
@@ -593,7 +603,7 @@ const completionIncendieSchema = z.object({
   quartier: z.string().min(1).max(120).optional(),
   numeroMaison: z.string().max(60).optional(),
   signature: dataUrlImage.optional(),
-  dateNaissance: z.coerce.date().optional(),
+  dateNaissance: optionalDate,
   pieceIdentiteUrl: dataUrlImage.optional(),
   selfieUrl: dataUrlImage.optional(),
 });
@@ -1228,7 +1238,7 @@ const relaxSchema = z.object({
   nom: z.string().min(1),
   prenom: z.string().min(1),
   telephone: z.string().min(6),
-  dateNaissance: z.coerce.date().optional(),
+  dateNaissance: optionalDate,
   // Affiché sur la carte de prise en charge (refonte Novelia).
   sexe: z.enum(["masculin", "feminin"]).optional(),
   cycle: z.enum(["mensuel", "annuel"]),
@@ -1840,7 +1850,7 @@ const formuleSchema = z.object({
   nom: z.string().min(1),
   prenom: z.string().min(1),
   telephone: z.string().min(6),
-  dateNaissance: z.coerce.date().optional(),
+  dateNaissance: optionalDate,
   // Affiché sur la carte de prise en charge (refonte Novelia).
   sexe: z.enum(["masculin", "feminin"]).optional(),
   formule: z.string().min(1),
@@ -1851,7 +1861,7 @@ const formuleSchema = z.object({
   lieuDepart: z.string().min(1).max(120).optional(),
   lieuArrivee: z.string().min(1).max(120).optional(),
   numeroTicket: z.string().min(1).max(60).optional(),
-  dateDepart: z.coerce.date().optional(),
+  dateDepart: optionalDate,
   numeroPersonneContact: z.string().min(6).max(40).optional(),
   // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
   // proposée seulement si le souscripteur déclare ne pas être livreur (voir
