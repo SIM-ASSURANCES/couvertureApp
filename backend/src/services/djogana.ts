@@ -94,10 +94,12 @@ function numeroLocal(telephone: string): string {
   return chiffres.startsWith("225") ? chiffres.slice(3) : chiffres;
 }
 
-type PayeurDjogana = { compte: string };
+// Compte introuvable : `gsm` (numéro réellement envoyé) et `reponse` (message
+// brut de l'API) sont conservés pour le diagnostic avec le support Djogana.
+type PayeurDjogana = { compte: string } | { compte: null; gsm: string; reponse: string };
 
 /** API#2 — recherche du compte Djogana/Peya Pay associé à ce téléphone. */
-export async function rechercherPayeurDjogana(telephone: string): Promise<PayeurDjogana | null> {
+export async function rechercherPayeurDjogana(telephone: string): Promise<PayeurDjogana> {
   const gsm = numeroLocal(telephone);
   if (!djoganaConfigure()) return { compte: gsm };
 
@@ -118,11 +120,11 @@ export async function rechercherPayeurDjogana(telephone: string): Promise<Payeur
     // pas une panne. Seul un échec d'AUTHENTIFICATION (jeton, identifiants)
     // est une vraie erreur d'intégration à remonter.
     if (e instanceof Error && e.message.startsWith("Djogana authentification échouée")) throw e;
-    return null;
+    return { compte: null, gsm, reponse: e instanceof Error ? e.message : String(e) };
   }
   const item = data.items?.[0];
   const compte = item?.datasCompte?.[0]?.numerocomptecomplet || item?.codeClient;
-  return compte ? { compte } : null;
+  return compte ? { compte } : { compte: null, gsm, reponse: "réponse sans compte associé" };
 }
 
 /** API#3/#5 — envoi du code OTP par SMS au numéro donné. */
@@ -170,7 +172,12 @@ export async function creerPaiementDjogana(
 
   try {
     const payeur = await rechercherPayeurDjogana(telephone);
-    if (!payeur) return { reussi: false, message: "Compte Djogana introuvable pour ce numéro" };
+    if (payeur.compte === null) {
+      return {
+        reussi: false,
+        message: `Compte Payapay introuvable pour le ${payeur.gsm} (réponse Payapay : ${payeur.reponse})`,
+      };
+    }
 
     const { compteCredit } = await authentifierDjogana();
     const data = await djoganaFetch<{ item?: { id?: string; reference?: string } }>(

@@ -1037,9 +1037,10 @@ publicRouter.post(
         error: `Payapay indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
       });
     }
-    if (!compte) {
+    if (compte.compte === null) {
+      console.warn(`[Djogana] compte introuvable pour ${compte.gsm} : ${compte.reponse}`);
       return res.status(404).json({
-        error: "Aucun compte Payapay trouvé pour ce numéro. Le client doit d'abord en créer un.",
+        error: `Aucun compte Payapay trouvé pour le ${compte.gsm}. Le client doit d'abord en créer un. (Réponse Payapay : ${compte.reponse})`,
       });
     }
     try {

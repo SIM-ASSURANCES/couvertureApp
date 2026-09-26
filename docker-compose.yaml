@@ -17,7 +17,7 @@ services:
       - couverture
 
   backend:
-    image: ghcr.io/sim-assurances/couvertureapp-backend:v190
+    image: ghcr.io/sim-assurances/couvertureapp-backend:v191
     restart: unless-stopped
     depends_on:
       postgres:
