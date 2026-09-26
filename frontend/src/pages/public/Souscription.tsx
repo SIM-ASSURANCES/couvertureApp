@@ -2444,13 +2444,13 @@ export default function Souscription() {
         body: JSON.stringify({ type, id, telephone: telephoneUtilise }),
       });
       const otpData = await res.json();
-      if (!res.ok) throw new Error(otpData.error || "Erreur lors de l'envoi du code Djogana");
+      if (!res.ok) throw new Error(otpData.error || "Erreur lors de l'envoi du code Payapay");
       setDjoganaPaiement({ type, id, telephone: telephoneUtilise, successUrl: data.successUrl });
       setDjoganaOtp("");
       setDjoganaError("");
       setStep("djogana-otp");
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Djogana");
+      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Payapay");
     }
   }
 
@@ -4466,7 +4466,10 @@ export default function Souscription() {
                     {(
                       [
                         { value: "wave" as const, label: "Wave", logo: "/logo_wave.png" },
-                        { value: "djogana" as const, label: "Djogana", logo: "/logo_djogana.png" },
+                        // `value` reste "djogana" : c'est la valeur attendue
+                        // par l'API (moyenPaiement), seul le nom commercial
+                        // affiché au client change.
+                        { value: "djogana" as const, label: "Payapay", logo: "/logo_djogana.png" },
                       ]
                     ).map((opt) => (
                       <button
@@ -4540,11 +4543,11 @@ export default function Souscription() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <img src="/logo_djogana.png" alt="" style={{ width: 26, height: 26, borderRadius: "50%" }} />
-                <div style={{ fontWeight: 800, fontSize: 17 }}>Code de paiement Djogana</div>
+                <div style={{ fontWeight: 800, fontSize: 17 }}>Code de paiement Payapay</div>
               </div>
               <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 18 }}>
                 Un code a été envoyé par SMS au {djoganaPaiement.telephone}. Saisissez-le pour valider le paiement
-                depuis votre compte Djogana/Peya Pay.
+                depuis votre compte Payapay.
               </div>
 
               <input

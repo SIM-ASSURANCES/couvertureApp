@@ -77,11 +77,29 @@ async function djoganaFetch<T>(path: string, body: unknown): Promise<T> {
   return data as T;
 }
 
+/**
+ * Numéro au format attendu par Djogana : national, SANS indicatif pays. Les
+ * numéros sont saisis et stockés avec "+225" côté SIM (PHONE_PREFIX du
+ * formulaire de souscription), mais l'API Djogana ne retrouve le compte du
+ * client que sur le numéro local — d'où la normalisation ici, au seul point
+ * de contact avec leur API.
+ *
+ * Le numéro stocké en base n'est JAMAIS modifié : tout le reste de
+ * l'application (SMS de confirmation et d'accès à l'espace client, contrôle
+ * de cohérence des routes /paiement-djogana/*) continue de travailler sur le
+ * "+225..." d'origine.
+ */
+function numeroLocal(telephone: string): string {
+  const chiffres = telephone.replace(/\D/g, "");
+  return chiffres.startsWith("225") ? chiffres.slice(3) : chiffres;
+}
+
 type PayeurDjogana = { compte: string };
 
 /** API#2 — recherche du compte Djogana/Peya Pay associé à ce téléphone. */
 export async function rechercherPayeurDjogana(telephone: string): Promise<PayeurDjogana | null> {
-  if (!djoganaConfigure()) return { compte: telephone };
+  const gsm = numeroLocal(telephone);
+  if (!djoganaConfigure()) return { compte: gsm };
 
   let data: {
     items?: Array<{
@@ -91,7 +109,7 @@ export async function rechercherPayeurDjogana(telephone: string): Promise<Payeur
   };
   try {
     data = await djoganaFetch("/wClients/recherchePayeur", {
-      data: { gsmPrincipale: telephone, codePaysResidence: "CI" },
+      data: { gsmPrincipale: gsm, codePaysResidence: "CI" },
     });
   } catch (e) {
     // L'API répond hasError:true avec un message du type "Donnee inexistante:
@@ -110,13 +128,14 @@ export async function rechercherPayeurDjogana(telephone: string): Promise<Payeur
 /** API#3/#5 — envoi du code OTP par SMS au numéro donné. */
 export async function envoyerOtpDjogana(telephone: string): Promise<void> {
   if (!djoganaConfigure()) return; // mode stub : voir validerOtpDjogana
+  const gsm = numeroLocal(telephone);
   await djoganaFetch("/wClients/code-partenaire", {
     data: {
-      gsmPrincipale: telephone,
+      gsmPrincipale: gsm,
       // Champs pensés pour un client mobile natif (modèle/IMEI) — sans objet
       // ici puisque l'appel vient du backend web, valeurs génériques stables.
       modele: "web",
-      imei: `web-${telephone}`,
+      imei: `web-${gsm}`,
       plateform: "web",
     },
   });
@@ -127,7 +146,7 @@ export async function validerOtpDjogana(telephone: string, code: string): Promis
   if (!djoganaConfigure()) return code === "0000"; // mode stub : code de test fixe
   try {
     await djoganaFetch("/wClients/verifcode-partenaire", {
-      data: { codeValid: code, login: telephone },
+      data: { codeValid: code, login: numeroLocal(telephone) },
     });
     return true;
   } catch {

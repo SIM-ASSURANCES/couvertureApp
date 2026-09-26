@@ -17,7 +17,7 @@ services:
       - couverture
 
   backend:
-    image: ghcr.io/sim-assurances/couvertureapp-backend:v186
+    image: ghcr.io/sim-assurances/couvertureapp-backend:v189
     restart: unless-stopped
     depends_on:
       postgres:
@@ -46,7 +46,7 @@ services:
       - couverture
 
   frontend:
-    image: ghcr.io/sim-assurances/couvertureapp-frontend:v224
+    image: ghcr.io/sim-assurances/couvertureapp-frontend:v228
     restart: unless-stopped
     depends_on:
       - backend

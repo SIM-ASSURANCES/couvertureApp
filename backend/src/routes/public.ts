@@ -1024,12 +1024,12 @@ publicRouter.post(
     } catch (e) {
       console.error("[Djogana] recherche payeur", e);
       return res.status(502).json({
-        error: `Djogana indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+        error: `Payapay indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
       });
     }
     if (!compte) {
       return res.status(404).json({
-        error: "Aucun compte Djogana/Peya Pay trouvé pour ce numéro. Le client doit d'abord en créer un.",
+        error: "Aucun compte Payapay trouvé pour ce numéro. Le client doit d'abord en créer un.",
       });
     }
     try {
@@ -1037,7 +1037,7 @@ publicRouter.post(
     } catch (e) {
       console.error("[Djogana] envoi OTP", e);
       return res.status(502).json({
-        error: `Djogana indisponible (envoi du code) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+        error: `Payapay indisponible (envoi du code) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
       });
     }
     res.json({ ok: true });
