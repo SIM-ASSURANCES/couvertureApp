@@ -70,9 +70,24 @@ async function djoganaFetch<T>(path: string, body: unknown): Promise<T> {
     },
     body: JSON.stringify(body),
   });
-  const data = (await resp.json().catch(() => null)) as DjoganaEnveloppe<T> | null;
+  const brut = await resp.text().catch(() => "");
+  let data: DjoganaEnveloppe<T> | null = null;
+  try {
+    data = JSON.parse(brut) as DjoganaEnveloppe<T>;
+  } catch {
+    // réponse non JSON : `brut` est journalisé ci-dessous
+  }
   if (!resp.ok || data?.hasError) {
-    throw new Error(data?.status?.message || `Djogana ${path} ${resp.status}`);
+    // Les messages d'erreur Djogana sont parfois tronqués ("...a refuse la
+    // requete:") : requête et réponse complètes en logs pour le support.
+    console.error(
+      `[Djogana] ${path} HTTP ${resp.status}\n  requête : ${JSON.stringify(body)}\n  réponse : ${brut.slice(0, 2000)}`
+    );
+    const message = data?.status?.message?.trim();
+    const code = data?.status?.code;
+    throw new Error(
+      message ? `${message}${code ? ` (code ${code})` : ""}` : `Djogana ${path} HTTP ${resp.status}`
+    );
   }
   return data as T;
 }
