@@ -2430,7 +2430,10 @@ export default function Souscription() {
       window.location.href = data.checkoutUrl;
       return;
     }
-    const telephoneUtilise = isRelax(qrInfo?.produit) ? telephoneRx : telephone;
+    // Tout le parcours Payapay (écran OTP + requêtes) utilise le numéro local,
+    // sans "+225" — le numéro enregistré sur la souscription le garde, lui,
+    // pour les SMS de confirmation et d'accès envoyés après le paiement.
+    const telephoneUtilise = phoneLocalPart(isRelax(qrInfo?.produit) ? telephoneRx : telephone);
     const type: "accident" | "echeance" = data.echeanceId ? "echeance" : "accident";
     const id = data.echeanceId ?? data.souscriptionId;
     if (!id) {

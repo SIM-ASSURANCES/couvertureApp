@@ -25,6 +25,7 @@ import {
   envoyerOtpDjogana,
   validerOtpDjogana,
   creerPaiementDjogana,
+  numeroLocal,
 } from "../services/djogana.js";
 import {
   parseFormuleRelaxAccidentsGenerale,
@@ -1021,7 +1022,7 @@ publicRouter.post(
     const data = djoganaRefSchema.parse(req.body);
     const ref = await resoudreReferenceDjogana(data.type, data.id);
     if (!ref) return res.status(404).json({ error: "Paiement introuvable" });
-    if (ref.telephone !== data.telephone) {
+    if (numeroLocal(ref.telephone) !== numeroLocal(data.telephone)) {
       return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
     }
 
@@ -1064,14 +1065,14 @@ publicRouter.post(
     if (data.type === "accident") {
       const s = await prisma.souscriptionAccident.findUnique({ where: { id: data.id } });
       if (!s) return res.status(404).json({ error: "Souscription introuvable" });
-      if (s.telephone !== data.telephone) {
+      if (numeroLocal(s.telephone) !== numeroLocal(data.telephone)) {
         return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
       }
       if (s.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis) {
         return res.json({ statut: "paye" }); // déjà confirmé (idempotence)
       }
-      const otpValide = await validerOtpDjogana(data.telephone, data.otp);
-      if (!otpValide) return res.status(400).json({ error: "Code incorrect ou expiré" });
+      const otp = await validerOtpDjogana(data.telephone, data.otp);
+      if (!otp.valide) return res.status(400).json({ error: otp.message });
       const paiement = await creerPaiementDjogana(data.telephone, s.montantPrime, s.id);
       if (!paiement.reussi) {
         return res.status(402).json({ error: paiement.message || "Paiement refusé" });
@@ -1089,13 +1090,13 @@ publicRouter.post(
       include: { souscription: { select: { telephone: true } } },
     });
     if (!p) return res.status(404).json({ error: "Échéance introuvable" });
-    if (p.souscription.telephone !== data.telephone) {
+    if (numeroLocal(p.souscription.telephone) !== numeroLocal(data.telephone)) {
       return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
     }
     if (p.statut === "paye") return res.json({ statut: "paye" }); // déjà confirmé (idempotence)
 
-    const otpValide = await validerOtpDjogana(data.telephone, data.otp);
-    if (!otpValide) return res.status(400).json({ error: "Code incorrect ou expiré" });
+    const otp = await validerOtpDjogana(data.telephone, data.otp);
+    if (!otp.valide) return res.status(400).json({ error: otp.message });
     const paiement = await creerPaiementDjogana(data.telephone, p.montant, p.id);
     if (!paiement.reussi) {
       return res.status(402).json({ error: paiement.message || "Paiement refusé" });

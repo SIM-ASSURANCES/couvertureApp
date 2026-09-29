@@ -99,12 +99,12 @@ async function djoganaFetch<T>(path: string, body: unknown): Promise<T> {
  * client que sur le numéro local — d'où la normalisation ici, au seul point
  * de contact avec leur API.
  *
- * Le numéro stocké en base n'est JAMAIS modifié : tout le reste de
- * l'application (SMS de confirmation et d'accès à l'espace client, contrôle
- * de cohérence des routes /paiement-djogana/*) continue de travailler sur le
- * "+225..." d'origine.
+ * Le numéro stocké en base n'est JAMAIS modifié : les SMS de confirmation et
+ * d'accès à l'espace client, envoyés une fois le paiement confirmé, gardent le
+ * "+225..." d'origine. Tout le parcours Djogana (écran OTP, routes
+ * /paiement-djogana/*) travaille, lui, sur le numéro local.
  */
-function numeroLocal(telephone: string): string {
+export function numeroLocal(telephone: string): string {
   const chiffres = telephone.replace(/\D/g, "");
   return chiffres.startsWith("225") ? chiffres.slice(3) : chiffres;
 }
@@ -158,16 +158,25 @@ export async function envoyerOtpDjogana(telephone: string): Promise<void> {
   });
 }
 
-/** API#4 — validation du code OTP saisi par le client. */
-export async function validerOtpDjogana(telephone: string, code: string): Promise<boolean> {
-  if (!djoganaConfigure()) return code === "0000"; // mode stub : code de test fixe
+/**
+ * API#4 — validation du code OTP saisi par le client. En cas de refus,
+ * renvoie le message réel de Djogana (code erroné, expiré, numéro refusé…)
+ * plutôt qu'un "code incorrect" générique qui masquait la vraie cause.
+ */
+export async function validerOtpDjogana(
+  telephone: string,
+  code: string
+): Promise<{ valide: true } | { valide: false; message: string }> {
+  if (!djoganaConfigure()) {
+    return code === "0000" ? { valide: true } : { valide: false, message: "Code incorrect ou expiré" };
+  }
   try {
     await djoganaFetch("/wClients/verifcode-partenaire", {
       data: { codeValid: code, login: numeroLocal(telephone) },
     });
-    return true;
-  } catch {
-    return false;
+    return { valide: true };
+  } catch (e) {
+    return { valide: false, message: e instanceof Error ? e.message : "Code incorrect ou expiré" };
   }
 }
 
