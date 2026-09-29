@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Download, Flame, ShieldCheck, Wallet, PiggyBank, HandCoins, Send } from "lucide-react";
 import { agentDistApi, agentDistLogout, getAgentDistUser } from "../../agentDistributionAuth";
+import AgentDistributionCotations from "./Cotations";
 
 function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
@@ -103,7 +104,7 @@ function badge(statut: "en_attente" | "validee" | "rejetee") {
 export default function AgentDistributionDashboard() {
   const navigate = useNavigate();
   const [moi, setMoi] = useState<Moi | null>(null);
-  const [onglet, setOnglet] = useState<"activite" | "commissions">("activite");
+  const [onglet, setOnglet] = useState<"activite" | "devis" | "commissions">("activite");
   const [qrIncendie1000, setQrIncendie1000] = useState<Qr | null>(null);
   const [qrIncendie2000, setQrIncendie2000] = useState<Qr | null>(null);
   const [qrAccident, setQrAccident] = useState<Qr | null>(null);
@@ -286,6 +287,18 @@ export default function AgentDistributionDashboard() {
                 Mon activité
               </button>
               <button
+                onClick={() => setOnglet("devis")}
+                style={{
+                  flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer",
+                  fontSize: 13, fontWeight: 700,
+                  background: onglet === "devis" ? "#004b9c" : "#fff",
+                  color: onglet === "devis" ? "#fff" : "#5b6b80",
+                  boxShadow: onglet === "devis" ? "none" : "0 2px 8px rgba(0,0,0,0.05)",
+                }}
+              >
+                Mes devis
+              </button>
+              <button
                 onClick={() => setOnglet("commissions")}
                 style={{
                   flex: 1, padding: "10px 0", borderRadius: 10, border: "none", cursor: "pointer",
@@ -298,6 +311,8 @@ export default function AgentDistributionDashboard() {
                 Commissions
               </button>
             </div>
+
+            {onglet === "devis" && <AgentDistributionCotations notify={notify} />}
 
             {onglet === "activite" && (
               <>

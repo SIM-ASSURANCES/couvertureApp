@@ -232,6 +232,10 @@ model Partenaire {
   // Institution de microfinance rattachée (branche IMF_PARTENAIRES) — un
   // Partenaire porte au plus une Imf. Voir routes/imfPartenaires.ts.
   imf Imf?
+
+  // Devis enregistrés par le partenaire (ou l'un de ses agents), partageables
+  // au client avant souscription — voir routes/cotations.ts.
+  cotations Cotation[]
 }
 
 /**
@@ -276,6 +280,7 @@ model AgentDistribution {
   demandes                   DemandeCommission[]
   qrCodesGeneriques          QrCode[]
   souscriptionsGeneriques    Souscription[]
+  cotations                  Cotation[]
 }
 
 model SouscriptionIncendie {
@@ -745,6 +750,11 @@ model Souscription {
   // admin — ces requêtes filtrent quasi systématiquement par produitId/
   // waveStatut/partenaireId et trient par createdAt ; sans index, chacune
   // déclenchait un balayage complet de la table à chaque chargement de page.
+  // Devis dont cette souscription est issue (parcours "Mes devis" du
+  // partenaire/agent) — absent pour une souscription née directement du QR
+  // public. Voir Cotation ci-dessous.
+  cotation Cotation?
+
   @@index([produitId, waveStatut, createdAt])
   @@index([partenaireId, createdAt])
   @@index([dateDebut])
@@ -757,15 +767,15 @@ model Souscription {
  * une prime annuelle divisée, voir echeancier.ts.
  */
 model Paiement {
-  id                String         @id @default(uuid())
-  souscriptionId    String
-  souscription      Souscription   @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
-  numeroEcheance    Int
-  montant           Int
-  statut            StatutEcheance @default(en_attente)
-  dateEcheance      DateTime
-  datePaiement      DateTime?
-  waveTransactionId String?
+  id                   String         @id @default(uuid())
+  souscriptionId       String
+  souscription         Souscription   @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numeroEcheance       Int
+  montant              Int
+  statut               StatutEcheance @default(en_attente)
+  dateEcheance         DateTime
+  datePaiement         DateTime?
+  waveTransactionId    String?
   // Référence de paiement Djogana (Peya Pay) — voir services/djogana.ts.
   // Renseigné uniquement si l'échéance a été payée par ce moyen (alternative
   // à Wave, sans redirection : validation par OTP puis débit direct).
@@ -774,9 +784,9 @@ model Paiement {
   // formule unique : relance admin) plutôt qu'échéance du cycle initial —
   // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le
   // produit), sans reproduire la logique de première activation.
-  estRenouvellement Boolean        @default(false)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  estRenouvellement    Boolean        @default(false)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@unique([souscriptionId, numeroEcheance])
   // GET /relax/echeances (page "Paiements en attente") filtre par statut et
@@ -804,22 +814,22 @@ model Document {
  * renseignés qu'une fois la synchronisation NOVELIA réussie.
  */
 model Carte {
-  id                       String            @id @default(uuid())
-  souscriptionId           String            @unique
-  souscription             Souscription      @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
-  numero                   String            @unique
-  statut                   StatutCarte       @default(generee)
+  id                        String            @id @default(uuid())
+  souscriptionId            String            @unique
+  souscription              Souscription      @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  numero                    String            @unique
+  statut                    StatutCarte       @default(generee)
   // Numéro de carte NOVELIA (réponse de l'API souscription).
-  noveliaRef               String?
-  numeroPoliceNovelia      String?
+  noveliaRef                String?
+  numeroPoliceNovelia       String?
   // Identifiant du bordereau d'impression NOVELIA (champ `code` de leur
   // réponse, ex. "260000429-1-1-0") : c'est LUI qui permet de reconstruire un
   // lien de carte valide à la demande. `lienTelechargement` n'est conservé
   // que pour dépannage/repli — le jeton qu'il contient expire au bout de
   // ~45 min et le lien renvoie alors un fichier VIDE en HTTP 200 (vérifié le
   // 2026-09-21), d'où la reconstruction systématique côté routes/cartes.ts.
-  noveliaBordereau         String?
-  lienTelechargement       String?
+  noveliaBordereau          String?
+  lienTelechargement        String?
   // Renouvellement intervenu dans le délai de grâce (2 jours) : la police et
   // le matricule sont conservés, mais NOVELIA doit être informée de la
   // nouvelle échéance. Leur API ne propose à ce jour qu'un endpoint de
@@ -833,20 +843,20 @@ model Carte {
   // voir novelia.ts::rejouerCartesNoveliaEnAttente, rejoué par cron dans
   // index.ts). "echec" sans `syncProchaineTentativeAt` = abandon définitif
   // (données manquantes, ou nombre de tentatives/délai dépassé).
-  syncNovelia              SyncNoveliaStatut @default(en_attente)
-  syncTentatives           Int               @default(0)
-  syncProchaineTentativeAt DateTime?
-  syncDerniereErreur       String?
+  syncNovelia               SyncNoveliaStatut @default(en_attente)
+  syncTentatives            Int               @default(0)
+  syncProchaineTentativeAt  DateTime?
+  syncDerniereErreur        String?
   // Point de départ du cycle de tentatives en cours (création ou dernier
   // renouvellement) — référence pour l'abandon après 24h, indépendante de
   // `dateGeneration` qui ne change jamais après la création de la carte.
-  syncCycleDepuis          DateTime?
-  dateGeneration           DateTime          @default(now())
-  dateEnvoi                DateTime?
-  dateActivation           DateTime?
-  dateRenouvellement       DateTime?
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
+  syncCycleDepuis           DateTime?
+  dateGeneration            DateTime          @default(now())
+  dateEnvoi                 DateTime?
+  dateActivation            DateTime?
+  dateRenouvellement        DateTime?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
 
   // Rejoué par cron : ne balaie que les cartes en attente de nouvelle tentative.
   @@index([syncNovelia, syncProchaineTentativeAt])
@@ -1222,6 +1232,61 @@ model SimulationImf {
   @@index([imfId])
 }
 
+enum StatutCotation {
+  brouillon
+  envoye
+  converti
+  expire
+}
+
+/**
+ * Devis (Assurances Accidents/Dommages) enregistré par un partenaire ou l'un
+ * de ses agents de distribution, partageable au client via un lien public
+ * (`token`) avant souscription — même principe que SimulationImf côté IMF,
+ * mais partagé au client plutôt que privé à l'auteur. Limité aux produits à
+ * tarif fixe ou calculé dynamiquement, sans collecte d'identité côté
+ * partenaire/agent (voir services/cotations.ts::PRODUITS_COTATION) :
+ * RelaxAccidents générale, SecurHome, SecurHome+, SecurPro, SecurMoto.
+ * `entrees`/`resultat`/`primeTTC` ne portent QUE les paramètres qui influent
+ * sur le prix (classe, formule, valeur du bien...) — l'identité du client,
+ * ses photos et sa signature sont saisies par le client lui-même au moment
+ * de payer (voir GET/POST /public/cotations/:token), jamais par l'auteur du
+ * devis.
+ */
+model Cotation {
+  id                  String             @id @default(uuid())
+  token               String             @unique @default(uuid())
+  partenaireId        String
+  partenaire          Partenaire         @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
+  // Renseigné uniquement si le devis vient de l'espace d'un agent de
+  // distribution (plutôt que du partenaire lui-même) — même principe que
+  // Souscription.agentDistributionId.
+  agentDistributionId String?
+  agentDistribution   AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
+  produitCode         String
+  entrees             Json
+  resultat            Json
+  primeTTC            Int
+  capitalGaranti      Int
+  libelleFormule      String
+  // Nom/téléphone du client destinataire — facultatifs, uniquement pour que
+  // l'auteur retrouve "son" devis dans la liste ; jamais utilisés pour
+  // l'attribution ni pré-remplis côté client (qui les ressaisit lui-même).
+  clientNom           String?
+  clientTelephone     String?
+  statut              StatutCotation     @default(brouillon)
+  // Fixée à l'envoi (POST .../partager), 7 jours après — au-delà, le lien
+  // public refuse la souscription (voir routes/public.ts).
+  dateExpiration      DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  souscriptionId      String?            @unique
+  souscription        Souscription?      @relation(fields: [souscriptionId], references: [id])
+
+  @@index([partenaireId, createdAt])
+  @@index([agentDistributionId, createdAt])
+}
+
 // --- Phase 3 (réduite) : conversion d'une simulation en souscription ---
 
 enum StatutSouscriptionImf {
@@ -1377,7 +1442,6 @@ model BordereauImf {
 /**
  * Conditions Générales d'un produit (ou d'une famille de produits), éditables
  * depuis l'espace admin et injectées dans les contrats PDF.
- *
  * `cle` reprend le nom des fichiers statiques historiques ("accident",
  * "incendie"...) : tant qu'aucune ligne n'existe pour une clé, le rendu
  * retombe sur `frontend/public/cg-<cle>.html`. Aucune reprise de données
@@ -1385,11 +1449,11 @@ model BordereauImf {
  * l'administrateur n'a rien saisi (voir services/contractHtml.ts::loadCG).
  */
 model ConditionsGenerales {
-  cle              String   @id
-  libelle          String
-  contenuHtml      String
+  cle               String   @id
+  libelle           String
+  contenuHtml       String
   modifieParAdminId String?
-  updatedAt        DateTime @updatedAt
+  updatedAt         DateTime @updatedAt
 }
 
 // =====================================================================

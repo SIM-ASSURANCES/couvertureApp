@@ -16,6 +16,7 @@ const PartenaireLogin = lazy(() => import("./pages/partenaire/Login"));
 const Souscription = lazy(() => import("./pages/public/Souscription"));
 const SouscriptionComplement = lazy(() => import("./pages/public/SouscriptionComplement"));
 const SimulationImfPublique = lazy(() => import("./pages/public/SimulationImf"));
+const Devis = lazy(() => import("./pages/public/Devis"));
 const ClientLogin = lazy(() => import("./pages/client/Login"));
 const ClientDashboard = lazy(() => import("./pages/client/Dashboard"));
 const AgentDistributionLogin = lazy(() => import("./pages/agent-distribution/Login"));
@@ -85,6 +86,7 @@ const PartenaireCommissions = lazy(() => import("./pages/partenaire/Commissions"
 const PartenaireQr = lazy(() => import("./pages/partenaire/QrCode"));
 const PartenaireProfil = lazy(() => import("./pages/partenaire/Profil"));
 const PartenaireAgents = lazy(() => import("./pages/partenaire/Agents"));
+const PartenaireCotations = lazy(() => import("./pages/partenaire/Cotations"));
 
 const AgentImfLayout = lazy(() => import("./components/layout/AgentImfLayout"));
 const AgentImfDashboard = lazy(() => import("./pages/agent-imf/Dashboard"));
@@ -166,6 +168,7 @@ export default function App() {
               <Route path="commissions" element={<PartenaireCommissions />} />
               <Route path="qr" element={<PartenaireQr />} />
               <Route path="agents" element={<PartenaireAgents />} />
+              <Route path="cotations" element={<PartenaireCotations />} />
               <Route path="profil" element={<PartenaireProfil />} />
             </Route>
 
@@ -189,6 +192,8 @@ export default function App() {
             <Route path="/souscription/:token" element={<Souscription />} />
             <Route path="/s/:produit/complement/:token" element={<SouscriptionComplement />} />
             <Route path="/s/:produit/:token" element={<Souscription />} />
+            <Route path="/devis/:token/retour" element={<Devis />} />
+            <Route path="/devis/:token" element={<Devis />} />
             <Route path="/imf/:token" element={<SimulationImfPublique />} />
 
             <Route path="/client/connexion" element={<ClientLogin />} />

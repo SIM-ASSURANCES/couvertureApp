@@ -7,12 +7,14 @@ import { asyncHandler } from "../util.js";
 import { qrDataUrl } from "../services/qr.js";
 import { commissionStatsAgent } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
+import { registerCotationRoutes } from "./cotationsCommun.js";
 
 const JOURS_CYCLE = 14;
 
 /** Espace agent de distribution (Incendie/Accident) : lecture seule de son activité + QR + mot de passe. */
 export const agentDistributionRouter = Router();
 agentDistributionRouter.use(requireAuth("agent_distribution"));
+registerCotationRoutes(agentDistributionRouter);
 
 agentDistributionRouter.get(
   "/moi",

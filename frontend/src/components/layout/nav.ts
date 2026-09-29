@@ -182,6 +182,9 @@ export const partenaireNav: NavGroup[] = [
   },
   {
     section: "Outils",
-    items: [{ to: "/partenaire/qr", label: "Mon QR code", icon: QrCode }],
+    items: [
+      { to: "/partenaire/qr", label: "Mon QR code", icon: QrCode },
+      { to: "/partenaire/cotations", label: "Mes devis", icon: Calculator },
+    ],
   },
 ];

@@ -73,4 +73,5 @@ export const agentDistApi = {
   get: <T>(p: string) => agentDistRequest<T>(p),
   post: <T>(p: string, body?: unknown) => agentDistRequest<T>(p, { method: "POST", body: JSON.stringify(body ?? {}) }),
   patch: <T>(p: string, body?: unknown) => agentDistRequest<T>(p, { method: "PATCH", body: JSON.stringify(body ?? {}) }),
+  del: <T>(p: string) => agentDistRequest<T>(p, { method: "DELETE" }),
 };

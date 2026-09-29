@@ -37,6 +37,7 @@ import { calculerSecurpro, type SecurproInput } from "../services/tarificationIm
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
+import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -2079,6 +2080,225 @@ publicRouter.post(
 );
 
 /** RelaxMoto/RelaxAuto : vérification manuelle du paiement d'une échéance (filet de sécurité) */
+/**
+ * Devis (Cotation) : lecture publique par un client muni du lien partagé par
+ * son partenaire/agent — voir POST /me/cotations et /agent-distribution/
+ * cotations pour la création. `statut` reflète l'expiration (7 jours après
+ * le partage) même si la ligne en base n'a pas encore été mise à jour par un
+ * appel d'écriture (voir POST .../souscrire ci-dessous, qui la met à jour).
+ */
+publicRouter.get(
+  "/cotations/:token",
+  asyncHandler(async (req, res) => {
+    const cotation = await prisma.cotation.findUnique({
+      where: { token: req.params.token },
+      include: { partenaire: { select: { nomCommerce: true } } },
+    });
+    if (!cotation || cotation.statut === "brouillon") {
+      return res.status(404).json({ error: "Devis introuvable." });
+    }
+    const expireLazy =
+      cotation.statut === "envoye" && cotation.dateExpiration != null && cotation.dateExpiration < new Date();
+    res.json({
+      token: cotation.token,
+      produitCode: cotation.produitCode,
+      libelleProduit: LIBELLES_PRODUIT_COTATION[cotation.produitCode as ProduitCotation] ?? cotation.produitCode,
+      libelleFormule: cotation.libelleFormule,
+      primeTTC: cotation.primeTTC,
+      capitalGaranti: cotation.capitalGaranti,
+      resultat: cotation.resultat,
+      clientNom: cotation.clientNom,
+      partenaire: cotation.partenaire.nomCommerce,
+      statut: expireLazy ? "expire" : cotation.statut,
+      souscriptionId: cotation.souscriptionId,
+      dateExpiration: cotation.dateExpiration,
+    });
+  })
+);
+
+// Champs saisis par le CLIENT au moment de payer un devis — jamais les
+// paramètres de tarification (figés dans Cotation.entrees par le
+// partenaire/agent, jamais confiés au client) : identité + éventuelles
+// infos Novelia (RelaxAccidents générale) + infos commerce assuré
+// (SecurPro/SecurHome+) + signature.
+const cotationSouscrireSchema = z.object({
+  nom: z.string().min(1).max(120),
+  prenom: z.string().min(1).max(120),
+  telephone: z.string().min(6),
+  dateNaissance: optionalDate,
+  sexe: z.enum(["masculin", "feminin"]).optional(),
+  civilite: z.enum(["M.", "MLLE", "MME"]).optional(),
+  ville: z.string().max(120).optional(),
+  commune: z.string().max(120).optional(),
+  adresse: z.string().max(200).optional(),
+  numeroPieceIdentite: z.string().max(60).optional(),
+  // SecurPro / SecurHome+ uniquement — informations sur le commerce/logement assuré.
+  nomCommercial: z.string().max(200).optional(),
+  communeQuartier: z.string().max(120).optional(),
+  refFacture: z.string().max(120).optional(),
+  signature: dataUrlImage.optional(),
+  ...moyenPaiementField,
+});
+
+/**
+ * Conversion d'un devis en souscription payable — pendant Wave/Djogana
+ * exactement comme /souscriptions/:produit/initiate(-formule), mais la prime
+ * et les paramètres de tarification viennent de la Cotation déjà calculée
+ * (jamais recalculés depuis le corps de la requête : le prix vu par le
+ * client au moment d'accepter le devis est celui qu'il paie), et
+ * l'attribution partenaire/agent vient de la Cotation plutôt que d'un QR.
+ */
+publicRouter.post(
+  "/cotations/:token/souscrire",
+  asyncHandler(async (req, res) => {
+    const data = cotationSouscrireSchema.parse(req.body);
+    const cotation = await prisma.cotation.findUnique({ where: { token: req.params.token } });
+    if (!cotation || cotation.statut === "brouillon") return res.status(404).json({ error: "Devis introuvable." });
+    if (cotation.statut === "converti") {
+      return res.status(409).json({ error: "Ce devis a déjà été converti en souscription." });
+    }
+    if (cotation.dateExpiration && cotation.dateExpiration < new Date()) {
+      await prisma.cotation.update({ where: { id: cotation.id }, data: { statut: "expire" } });
+      return res.status(410).json({ error: "Ce devis a expiré. Demandez-en un nouveau à votre partenaire." });
+    }
+    if (!estProduitCotation(cotation.produitCode)) return res.status(400).json({ error: "Produit inconnu." });
+    const code = cotation.produitCode as ProduitCotation;
+
+    const prod = await prisma.produit.findUnique({ where: { code } });
+    if (!prod) return res.status(404).json({ error: "Produit inconnu." });
+    if (await produitDesactivePourPartenaire(cotation.partenaireId, prod.id)) {
+      return res.status(403).json({ error: MESSAGE_PRODUIT_DESACTIVE });
+    }
+    if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
+      return res.status(409).json({ error: MESSAGE_DOUBLON });
+    }
+
+    const entrees = cotation.entrees as Record<string, unknown>;
+    const donneesSpecifiques =
+      code === "relaxaccidents"
+        ? {
+            signature: data.signature ?? null,
+            classe: entrees.classe,
+            cnpsDeclare: entrees.cnpsDeclare,
+            cycle: entrees.cycle,
+            moyenDeplacement: entrees.moyenDeplacement,
+          }
+        : code === "securhome"
+        ? {
+            signature: data.signature ?? null,
+            nombrePieces: entrees.nombrePieces,
+            statutOccupation: entrees.statutOccupation,
+          }
+        : code === "securhome_dommages"
+        ? {
+            signature: data.signature ?? null,
+            nom: data.nom,
+            prenom: data.prenom,
+            ville: data.ville ?? null,
+            communeQuartier: data.communeQuartier ?? null,
+            refFacture: data.refFacture ?? null,
+            ...entrees,
+          }
+        : code === "securpro_dommages"
+        ? {
+            signature: data.signature ?? null,
+            nom: data.nom,
+            prenom: data.prenom,
+            nomCommercial: data.nomCommercial ?? null,
+            ville: data.ville ?? null,
+            communeQuartier: data.communeQuartier ?? null,
+            refFacture: data.refFacture ?? null,
+            ...entrees,
+          }
+        : {
+            // securmoto
+            signature: data.signature ?? null,
+            nom: data.nom,
+            prenom: data.prenom,
+            valeurMoto: entrees.valeurMoto,
+            ageMoto: entrees.ageMoto,
+          };
+
+    const s = await prisma.souscription.create({
+      data: {
+        produitId: prod.id,
+        partenaireId: cotation.partenaireId,
+        agentDistributionId: cotation.agentDistributionId,
+        nom: data.nom,
+        prenom: data.prenom,
+        telephone: data.telephone,
+        dateNaissance: data.dateNaissance ?? null,
+        sexe: data.sexe ?? null,
+        civilite: data.civilite ?? null,
+        ville: data.ville ?? null,
+        commune: data.commune ?? null,
+        adresse: data.adresse ?? null,
+        numeroPieceIdentite: data.numeroPieceIdentite ?? null,
+        montantPrime: cotation.primeTTC,
+        capitalGaranti: cotation.capitalGaranti,
+        waveStatut: "en_attente",
+        nombreEcheances: 1,
+        donneesSpecifiques: JSON.parse(JSON.stringify(donneesSpecifiques)),
+        resultat: code === "relaxaccidents" || code === "securhome" ? undefined : JSON.parse(JSON.stringify(cotation.resultat)),
+        paiements: {
+          create: { numeroEcheance: 1, montant: cotation.primeTTC, dateEcheance: new Date() },
+        },
+      },
+    });
+
+    const echeance = await prisma.paiement.findUniqueOrThrow({
+      where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },
+    });
+
+    await prisma.cotation.update({
+      where: { id: cotation.id },
+      data: { statut: "converti", souscriptionId: s.id },
+    });
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/devis/${cotation.token}/retour?produit=${code}&paid=${echeance.id}`;
+    const errorUrl = `${appUrl}/devis/${cotation.token}/retour?produit=${code}&paiement=echec`;
+
+    let checkoutUrl: string | null = null;
+    let transactionId: string | null = null;
+
+    if (data.moyenPaiement === "djogana") {
+      // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
+      // voir POST /public/paiement-djogana/confirmer (type "echeance").
+    } else if (!process.env.WAVE_API_KEY) {
+      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+      await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
+      checkoutUrl = successUrl;
+    } else {
+      const wave = await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
+      transactionId = wave.transactionId;
+      checkoutUrl = wave.checkoutUrl;
+      await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
+    }
+
+    await notifyPartenaire(
+      cotation.partenaireId,
+      "souscription",
+      `Nouvelle souscription ${prod.libelle}`,
+      `Nouveau client ${prod.libelle} (${cotation.primeTTC} FCFA) via un devis partagé.`,
+      "/partenaire/souscriptions"
+    );
+
+    res.status(201).json({
+      souscriptionId: s.id,
+      echeanceId: echeance.id,
+      montant: cotation.primeTTC,
+      capitalGaranti: cotation.capitalGaranti,
+      produitCode: code,
+      checkoutUrl,
+      successUrl,
+      transactionId,
+      moyenPaiement: data.moyenPaiement,
+    });
+  })
+);
+
 publicRouter.get(
   "/souscriptions/:produit/echeances/:echeanceId/verify",
   asyncHandler(async (req, res) => {

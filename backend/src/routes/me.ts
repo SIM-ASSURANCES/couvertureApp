@@ -16,9 +16,11 @@ import {
 } from "./assurancesBranche.js";
 import { genererMotDePasseClient } from "../services/notify.js";
 import { notifyAdmins } from "../services/notifications.js";
+import { registerCotationRoutes } from "./cotationsCommun.js";
 
 export const meRouter = Router();
 meRouter.use(requireAuth("partenaire"));
+registerCotationRoutes(meRouter);
 
 const JOURS_CYCLE = 14;
 
