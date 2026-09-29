@@ -32,9 +32,10 @@ function djoganaConfigure(): boolean {
 type DjoganaStatus = { code?: string; message?: string };
 type DjoganaEnveloppe<T> = { hasError?: boolean; status?: DjoganaStatus } & T;
 
-let tokenCache: { token: string; compteCredit: string; expiresAt: number } | null = null;
+type SessionDjogana = { token: string; compteCredit: string; login: string };
+let tokenCache: (SessionDjogana & { expiresAt: number }) | null = null;
 
-async function authentifierDjogana(): Promise<{ token: string; compteCredit: string }> {
+async function authentifierDjogana(): Promise<SessionDjogana> {
   if (tokenCache && tokenCache.expiresAt > Date.now()) return tokenCache;
 
   const resp = await fetch(`${DJOGANA_BASE_URL}/authclient/token`, {
@@ -46,16 +47,30 @@ async function authentifierDjogana(): Promise<{ token: string; compteCredit: str
     }),
   });
   const data = (await resp.json().catch(() => null)) as DjoganaEnveloppe<{
-    item?: { token?: string; userId?: string; telephone?: string };
+    item?: {
+      token?: string;
+      userId?: string;
+      username?: string;
+      telephone?: string;
+      codeAgence?: string;
+      codeCaisse?: string;
+    };
   }> | null;
   if (!resp.ok || data?.hasError || !data?.item?.token) {
     const detail = data?.status?.message || `${resp.status}`;
     throw new Error(`Djogana authentification échouée: ${detail}`);
   }
 
-  const compteCredit =
-    process.env.DJOGANA_COMPTE_CREDIT || data.item.userId || data.item.telephone || "";
-  tokenCache = { token: data.item.token, compteCredit, expiresAt: Date.now() + DUREE_CACHE_TOKEN_MS };
+  const { userId, username, telephone, codeAgence, codeCaisse } = data.item;
+  console.log(
+    `[Djogana] authentifié : userId=${userId} username=${username} telephone=${telephone} codeAgence=${codeAgence} codeCaisse=${codeCaisse}`
+  );
+  const compteCredit = process.env.DJOGANA_COMPTE_CREDIT || userId || telephone || "";
+  // `login` du paiement : identifiant lisible de l'utilisateur marchand (comme
+  // le `login` numéro de téléphone des autres appels), PAS le username chiffré
+  // envoyé à l'authentification — que la base Djogana refuse (code 1005).
+  const login = process.env.DJOGANA_LOGIN || userId || telephone || "";
+  tokenCache = { token: data.item.token, compteCredit, login, expiresAt: Date.now() + DUREE_CACHE_TOKEN_MS };
   return tokenCache;
 }
 
@@ -203,7 +218,7 @@ export async function creerPaiementDjogana(
       };
     }
 
-    const { compteCredit } = await authentifierDjogana();
+    const { compteCredit, login } = await authentifierDjogana();
     const data = await djoganaFetch<{ item?: { id?: string; reference?: string } }>(
       "/paiement-partenaire/create",
       {
@@ -211,7 +226,7 @@ export async function creerPaiementDjogana(
           compteDebit: payeur.compte,
           compteCredit,
           montant: String(montant),
-          login: process.env.DJOGANA_USERNAME,
+          login,
           codeBanque: CODE_BANQUE,
           codeAgence: CODE_AGENCE,
           infos: [
