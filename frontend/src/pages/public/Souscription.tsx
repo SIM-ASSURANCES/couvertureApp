@@ -2430,7 +2430,7 @@ export default function Souscription() {
       window.location.href = data.checkoutUrl;
       return;
     }
-    // Tout le parcours Payapay (écran OTP + requêtes) utilise le numéro local,
+    // Tout le parcours Peya pay (écran OTP + requêtes) utilise le numéro local,
     // sans "+225" — le numéro enregistré sur la souscription le garde, lui,
     // pour les SMS de confirmation et d'accès envoyés après le paiement.
     const telephoneUtilise = phoneLocalPart(isRelax(qrInfo?.produit) ? telephoneRx : telephone);
@@ -2447,13 +2447,13 @@ export default function Souscription() {
         body: JSON.stringify({ type, id, telephone: telephoneUtilise }),
       });
       const otpData = await res.json();
-      if (!res.ok) throw new Error(otpData.error || "Erreur lors de l'envoi du code Payapay");
+      if (!res.ok) throw new Error(otpData.error || "Erreur lors de l'envoi du code Peya pay");
       setDjoganaPaiement({ type, id, telephone: telephoneUtilise, successUrl: data.successUrl });
       setDjoganaOtp("");
       setDjoganaError("");
       setStep("djogana-otp");
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Payapay");
+      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Peya pay");
     }
   }
 
@@ -4472,7 +4472,7 @@ export default function Souscription() {
                         // `value` reste "djogana" : c'est la valeur attendue
                         // par l'API (moyenPaiement), seul le nom commercial
                         // affiché au client change.
-                        { value: "djogana" as const, label: "Payapay", logo: "/logo_djogana.png" },
+                        { value: "djogana" as const, label: "Peya pay", logo: "/logo_djogana.png" },
                       ]
                     ).map((opt) => (
                       <button
@@ -4546,11 +4546,11 @@ export default function Souscription() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <img src="/logo_djogana.png" alt="" style={{ width: 26, height: 26, borderRadius: "50%" }} />
-                <div style={{ fontWeight: 800, fontSize: 17 }}>Code de paiement Payapay</div>
+                <div style={{ fontWeight: 800, fontSize: 17 }}>Code de paiement Peya pay</div>
               </div>
               <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 18 }}>
                 Un code a été envoyé par SMS au {djoganaPaiement.telephone}. Saisissez-le pour valider le paiement
-                depuis votre compte Payapay.
+                depuis votre compte Peya pay.
               </div>
 
               <input

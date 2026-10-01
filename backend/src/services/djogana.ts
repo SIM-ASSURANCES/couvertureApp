@@ -214,7 +214,7 @@ export async function creerPaiementDjogana(
     if (payeur.compte === null) {
       return {
         reussi: false,
-        message: `Compte Payapay introuvable pour le ${payeur.gsm} (réponse Payapay : ${payeur.reponse})`,
+        message: `Compte Peya pay introuvable pour le ${payeur.gsm} (réponse Peya pay : ${payeur.reponse})`,
       };
     }
 

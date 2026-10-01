@@ -1041,13 +1041,13 @@ publicRouter.post(
     } catch (e) {
       console.error("[Djogana] recherche payeur", e);
       return res.status(502).json({
-        error: `Payapay indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+        error: `Peya pay indisponible (recherche du compte) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
       });
     }
     if (compte.compte === null) {
       console.warn(`[Djogana] compte introuvable pour ${compte.gsm} : ${compte.reponse}`);
       return res.status(404).json({
-        error: `Aucun compte Payapay trouvé pour le ${compte.gsm}. Le client doit d'abord en créer un. (Réponse Payapay : ${compte.reponse})`,
+        error: `Aucun compte Peya pay trouvé pour le ${compte.gsm}. Le client doit d'abord en créer un. (Réponse Peya pay : ${compte.reponse})`,
       });
     }
     try {
@@ -1055,7 +1055,7 @@ publicRouter.post(
     } catch (e) {
       console.error("[Djogana] envoi OTP", e);
       return res.status(502).json({
-        error: `Payapay indisponible (envoi du code) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
+        error: `Peya pay indisponible (envoi du code) : ${e instanceof Error ? e.message : "erreur inconnue"}`,
       });
     }
     res.json({ ok: true });
