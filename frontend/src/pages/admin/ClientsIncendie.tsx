@@ -378,7 +378,7 @@ export default function ClientsIncendie() {
               <thead>
                 <tr>
                   <th>Produit</th>
-                  <th>Téléphone</th>
+                  <th>Identifiant</th>
                   <th>Nom / Prénom</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
@@ -576,7 +576,7 @@ export default function ClientsIncendie() {
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Email</td><td>{detailFor.email || "—"}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>
                   {detailFor.partenaireResponsable || detailFor.partenaireNom}
@@ -651,7 +651,7 @@ export default function ClientsIncendie() {
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
+                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailGenerique.telephone}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireResponsable || detailGenerique.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>

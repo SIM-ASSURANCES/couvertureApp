@@ -245,6 +245,7 @@ export default function AssurancesAccidentsClients() {
               <thead>
                 <tr>
                   <th>Client</th>
+                  <th>Identifiant</th>
                   <th>Produit</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
@@ -261,8 +262,8 @@ export default function AssurancesAccidentsClients() {
                   <tr key={c.id}>
                     <td>
                       <strong>{c.prenom} {c.nom}</strong>
-                      <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
+                    <td className="muted" title="Identifiant de connexion à l'espace client">{c.telephone}</td>
                     <td>{c.produit.libelle}</td>
                     <td>{c.partenaireResponsable || c.partenaireNom}</td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
@@ -311,7 +312,7 @@ export default function AssurancesAccidentsClients() {
                   </tr>
                 ))}
                 {donneesFiltrees.length === 0 && (
-                  <tr><td colSpan={10}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
+                  <tr><td colSpan={11}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
                 )}
               </tbody>
             </table>
@@ -331,7 +332,7 @@ export default function AssurancesAccidentsClients() {
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
                 <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Produit</td><td>{detailFor.produit.libelle}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireResponsable || detailFor.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>
