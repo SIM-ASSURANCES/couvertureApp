@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Bell, Send, Camera, Search } from "lucide-react";
+import { Download, MessageCircle, Trash2, FileText, X, Eye, FileSpreadsheet, Flame, ShieldCheck, Send, Camera, Search } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -81,45 +81,6 @@ export default function ClientsIncendie() {
     );
   }, [generiqueSeul, recherche]);
 
-  // Alerte renouvellement (échéance ≤ 5 jours) — Incendie historique +
-  // SecurHome+/SecurPro (modèle générique), toutes deux à formule unique de 3
-  // mois, combinées dans une même section.
-  const { data: incendieProches, reload: reloadIncendieProches } = useFetch<ClientIncendie[]>(
-    "/souscriptions/incendie?renouvellementProche=1"
-  );
-  const { data: genProches, reload: reloadGenProches } = useFetch<SouscriptionBranche[]>(
-    "/assurances-branche/souscriptions?sousBranche=ASSURANCES_DOMMAGES&renouvellementProche=1"
-  );
-  const renouvellementsProches = useMemo(
-    () =>
-      [
-        ...(incendieProches ?? []).map((c) => ({
-          id: c.id,
-          genre: "incendie" as const,
-          nom: [c.prenom, c.nom].filter(Boolean).join(" ") || "Non renseigné",
-          telephone: c.telephone,
-          produitLibelle: "Incendie Habitation en Inclusion",
-          partenaireNom: c.partenaireResponsable || c.partenaireNom,
-          dateFin: c.dateFin,
-          renouvellementEnCoursDepuis: c.renouvellementEnCoursDepuis,
-          renouveleAt: c.renouveleAt,
-        })),
-        ...(genProches ?? [])
-          .filter((r) => r.produit !== "incendie_historique")
-          .map((r) => ({
-            id: r.id,
-            genre: "generique" as const,
-            nom: [r.prenom, r.nom].filter(Boolean).join(" ") || "Non renseigné",
-            telephone: r.telephone,
-            produitLibelle: r.produitLibelle,
-            partenaireNom: r.partenaireResponsable || r.partenaireNom,
-            dateFin: r.dateFin,
-            renouvellementEnCoursDepuis: r.renouvellementEnCoursDepuis,
-            renouveleAt: r.renouveleAt,
-          })),
-      ].sort((a, b) => new Date(a.dateFin ?? 0).getTime() - new Date(b.dateFin ?? 0).getTime()),
-    [incendieProches, genProches]
-  );
 
   const [detailFor, setDetailFor] = useState<ClientIncendie | null>(null);
   const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
@@ -156,7 +117,6 @@ export default function ClientsIncendie() {
       notify("Réf.facture enregistrée ✓");
       setFactureFor(null);
       reload();
-      reloadIncendieProches();
     } catch (e) {
       notify((e as Error).message);
     } finally {
@@ -174,7 +134,6 @@ export default function ClientsIncendie() {
     try {
       await api.post(`/souscriptions/incendie/${id}/relance-renouvellement`, {});
       notify("SMS de renouvellement envoyé ✓");
-      reloadIncendieProches();
       reload();
     } catch (e) {
       notify((e as Error).message);
@@ -185,7 +144,6 @@ export default function ClientsIncendie() {
     try {
       await api.post(`/assurances-branche/souscriptions/${id}/relance-renouvellement`, {});
       notify("SMS de renouvellement envoyé ✓");
-      reloadGenProches();
       reloadGenerique();
     } catch (e) {
       notify((e as Error).message);
@@ -278,66 +236,6 @@ export default function ClientsIncendie() {
           </>
         }
       />
-
-      <Card
-        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
-        extra={<Bell size={18} color="#b45309" />}
-        style={{ marginTop: 24 }}
-        noBody
-      >
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Produit</th>
-                <th>Partenaire</th>
-                <th>Date d'échéance</th>
-                <th>Statut renouvellement</th>
-                <th style={{ width: 180 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {renouvellementsProches.map((r) => (
-                <tr key={`${r.genre}-${r.id}`}>
-                  <td>
-                    <strong>{r.nom}</strong>
-                    <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
-                  </td>
-                  <td>
-                    <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
-                  </td>
-                  <td>{r.partenaireNom}</td>
-                  <td className="muted"><EcheanceDate date={r.dateFin} /></td>
-                  <td>{statutRenouvellement(r)}</td>
-                  <td>
-                    <button
-                      className="btn btn-primary"
-                      style={{ padding: "7px 12px" }}
-                      disabled={!!r.renouvellementEnCoursDepuis}
-                      onClick={() =>
-                        r.genre === "incendie"
-                          ? relancerRenouvellementIncendie(r.id)
-                          : relancerRenouvellementGenerique(r.id)
-                      }
-                      title={
-                        r.genre === "incendie"
-                          ? "Envoyer un SMS invitant à renouveler avec une nouvelle réf.facture"
-                          : "Envoyer un SMS avec lien de paiement pour le renouvellement"
-                      }
-                    >
-                      <Send size={14} /> Relance
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {renouvellementsProches.length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
 
       <Card
         title={`${total} souscriptions`}

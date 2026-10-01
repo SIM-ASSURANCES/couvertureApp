@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2, Eye, X, FileSpreadsheet, Bell, Send, Camera, RefreshCcw } from "lucide-react";
+import { Download, Trash2, Eye, X, FileSpreadsheet, Send, Camera, RefreshCcw } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -44,12 +44,6 @@ export default function ClientsAccident() {
   );
   const { data: partenaires } = useFetch<Partenaire[]>("/partenaires");
 
-  const alerteParams = new URLSearchParams(params);
-  alerteParams.set("renouvellementProche", "1");
-  const { data: renouvellementsProches, reload: reloadAlertes } = useFetch<ClientAccident[]>(
-    `/souscriptions/accident?${alerteParams.toString()}`
-  );
-
   function notify(m: string) {
     setToast(m);
     setTimeout(() => setToast(""), 3000);
@@ -70,7 +64,6 @@ export default function ClientsAccident() {
     try {
       await api.post(`/souscriptions/accident/${id}/relance-renouvellement`, {});
       notify("SMS de renouvellement envoyé ✓");
-      reloadAlertes();
       reload();
     } catch (e) {
       notify((e as Error).message);
@@ -91,7 +84,6 @@ export default function ClientsAccident() {
       if (r.statut === "confirme") notify("Paiement confirmé ✓");
       else if (r.statut === "echoue") notify("Paiement échoué côté Wave.");
       else notify("Toujours en attente — paiement non abouti chez Wave.");
-      reloadAlertes();
       reload();
     } catch (e) {
       notify((e as Error).message);
@@ -135,65 +127,6 @@ export default function ClientsAccident() {
           </>
         }
       />
-
-      <Card
-        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
-        extra={<Bell size={18} color="#b45309" />}
-        style={{ marginTop: 24 }}
-        noBody
-      >
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Partenaire</th>
-                <th>Date d'échéance</th>
-                <th>Statut renouvellement</th>
-                <th style={{ width: 180 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(renouvellementsProches ?? []).map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <strong>{c.prenom} {c.nom}</strong>
-                    <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
-                  </td>
-                  <td>{c.partenaireResponsable || c.partenaireNom}</td>
-                  <td className="muted"><EcheanceDate date={c.dateFin} /></td>
-                  <td>{statutRenouvellement(c)}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: "7px 12px" }}
-                        disabled={!!c.renouvellementEnCoursDepuis}
-                        onClick={() => relancerRenouvellement(c.id)}
-                        title="Envoyer un SMS avec lien de paiement pour le renouvellement"
-                      >
-                        <Send size={14} /> Relance
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: "7px 10px" }}
-                        disabled={verifId === c.id}
-                        onClick={() => verifier(c.id)}
-                        title="Vérifier le paiement Wave"
-                      >
-                        <RefreshCcw size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={5}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
 
       <Card
         title={data ? `${data.length} souscriptions` : "Souscriptions"}

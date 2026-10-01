@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FileSpreadsheet, Trash2, Bell, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
+import { Download, FileSpreadsheet, Trash2, Send, Camera, Eye, X, Search, RefreshCcw } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge, EcheanceDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
@@ -55,9 +55,6 @@ export default function AssurancesAccidentsClients() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
   const { data, loading, error, reload } = useFetch<SouscriptionAssurancesAccidents[]>("/assurances-accidents/souscriptions");
-  const { data: renouvellementsProches, reload: reloadAlertes } = useFetch<SouscriptionAssurancesAccidents[]>(
-    "/assurances-accidents/souscriptions?renouvellementProche=1"
-  );
   const [toast, setToast] = useState("");
   const [photoFor, setPhotoFor] = useState<SouscriptionAssurancesAccidents | null>(null);
   const [detailFor, setDetailFor] = useState<SouscriptionAssurancesAccidents | null>(null);
@@ -96,7 +93,6 @@ export default function AssurancesAccidentsClients() {
     try {
       await api.post(`/assurances-branche/souscriptions/${id}/relance-renouvellement`, {});
       notify("SMS de renouvellement envoyé ✓");
-      reloadAlertes();
       reload();
     } catch (err) {
       notify((err as Error).message);
@@ -118,7 +114,6 @@ export default function AssurancesAccidentsClients() {
       } else if (r.statut === "paye") notify("Paiement confirmé ✓");
       else if (r.statut === "echoue") notify("Paiement échoué côté Wave.");
       else notify("Toujours en attente — paiement non abouti chez Wave.");
-      reloadAlertes();
       reload();
     } catch (err) {
       notify((err as Error).message);
@@ -162,67 +157,6 @@ export default function AssurancesAccidentsClients() {
           </>
         }
       />
-
-      <Card
-        title="Renouvellements à venir ou en retard (échéance ≤ 5 jours)"
-        extra={<Bell size={18} color="#b45309" />}
-        style={{ marginTop: 24 }}
-        noBody
-      >
-        <div className="table-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Client</th>
-                <th>Produit</th>
-                <th>Partenaire</th>
-                <th>Date d'échéance</th>
-                <th>Statut renouvellement</th>
-                <th style={{ width: 180 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(renouvellementsProches ?? []).map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <strong>{c.prenom} {c.nom}</strong>
-                    <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
-                  </td>
-                  <td>{c.produit.libelle}</td>
-                  <td>{c.partenaireResponsable || c.partenaireNom}</td>
-                  <td className="muted"><EcheanceDate date={c.dateFin} /></td>
-                  <td>{statutRenouvellement(c)}</td>
-                  <td>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: "7px 12px" }}
-                        disabled={!!c.renouvellementEnCoursDepuis}
-                        onClick={() => relancerRenouvellement(c.id)}
-                        title="Envoyer un SMS avec lien de paiement pour le renouvellement"
-                      >
-                        <Send size={14} /> Relance
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: "7px 10px" }}
-                        disabled={verifId === c.id}
-                        onClick={() => verifier(c.id)}
-                        title="Vérifier le paiement Wave"
-                      >
-                        <RefreshCcw size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {(renouvellementsProches ?? []).length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Aucun renouvellement à venir ou en retard.</div></td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
 
       <Card
         title={data ? `${donneesFiltrees.length} contrats` : "Contrats"}
