@@ -283,6 +283,32 @@ model AgentDistribution {
   cotations                  Cotation[]
 }
 
+/**
+ * Identité client unique, branche Assurances Accidents/Dommages (et
+ * historiques Incendie/Accident) — un même client (même numéro de téléphone)
+ * peut cumuler plusieurs polices sur des produits différents (ex. RelaxMoto
+ * ET SecurHome), toutes rattachées à CE SEUL Client. Le téléphone reste la
+ * clé d'identification (normalisé via services/clients.ts::normaliserTelephone
+ * — indépendant du "+225" ou non saisi par le client), jamais le nom (saisi
+ * différemment d'une souscription à l'autre). `identifiant` ("CL-XXXXXXXX")
+ * est dérivé de `id` une fois celui-ci connu (même ruse que
+ * notify.ts::numeroPoliceIncendieSynthetique) — stable, unique par
+ * construction, pas de compteur global à synchroniser entre réplicas.
+ */
+model Client {
+  id          String   @id @default(uuid())
+  identifiant String   @unique
+  telephone   String   @unique
+  nom         String?
+  prenom      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  souscriptions         Souscription[]
+  souscriptionsIncendie SouscriptionIncendie[] @relation("ClientSouscriptionsIncendie")
+  souscriptionsAccident SouscriptionAccident[] @relation("ClientSouscriptionsAccident")
+}
+
 model SouscriptionIncendie {
   id                  String             @id @default(uuid())
   partenaireId        String
@@ -291,6 +317,13 @@ model SouscriptionIncendie {
   // distribution (plutôt que du QR du partenaire lui-même).
   agentDistributionId String?
   agentDistribution   AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
+  // Identité client unique (un même client peut cumuler plusieurs polices,
+  // historiques ou génériques, sur des produits différents) — voir Client.
+  // Nullable : rempli à la création pour toute nouvelle ligne, et par un
+  // rattrapage rétroactif au démarrage pour les lignes déjà existantes (voir
+  // seed.ts::rattacherClientsRetroactivement).
+  clientId            String?
+  client              Client?            @relation("ClientSouscriptionsIncendie", fields: [clientId], references: [id], onDelete: SetNull)
   telephone           String
   nom                 String?
   prenom              String?
@@ -361,6 +394,9 @@ model SouscriptionAccident {
   // distribution (plutôt que du QR du partenaire lui-même).
   agentDistributionId  String?
   agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
+  // Voir SouscriptionIncendie.clientId.
+  clientId             String?
+  client               Client?            @relation("ClientSouscriptionsAccident", fields: [clientId], references: [id], onDelete: SetNull)
   telephone            String
   nom                  String
   prenom               String
@@ -638,6 +674,9 @@ model Souscription {
   // que SouscriptionIncendie/SouscriptionAccident.agentDistributionId.
   agentDistributionId  String?
   agentDistribution    AgentDistribution? @relation(fields: [agentDistributionId], references: [id], onDelete: SetNull)
+  // Voir SouscriptionIncendie.clientId.
+  clientId             String?
+  client               Client?            @relation(fields: [clientId], references: [id], onDelete: SetNull)
   telephone            String
   nom                  String?
   prenom               String?

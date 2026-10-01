@@ -28,6 +28,7 @@ import { renderCartePngGenerique, CarteIndisponibleError } from "../services/car
 import { emettreWebhook } from "../services/partnerWebhook.js";
 import { analyserSouscriptionApiIA } from "../services/fraudeIA.js";
 import { openapiPartnerV1 } from "../openapi/partnerV1.js";
+import { resoudreOuCreerClient } from "../services/clients.js";
 
 // =====================================================================
 // API partenaire — routeur `/api/partner/v1`.
@@ -400,10 +401,12 @@ partnerApiRouter.post(
           }
         : undefined;
 
+    const client = await resoudreOuCreerClient(data.prospect.telephone, data.prospect.nom, data.prospect.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: produit.id,
         partenaireId,
+        clientId: client.id,
         nom: data.prospect.nom,
         prenom: data.prospect.prenom,
         telephone: data.prospect.telephone,

@@ -70,6 +70,11 @@ export interface SouscriptionBranche {
   niveauRisqueIA?: string | null;
   analyseIA?: unknown;
   analyseIAAt?: string | null;
+  // Identité client unique ("CL-XXXXXXXX", voir services/clients.ts) — un même
+  // client peut avoir plusieurs polices (produits différents) sous le même
+  // identifiant. Absent pour une poignée de lignes historiques pas encore
+  // rattachées (voir seed.ts::rattacherClientsRetroactivement).
+  clientIdentifiant?: string | null;
 }
 
 export interface Filtres {
@@ -205,6 +210,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, lim
     include: {
       partenaire: { select: { nomCommerce: true, nomResponsable: true } },
       produit: { select: { code: true, libelle: true, sousBranche: true } },
+      client: { select: { identifiant: true } },
     },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
     take: limit,
@@ -214,6 +220,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, lim
     sousBranche: r.produit.sousBranche as SousBranche,
     produit: r.produit.code,
     produitLibelle: r.produit.libelle,
+    clientIdentifiant: r.client?.identifiant ?? null,
     telephone: r.telephone,
     nom: r.nom ?? "",
     prenom: r.prenom ?? "",
@@ -252,7 +259,7 @@ export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promi
         ? { dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
         : {}),
     },
-    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
+    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, client: { select: { identifiant: true } } },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
     take: limit,
   });
@@ -261,6 +268,7 @@ export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promi
     sousBranche: "ASSURANCES_DOMMAGES",
     produit: CODE_INCENDIE_HISTORIQUE,
     produitLibelle: "Incendie Habitation en Inclusion",
+    clientIdentifiant: r.client?.identifiant ?? null,
     telephone: r.telephone,
     nom: r.nom ?? "",
     prenom: r.prenom ?? "",
@@ -293,7 +301,7 @@ export async function fetchAccidentHistorique(f: Filtres, limit?: number): Promi
       partenaireId: f.partenaireId,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
     },
-    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
+    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, client: { select: { identifiant: true } } },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
@@ -302,6 +310,7 @@ export async function fetchAccidentHistorique(f: Filtres, limit?: number): Promi
     sousBranche: "ASSURANCES_ACCIDENTS",
     produit: CODE_ACCIDENT_HISTORIQUE,
     produitLibelle: "Accidents (historique)",
+    clientIdentifiant: r.client?.identifiant ?? null,
     telephone: r.telephone,
     nom: r.nom,
     prenom: r.prenom,

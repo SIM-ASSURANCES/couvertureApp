@@ -132,6 +132,7 @@ assurancesAccidentsRouter.get(
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
+        client: { select: { identifiant: true } },
       },
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
@@ -142,6 +143,8 @@ assurancesAccidentsRouter.get(
         espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
         partenaireResponsable: r.partenaire.nomResponsable,
+        clientIdentifiant: r.client?.identifiant ?? null,
+        client: undefined,
       }))
     );
   })

@@ -38,6 +38,7 @@ import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDom
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { resoudreOuCreerClient } from "../services/clients.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -518,10 +519,12 @@ publicRouter.post(
     // enverrait pas encore.
     const token = newFormulaireToken();
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionIncendie.create({
       data: {
         partenaireId,
         agentDistributionId,
+        clientId: client.id,
         telephone: data.telephone,
         nom: data.nom || null,
         prenom: data.prenom || null,
@@ -782,10 +785,12 @@ publicRouter.post(
       }
     }
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionAccident.create({
       data: {
         partenaireId: resolu.partenaireId,
         agentDistributionId: resolu.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -1362,11 +1367,13 @@ publicRouter.post(
       });
     }
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
         agentDistributionId: qr.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -1527,11 +1534,13 @@ publicRouter.post(
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
         agentDistributionId: qr.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -1658,11 +1667,13 @@ publicRouter.post(
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
         agentDistributionId: qr.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -1766,11 +1777,13 @@ publicRouter.post(
     const nombrePeriodes = data.nombrePeriodes ?? 1;
     const montantTotal = tarif.prime * nombrePeriodes;
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
         agentDistributionId: qr.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -1971,11 +1984,13 @@ publicRouter.post(
       : 0;
     const montantTotal = tarif.prime + (optionDeces?.prime ?? 0) + surchargeDeplacement;
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: qr.partenaireId,
         agentDistributionId: qr.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,
@@ -2219,11 +2234,13 @@ publicRouter.post(
             ageMoto: entrees.ageMoto,
           };
 
+    const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
         produitId: prod.id,
         partenaireId: cotation.partenaireId,
         agentDistributionId: cotation.agentDistributionId,
+        clientId: client.id,
         nom: data.nom,
         prenom: data.prenom,
         telephone: data.telephone,

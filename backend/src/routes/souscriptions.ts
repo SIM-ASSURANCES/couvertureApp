@@ -451,6 +451,7 @@ souscriptionsRouter.get(
       },
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+        client: { select: { identifiant: true } },
       },
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
@@ -462,6 +463,8 @@ souscriptionsRouter.get(
         partenaireNom: r.partenaire.nomCommerce,
         partenaireResponsable: r.partenaire.nomResponsable,
         partenaireLocalisation: r.partenaire.localisation,
+        clientIdentifiant: r.client?.identifiant ?? null,
+        client: undefined,
       }))
     );
   })

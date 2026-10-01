@@ -65,6 +65,9 @@ export interface SouscriptionBranche {
   renouveleAt?: string | null;
   cycleFacturation?: string | null;
   espaceClientActif?: boolean;
+  // Identifiant client unique ("CL-XXXXXXXX") — un même client peut avoir
+  // plusieurs polices (produits différents) sous ce même identifiant.
+  clientIdentifiant?: string | null;
 }
 
 // --- Branche RelaxMoto / RelaxAuto (abonnement à paiement échelonné) ---
@@ -155,6 +158,7 @@ export interface ClientIncendie {
   renouveleAt?: string | null;
   relanceRenouvellementCount?: number;
   espaceClientActif?: boolean;
+  clientIdentifiant?: string | null;
 }
 
 export interface ClientAccident {
@@ -182,6 +186,7 @@ export interface ClientAccident {
   renouveleAt?: string | null;
   relanceRenouvellementCount?: number;
   espaceClientActif?: boolean;
+  clientIdentifiant?: string | null;
 }
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent ---

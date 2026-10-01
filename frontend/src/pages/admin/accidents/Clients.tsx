@@ -13,6 +13,10 @@ import ActionsDocumentsClient from "../../../components/ActionsDocumentsClient";
 interface SouscriptionAssurancesAccidents {
   id: string;
   telephone: string;
+  // Identifiant client unique ("CL-XXXXXXXX") — un même client peut avoir
+  // plusieurs polices (produits différents) sous ce même identifiant. Peut
+  // être absent pour une poignée de lignes historiques pas encore rattachées.
+  clientIdentifiant?: string | null;
   nom?: string | null;
   prenom?: string | null;
   montantPrime: number;
@@ -66,7 +70,7 @@ export default function AssurancesAccidentsClients() {
     const q = recherche.trim().toLowerCase();
     if (!q) return data ?? [];
     return (data ?? []).filter((c) =>
-      [c.nom, c.prenom, c.telephone, c.numeroPolice, c.partenaireNom, c.produit.libelle]
+      [c.nom, c.prenom, c.telephone, c.clientIdentifiant, c.numeroPolice, c.partenaireNom, c.produit.libelle]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     );
@@ -230,7 +234,7 @@ export default function AssurancesAccidentsClients() {
             <input
               className="input"
               style={{ width: 260, height: 40, paddingLeft: 34 }}
-              placeholder="Rechercher (nom, téléphone, N° police...)"
+              placeholder="Rechercher (nom, téléphone, identifiant, N° police...)"
               value={recherche}
               onChange={(e) => setRecherche(e.target.value)}
             />
@@ -244,8 +248,8 @@ export default function AssurancesAccidentsClients() {
             <table className="tbl">
               <thead>
                 <tr>
-                  <th>Client</th>
                   <th>Identifiant</th>
+                  <th>Client</th>
                   <th>Produit</th>
                   <th>Partenaire</th>
                   <th>Prime</th>
@@ -260,10 +264,11 @@ export default function AssurancesAccidentsClients() {
               <tbody>
                 {donneesFiltrees.map((c) => (
                   <tr key={c.id}>
+                    <td className="muted" title="Identifiant client unique — commun à toutes les polices de ce client">{c.clientIdentifiant ?? "—"}</td>
                     <td>
                       <strong>{c.prenom} {c.nom}</strong>
+                      <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
-                    <td className="muted" title="Identifiant de connexion à l'espace client">{c.telephone}</td>
                     <td>{c.produit.libelle}</td>
                     <td>{c.partenaireResponsable || c.partenaireNom}</td>
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
@@ -331,8 +336,9 @@ export default function AssurancesAccidentsClients() {
             </div>
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
-                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted" style={{ width: "42%" }}>Identifiant client</td><td><strong>{detailFor.clientIdentifiant ?? "—"}</strong></td></tr>
+                <tr><td className="muted">Nom / Prénom</td><td>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Produit</td><td>{detailFor.produit.libelle}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>{detailFor.partenaireResponsable || detailFor.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailFor.montantPrime)}</strong></td></tr>

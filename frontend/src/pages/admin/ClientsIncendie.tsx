@@ -394,13 +394,14 @@ export default function ClientsIncendie() {
                 {dataFiltree.map((c) => (
                   <tr key={`inc-${c.id}`}>
                     <td><Badge kind="warning"><Flame size={12} /> Incendie</Badge></td>
-                    <td><strong>{c.telephone}</strong></td>
+                    <td className="muted" title="Identifiant client unique — commun à toutes les polices de ce client">{c.clientIdentifiant ?? "—"}</td>
                     <td>
                       {c.nom || c.prenom ? (
                         `${c.prenom ?? ""} ${c.nom ?? ""}`.trim()
                       ) : (
                         <span className="muted">Non renseigné</span>
                       )}
+                      <div className="muted" style={{ fontSize: 12 }}>{c.telephone}</div>
                     </td>
                     <td>
                       <strong>{c.partenaireResponsable || c.partenaireNom}</strong>
@@ -505,13 +506,14 @@ export default function ClientsIncendie() {
                 {generiqueFiltre.map((r) => (
                   <tr key={`gen-${r.id}`}>
                     <td><Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge></td>
-                    <td><strong>{r.telephone}</strong></td>
+                    <td className="muted" title="Identifiant client unique — commun à toutes les polices de ce client">{r.clientIdentifiant ?? "—"}</td>
                     <td>
                       {r.nom || r.prenom ? (
                         `${r.prenom ?? ""} ${r.nom ?? ""}`.trim()
                       ) : (
                         <span className="muted">Non renseigné</span>
                       )}
+                      <div className="muted" style={{ fontSize: 12 }}>{r.telephone}</div>
                     </td>
                     <td><strong>{r.partenaireResponsable || r.partenaireNom}</strong></td>
                     <td><strong>{fcfa(r.montantPrime)}</strong></td>
@@ -575,8 +577,9 @@ export default function ClientsIncendie() {
             </div>
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
-                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailFor.telephone}</td></tr>
+                <tr><td className="muted" style={{ width: "42%" }}>Identifiant client</td><td><strong>{detailFor.clientIdentifiant ?? "—"}</strong></td></tr>
+                <tr><td className="muted">Nom / Prénom</td><td>{[detailFor.prenom, detailFor.nom].filter(Boolean).join(" ") || "—"}</td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailFor.telephone}</td></tr>
                 <tr><td className="muted">Email</td><td>{detailFor.email || "—"}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>
                   {detailFor.partenaireResponsable || detailFor.partenaireNom}
@@ -650,8 +653,9 @@ export default function ClientsIncendie() {
             </div>
             <table className="tbl" style={{ width: "100%" }}>
               <tbody>
-                <tr><td className="muted" style={{ width: "42%" }}>Nom / Prénom</td><td><strong>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</strong></td></tr>
-                <tr><td className="muted">Identifiant (téléphone)</td><td>{detailGenerique.telephone}</td></tr>
+                <tr><td className="muted" style={{ width: "42%" }}>Identifiant client</td><td><strong>{detailGenerique.clientIdentifiant ?? "—"}</strong></td></tr>
+                <tr><td className="muted">Nom / Prénom</td><td>{[detailGenerique.prenom, detailGenerique.nom].filter(Boolean).join(" ") || "—"}</td></tr>
+                <tr><td className="muted">Téléphone</td><td>{detailGenerique.telephone}</td></tr>
                 <tr><td className="muted">Partenaire</td><td>{detailGenerique.partenaireResponsable || detailGenerique.partenaireNom}</td></tr>
                 <tr><td className="muted">Prime</td><td><strong>{fcfa(detailGenerique.montantPrime)}</strong></td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailGenerique.statut)}</td></tr>

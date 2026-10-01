@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { formuleRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./services/relaxAccidentsGenerale.js";
+import { resoudreOuCreerClient } from "./services/clients.js";
 
 const prisma = new PrismaClient();
 
@@ -843,6 +844,54 @@ async function seedPartenaireSouscriptionDirecte() {
   console.log(`[seed] Partenaire "Souscription directe" prêt (QR ${qr.token}).`);
 }
 
+/**
+ * Rattache rétroactivement à un Client (modèle introduit le 2026-10-01, voir
+ * services/clients.ts) toute police déjà existante créée avant l'introduction
+ * de `clientId` — nécessaire une seule fois par base : dès qu'une police a
+ * son `clientId`, elle sort du filtre `clientId: null` et n'est plus
+ * retouchée aux démarrages suivants. Regroupe d'abord par téléphone BRUT
+ * (un par table) puis laisse resoudreOuCreerClient fusionner les variantes de
+ * format (+225 ou non) d'un même client sur son téléphone normalisé — un même
+ * client peut ainsi récupérer des polices Incendie, Accident et génériques
+ * sous un seul `Client`, même si elles ont été saisies avec des formats de
+ * téléphone différents.
+ */
+async function rattacherClientsRetroactivement() {
+  const [gen, inc, acc] = await Promise.all([
+    prisma.souscription.findMany({ where: { clientId: null }, select: { telephone: true, nom: true, prenom: true }, distinct: ["telephone"] }),
+    prisma.souscriptionIncendie.findMany({ where: { clientId: null }, select: { telephone: true, nom: true, prenom: true }, distinct: ["telephone"] }),
+    prisma.souscriptionAccident.findMany({ where: { clientId: null }, select: { telephone: true, nom: true, prenom: true }, distinct: ["telephone"] }),
+  ]);
+
+  const parTelephone = new Map<string, { nom: string | null; prenom: string | null }>();
+  for (const row of [...gen, ...inc, ...acc]) {
+    if (!row.telephone || parTelephone.has(row.telephone)) continue;
+    parTelephone.set(row.telephone, { nom: row.nom ?? null, prenom: row.prenom ?? null });
+  }
+  if (parTelephone.size === 0) return;
+
+  let totalPolices = 0;
+  for (const [telephone, info] of parTelephone) {
+    let client: { id: string };
+    try {
+      client = await resoudreOuCreerClient(telephone, info.nom, info.prenom);
+    } catch {
+      // Téléphone vide/invalide (quelques lignes historiques) — ignoré,
+      // reste sans clientId plutôt que de faire échouer tout le rattrapage.
+      continue;
+    }
+    const [a, b, c] = await Promise.all([
+      prisma.souscription.updateMany({ where: { clientId: null, telephone }, data: { clientId: client.id } }),
+      prisma.souscriptionIncendie.updateMany({ where: { clientId: null, telephone }, data: { clientId: client.id } }),
+      prisma.souscriptionAccident.updateMany({ where: { clientId: null, telephone }, data: { clientId: client.id } }),
+    ]);
+    totalPolices += a.count + b.count + c.count;
+  }
+  if (totalPolices > 0) {
+    console.log(`[seed] ${parTelephone.size} client(s) rattaché(s) rétroactivement (${totalPolices} police(s) au total).`);
+  }
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
@@ -855,6 +904,7 @@ async function main() {
   await seedTarificationImf();
   await corrigerCommissionsImf();
   await rattacherHistoriqueImfVersRcmec();
+  await rattacherClientsRetroactivement();
 }
 
 main()
