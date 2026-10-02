@@ -25,10 +25,13 @@ function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel", nombrePeriode
  * `donneesSpecifiques.cycle`, voir routes/public.ts), qui fixe la durée du
  * contrat ET celle de chaque renouvellement (le cycle initial ne change
  * jamais, comme pour un abonnement RelaxMoto/Auto). RelaxAccidents Frais
- * Médicaux Livreurs/MotoTaxis : 1 mois au lieu des 3 mois du produit grand
- * public dont il est cloné (demande explicite, 2026-09-17 — auparavant 2
- * mois) — s'applique aussi bien à la couverture initiale qu'à chaque
- * renouvellement.
+ * Médicaux (grand public) : 2 mois (demande explicite, 2026-10-01 —
+ * auparavant retombait sur le défaut 3 mois, jamais fixé explicitement).
+ * Sa version Livreurs/MotoTaxis reste à 1 mois (inchangé, demande distincte
+ * du 2026-09-17). Ne retouche jamais les contrats déjà confirmés : les deux
+ * mois ne s'appliquent qu'aux nouvelles souscriptions et à leurs
+ * renouvellements futurs, comme pour tous les ajustements de durée de ce
+ * fichier.
  */
 function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): number {
   if (produitCode === "relaxaccidents") {
@@ -36,6 +39,7 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
     if (cycle === "mensuel") return 1;
     if (cycle === "annuel") return 12;
   }
+  if (produitCode === "relaxaccidents_fraismedicaux") return 2;
   if (produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
   return 3;
 }
