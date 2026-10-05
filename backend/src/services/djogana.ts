@@ -8,13 +8,15 @@
  * validation du code — aucun webhook, la confirmation est synchrone (voir
  * routes /public/paiement-djogana/*).
  *
- * Sans DJOGANA_USERNAME/DJOGANA_PASSWORD (identifiants sandbox pas encore
- * fournis par la DGI/Peya Pay), toutes les fonctions tournent en mode stub :
- * compte toujours trouvé, OTP fixe "0000", paiement toujours accepté — pour
- * pouvoir développer/tester le parcours frontend en attendant les vrais
- * identifiants. Contrairement à WAVE_API_KEY, ce mode stub reste actif même
- * en production tant que les identifiants ne sont pas configurés : Djogana
- * est un moyen de paiement optionnel, pas le seul (Wave reste disponible).
+ * Sans DJOGANA_USERNAME/DJOGANA_PASSWORD, toutes les fonctions tournent en
+ * mode stub HORS PRODUCTION uniquement : compte toujours trouvé, OTP fixe
+ * "0000", paiement toujours accepté — pour pouvoir développer/tester le
+ * parcours frontend sans identifiants. En production (NODE_ENV=production),
+ * l'absence d'identifiants rend au contraire Peya pay INDISPONIBLE (voir
+ * modeStub/djoganaDisponible) : sinon une variable d'environnement perdue lors
+ * d'un redéploiement ouvrirait des polices gratuites à quiconque connaît le
+ * code public "0000" (audit sécurité 2026-10-05). Wave, lui, reste disponible
+ * — Peya pay est un moyen de paiement optionnel, pas le seul.
  */
 
 const DJOGANA_BASE_URL =
@@ -27,6 +29,36 @@ const DUREE_CACHE_TOKEN_MS = 20 * 60 * 1000;
 
 function djoganaConfigure(): boolean {
   return !!(process.env.DJOGANA_USERNAME && process.env.DJOGANA_PASSWORD);
+}
+
+export const MESSAGE_DJOGANA_INDISPONIBLE = "Peya pay est momentanément indisponible. Merci de payer avec Wave.";
+
+/** Erreur "service non utilisable" — distincte d'une panne de l'API Djogana (voir modeStub). */
+export class DjoganaIndisponibleError extends Error {
+  constructor() {
+    super(MESSAGE_DJOGANA_INDISPONIBLE);
+  }
+}
+
+/**
+ * Peya pay est-il réellement utilisable ? Vrai avec des identifiants
+ * configurés, ou hors production (mode stub de développement). Faux en
+ * production sans identifiants : le moyen de paiement est alors refusé côté
+ * serveur et masqué côté client (GET /public/moyens-paiement).
+ */
+export function djoganaDisponible(): boolean {
+  return djoganaConfigure() || process.env.NODE_ENV !== "production";
+}
+
+/**
+ * Point de décision UNIQUE du mode stub : `true` = stub de développement
+ * (jamais en production), `false` = vraie API. Lève DjoganaIndisponibleError
+ * en production sans identifiants au lieu de "réussir" silencieusement.
+ */
+function modeStub(): boolean {
+  if (djoganaConfigure()) return false;
+  if (!djoganaDisponible()) throw new DjoganaIndisponibleError();
+  return true;
 }
 
 type DjoganaStatus = { code?: string; message?: string };
@@ -131,7 +163,7 @@ type PayeurDjogana = { compte: string } | { compte: null; gsm: string; reponse: 
 /** API#2 — recherche du compte Djogana/Peya Pay associé à ce téléphone. */
 export async function rechercherPayeurDjogana(telephone: string): Promise<PayeurDjogana> {
   const gsm = numeroLocal(telephone);
-  if (!djoganaConfigure()) return { compte: gsm };
+  if (modeStub()) return { compte: gsm };
 
   let data: {
     items?: Array<{
@@ -159,7 +191,7 @@ export async function rechercherPayeurDjogana(telephone: string): Promise<Payeur
 
 /** API#3/#5 — envoi du code OTP par SMS au numéro donné. */
 export async function envoyerOtpDjogana(telephone: string): Promise<void> {
-  if (!djoganaConfigure()) return; // mode stub : voir validerOtpDjogana
+  if (modeStub()) return; // mode stub (hors production) : voir validerOtpDjogana
   const gsm = numeroLocal(telephone);
   await djoganaFetch("/wClients/code-partenaire", {
     data: {
@@ -182,7 +214,15 @@ export async function validerOtpDjogana(
   telephone: string,
   code: string
 ): Promise<{ valide: true } | { valide: false; message: string }> {
-  if (!djoganaConfigure()) {
+  // Ne lève jamais : ce type de retour est consommé tel quel par la route
+  // /paiement-djogana/confirmer, qui n'a pas de try/catch autour.
+  let stub: boolean;
+  try {
+    stub = modeStub();
+  } catch (e) {
+    return { valide: false, message: e instanceof Error ? e.message : MESSAGE_DJOGANA_INDISPONIBLE };
+  }
+  if (stub) {
     return code === "0000" ? { valide: true } : { valide: false, message: "Code incorrect ou expiré" };
   }
   try {
@@ -198,14 +238,21 @@ export async function validerOtpDjogana(
 /**
  * API#6 — débite directement le compte Djogana du client (déjà validé par
  * OTP) du montant donné, au profit du compte marchand. Sans identifiants
- * configurés, simule systématiquement un paiement réussi (mode stub).
+ * configurés, simule un paiement réussi (mode stub) HORS PRODUCTION
+ * seulement ; en production, refuse (jamais de police "payée" sans débit).
  */
 export async function creerPaiementDjogana(
   telephone: string,
   montant: number,
   reference: string
 ): Promise<{ reussi: boolean; transactionId?: string; message?: string }> {
-  if (!djoganaConfigure()) {
+  let stub: boolean;
+  try {
+    stub = modeStub();
+  } catch (e) {
+    return { reussi: false, message: e instanceof Error ? e.message : MESSAGE_DJOGANA_INDISPONIBLE };
+  }
+  if (stub) {
     return { reussi: true, transactionId: `DJOGANA-STUB-${reference.slice(0, 8)}` };
   }
 

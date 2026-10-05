@@ -1733,6 +1733,28 @@ export default function Souscription() {
   // Moyen de paiement choisi à l'écran de vérification — Wave (redirection,
   // historique) ou Djogana/Peya Pay (OTP, sans redirection).
   const [moyenPaiement, setMoyenPaiement] = useState<"wave" | "djogana">("wave");
+  // Peya pay n'est proposé que si le serveur le confirme (production avec
+  // identifiants configurés) — voir GET /public/moyens-paiement. Faux par
+  // défaut : tant que la réponse n'est pas arrivée (ou en cas d'échec), seul
+  // Wave est affiché, jamais un moyen que le serveur refuserait.
+  const [djoganaDispo, setDjoganaDispo] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    fetch(`${BASE}/public/moyens-paiement`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { djogana?: boolean } | null) => {
+        if (annule) return;
+        const dispo = !!d?.djogana;
+        setDjoganaDispo(dispo);
+        if (!dispo) setMoyenPaiement("wave");
+      })
+      .catch(() => {
+        /* serveur injoignable : Peya pay reste masqué */
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
   // Paiement Djogana en cours : référence de la ligne à payer (renseignée par
   // finaliserApresInitiate une fois l'OTP envoyé) et état de l'écran de saisie
   // du code — voir POST /public/paiement-djogana/*.
@@ -2915,7 +2937,10 @@ export default function Souscription() {
   }
 
   function telechargerContrat() {
-    if (!result || !qrInfo) return;
+    // `souscriptionId` est obligatoire pour TOUS les produits : le serveur
+    // relit le contrat en base et ignore ce qui est envoyé (audit sécurité
+    // 2026-10-05, voir contract.ts::telechargerContratPdf).
+    if (!result || !qrInfo || !result.souscriptionId) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit)) {
       if (!result.classe || result.cnpsDeclare == null) return;
       genererContratRelaxAccidentsGenerale({
@@ -2994,7 +3019,7 @@ export default function Souscription() {
         taxes: resultat.taxes,
         primeTTC: resultat.primeTTC,
         signature: result.signature ?? null,
-      });
+      }, result.souscriptionId);
       return;
     }
     if (qrInfo.produit === "securhome_dommages") {
@@ -3027,7 +3052,7 @@ export default function Souscription() {
         taxes: resultat.taxes,
         primeTTC: resultat.primeTTC,
         signature: result.signature ?? null,
-      });
+      }, result.souscriptionId);
       return;
     }
     if (qrInfo.produit === "securmoto") {
@@ -3051,7 +3076,7 @@ export default function Souscription() {
         taxes: resultat.taxes,
         primeTTC: resultat.primeTTC,
         signature: result.signature ?? null,
-      });
+      }, result.souscriptionId);
       return;
     }
     const contrat = {
@@ -4474,7 +4499,9 @@ export default function Souscription() {
                         // affiché au client change.
                         { value: "djogana" as const, label: "Peya pay", logo: "/logo_djogana.png" },
                       ]
-                    ).map((opt) => (
+                    )
+                      .filter((opt) => opt.value !== "djogana" || djoganaDispo)
+                      .map((opt) => (
                       <button
                         key={opt.value}
                         type="button"

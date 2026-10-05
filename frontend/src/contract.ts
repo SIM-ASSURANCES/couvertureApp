@@ -561,7 +561,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       taxes: r.taxes ?? 0,
       primeTTC: r.primeTTC ?? c.montant,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "securmoto") {
@@ -582,7 +582,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       taxes: r.taxes ?? 0,
       primeTTC: r.primeTTC ?? c.montant,
       signature: c.signature ?? null,
-    });
+    }, c.id);
     return;
   }
   if (c.type === "securpro_dommages") {
@@ -612,7 +612,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       taxes: r.taxes ?? 0,
       primeTTC: r.primeTTC ?? c.montant,
       signature: c.signature ?? null,
-    });
+    }, c.id);
   }
 }
 
@@ -625,12 +625,15 @@ export function contratImfDisponible(produitCode: string): boolean {
 
 /** Génère et télécharge le contrat PDF adapté au produit d'une souscription IMF. */
 export function genererContratImf(s: SouscriptionImf): void {
-  if (s.produitCode === "securpro") genererContratSecurpro(souscriptionImfToContratSecurpro(s));
-  else if (s.produitCode === "securstock") genererContratSecurstock(souscriptionImfToContratSecurstock(s));
-  else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s));
+  // `s.id` : id serveur, ou `offlineId` pour une saisie hors-ligne (le serveur
+  // accepte les deux et ne sert le contrat qu'une fois la souscription
+  // synchronisée — voir services/contratsVerifies.ts::chargerContratImfVerifie).
+  if (s.produitCode === "securpro") genererContratSecurpro(souscriptionImfToContratSecurpro(s), s.id);
+  else if (s.produitCode === "securstock") genererContratSecurstock(souscriptionImfToContratSecurstock(s), s.id);
+  else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s), s.id);
   else if (s.produitCode === "coupsdurs" || s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
-    genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s));
-  else if (s.produitCode === "deces") genererContratDeces(souscriptionImfToContratDeces(s));
+    genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s), s.id);
+  else if (s.produitCode === "deces") genererContratDeces(souscriptionImfToContratDeces(s), s.id);
 }
 
 const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
@@ -886,16 +889,17 @@ const sanitizeFilename = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
 
 /**
  * Demande le PDF au serveur (texte réel) et déclenche son téléchargement —
- * pas d'ouverture de fenêtre, pas d'impression. `souscriptionId`, quand
- * connu (audit sécurité 2026-09-11), permet au serveur de relire les
- * données réelles en base plutôt que de faire confiance à `data` — voir
- * routes/contrats.ts::chargerDonneesVerifieesServeur.
+ * pas d'ouverture de fenêtre, pas d'impression. `souscriptionId` est
+ * OBLIGATOIRE (audit sécurité 2026-10-05) : le serveur relit en base TOUTES
+ * les données affichées et ignore `data` — voir
+ * routes/contrats.ts::chargerDonneesVerifiees. `data` n'est plus qu'une forme
+ * à valider côté serveur ; le PDF ne reflète que ce qui existe en base.
  */
-async function telechargerContratPdf(type: ContratType, numeroPolice: string, data: unknown, souscriptionId?: string) {
+async function telechargerContratPdf(type: ContratType, numeroPolice: string, data: unknown, souscriptionId: string) {
   const res = await fetch(`${API_BASE}/contrats/pdf`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(souscriptionId ? { type, souscriptionId, data } : { type, data }),
+    body: JSON.stringify({ type, souscriptionId, data }),
   });
   if (!res.ok) {
     let message = "Erreur lors de la génération du contrat.";
@@ -918,67 +922,67 @@ async function telechargerContratPdf(type: ContratType, numeroPolice: string, da
   URL.revokeObjectURL(url);
 }
 
-export async function genererContratIncendie(c: ContratIncendie, souscriptionId?: string) {
+export async function genererContratIncendie(c: ContratIncendie, souscriptionId: string) {
   await telechargerContratPdf("incendie", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratAccident(c: ContratAccident, souscriptionId?: string) {
+export async function genererContratAccident(c: ContratAccident, souscriptionId: string) {
   await telechargerContratPdf("accident", c.numeroPolice, c, souscriptionId);
 }
 
 // RelaxAccidents Frais Médicaux reprend exactement le même contrat qu'Accident
 // (dont il remplace les souscriptions) — mêmes champs (voir ContratAccident).
-export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident, souscriptionId?: string) {
+export async function genererContratRelaxAccidentsFraisMedicaux(c: ContratAccident, souscriptionId: string) {
   await telechargerContratPdf("relaxaccidents_fraismedicaux", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxMotoAuto(c: ContratRelaxMotoAuto, souscriptionId?: string) {
+export async function genererContratRelaxMotoAuto(c: ContratRelaxMotoAuto, souscriptionId: string) {
   await telechargerContratPdf("relaxmoto_relaxauto", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxVoyage(c: ContratRelaxVoyage, souscriptionId?: string) {
+export async function genererContratRelaxVoyage(c: ContratRelaxVoyage, souscriptionId: string) {
   await telechargerContratPdf("relaxvoyage", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale, souscriptionId?: string) {
+export async function genererContratRelaxAccidentsGenerale(c: ContratRelaxAccidentsGenerale, souscriptionId: string) {
   await telechargerContratPdf("relaxaccidents_generale", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurpro(c: ContratSecurpro) {
-  await telechargerContratPdf("securpro", c.numeroPolice, c);
+export async function genererContratSecurpro(c: ContratSecurpro, souscriptionId: string) {
+  await telechargerContratPdf("securpro", c.numeroPolice, c, souscriptionId);
 }
 
 // SecurPro (Assurances Dommages, distribué via QR partenaire) réutilise le
 // même contrat que le SecurPro IMF (même moteur de calcul), sous un type
 // distinct pour ne pas mélanger les deux canaux de distribution.
-export async function genererContratSecurproDommages(c: ContratSecurpro) {
-  await telechargerContratPdf("securpro_dommages", c.numeroPolice, c);
+export async function genererContratSecurproDommages(c: ContratSecurpro, souscriptionId: string) {
+  await telechargerContratPdf("securpro_dommages", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurhome(c: ContratSecurhome) {
-  await telechargerContratPdf("securhome_dommages", c.numeroPolice, c);
+export async function genererContratSecurhome(c: ContratSecurhome, souscriptionId: string) {
+  await telechargerContratPdf("securhome_dommages", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurMoto(c: ContratSecurMoto) {
-  await telechargerContratPdf("securmoto", c.numeroPolice, c);
+export async function genererContratSecurMoto(c: ContratSecurMoto, souscriptionId: string) {
+  await telechargerContratPdf("securmoto", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie, souscriptionId?: string) {
+export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie, souscriptionId: string) {
   await telechargerContratPdf("securhome_incendie", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurecolte(c: ContratSecurecolte) {
-  await telechargerContratPdf("securecolte", c.numeroPolice, c);
+export async function genererContratSecurecolte(c: ContratSecurecolte, souscriptionId: string) {
+  await telechargerContratPdf("securecolte", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratSecurstock(c: ContratSecurstock) {
-  await telechargerContratPdf("securstock", c.numeroPolice, c);
+export async function genererContratSecurstock(c: ContratSecurstock, souscriptionId: string) {
+  await telechargerContratPdf("securstock", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratCoupsdurs(c: ContratCoupsdurs) {
-  await telechargerContratPdf("coupsdurs", c.numeroPolice, c);
+export async function genererContratCoupsdurs(c: ContratCoupsdurs, souscriptionId: string) {
+  await telechargerContratPdf("coupsdurs", c.numeroPolice, c, souscriptionId);
 }
 
-export async function genererContratDeces(c: ContratDeces) {
-  await telechargerContratPdf("deces", c.numeroPolice, c);
+export async function genererContratDeces(c: ContratDeces, souscriptionId: string) {
+  await telechargerContratPdf("deces", c.numeroPolice, c, souscriptionId);
 }

@@ -26,6 +26,8 @@ import {
   validerOtpDjogana,
   creerPaiementDjogana,
   numeroLocal,
+  djoganaDisponible,
+  MESSAGE_DJOGANA_INDISPONIBLE,
 } from "../services/djogana.js";
 import {
   parseFormuleRelaxAccidentsGenerale,
@@ -306,6 +308,33 @@ export async function construireChooserProduits(
 }
 
 export const publicRouter = Router();
+
+/**
+ * Garde central de Peya pay (Djogana) : refuse, AVANT toute création de
+ * souscription en attente, un paiement Peya pay quand ce moyen n'est pas
+ * réellement utilisable (production sans identifiants — sinon le mode stub,
+ * OTP fixe "0000", validerait un paiement jamais encaissé). Couvre d'un coup
+ * tous les handlers /initiate* actuels et futurs ainsi que les routes
+ * /paiement-djogana/*. Voir services/djogana.ts::djoganaDisponible.
+ */
+publicRouter.use((req, res, next) => {
+  const veutDjogana =
+    req.path.startsWith("/paiement-djogana/") ||
+    (req.method === "POST" && (req.body as { moyenPaiement?: unknown } | undefined)?.moyenPaiement === "djogana");
+  if (veutDjogana && !djoganaDisponible()) {
+    return res.status(503).json({ error: MESSAGE_DJOGANA_INDISPONIBLE });
+  }
+  next();
+});
+
+/**
+ * Moyens de paiement réellement proposables — le frontend masque Peya pay
+ * quand `djogana` est faux (production sans identifiants), au lieu de
+ * laisser le client choisir un moyen qui sera refusé.
+ */
+publicRouter.get("/moyens-paiement", (_req, res) => {
+  res.json({ wave: true, djogana: djoganaDisponible() });
+});
 
 /** Tarifications accident disponibles */
 publicRouter.get(

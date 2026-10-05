@@ -6,6 +6,12 @@ import { prisma } from "../db.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 import { numeroPoliceIncendieSynthetique } from "../services/notify.js";
 import {
+  chargerContratDommagesVerifie,
+  chargerContratImfVerifie,
+  type TypeDommages,
+  type TypeImf,
+} from "../services/contratsVerifies.js";
+import {
   renderContratIncendie,
   renderContratAccident,
   renderContratRelaxVoyage,
@@ -23,19 +29,16 @@ import {
 
 export const contratsRouter = Router();
 
-// Champ optionnel, ajouté (2026-09-11, audit sécurité) aux types de contrat
-// dont la souscription vit dans un modèle simple à relire intégralement
-// (SouscriptionIncendie, SouscriptionAccident, ou le modèle générique via
-// mapperSouscriptionGenerique) : quand il est fourni, TOUTES les données
-// affichées sur le contrat sont relues en base et remplacent entièrement
-// celles envoyées par l'appelant (voir chargerDonneesVerifieesServeur
-// ci-dessous) — sans ce champ (routes non encore migrées, ou produits IMF à
-// devis dont la relecture n'est pas encore implémentée : securpro,
-// securpro_dommages, securhome_dommages, securstock, securecolte,
-// coupsdurs, deces), le comportement historique (confiance dans `data`) est
-// inchangé. Objectif : empêcher la génération d'un PDF de contrat "officiel"
-// avec des montants/identités arbitraires quand l'id réel est connu.
-const souscriptionIdSchema = z.string().max(60).optional();
+// OBLIGATOIRE pour TOUS les types (audit sécurité 2026-10-05). Introduit
+// facultatif le 2026-09-11, ce champ ne protégeait en réalité que les
+// appelants honnêtes : l'endpoint est public, et il suffisait d'omettre
+// `souscriptionId` pour que le serveur fasse confiance à `data` et produise un
+// PDF "officiel" (logo, signature de la compagnie, n° de police) avec des
+// montants et une identité inventés — soit une fausse attestation d'assurance.
+// Désormais TOUTES les données affichées sont relues en base (voir
+// chargerDonneesVerifieesServeur) et remplacent ENTIÈREMENT celles de
+// l'appelant ; `data` n'est plus qu'une forme à valider, jamais une source.
+const souscriptionIdSchema = z.string().min(8).max(60);
 
 // Champs texte libres : bornés pour éviter qu'un payload abusif ne fasse
 // gonfler le temps de rendu Chromium (endpoint accessible sans authentification,
@@ -197,6 +200,7 @@ const relaxaccidentsGeneraleSchema = z.object({
 
 const securproSchema = z.object({
   type: z.literal("securpro"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -229,6 +233,7 @@ const securproSchema = z.object({
 // champs en plus propres à la distribution QR partenaire.
 const securproDommagesSchema = z.object({
   type: z.literal("securpro_dommages"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -260,6 +265,7 @@ const securproDommagesSchema = z.object({
 
 const securhomeDommagesSchema = z.object({
   type: z.literal("securhome_dommages"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     partenaire: texte(200),
@@ -289,6 +295,7 @@ const securhomeDommagesSchema = z.object({
 // securhomeDommagesSchema ci-dessus mais un seul bien (pas de lignes de garantie).
 const securMotoSchema = z.object({
   type: z.literal("securmoto"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     partenaire: texte(200),
@@ -331,6 +338,7 @@ const securhomeIncendieSchema = z.object({
 
 const securstockSchema = z.object({
   type: z.literal("securstock"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -359,6 +367,7 @@ const securstockSchema = z.object({
 
 const securecolteSchema = z.object({
   type: z.literal("securecolte"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -402,6 +411,7 @@ const santeCoupsdursSchema = z.object({
 
 const coupsdursSchema = z.object({
   type: z.literal("coupsdurs"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -444,6 +454,7 @@ const coupsdursSchema = z.object({
 
 const decesSchema = z.object({
   type: z.literal("deces"),
+  souscriptionId: souscriptionIdSchema,
   data: z.object({
     numeroPolice: texte(60),
     intermediaire: texte(200),
@@ -688,24 +699,61 @@ async function chargerDonneesVerifieesServeur(
   };
 }
 
+type TypeContrat = z.infer<typeof bodySchema>["type"];
+
+/**
+ * Point d'entrée UNIQUE de la relecture serveur, pour les 15 types : il ne
+ * doit exister aucun type dont les données puissent venir de l'appelant.
+ * Ajouter un type de contrat sans l'ajouter ici est une erreur de compilation
+ * (le `default` ne reçoit que les types déjà traités par
+ * chargerDonneesVerifieesServeur).
+ */
+async function chargerDonneesVerifiees(type: TypeContrat, souscriptionId: string): Promise<object | null> {
+  switch (type) {
+    case "securpro_dommages":
+    case "securhome_dommages":
+    case "securmoto":
+      return chargerContratDommagesVerifie(type satisfies TypeDommages, souscriptionId);
+    case "securpro":
+    case "securstock":
+    case "securecolte":
+    case "coupsdurs":
+    case "deces":
+      return chargerContratImfVerifie(type satisfies TypeImf, souscriptionId);
+    default:
+      return chargerDonneesVerifieesServeur(type, souscriptionId);
+  }
+}
+
+/** Remplace INTÉGRALEMENT `data` : aucune clé envoyée par l'appelant ne survit (un `Object.assign` simple laisserait passer toute clé que la relecture ne renseigne pas). */
+function remplacerParDonneesVerifiees(data: object, verite: object): void {
+  const cible = data as Record<string, unknown>;
+  for (const cle of Object.keys(cible)) delete cible[cle];
+  Object.assign(cible, verite);
+}
+
 /** Génération PDF des contrats — rendu serveur (texte réel, pas une image). */
 contratsRouter.post(
   "/pdf",
   asyncHandler(async (req, res) => {
+    // Clients d'avant le 2026-10-05 (onglet resté ouvert, PWA en cache, APK
+    // non reconstruit) n'envoyaient pas `souscriptionId` pour les produits à
+    // devis calculé : message explicite plutôt qu'un "Données invalides" opaque.
+    if (typeof (req.body as { souscriptionId?: unknown } | undefined)?.souscriptionId !== "string") {
+      return res.status(400).json({
+        error: "Mise à jour requise : rechargez ou mettez à jour l'application, puis réessayez de télécharger le contrat.",
+      });
+    }
     const body = bodySchema.parse(req.body);
 
-    // Audit sécurité 2026-09-11 : quand l'appelant fournit l'id réel de la
-    // souscription (cas normal — le frontend le connaît toujours), toutes
-    // les données affichées sont relues en base et remplacent celles
-    // envoyées, empêchant la génération d'un contrat avec des montants/une
-    // identité arbitraires. Types non couverts (produits IMF à devis
-    // calculé — voir commentaire sur souscriptionIdSchema) : comportement
-    // historique inchangé, `data` reste celle fournie par l'appelant.
-    if ("souscriptionId" in body && body.souscriptionId) {
-      const verite = await chargerDonneesVerifieesServeur(body.type, body.souscriptionId);
-      if (!verite) return res.status(404).json({ error: "Souscription introuvable ou non confirmée." });
-      Object.assign(body.data, verite);
+    // Audit sécurité 2026-10-05 : relecture en base SYSTÉMATIQUE, pour tous les
+    // types. Ce que le client envoie dans `data` est écarté en bloc — le PDF
+    // ne peut plus afficher que ce qui existe réellement en base.
+    const verite = await chargerDonneesVerifiees(body.type, body.souscriptionId);
+    if (!verite) {
+      return res.status(404).json({ error: "Souscription introuvable, non confirmée, ou pas encore synchronisée." });
     }
+    remplacerParDonneesVerifiees(body.data, verite);
 
     let html: string;
     switch (body.type) {

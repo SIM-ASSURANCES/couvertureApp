@@ -342,7 +342,7 @@ const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
 const dfr = (s?: string | null) => (s ? new Date(s).toLocaleDateString("fr-FR") : "—");
 const val = (s?: string | number | null) =>
   s === null || s === undefined || s === "" ? "—" : esc(String(s));
-const sansParentheses = (s: string) => s.replace(/\s*\([^)]*\)/g, "").trim();
+export const sansParentheses = (s: string) => s.replace(/\s*\([^)]*\)/g, "").trim();
 
 function pieceLabel(t?: string | null) {
   if (t === "cni") return "CNI";
@@ -351,21 +351,21 @@ function pieceLabel(t?: string | null) {
   return "";
 }
 
-const SECURPRO_CLASSE_LABELS: Record<number, string> = {
+export const SECURPRO_CLASSE_LABELS: Record<number, string> = {
   1: "Classe 1 — Bureau",
   2: "Classe 2 — Supérette / boutique de quartier, épicerie, salon de coiffure-beauté / couture, commerce de produits alimentaires",
   3: "Classe 3 — Pressing, pharmacie / dépôt, commerce d'électronique, petite fabrique alimentaire, buvette / restaurant, artisan métal, pâtisserie / boulangerie",
   4: "Classe 4 — Tissus / habillement, meubles, mèches & accessoires de coiffure, quincaillerie, jouets / plastique, librairie / papeterie, tapisserie / bois, cordonnier, réparation d'électroménager",
 };
 
-const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
+export const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {
   1: "Classe 1 — Produits très peu inflammables (métaux, verre, céramique, électroménager, plastiques rigides)",
   2: "Classe 2 — Produits à combustion lente (bois, papier, cartons, vêtements, chaussures, alimentaire sec)",
   3: "Classe 3 — Produits inflammables usuels (produits de beauté, ménagers, plastiques souples, électronique à batterie)",
   4: "Classe 4 — Produits fortement inflammables (parfums en gros, peintures, solvants, tissus denses, mousse)",
 };
 
-const SECURSTOCK_LOCALISATION_LABELS: Record<string, string> = {
+export const SECURSTOCK_LOCALISATION_LABELS: Record<string, string> = {
   hors_marche: "Hors d'un marché",
   abords_marche: "Abords d'un marché",
   marche_zone_industrielle: "Dans un marché / zone industrielle",
