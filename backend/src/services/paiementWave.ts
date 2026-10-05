@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, messageRelaxVoyageActive, sendSMS, dateDebutPremiereActivation } from "./notify.js";
 import { genererCarte, renouvelerCarte } from "./novelia.js";
+import { emettreFacture } from "./facture.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -60,8 +61,12 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
  *   MÊME souscription (police conservée) — voir POST
  *   /assurances-branche/souscriptions/:id/relance-renouvellement.
  * Idempotent dans tous les cas.
+ *
+ * Point d'entrée UNIQUE de toute confirmation (Wave, Peya pay, API partenaire,
+ * renouvellements) : la facture du paiement est émise ici, juste après — voir
+ * confirmerEcheance plus bas.
  */
-export async function confirmerEcheance(p: Paiement): Promise<void> {
+async function activerOuProlonger(p: Paiement): Promise<void> {
   if (p.statut === "paye") return;
 
   await prisma.paiement.update({
@@ -91,6 +96,12 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
     // exactement la même règle — voir novelia.ts::renouvelerCarte.
     const numeroPolice = numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);
     const creerNouvellePolice = numeroPolice !== s.numeroPolice;
+    // Période couverte par CE paiement, figée pour la facture : dateFin de la
+    // souscription sera encore écrasée au renouvellement suivant.
+    await prisma.paiement.update({
+      where: { id: p.id },
+      data: { periodeDebut: base, periodeFin: dateFin },
+    });
     await prisma.souscription.update({
       where: { id: s.id },
       data: {
@@ -195,6 +206,18 @@ export async function confirmerEcheance(p: Paiement): Promise<void> {
 
     await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
   }
+}
+
+/**
+ * Confirme le paiement d'une échéance (voir activerOuProlonger) puis émet sa
+ * facture. L'émission ne peut JAMAIS faire échouer la confirmation : le client
+ * a payé, la police est active. En cas d'incident, la facture est numérotée
+ * plus tard, à la première consultation (routes/factures.ts) ou au prochain
+ * démarrage (seed.ts).
+ */
+export async function confirmerEcheance(p: Paiement): Promise<void> {
+  await activerOuProlonger(p);
+  await emettreFacture(p.id).catch((err) => console.error("[facture] émission différée pour", p.id, err));
 }
 
 /**

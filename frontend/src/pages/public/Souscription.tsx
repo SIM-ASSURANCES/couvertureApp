@@ -13,6 +13,7 @@ import {
   genererContratSecurhomeIncendie,
 } from "../../contract";
 import { telechargerCarte } from "../../carte";
+import { telechargerFacture } from "../../facture";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
 import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
@@ -159,6 +160,26 @@ function isSecurMoto(p?: string): p is "securmoto" {
 // devis calculé), voir relaxAccidentsGenerale.ts pour le principe équivalent.
 function isSecurhomeIncendie(p?: string): p is "securhome" {
   return p === "securhome";
+}
+
+/**
+ * Produits du modèle générique (Souscription + lignes Paiement) : le paramètre
+ * `paid` de l'URL de retour y est un identifiant de PAIEMENT. Seul l'ancien
+ * Accident garde ses routes dédiées (là `paid` est l'id de la souscription) —
+ * il n'a pas de ligne Paiement, donc pas de facture.
+ */
+function produitSurModeleGenerique(p?: string): boolean {
+  return (
+    isRelax(p) ||
+    p === "relaxaccidents_fraismedicaux" ||
+    p === "relaxaccidents_fraismedicaux_livreurs" ||
+    p === "relaxvoyage" ||
+    p === "relaxaccidents" ||
+    p === "securpro_dommages" ||
+    p === "securhome_dommages" ||
+    p === "securhome" ||
+    p === "securmoto"
+  );
 }
 
 // Reprend la nomenclature du document TARIF SECURHOME+_SECURPRO.docx
@@ -1833,6 +1854,8 @@ export default function Souscription() {
   const [cartePhotosBusy, setCartePhotosBusy] = useState(false);
   const [carteBusy, setCarteBusy] = useState(false);
   const [carteErreur, setCarteErreur] = useState("");
+  const [factureBusy, setFactureBusy] = useState(false);
+  const [factureErreur, setFactureErreur] = useState("");
 
   useEffect(() => {
     // Retour depuis Wave après paiement réussi
@@ -1842,16 +1865,7 @@ export default function Souscription() {
         // désormais RelaxAccidents Frais Médicaux/RelaxVoyage) partagent les
         // mêmes routes "echeances/:id/verify" + ":id/contrat" — seul l'ancien
         // Accident garde ses routes dédiées.
-        const generique =
-          isRelax(produitEffectif) ||
-          produitEffectif === "relaxaccidents_fraismedicaux" ||
-          produitEffectif === "relaxaccidents_fraismedicaux_livreurs" ||
-          produitEffectif === "relaxvoyage" ||
-          produitEffectif === "relaxaccidents" ||
-          produitEffectif === "securpro_dommages" ||
-          produitEffectif === "securhome_dommages" ||
-          produitEffectif === "securhome" ||
-          produitEffectif === "securmoto";
+        const generique = produitSurModeleGenerique(produitEffectif);
         const urlVerify = generique
           ? `${BASE}/public/souscriptions/${produitEffectif}/echeances/${paidId}/verify`
           : `${BASE}/public/souscriptions/accident/${paidId}/verify`;
@@ -3158,6 +3172,23 @@ export default function Souscription() {
       setCarteErreur(e instanceof Error ? e.message : "Erreur");
     } finally {
       setCartePhotosBusy(false);
+    }
+  }
+
+  // Facture du paiement qui vient d'aboutir : `paidId` désigne le paiement et
+  // `result.souscriptionId` sert de preuve d'accès (client sans session, valable
+  // 48 h — voir backend/src/routes/factures.ts). Passé ce délai, la facture reste
+  // disponible dans l'espace client.
+  async function telechargerFactureAchat() {
+    if (!paidId || !result?.souscriptionId) return;
+    setFactureBusy(true);
+    setFactureErreur("");
+    try {
+      await telechargerFacture(paidId, result.souscriptionId);
+    } catch (e) {
+      setFactureErreur(e instanceof Error ? e.message : "Erreur");
+    } finally {
+      setFactureBusy(false);
     }
   }
 
@@ -5324,6 +5355,34 @@ export default function Souscription() {
                     Vous recevrez sous peu un SMS avec votre lien de
                     complétion de formulaire.
                   </div>
+                </>
+              )}
+
+              {/* Facture du paiement, pour tous les produits du modèle générique. */}
+              {paidId && result?.souscriptionId && produitSurModeleGenerique(qrInfo?.produit) && (
+                <>
+                  <button
+                    onClick={telechargerFactureAchat}
+                    disabled={factureBusy}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#fff",
+                      color: "#004b9c",
+                      border: "1.5px solid #004b9c",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: factureBusy ? "default" : "pointer",
+                      marginTop: 12,
+                      opacity: factureBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {factureBusy ? "Génération…" : "🧾 Télécharger ma facture"}
+                  </button>
+                  {factureErreur && (
+                    <div style={{ color: "#dc2626", fontSize: 13, marginTop: 10 }}>{factureErreur}</div>
+                  )}
                 </>
               )}
             </div>

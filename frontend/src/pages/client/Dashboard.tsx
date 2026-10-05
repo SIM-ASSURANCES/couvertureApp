@@ -4,6 +4,7 @@ import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
 import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
 import ReseauSoins from "../../components/ReseauSoins";
+import ListeFactures from "../../components/ListeFactures";
 import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
 import { garantiesRelaxAccidentsGenerale, INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE, type Classe } from "../../relaxAccidentsGenerale";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
@@ -467,6 +468,10 @@ export default function ClientDashboard() {
               >
                 {telechargementContrat ? "Génération…" : "📄 Télécharger mon contrat (PDF)"}
               </button>
+              {/* Une facture par paiement confirmé (souscription + chaque
+                  renouvellement). Les anciens modèles Incendie/Accident n'ont
+                  pas de ligne de paiement : rien à lister pour eux. */}
+              {moi.produitType === "generique" && <ListeFactures souscriptionId={moi.id} onNotify={notify} />}
               {/* RelaxVoyage ne couvre qu'un trajet ponctuel (24h) : rien à
                   reconduire, une nouvelle couverture suppose un nouveau
                   voyage, donc une nouvelle souscription. */}

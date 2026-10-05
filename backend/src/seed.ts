@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { formuleRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./services/relaxAccidentsGenerale.js";
 import { resoudreOuCreerClient } from "./services/clients.js";
+import { emettreFacture } from "./services/facture.js";
 
 const prisma = new PrismaClient();
 
@@ -892,6 +893,34 @@ async function rattacherClientsRetroactivement() {
   }
 }
 
+/**
+ * Numérote les paiements confirmés AVANT l'introduction des factures (2026-10-06),
+ * du plus ancien au plus récent pour que la suite FAC-AAAA-NNNNNN suive
+ * l'ordre réel des encaissements. Idempotent : une fois numéroté, un paiement
+ * sort du filtre `numeroFacture: null` et n'est plus retouché aux démarrages
+ * suivants. Une erreur sur un paiement n'empêche pas les suivants — il sera
+ * numéroté à sa première consultation (routes/factures.ts).
+ */
+async function emettreFacturesRetroactivement() {
+  const aEmettre = await prisma.paiement.findMany({
+    where: { statut: "paye", numeroFacture: null },
+    orderBy: [{ datePaiement: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  if (aEmettre.length === 0) return;
+
+  let emises = 0;
+  for (const { id } of aEmettre) {
+    try {
+      await emettreFacture(id, { rattrapage: true });
+      emises++;
+    } catch (err) {
+      console.error("[seed] Facture rétroactive non émise pour le paiement", id, err);
+    }
+  }
+  console.log(`[seed] ${emises}/${aEmettre.length} facture(s) émise(s) rétroactivement.`);
+}
+
 async function main() {
   await seedSuperAdmin();
   await seedTarificationRelax();
@@ -905,6 +934,7 @@ async function main() {
   await corrigerCommissionsImf();
   await rattacherHistoriqueImfVersRcmec();
   await rattacherClientsRetroactivement();
+  await emettreFacturesRetroactivement();
 }
 
 main()

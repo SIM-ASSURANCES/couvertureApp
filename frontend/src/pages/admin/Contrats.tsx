@@ -17,6 +17,7 @@ import { exportExcel } from "../../xlsx";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import PhotosClientModal from "../../components/PhotosClientModal";
+import ListeFactures from "../../components/ListeFactures";
 
 // Produits ayant une carte virtuelle de prise en charge (en plus, pour ces
 // six, d'un contrat PDF distinct) — SecurHome+ et SecurPro Dommages n'en ont
@@ -501,6 +502,9 @@ export default function Contrats() {
                 produitType={detail.type === "incendie" ? "incendie" : detail.type === "accident" ? "accident" : "generique"}
                 referenceFichier={detail.numeroPolice}
               />
+
+              {/* Une facture par paiement confirmé ; vide (donc masqué) pour les anciens modèles Incendie/Accident. */}
+              <ListeFactures souscriptionId={detail.id} onNotify={(m) => alert(m)} />
 
               <button
                 className="btn btn-primary btn-block"

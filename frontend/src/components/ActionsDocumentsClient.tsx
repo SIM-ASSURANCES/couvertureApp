@@ -3,6 +3,7 @@ import { FileDown, IdCard } from "lucide-react";
 import { api } from "../api";
 import { telechargerCarte } from "../carte";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../contract";
+import ListeFactures from "./ListeFactures";
 
 // Produits assurant une personne — seuls ceux-là ont une carte de prise en
 // charge (mêmes codes que TYPES_AVEC_CARTE dans pages/admin/Contrats.tsx).
@@ -83,6 +84,8 @@ export default function ActionsDocumentsClient({
           </button>
         )}
       </div>
+      {/* Une facture par paiement confirmé (souscription + renouvellements). */}
+      <ListeFactures souscriptionId={souscriptionId} onNotify={onNotify} />
     </div>
   );
 }

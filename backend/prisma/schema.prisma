@@ -824,6 +824,14 @@ model Paiement {
   // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le
   // produit), sans reproduire la logique de première activation.
   estRenouvellement    Boolean        @default(false)
+  // Facture du paiement (services/facture.ts) : numéro séquentiel attribué à la
+  // confirmation (FAC-AAAA-NNNNNN), jamais réattribué. La période couverte est
+  // figée ICI car Souscription.dateFin est écrasée à chaque renouvellement —
+  // sans ces deux dates, la facture d'un ancien renouvellement serait fausse.
+  numeroFacture        String?        @unique
+  factureEmiseAt       DateTime?
+  periodeDebut         DateTime?
+  periodeFin           DateTime?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -831,6 +839,16 @@ model Paiement {
   // GET /relax/echeances (page "Paiements en attente") filtre par statut et
   // trie par dateEcheance (audit perf 2026-09-11).
   @@index([statut, dateEcheance])
+}
+
+/**
+ * Compteur des factures, une ligne par année. Incrémenté en une seule requête
+ * SQL atomique (services/facture.ts::prochainNumeroFacture) : deux paiements
+ * confirmés au même instant ne peuvent pas recevoir le même numéro.
+ */
+model CompteurFacture {
+  annee  Int @id
+  dernier Int @default(0)
 }
 
 model Document {

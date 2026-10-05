@@ -30,6 +30,7 @@ import { clientRouter } from "./routes/client.js";
 import { agentDistributionRouter } from "./routes/agentDistribution.js";
 import { contratsRouter } from "./routes/contrats.js";
 import { cartesRouter } from "./routes/cartes.js";
+import { facturesRouter } from "./routes/factures.js";
 import { partnerApiRouter } from "./routes/partnerApi.js";
 import { requestContext } from "./context.js";
 import { authLimiter, publicLimiter } from "./security.js";
@@ -177,6 +178,9 @@ app.use("/api/agent-distribution", agentDistributionRouter);
 app.use("/api/contrats", publicLimiter, contratsRouter);
 // Carte virtuelle de prise en charge — même exposition publique/rate-limit que les contrats.
 app.use("/api/cartes", publicLimiter, cartesRouter);
+// Facture d'un paiement confirmé — accès contrôlé dans le routeur (admin,
+// client propriétaire, ou 48 h après paiement), mêmes limites que les cartes.
+app.use("/api/factures", publicLimiter, facturesRouter);
 // API partenaire (serveur-à-serveur) : authentification par clé API + limiteur
 // dédié + journalisation, appliqués dans le routeur lui-même (voir
 // routes/partnerApi.ts). Pas de session admin, pas de CORS navigateur.
