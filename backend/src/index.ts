@@ -99,13 +99,13 @@ app.use(
   })
 );
 
-// Capture l'IP de chaque requête dans un contexte async accessible par logAction
+// Capture l'IP de chaque requête dans un contexte async accessible par logAction.
+// `req.ip` (et non le premier élément de X-Forwarded-For) : avec `trust proxy 1`
+// Express retient l'adresse vue par Traefik, alors que le PREMIER élément de
+// l'en-tête est fourni par le client lui-même — il permettait de falsifier l'IP
+// inscrite dans le journal d'activité (audit sécurité 2026-10-05).
 app.use((req, _res, next) => {
-  const ip =
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-    req.ip ||
-    req.socket.remoteAddress ||
-    undefined;
+  const ip = req.ip || req.socket.remoteAddress || undefined;
   requestContext.run({ ip }, next);
 });
 

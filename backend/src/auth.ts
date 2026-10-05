@@ -1,12 +1,32 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
+// Valeurs d'exemple/développement qu'il faut refuser en production (audit
+// sécurité 2026-10-05). Elles passent le test de longueur (la valeur de
+// développement locale fait plus de 32 caractères) : si l'une d'elles était
+// déployée telle quelle, n'importe qui connaissant le dépôt ou ce motif
+// pourrait forger un jeton administrateur valide.
+const MOTIFS_SECRET_INTERDITS_EN_PRODUCTION = [
+  /change[-_ ]?(me|moi|in[-_ ]?prod)/i,
+  /dev[-_ ]?secret/i,
+  /^(secret|password|motdepasse|test|example|exemple)/i,
+];
+
 function loadSecret(): string {
   const s = process.env.JWT_SECRET;
   if (!s || s.length < 32) {
     throw new Error(
       "JWT_SECRET manquant ou trop court (32 caractères minimum requis). " +
         "Définissez une valeur forte dans les variables d'environnement."
+    );
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    (MOTIFS_SECRET_INTERDITS_EN_PRODUCTION.some((re) => re.test(s)) || new Set(s).size < 12)
+  ) {
+    throw new Error(
+      "JWT_SECRET est une valeur d'exemple/développement (ou trop peu variée) — refus de démarrer en production. " +
+        "Générez-en un aléatoire, par exemple : openssl rand -hex 48"
     );
   }
   return s;

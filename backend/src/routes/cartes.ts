@@ -7,6 +7,7 @@ import { htmlToPng } from "../services/pdf.js";
 import { renderCarteHtml, CARTE_WIDTH, CARTE_HEIGHT, type CarteData } from "../services/carteHtml.js";
 import { SEXE_LABELS, garantieAffichee, resoudreDateNaissance } from "../services/carteRender.js";
 import { bordereauDepuisLien, lienCarteNovelia } from "../services/novelia.js";
+import { retourPaiementRecent } from "../services/retourPaiement.js";
 
 export const cartesRouter = Router();
 
@@ -48,17 +49,39 @@ async function autoriserAcces(
   if (user?.type === "admin") return true;
   if (user?.type === "client" && user.sub === souscriptionId) return true;
 
+  // Voies PUBLIQUES (sans compte) : toutes limitées à 48 h après le paiement
+  // (audit sécurité 2026-10-05, voir services/retourPaiement.ts). Les
+  // identifiants qui servent de preuve figurent dans l'URL de retour de Wave
+  // (historique du navigateur, journaux…) : sans cette limite, ils ouvriraient la
+  // carte — nom, date de naissance, PHOTO — indéfiniment. Passé le délai, le
+  // client utilise son espace client (voie 2 ci-dessus).
   if (paiementId) {
     const p = await prisma.paiement.findUnique({ where: { id: paiementId } });
-    if (p && p.souscriptionId === souscriptionId && p.statut === "paye") return true;
+    if (
+      p &&
+      p.souscriptionId === souscriptionId &&
+      p.statut === "paye" &&
+      retourPaiementRecent(p.datePaiement ?? p.updatedAt)
+    ) {
+      return true;
+    }
   }
 
   // Modèles historiques (Incendie/Accident) : ils n'ont pas de lignes Paiement,
   // donc aucune preuve de paiement à présenter, et leur parcours public de
-  // complétion dépend de cet accès. Ces deux produits ne sont plus proposés à
-  // la souscription (remplacés par RelaxAccidents Frais Médicaux et le modèle
-  // générique) — exception volontairement limitée à eux.
-  if (type === "incendie" || type === "accident") return true;
+  // complétion dépend d'un accès sans compte. Ces deux produits ne sont plus
+  // proposés à la souscription (remplacés par RelaxAccidents Frais Médicaux et
+  // le modèle générique) — auparavant ouverts à qui connaissait l'identifiant,
+  // sans limite de durée ; désormais seulement juste après la dernière mise à
+  // jour de la souscription (complétion du formulaire ou paiement).
+  if (type === "incendie") {
+    const s = await prisma.souscriptionIncendie.findUnique({ where: { id: souscriptionId }, select: { updatedAt: true } });
+    return !!s && retourPaiementRecent(s.updatedAt);
+  }
+  if (type === "accident") {
+    const s = await prisma.souscriptionAccident.findUnique({ where: { id: souscriptionId }, select: { updatedAt: true } });
+    return !!s && retourPaiementRecent(s.updatedAt);
+  }
 
   return false;
 }

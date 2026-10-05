@@ -41,6 +41,7 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../service
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
+import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -1163,7 +1164,12 @@ publicRouter.get(
   })
 );
 
-/** Informations publiques d'une souscription accident (pour flux de relance) */
+/**
+ * Informations publiques d'une souscription accident (pour flux de relance).
+ * N'existe que pour RELANCER un paiement non abouti (le lien `?retry=<id>` n'est
+ * envoyé par SMS qu'après un échec Wave) : une souscription déjà confirmée n'a
+ * plus de raison d'être servie sans compte (audit sécurité 2026-10-05).
+ */
 publicRouter.get(
   "/souscriptions/accident/:id/info",
   asyncHandler(async (req, res) => {
@@ -1173,7 +1179,7 @@ publicRouter.get(
         partenaire: { select: { nomCommerce: true } },
       },
     });
-    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
+    if (!s || s.waveStatut === "confirme") return res.status(404).json({ error: "Souscription introuvable" });
     res.json({
       id: s.id,
       nom: s.nom,
@@ -1200,6 +1206,10 @@ publicRouter.get(
     if (!s || s.waveStatut !== "confirme") {
       return res.status(404).json({ error: "Contrat non disponible" });
     }
+    // Lien de retour de paiement : valable 48 h (voir services/retourPaiement.ts).
+    if (!retourPaiementRecent(s.updatedAt)) {
+      return res.status(410).json({ error: MESSAGE_LIEN_RETOUR_EXPIRE, code: "lien_expire" });
+    }
     res.json({
       souscriptionId: s.id,
       numeroPolice: s.numeroPolice,
@@ -1213,8 +1223,11 @@ publicRouter.get(
       telephone: s.telephone,
       partenaire: s.partenaire.nomCommerce,
       signature: s.signature,
-      pieceIdentiteUrl: s.pieceIdentiteUrl,
-      selfieUrl: s.selfieUrl,
+      // Jamais les IMAGES de la pièce d'identité et du selfie par ce lien public
+      // (identifiant seul = clé d'accès) : le client n'a besoin que de savoir
+      // si le dépôt a déjà été fait (audit sécurité 2026-10-05).
+      pieceIdentiteDeposee: !!s.pieceIdentiteUrl,
+      selfieDeposee: !!s.selfieUrl,
     });
   })
 );
@@ -1238,9 +1251,15 @@ publicRouter.patch(
       return res.status(404).json({ error: "Souscription non disponible" });
     }
     // Cette route n'est protégée que par l'id de souscription (visible dans
-    // l'URL de retour Wave, donc potentiellement dans des logs/historiques) —
-    // une fois les photos déposées une première fois, on refuse tout dépôt
-    // suivant plutôt que de permettre un remplacement (fraude à l'identité).
+    // l'URL de retour Wave, donc potentiellement dans des logs/historiques) :
+    // le dépôt n'est donc accepté que dans les 48 h suivant le paiement
+    // (audit sécurité 2026-10-05) — passé ce délai, un id récupéré ne permet
+    // plus de faire figurer SA photo sur la carte de quelqu'un d'autre. Et une
+    // fois les photos déposées une première fois, on refuse tout dépôt suivant
+    // plutôt que de permettre un remplacement (fraude à l'identité).
+    if (!retourPaiementRecent(s.updatedAt)) {
+      return res.status(410).json({ error: MESSAGE_LIEN_RETOUR_EXPIRE, code: "lien_expire" });
+    }
     if (s.pieceIdentiteUrl || s.selfieUrl) {
       return res.status(409).json({ error: "Les documents ont déjà été déposés pour cette souscription." });
     }
@@ -2383,7 +2402,11 @@ publicRouter.post(
   })
 );
 
-/** RelaxMoto/RelaxAuto : infos publiques (flux de relance) */
+/**
+ * RelaxMoto/RelaxAuto : infos publiques (flux de relance). Comme pour
+ * l'ancien Accident, réservé à un paiement NON abouti : une souscription
+ * confirmée n'est plus servie sans compte (audit sécurité 2026-10-05).
+ */
 publicRouter.get(
   "/souscriptions/:produit/:id/info",
   asyncHandler(async (req, res) => {
@@ -2392,7 +2415,7 @@ publicRouter.get(
       where: { id: req.params.id },
       include: { partenaire: { select: { nomCommerce: true } } },
     });
-    if (!s) return res.status(404).json({ error: "Souscription introuvable" });
+    if (!s || s.waveStatut === "confirme") return res.status(404).json({ error: "Souscription introuvable" });
     res.json({
       id: s.id,
       nom: s.nom,
@@ -2423,8 +2446,13 @@ publicRouter.get(
       include: { souscription: { include: { partenaire: { select: { nomCommerce: true } } } } },
     });
     const s = echeance?.souscription;
-    if (!s || s.waveStatut !== "confirme") {
+    if (!echeance || !s || s.waveStatut !== "confirme") {
       return res.status(404).json({ error: "Contrat non disponible" });
+    }
+    // Lien de retour de paiement : valable 48 h après le paiement de CETTE
+    // échéance (voir services/retourPaiement.ts) ; au-delà, espace client.
+    if (!retourPaiementRecent(echeance.datePaiement ?? echeance.updatedAt)) {
+      return res.status(410).json({ error: MESSAGE_LIEN_RETOUR_EXPIRE, code: "lien_expire" });
     }
     const donneesSpecifiques = s.donneesSpecifiques as {
       signature?: string;

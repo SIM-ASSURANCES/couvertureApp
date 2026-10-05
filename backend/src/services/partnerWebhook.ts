@@ -2,6 +2,7 @@ import crypto from "crypto";
 import type { PartnerWebhookDelivery } from "@prisma/client";
 import { prisma } from "../db.js";
 import type { EvenementWebhook } from "../apiKey.js";
+import { hoteStatiquementAutorise, postJsonSecurise } from "./urlSecurisee.js";
 
 // =====================================================================
 // Webhooks sortants vers l'URL configurée sur la clé API du partenaire.
@@ -19,8 +20,12 @@ const DELAI_ABANDON_MS = 24 * 60 * 60 * 1000;
 const TIMEOUT_REQUETE_MS = 10_000;
 
 /**
- * Refus basique des URL manifestement internes (défense en profondeur —
- * l'URL est déjà posée par un super-administrateur). HTTPS obligatoire.
+ * Contrôle STATIQUE de l'URL d'un webhook (saisie admin, et rejoué avant chaque
+ * envoi) : HTTPS obligatoire, pas d'identifiants dans l'URL, hôte ni interne ni
+ * littéral IP non public (IPv4 et IPv6, y compris `[::1]`, adresses mappées et
+ * CGNAT). Ce contrôle ne résout pas le DNS : l'adresse réellement connectée est
+ * vérifiée à chaque envoi par postJsonSecurise (services/urlSecurisee.ts),
+ * qui ne suit pas non plus les redirections.
  */
 export function webhookUrlValide(url: string): boolean {
   let u: URL;
@@ -29,13 +34,8 @@ export function webhookUrlValide(url: string): boolean {
   } catch {
     return false;
   }
-  if (u.protocol !== "https:") return false;
-  const h = u.hostname.toLowerCase();
-  if (h === "localhost" || h.endsWith(".local") || h.endsWith(".internal")) return false;
-  if (h === "127.0.0.1" || h === "0.0.0.0" || h === "::1") return false;
-  if (/^10\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return false;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return false;
-  return true;
+  if (u.protocol !== "https:" || u.username || u.password) return false;
+  return hoteStatiquementAutorise(u.hostname);
 }
 
 function signer(corps: string, secret: string, timestamp: number): string {
@@ -62,22 +62,26 @@ async function tenterLivraison(
 
   let statusCode: number | null = null;
   let livree = false;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-SIM-Signature": `t=${ts},v1=${signer(corps, secret, ts)}`,
-        "X-SIM-Evenement": livraison.evenement,
-        "User-Agent": "SIM-Assurances-Webhook/1",
-      },
-      body: corps,
-      signal: AbortSignal.timeout(TIMEOUT_REQUETE_MS),
-    });
-    statusCode = resp.status;
-    livree = resp.status >= 200 && resp.status < 300;
-  } catch {
-    livree = false;
+  // Revalidée à CHAQUE tentative : une URL saisie avant le durcissement des
+  // règles (ou modifiée en base) ne doit jamais être jouée telle quelle, et les
+  // rejeux du cron (rejouerWebhooksEnAttente) ne passent pas par emettreWebhook.
+  if (webhookUrlValide(url)) {
+    try {
+      statusCode = await postJsonSecurise(
+        url,
+        {
+          "Content-Type": "application/json",
+          "X-SIM-Signature": `t=${ts},v1=${signer(corps, secret, ts)}`,
+          "X-SIM-Evenement": livraison.evenement,
+          "User-Agent": "SIM-Assurances-Webhook/1",
+        },
+        corps,
+        TIMEOUT_REQUETE_MS
+      );
+      livree = statusCode >= 200 && statusCode < 300;
+    } catch {
+      livree = false;
+    }
   }
 
   const tentatives = livraison.tentatives + 1;

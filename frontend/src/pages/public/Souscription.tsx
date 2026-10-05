@@ -1885,8 +1885,13 @@ export default function Souscription() {
           const r = await fetch(urlContrat);
           const data = await r.json();
           if (data.error) {
+            // Lien de retour de paiement expiré (48 h, voir backend
+            // services/retourPaiement.ts) : message dédié, sinon le client
+            // croirait son paiement encore en validation et actualiserait en vain.
             setErrorMsg(
-              "Paiement en cours de validation. Actualisez la page dans quelques instants."
+              data.code === "lien_expire"
+                ? data.error
+                : "Paiement en cours de validation. Actualisez la page dans quelques instants."
             );
             setStep("error");
             return;
@@ -1908,8 +1913,6 @@ export default function Souscription() {
             telephone: data.telephone,
             partenaire: data.partenaire,
             signature: data.signature,
-            pieceIdentiteUrl: data.pieceIdentiteUrl ?? null,
-            selfieUrl: data.selfieUrl ?? null,
             compagnie: data.compagnie ?? null,
             lieuDepart: data.lieuDepart ?? null,
             lieuArrivee: data.lieuArrivee ?? null,
@@ -1939,7 +1942,9 @@ export default function Souscription() {
             ageMoto: data.ageMoto ?? null,
             resultat: data.resultat ?? null,
           });
-          setCartePhotosEnvoyees(!!(data.pieceIdentiteUrl && data.selfieUrl));
+          // Le serveur ne renvoie plus les IMAGES (audit sécurité 2026-10-05),
+          // seulement deux booléens "déjà déposé" — tout ce dont ce écran a besoin.
+          setCartePhotosEnvoyees(!!(data.pieceIdentiteDeposee && data.selfieDeposee));
           setStep("success");
           // RelaxAccidents Frais Médicaux : pièce/selfie déjà déposées avant
           // le paiement — la carte de prise en charge est générée et

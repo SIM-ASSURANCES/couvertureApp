@@ -19,8 +19,13 @@
  * — Peya pay est un moyen de paiement optionnel, pas le seul.
  */
 
-const DJOGANA_BASE_URL =
-  process.env.DJOGANA_API_URL || "https://test1-pey-peya.djogana-pay.com";
+// Bac à sable Djogana : valeur par défaut PRATIQUE en développement, mais jamais
+// acceptable en production — un paiement "réussi" sur le bac à sable ne déplace
+// aucun argent réel alors que la police serait émise (audit sécurité
+// 2026-10-05). En production, DJOGANA_API_URL doit donc être déclarée
+// explicitement et différer de cet hôte (voir urlApiAcceptable).
+const DJOGANA_URL_BAC_A_SABLE = "https://test1-pey-peya.djogana-pay.com";
+const DJOGANA_BASE_URL = process.env.DJOGANA_API_URL || DJOGANA_URL_BAC_A_SABLE;
 const CODE_BANQUE = process.env.DJOGANA_CODE_BANQUE || "DPAY";
 const CODE_AGENCE = process.env.DJOGANA_CODE_AGENCE || "11111";
 // Durée de mise en cache du jeton JWT avant ré-authentification — la doc ne
@@ -47,16 +52,45 @@ export class DjoganaIndisponibleError extends Error {
  * serveur et masqué côté client (GET /public/moyens-paiement).
  */
 export function djoganaDisponible(): boolean {
-  return djoganaConfigure() || process.env.NODE_ENV !== "production";
+  if (djoganaConfigure()) return urlApiAcceptable();
+  return process.env.NODE_ENV !== "production";
+}
+
+/**
+ * En production, l'URL de l'API doit être déclarée explicitement ET différer du
+ * bac à sable. Hors production, tout est accepté (défaut = bac à sable).
+ */
+function urlApiAcceptable(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  const url = process.env.DJOGANA_API_URL;
+  if (!url) return false;
+  try {
+    return new URL(url).hostname !== new URL(DJOGANA_URL_BAC_A_SABLE).hostname;
+  } catch {
+    return false;
+  }
+}
+
+// Signalé UNE fois au démarrage (pas à chaque requête) : Peya pay va disparaître
+// du choix de paiement et l'exploitant doit en connaître la cause.
+if (process.env.NODE_ENV === "production" && djoganaConfigure() && !urlApiAcceptable()) {
+  console.error(
+    "[Djogana] Peya pay DÉSACTIVÉ : en production, DJOGANA_API_URL doit être définie et ne pas pointer vers le bac à sable " +
+      `(${new URL(DJOGANA_URL_BAC_A_SABLE).hostname}). Les identifiants sont présents mais l'URL ne convient pas.`
+  );
 }
 
 /**
  * Point de décision UNIQUE du mode stub : `true` = stub de développement
  * (jamais en production), `false` = vraie API. Lève DjoganaIndisponibleError
- * en production sans identifiants au lieu de "réussir" silencieusement.
+ * en production (identifiants ou URL manquants/inadaptés) au lieu de
+ * "réussir" silencieusement.
  */
 function modeStub(): boolean {
-  if (djoganaConfigure()) return false;
+  if (djoganaConfigure()) {
+    if (!urlApiAcceptable()) throw new DjoganaIndisponibleError();
+    return false;
+  }
   if (!djoganaDisponible()) throw new DjoganaIndisponibleError();
   return true;
 }
