@@ -158,7 +158,10 @@ export async function chargerDonneesFacture(paiementId: string): Promise<Donnees
   // Paiement confirmé avant la sortie de la fonctionnalité et pas encore rattrapé
   // (ou émission interrompue) : on l'émet à la volée.
   if (!p.numeroFacture) {
-    await emettreFacture(paiementId);
+    // Mode rattrapage : pour un paiement ancien, ne jamais recopier les dates
+    // ACTUELLES de la police (réécrites par les renouvellements suivants) — la
+    // période déjà figée sur le paiement est conservée, sinon laissée vide.
+    await emettreFacture(paiementId, { rattrapage: true });
     p = await prisma.paiement.findUnique({ where: { id: paiementId } });
     if (!p?.numeroFacture) return null;
   }

@@ -8,14 +8,6 @@ import type { DonneesFacture } from "./facture.js";
 
 const APP_PUBLIC_URL = process.env.APP_PUBLIC_URL || "http://localhost:5173";
 
-/**
- * Coordonnées de règlement affichées en bas de facture. VIDE tant que SIM
- * Assurances n'a pas communiqué ses comptes : le bloc est alors masqué plutôt
- * que d'imprimer des coordonnées inventées ou celles d'un tiers. Une ligne par
- * compte, ex. « BANQUE X — IBAN CI00 0000 0000 0000 0000 0000 000 ».
- */
-export const COMPTES_REGLEMENT: string[] = [];
-
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -56,8 +48,6 @@ const CSS = `
   .arrete b{text-transform:capitalize;}
   .sign{display:flex;justify-content:space-between;align-items:flex-end;margin-top:28px;font-size:12px;color:#5b6b80;page-break-inside:avoid;}
   .sign img{height:60px;max-width:220px;display:block;margin:0 0 4px auto;}
-  .reglement{margin-top:26px;font-size:11.5px;color:#25324a;border-top:1px solid #e3e9f1;padding-top:10px;}
-  .reglement ul{margin:4px 0 0 18px;padding:0;}
   .note{font-size:10.5px;color:#5b6b80;margin-top:22px;border-top:1px solid #e3e9f1;padding-top:8px;}
 `;
 
@@ -73,11 +63,6 @@ export function renderFactureHtml(f: DonneesFacture): string {
   const mentionPaiement = f.moyenPaiement
     ? `Facture acquittée le ${jour(f.dateFacture)} — règlement par ${esc(f.moyenPaiement)}.`
     : `Facture acquittée le ${jour(f.dateFacture)}.`;
-
-  const reglement = COMPTES_REGLEMENT.length
-    ? `<div class="reglement"><b>Coordonnées de règlement SIM Assurances</b>
-         <ul>${COMPTES_REGLEMENT.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>`
-    : "";
 
   const body = `
   <div class="head">
@@ -122,7 +107,6 @@ export function renderFactureHtml(f: DonneesFacture): string {
     </div>
   </div>
 
-  ${reglement}
   <div class="note">SIM ASSURANCES CÔTE D'IVOIRE — info@simassurances.com. Cette facture atteste du paiement de la prime ci-dessus ; elle ne se substitue pas aux Conditions Particulières et Générales du contrat.</div>`;
 
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Facture ${esc(f.numeroFacture)}</title>

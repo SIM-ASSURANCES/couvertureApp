@@ -89,7 +89,7 @@ facturesRouter.get(
       orderBy: { datePaiement: "asc" },
       select: { id: true },
     });
-    for (const { id } of sansNumero) await emettreFacture(id);
+    for (const { id } of sansNumero) await emettreFacture(id, { rattrapage: true });
 
     const paiements = await prisma.paiement.findMany({
       where: { souscriptionId, statut: "paye", numeroFacture: { not: null } },
