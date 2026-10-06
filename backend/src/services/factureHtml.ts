@@ -93,7 +93,7 @@ export function renderFactureHtml(f: DonneesFacture): string {
     <tr><td class="k">Assurance</td><td><b>${val(f.produitLibelle)}</b></td><td class="k">Avenant</td><td>${esc(f.avenant)}</td></tr>
     <tr><td class="k">Police N°</td><td>${val(f.numeroPolice)}</td><td class="k">Bureau de souscription</td><td>${val(f.bureau)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${jour(f.periodeDebut)}</td><td class="k">Date d'expiration</td><td>${jour(f.periodeFin)}</td></tr>
-    <tr><td class="k">Risque(s) assuré(s)</td><td colspan="3">${val(f.assure)} — pour le détail, se référer aux Conditions Particulières.</td></tr>
+    <tr><td class="k">Risque(s) assuré(s)</td><td colspan="3">${val(f.assure)}</td></tr>
   </table>
 
   <table class="prime">
