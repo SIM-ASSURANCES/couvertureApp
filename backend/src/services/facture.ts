@@ -9,6 +9,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { mapperSouscriptionGenerique } from "./contratGenerique.js";
+import { resoudreOuCreerClient } from "./clients.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -175,6 +176,23 @@ export async function chargerDonneesFacture(paiementId: string): Promise<Donnees
   const nomComplet = [s.prenom, s.nom].filter(Boolean).join(" ").trim();
   const adresse = [s.adresse, s.quartier, s.commune, s.ville].filter(Boolean).join(", ");
 
+  // L'identifiant client figure TOUJOURS sur la facture. Une souscription pas
+  // encore rattachée à un Client (créée avant l'introduction du modèle et pas
+  // encore rattrapée, ou rattrapage ignoré faute de téléphone exploitable) est
+  // rattachée ici, avec la même résolution que partout ailleurs (clé = téléphone
+  // normalisé) — l'identifiant est alors le même sur tous les documents du client.
+  let identifiantClient = s.client?.identifiant ?? null;
+  if (!identifiantClient) {
+    try {
+      const client = await resoudreOuCreerClient(s.telephone, s.nom, s.prenom);
+      await prisma.souscription.updateMany({ where: { id: s.id, clientId: null }, data: { clientId: client.id } });
+      identifiantClient = client.identifiant;
+    } catch (err) {
+      // Téléphone vide ou invalide : la facture reste valable, sans identifiant.
+      console.error("[facture] identifiant client non résolu pour", s.id, err);
+    }
+  }
+
   return {
     numeroFacture: p.numeroFacture!,
     dateFacture: p.datePaiement ?? p.updatedAt,
@@ -182,7 +200,7 @@ export async function chargerDonneesFacture(paiementId: string): Promise<Donnees
       nomComplet: nomComplet || s.telephone,
       adresse: adresse || null,
       telephone: s.telephone,
-      identifiant: s.client?.identifiant ?? null,
+      identifiant: identifiantClient,
     },
     produitLibelle: s.produit.libelle,
     numeroPolice: s.numeroPolice,

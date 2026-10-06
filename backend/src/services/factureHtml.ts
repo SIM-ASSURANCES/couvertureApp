@@ -43,6 +43,8 @@ const CSS = `
   .client{border:1px solid #c9d3e0;padding:10px 14px;width:55%;margin-bottom:18px;}
   .client .t{font-size:11px;color:#5b6b80;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px;}
   .client b{font-size:14px;}
+  .client .idcl{margin-top:6px;padding-top:6px;border-top:1px dashed #c9d3e0;font-size:12px;color:#5b6b80;}
+  .client .idcl b{font-size:13.5px;color:#004b9c;letter-spacing:.6px;}
   table{width:100%;border-collapse:collapse;margin-bottom:16px;}
   td{padding:6px 10px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
   td.k{background:#f5f8fc;font-weight:600;color:#5b6b80;width:18%;}
@@ -91,7 +93,8 @@ export function renderFactureHtml(f: DonneesFacture): string {
     <div class="t">Client / Souscripteur</div>
     <b>${val(f.client.nomComplet)}</b><br />
     ${f.client.adresse ? `${esc(f.client.adresse)}<br />` : ""}
-    Tél. ${val(f.client.telephone)}${f.client.identifiant ? ` · Identifiant ${esc(f.client.identifiant)}` : ""}
+    Tél. ${val(f.client.telephone)}
+    ${f.client.identifiant ? `<div class="idcl">Identifiant client : <b>${esc(f.client.identifiant)}</b></div>` : ""}
   </div>
 
   <table>
