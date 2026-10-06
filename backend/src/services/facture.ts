@@ -91,55 +91,82 @@ export interface DonneesFacture {
   bureau: string;
   assure: string;
   montant: number;
-  /** `null` quand le détail n'est pas connu ou ne correspond pas au montant payé : la facture n'affiche alors que la prime totale. */
-  detailPrime: { primeNette: number; accessoires: number; taxes: number } | null;
+  /**
+   * Détail de la prime, dont les lignes s'additionnent TOUJOURS pour donner
+   * `montant` : primeHT + accessoires + taxes (+ optionDeces) = Prime TTC.
+   * `null` quand le détail n'est pas connu (RelaxMoto/Auto, RelaxVoyage : rien
+   * en base) ou ne se réconcilie pas avec le montant payé : la facture
+   * n'affiche alors que la Prime TTC.
+   */
+  detailPrime: { primeHT: number; accessoires: number; taxes: number; optionDeces: number | null } | null;
   moyenPaiement: string | null;
 }
 
 /**
- * Détail Prime nette / Accessoires / Taxes, ou `null`. Deux sources, dans
- * l'ordre : le devis calculé stocké sur la souscription (produits Secur), puis
- * le tarif catalogue (TarifProduit.primeHT/fg/taxes). Le détail n'est retenu
- * QUE si sa somme égale exactement le montant payé : une option (ex. Décès),
- * un supplément ou un nombre de périodes que le tarif ne reflète pas le
- * rendraient faux — dans ce cas la facture indique la prime totale seule.
+ * Détail Prime HT / Accessoires / Taxes, ou `null`. Sources, dans l'ordre : le
+ * devis calculé stocké sur la souscription (produits Secur à devis), le mapper
+ * (RelaxAccidents générale, supplément moto/tricycle compris), puis le tarif
+ * catalogue (TarifProduit.primeHT/fg/taxes).
+ *
+ * Le catalogue suit DEUX conventions selon le produit (constaté en base) :
+ *  - accessoires EN PLUS  : HT + accessoires + taxes = TTC (RelaxAccidents
+ *    générale, SecurHome, Décès, devis Secur) ;
+ *  - accessoires COMPRIS dans le HT : HT + taxes = TTC (RelaxAccidents Frais
+ *    Médicaux et Livreurs, anciens Accident/Incendie).
+ * On reconnaît la convention par le calcul, et dans le second cas on affiche le
+ * HT hors accessoires : sur une facture, les lignes doivent s'additionner sous
+ * les yeux du client (792 + 140 + 68 = 1 000, et non 932 + 140 + 68).
+ *
+ * L'option Décès (Frais Médicaux) s'ajoute au prix de la formule : elle est
+ * isolée sur sa propre ligne, le détail portant sur la formule seule.
  */
 async function detailDePrime(
   s: Parameters<typeof mapperSouscriptionGenerique>[0],
   montant: number
 ): Promise<DonneesFacture["detailPrime"]> {
   const g = await mapperSouscriptionGenerique(s);
-  const r = (g.resultat ?? null) as { primeNetteHT?: number; accessoires?: number; taxes?: number } | null;
+  const r = (g.resultat ?? null) as
+    | { primeNetteHT?: number; primeNetteHT2?: number; accessoires?: number; taxes?: number }
+    | null;
 
-  let candidat: { primeNette: number; accessoires: number; taxes: number } | null = null;
-  if (r && typeof r.primeNetteHT === "number") {
-    candidat = { primeNette: r.primeNetteHT, accessoires: r.accessoires ?? 0, taxes: r.taxes ?? 0 };
+  const primeOption = g.optionDeces?.prime && g.optionDeces.prime > 0 ? g.optionDeces.prime : 0;
+  const base = montant - primeOption; // prix de la formule seule
+  if (base <= 0) return null;
+
+  let brut: { ht: number; accessoires: number; taxes: number } | null = null;
+  const htDevis = r?.primeNetteHT2 ?? r?.primeNetteHT;
+  if (typeof htDevis === "number") {
+    brut = { ht: htDevis, accessoires: r?.accessoires ?? 0, taxes: r?.taxes ?? 0 };
   } else if (g.primeHT != null && g.taxes != null) {
-    // RelaxAccidents générale : supplément moto/tricycle déjà intégré par le mapper.
-    candidat = { primeNette: g.primeHT, accessoires: g.fg ?? 0, taxes: g.taxes };
+    brut = { ht: g.primeHT, accessoires: g.fg ?? 0, taxes: g.taxes };
   } else {
     const tarif = await prisma.tarifProduit.findFirst({
       where: s.cycleFacturation
         ? { produitId: s.produitId, libelleVariante: s.cycleFacturation }
-        : { produitId: s.produitId, prime: s.montantPrime },
+        : { produitId: s.produitId, prime: base },
     });
     if (tarif?.primeHT != null && tarif.taxes != null) {
       const n = s.cycleFacturation ? Math.max(1, s.nombrePeriodes) : 1;
-      candidat = {
-        primeNette: tarif.primeHT * n,
-        accessoires: (tarif.fg ?? 0) * n,
-        taxes: tarif.taxes * n,
-      };
+      brut = { ht: tarif.primeHT * n, accessoires: (tarif.fg ?? 0) * n, taxes: tarif.taxes * n };
     }
   }
-  if (!candidat) return null;
+  if (!brut) return null;
 
-  const arrondi = {
-    primeNette: Math.round(candidat.primeNette),
-    accessoires: Math.round(candidat.accessoires),
-    taxes: Math.round(candidat.taxes),
-  };
-  return arrondi.primeNette + arrondi.accessoires + arrondi.taxes === montant ? arrondi : null;
+  // Quelle convention ? (tolérance d'arrondi : les barèmes sont des flottants.)
+  const proche = (a: number, b: number) => Math.abs(a - b) <= 1.5;
+  let htHorsAccessoires: number;
+  if (proche(brut.ht + brut.accessoires + brut.taxes, base)) htHorsAccessoires = brut.ht;
+  else if (proche(brut.ht + brut.taxes, base)) htHorsAccessoires = brut.ht - brut.accessoires;
+  else return null; // ne se réconcilie pas avec le montant payé : pas de détail inventé
+
+  // Le franc CFA n'a pas de subdivision : accessoires et taxes arrondis, le HT
+  // absorbe l'arrondi pour que la somme tombe juste, à l'unité près.
+  const accessoires = Math.round(brut.accessoires);
+  const taxes = Math.round(brut.taxes);
+  const primeHT = base - accessoires - taxes;
+  if (primeHT < 0 || Math.abs(primeHT - htHorsAccessoires) > 2) return null;
+
+  return { primeHT, accessoires, taxes, optionDeces: primeOption || null };
 }
 
 function moyenDePaiement(p: { waveTransactionId: string | null; djoganaTransactionId: string | null }): string | null {

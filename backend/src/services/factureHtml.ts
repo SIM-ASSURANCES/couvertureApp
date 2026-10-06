@@ -55,11 +55,16 @@ const CSS = `
 
 export function renderFactureHtml(f: DonneesFacture): string {
   const d = f.detailPrime;
+  // Les lignes s'additionnent toujours pour donner la Prime TTC (voir
+  // services/facture.ts::detailDePrime) ; absentes quand le détail n'est pas
+  // connu en base — la facture n'affiche alors que la Prime TTC.
   const lignesPrime = d
     ? `
-      <tr><td>Prime nette</td><td class="v">${fcfa(d.primeNette)}</td></tr>
+      <tr><td>Prime HT</td><td class="v">${fcfa(d.primeHT)}</td></tr>
       <tr><td>Accessoires</td><td class="v">${fcfa(d.accessoires)}</td></tr>
-      <tr><td>Taxes</td><td class="v">${fcfa(d.taxes)}</td></tr>`
+      <tr><td>Taxes</td><td class="v">${fcfa(d.taxes)}</td></tr>${
+        d.optionDeces ? `\n      <tr><td>Option Décès</td><td class="v">${fcfa(d.optionDeces)}</td></tr>` : ""
+      }`
     : "";
 
   const mentionPaiement = f.moyenPaiement
@@ -93,7 +98,7 @@ export function renderFactureHtml(f: DonneesFacture): string {
 
   <table class="prime">
     ${lignesPrime}
-    <tr class="total"><td>Prime totale à payer</td><td class="v">${fcfa(f.montant)}</td></tr>
+    <tr class="total"><td>Prime TTC</td><td class="v">${fcfa(f.montant)}</td></tr>
   </table>
 
   <div class="arrete">
