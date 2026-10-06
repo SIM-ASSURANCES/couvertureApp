@@ -47,7 +47,9 @@ const CSS = `
   .arrete{margin:18px 0 6px;font-size:12.5px;}
   .arrete b{text-transform:capitalize;}
   .sign{display:flex;justify-content:space-between;align-items:flex-end;margin-top:28px;font-size:12px;color:#5b6b80;page-break-inside:avoid;}
-  .sign img{height:60px;max-width:220px;display:block;margin:0 0 4px auto;}
+  /* Cachet de la comptabilité (signature-facture.png, 541x461) : bien plus grand que l'ancienne signature, sinon son texte est illisible. */
+  /* Marge basse négative : l'image porte ~35 % de transparence sous le cachet, sans cela la légende « Pour la Société » flotte loin en dessous. */
+  .sign img{width:240px;height:auto;display:block;margin:0 0 -40px auto;}
   .note{font-size:10.5px;color:#5b6b80;margin-top:22px;border-top:1px solid #e3e9f1;padding-top:8px;}
 `;
 
@@ -102,7 +104,7 @@ export function renderFactureHtml(f: DonneesFacture): string {
   <div class="sign">
     <div>Fait à Abidjan, le ${jour(f.dateFacture)}</div>
     <div style="text-align:right;">
-      <img src="${APP_PUBLIC_URL}/signature-compagnie.png" alt="" />
+      <img src="${APP_PUBLIC_URL}/signature-facture.png" alt="" />
       Pour la Société
     </div>
   </div>
