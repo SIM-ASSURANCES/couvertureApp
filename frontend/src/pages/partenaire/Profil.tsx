@@ -3,9 +3,12 @@ import { Save } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, PhoneInput } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
+import { libelleCategorie } from "../../categoriesPartenaires";
 
 interface Profil {
   id: string;
+  identifiant?: string | null;
+  categorie?: number | null;
   nomCommerce: string;
   nomResponsable: string;
   telephone: string;
@@ -59,6 +62,15 @@ export default function PartenaireProfil() {
         <div style={{ maxWidth: 480, marginTop: 24 }}>
           <Card title="Informations du commerce">
             <form onSubmit={save}>
+              {data.identifiant && (
+                <div className="field">
+                  <label className="label">Identifiant</label>
+                  <input className="input" value={data.identifiant} disabled style={{ fontWeight: 700 }} />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {libelleCategorie(data.categorie) ?? "Catégorie"} — attribué par l'administration, non modifiable.
+                  </div>
+                </div>
+              )}
               <div className="field">
                 <label className="label">Commerce</label>
                 <input className="input" value={data.nomCommerce} disabled />

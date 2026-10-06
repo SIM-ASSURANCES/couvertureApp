@@ -192,6 +192,12 @@ model Partenaire {
   // (validation faite côté formulaire admin).
   localisation        String?
   typeCommerce        TypeCommerce?
+  // Catégorie d'intermédiaire (1 à N, voir services/identifiantsPartenaires.ts)
+  // et identifiant dérivé "<catégorie>.<n° d'ordre dans la catégorie>" (ex.
+  // 1.0001). Les deux sont figés dès l'attribution de l'identifiant : changer
+  // la catégorie après coup changerait un identifiant déjà communiqué.
+  categorie           Int?
+  identifiant         String?                @unique
   produitIncendie     Boolean                @default(false)
   produitAccident     Boolean                @default(false)
   qrIncendie1000Token String?                @unique
@@ -251,6 +257,10 @@ model AgentDistribution {
   partenaireId               String
   partenaire                 Partenaire             @relation(fields: [partenaireId], references: [id], onDelete: Cascade)
   nom                        String
+  // "<identifiant du partenaire>.<n° d'ordre sur 2 chiffres>" (ex. 1.0001.01) —
+  // vide tant que le partenaire n'a pas lui-même d'identifiant ; attribué dès
+  // qu'il en reçoit un. Jamais réattribué, même après suppression d'un agent.
+  identifiant                String?                @unique
   telephone                  String
   localisation               String?
   // Accès à l'espace agent (connexion par téléphone + mot de passe) — mot de
@@ -849,6 +859,18 @@ model Paiement {
 model CompteurFacture {
   annee  Int @id
   dernier Int @default(0)
+}
+
+/**
+ * Compteurs des identifiants partenaires/agents, une ligne par portée :
+ * `cat-<n>` (n° d'ordre des partenaires d'une catégorie) ou `agent-<id du
+ * partenaire>` (n° d'ordre de ses agents). Incrémenté en une seule requête SQL
+ * atomique (services/identifiantsPartenaires.ts) — jamais décrémenté, donc un
+ * numéro supprimé n'est pas réattribué.
+ */
+model CompteurIdentifiant {
+  portee  String @id
+  dernier Int    @default(0)
 }
 
 model Document {

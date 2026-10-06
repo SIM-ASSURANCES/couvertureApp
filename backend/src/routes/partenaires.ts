@@ -16,6 +16,7 @@ import { notifyAdmins } from "../services/notifications.js";
 import { commissionTotaleAgentsDuPartenaire } from "../services/commission.js";
 import { genererCleApi, SCOPES_API, EVENEMENTS_WEBHOOK } from "../apiKey.js";
 import { emettreWebhook, webhookUrlValide } from "../services/partnerWebhook.js";
+import { attribuerIdentifiantPartenaire, categorieValide, CategorieVerrouilleeError } from "../services/identifiantsPartenaires.js";
 
 export const partenairesRouter = Router();
 partenairesRouter.use(requireAuth("admin"));
@@ -54,6 +55,10 @@ const baseSchema = z.object({
   // Facultatifs : ne concernent pas la branche Relax.
   localisation: z.string().min(1).optional(),
   typeCommerce: z.enum(["Electronique", "Vulcanisateur", "MecaniqueGarage", "AccessoireAuto"]).optional(),
+  // Catégorie d'intermédiaire (1 à 16), dont dépend l'identifiant du partenaire
+  // (ex. 1.0001) — requise à la création (voir createSchema), modifiable
+  // seulement tant qu'aucun identifiant n'est attribué (voir PATCH /:id).
+  categorie: z.number().int().refine(categorieValide, "Catégorie inconnue").optional(),
   // Trois façons (mutuellement exclusives) d'assigner un partenaire :
   // - `produit` (historique) : un produit précis (Incendie/Accident restants,
   //   ou Relax) — un QR précis par produit.
@@ -109,9 +114,11 @@ function prefixeQr(produit: string): string {
   return "raf"; // relaxaccidents_fraismedicaux
 }
 
-const createSchema = baseSchema.refine((d) => !(d.produit != null && d.sousBranche != null), {
-  message: "Indiquer soit un produit, soit une Assurance (sousBranche), jamais les deux.",
-});
+const createSchema = baseSchema
+  .refine((d) => !(d.produit != null && d.sousBranche != null), {
+    message: "Indiquer soit un produit, soit une Assurance (sousBranche), jamais les deux.",
+  })
+  .refine((d) => d.categorie != null, { message: "La catégorie du partenaire est requise.", path: ["categorie"] });
 
 // Pas de champ mot de passe ici : cette route générique n'est protégée que
 // par requireAuth("admin") (aucun contrôle de branche), donc permettre d'y
@@ -321,7 +328,10 @@ partenairesRouter.post(
 
     const motDePasseProvisoire = data.email ? genMotDePasseProvisoire() : null;
 
-    const created = await prisma.partenaire.create({
+    // Création + identifiant dans UNE transaction : un partenaire n'existe
+    // jamais sans l'identifiant que sa catégorie lui donne.
+    const created = await prisma.$transaction(async (tx) => {
+    const cree = await tx.partenaire.create({
       data: {
         // Replié sur le nom du responsable si aucun nom d'entreprise n'est fourni (branche Relax).
         nomCommerce: data.nomCommerce?.trim() || data.nomResponsable,
@@ -340,6 +350,9 @@ partenairesRouter.post(
         qrIncendie2000Token: isIncendie ? newQrToken("i2k") : null,
         qrAccidentToken: isAccident ? newQrToken("acc") : null,
       },
+    });
+    const attribue = await attribuerIdentifiantPartenaire(cree.id, data.categorie!, tx);
+    return { ...cree, ...attribue };
     });
 
     if (generique && data.produit) {
@@ -424,6 +437,19 @@ partenairesRouter.patch(
     const isAccident = data.produit != null
       ? data.produit === "accident"
       : before.produitAccident;
+
+    // Catégorie : attribuable une seule fois. Déjà un identifiant → la même
+    // catégorie est ignorée, une autre est refusée (409) car elle changerait un
+    // identifiant déjà communiqué. Fait AVANT la mise à jour : un refus
+    // n'applique aucune des autres modifications de la requête.
+    if (data.categorie != null) {
+      try {
+        await attribuerIdentifiantPartenaire(before.id, data.categorie);
+      } catch (err) {
+        if (err instanceof CategorieVerrouilleeError) return res.status(409).json({ error: err.message });
+        throw err;
+      }
+    }
 
     const updated = await prisma.partenaire.update({
       where: { id: req.params.id },
@@ -600,6 +626,7 @@ partenairesRouter.get(
     const nbGeneriqueMap = new Map(nbGeneriqueGroups.map((g) => [g.agentDistributionId, g._count._all]));
     const rows = agents.map((a) => ({
       id: a.id,
+      identifiant: a.identifiant,
       nom: a.nom,
       telephone: a.telephone,
       localisation: a.localisation,

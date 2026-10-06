@@ -352,6 +352,10 @@ export interface DonneesContrat {
   partenaire: string;
   partenaireResponsable?: string | null;
   partenaireLocalisation?: string | null;
+  // Identifiant de l'intermédiaire vendeur (sous-agent ex. 1.0001.01, sinon
+  // partenaire ex. 1.0001) — affiché dans la liste admin ; le PDF l'obtient
+  // du serveur, qui relit tout en base.
+  identifiantIntermediaire?: string | null;
   dateDebut: string | null;
   dateFin: string | null;
   date: string;

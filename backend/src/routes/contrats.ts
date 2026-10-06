@@ -725,6 +725,27 @@ async function chargerDonneesVerifiees(type: TypeContrat, souscriptionId: string
   }
 }
 
+/** Contrats des institutions de microfinance : pas de partenaire/agent de distribution, donc pas d'identifiant. */
+const TYPES_SANS_IDENTIFIANT_INTERMEDIAIRE: readonly string[] = ["securpro", "securstock", "securecolte", "coupsdurs", "deces"];
+
+/**
+ * Identifiant de l'intermédiaire qui a vendu le contrat (ex. 1.0001, ou
+ * 1.0001.01 si c'est un sous-agent qui l'a vendu — plus précis que celui de son
+ * partenaire). `null` si le vendeur n'a pas (encore) d'identifiant. Relu en
+ * base à partir de `souscriptionId`, comme tout le reste du contrat.
+ */
+async function identifiantIntermediaire(type: TypeContrat, souscriptionId: string): Promise<string | null> {
+  if (TYPES_SANS_IDENTIFIANT_INTERMEDIAIRE.includes(type)) return null;
+  const select = { partenaire: { select: { identifiant: true } }, agentDistribution: { select: { identifiant: true } } } as const;
+  const s =
+    type === "incendie"
+      ? await prisma.souscriptionIncendie.findUnique({ where: { id: souscriptionId }, select })
+      : type === "accident"
+      ? await prisma.souscriptionAccident.findUnique({ where: { id: souscriptionId }, select })
+      : await prisma.souscription.findUnique({ where: { id: souscriptionId }, select });
+  return s?.agentDistribution?.identifiant ?? s?.partenaire.identifiant ?? null;
+}
+
 /** Remplace INTÉGRALEMENT `data` : aucune clé envoyée par l'appelant ne survit (un `Object.assign` simple laisserait passer toute clé que la relecture ne renseigne pas). */
 function remplacerParDonneesVerifiees(data: object, verite: object): void {
   const cible = data as Record<string, unknown>;
@@ -754,6 +775,18 @@ contratsRouter.post(
       return res.status(404).json({ error: "Souscription introuvable, non confirmée, ou pas encore synchronisée." });
     }
     remplacerParDonneesVerifiees(body.data, verite);
+
+    // L'identifiant de l'intermédiaire figure sur la ligne « Intermédiaire » du
+    // contrat (ex. « Cabinet Koffi (N° 1.0001) »). Ajouté ici, une seule fois,
+    // plutôt que dans les 13 gabarits : ils impriment tous `partenaire` ou
+    // `intermediaire` tels quels.
+    const idIntermediaire = await identifiantIntermediaire(body.type, body.souscriptionId);
+    if (idIntermediaire) {
+      const cible = body.data as Record<string, unknown>;
+      for (const cle of ["partenaire", "intermediaire"]) {
+        if (typeof cible[cle] === "string" && cible[cle]) cible[cle] = `${cible[cle]} (N° ${idIntermediaire})`;
+      }
+    }
 
     let html: string;
     switch (body.type) {

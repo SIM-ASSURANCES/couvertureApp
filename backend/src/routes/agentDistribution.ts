@@ -21,7 +21,7 @@ agentDistributionRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const a = await prisma.agentDistribution.findUnique({
       where: { id: req.user!.sub },
-      include: { partenaire: { select: { nomCommerce: true, produitIncendie: true, produitAccident: true } } },
+      include: { partenaire: { select: { nomCommerce: true, identifiant: true, produitIncendie: true, produitAccident: true } } },
     });
     if (!a) return res.status(404).json({ error: "Introuvable" });
     // QR sélecteur de l'agent lui-même — filtré sur `produitId: null` pour
@@ -33,6 +33,9 @@ agentDistributionRouter.get(
     });
     res.json({
       id: a.id,
+      // Identifiant du sous-agent (ex. 1.0001.01) et de son partenaire (1.0001).
+      identifiant: a.identifiant,
+      partenaireIdentifiant: a.partenaire.identifiant,
       nom: a.nom,
       telephone: a.telephone,
       localisation: a.localisation,

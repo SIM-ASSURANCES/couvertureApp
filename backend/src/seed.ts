@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { formuleRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./services/relaxAccidentsGenerale.js";
 import { resoudreOuCreerClient } from "./services/clients.js";
 import { emettreFacture } from "./services/facture.js";
+import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenaires.js";
 
 const prisma = new PrismaClient();
 
@@ -935,6 +936,14 @@ async function main() {
   await rattacherHistoriqueImfVersRcmec();
   await rattacherClientsRetroactivement();
   await emettreFacturesRetroactivement();
+  // Identifiants partenaires/agents : institutions de microfinance (catégorie 5°),
+  // partenaires existants = agents mandataires (catégorie 3°, décision SIM
+  // Assurances du 2026-10-06), puis leurs sous-agents. Idempotent. Le compte
+  // technique de souscription directe n'est pas un partenaire du réseau.
+  const identifiants = await attribuerIdentifiantsEnAttente({ exclureEmails: [EMAIL_PARTENAIRE_DIRECT] });
+  if (identifiants.partenaires + identifiants.agents > 0) {
+    console.log(`[seed] identifiants attribués : ${identifiants.partenaires} partenaire(s), ${identifiants.agents} agent(s).`);
+  }
 }
 
 main()

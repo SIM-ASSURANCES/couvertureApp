@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
+import { attribuerIdentifiantAgent } from "../services/identifiantsPartenaires.js";
 import { qrDataUrl, newQrToken } from "../services/qr.js";
 import { commissionStatsPartenaire, commissionTotaleAgentsDuPartenaire, commissionTotalePartenaire } from "../services/commission.js";
 import { statsGeneriques } from "./stats.js";
@@ -111,6 +112,7 @@ meRouter.get(
     res.json({
       partenaire: {
         id: p.id,
+        identifiant: p.identifiant,
         nomCommerce: p.nomCommerce,
         nomResponsable: p.nomResponsable,
         localisation: p.localisation,
@@ -322,6 +324,8 @@ meRouter.get(
     if (!p) return res.status(404).json({ error: "Introuvable" });
     res.json({
       id: p.id,
+      identifiant: p.identifiant,
+      categorie: p.categorie,
       nomCommerce: p.nomCommerce,
       nomResponsable: p.nomResponsable,
       telephone: p.telephone,
@@ -348,6 +352,8 @@ meRouter.patch(
     });
     res.json({
       id: updated.id,
+      identifiant: updated.identifiant,
+      categorie: updated.categorie,
       nomCommerce: updated.nomCommerce,
       nomResponsable: updated.nomResponsable,
       telephone: updated.telephone,
@@ -406,6 +412,7 @@ meRouter.get(
     const nbGeneriqueMap = new Map(nbGeneriqueGroups.map((g) => [g.agentDistributionId, g._count._all]));
     const rows = agents.map((a) => ({
       id: a.id,
+      identifiant: a.identifiant,
       nom: a.nom,
       telephone: a.telephone,
       localisation: a.localisation,
@@ -438,17 +445,26 @@ meRouter.post(
     });
 
     const motDePasse = genererMotDePasseClient();
-    const created = await prisma.agentDistribution.create({
-      data: {
-        partenaireId: p.id,
-        nom: data.nom,
-        telephone: data.telephone,
-        localisation: data.localisation,
-        passwordHash: await bcrypt.hash(motDePasse, 10),
-        qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
-        qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
-        qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
-      },
+    // Création + identifiant dans UNE transaction (ex. 1.0001.01 pour le premier
+    // agent du partenaire 1.0001). Un partenaire sans identifiant (catégorie pas
+    // encore choisie par l'admin) crée quand même son agent, qui reçoit le sien
+    // dès que le partenaire recevra le sien.
+    const hash = await bcrypt.hash(motDePasse, 10);
+    const created = await prisma.$transaction(async (tx) => {
+      const agent = await tx.agentDistribution.create({
+        data: {
+          partenaireId: p.id,
+          nom: data.nom,
+          telephone: data.telephone,
+          localisation: data.localisation,
+          passwordHash: hash,
+          qrIncendie1000Token: p.produitIncendie ? newQrToken("i1k") : null,
+          qrIncendie2000Token: p.produitIncendie ? newQrToken("i2k") : null,
+          qrAccidentToken: p.produitAccident ? newQrToken("acc") : null,
+        },
+      });
+      const identifiant = await attribuerIdentifiantAgent(agent.id, tx);
+      return { ...agent, identifiant };
     });
 
     if (qrSelecteurPartenaire) {

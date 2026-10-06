@@ -11,6 +11,11 @@ export interface Partenaire {
   telephone: string;
   localisation: string | null;
   typeCommerce: "Electronique" | "Vulcanisateur" | "MecaniqueGarage" | "AccessoireAuto" | null;
+  // Catégorie d'intermédiaire (1 à 16) et identifiant qui en découle
+  // ("<catégorie>.<n° d'ordre>", ex. 1.0001) — null tant que l'admin n'a pas
+  // choisi la catégorie ; figés ensemble une fois attribués.
+  categorie?: number | null;
+  identifiant?: string | null;
   produitIncendie: boolean;
   produitAccident: boolean;
   branche?: "INCENDIE_ACCIDENT" | "RELAX" | null;

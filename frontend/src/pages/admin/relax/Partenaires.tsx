@@ -4,11 +4,14 @@ import { PageHeader, Card, Badge, Loader, ErrorBox, PhoneInput } from "../../../
 import { useFetch } from "../../../useFetch";
 import { api } from "../../../api";
 import type { Partenaire, ProduitRelax } from "../../../types";
+import SelectCategoriePartenaire from "../../../components/SelectCategoriePartenaire";
+import { libelleCategorie } from "../../../categoriesPartenaires";
 
 const empty = {
   nomCommerce: "",
   nomResponsable: "",
   telephone: "",
+  categorie: "",
   produit: "relaxmoto" as ProduitRelax,
   email: "",
 };
@@ -51,6 +54,8 @@ export default function RelaxPartenaires() {
           nomCommerce: form.nomCommerce || undefined,
           nomResponsable: form.nomResponsable,
           telephone: form.telephone,
+          // Requise : donne son identifiant au partenaire (ex. 1.0001).
+          categorie: Number(form.categorie),
           produit: form.produit,
           email: form.email || undefined,
         }
@@ -125,6 +130,7 @@ export default function RelaxPartenaires() {
               <table className="tbl">
                 <thead>
                   <tr>
+                    <th>Identifiant</th>
                     <th>Commerce</th>
                     <th>Localisation</th>
                     <th>Clients Relax</th>
@@ -135,6 +141,16 @@ export default function RelaxPartenaires() {
                 <tbody>
                   {data.map((p) => (
                     <tr key={p.id}>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {p.identifiant ? (
+                          <>
+                            <strong>{p.identifiant}</strong>
+                            <div className="muted" style={{ fontSize: 12 }}>{libelleCategorie(p.categorie)}</div>
+                          </>
+                        ) : (
+                          <span className="muted" title="Partenaire créé avant les identifiants : catégorie non choisie">—</span>
+                        )}
+                      </td>
                       <td>
                         <strong>{p.nomCommerce}</strong>
                         <div className="muted" style={{ fontSize: 12 }}>{p.nomResponsable}</div>
@@ -166,7 +182,7 @@ export default function RelaxPartenaires() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={5}><div className="empty">Aucun partenaire Relax pour l'instant.</div></td></tr>
+                    <tr><td colSpan={6}><div className="empty">Aucun partenaire Relax pour l'instant.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -188,6 +204,11 @@ export default function RelaxPartenaires() {
               <label className="label">Téléphone <span className="req">*</span></label>
               <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
             </div>
+            <SelectCategoriePartenaire
+              requis
+              value={form.categorie}
+              onChange={(v) => setForm({ ...form, categorie: v })}
+            />
             <div className="field">
               <label className="label">Produit <span className="req">*</span></label>
               <div style={{ display: "flex", gap: 16, marginTop: 2 }}>

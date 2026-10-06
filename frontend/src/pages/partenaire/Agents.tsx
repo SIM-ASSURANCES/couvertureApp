@@ -6,6 +6,9 @@ import { api } from "../../api";
 
 interface AgentDistribution {
   id: string;
+  // "<identifiant du partenaire>.<n°>" (ex. 1.0001.01) ; null tant que le
+  // partenaire n'a pas lui-même d'identifiant (catégorie à choisir par l'admin).
+  identifiant: string | null;
   nom: string;
   telephone: string;
   localisation: string | null;
@@ -226,6 +229,7 @@ export default function PartenaireAgents() {
               <table className="tbl">
                 <thead>
                   <tr>
+                    <th>Identifiant</th>
                     <th>Nom</th>
                     <th>Téléphone</th>
                     <th>Localisation</th>
@@ -239,6 +243,7 @@ export default function PartenaireAgents() {
                 <tbody>
                   {data.map((a) => (
                     <tr key={a.id}>
+                      <td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{a.identifiant ?? <span className="muted">—</span>}</td>
                       <td><strong>{a.nom}</strong></td>
                       <td className="muted">{a.telephone}</td>
                       <td className="muted">{a.localisation ?? "—"}</td>
@@ -270,7 +275,7 @@ export default function PartenaireAgents() {
                     </tr>
                   ))}
                   {data.length === 0 && (
-                    <tr><td colSpan={8}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
+                    <tr><td colSpan={9}><div className="empty">Aucun agent pour l'instant.</div></td></tr>
                   )}
                 </tbody>
               </table>

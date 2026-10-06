@@ -18,7 +18,8 @@ import { useAuth } from "../../auth";
 import type { CatalogueProduitBranche, SouscriptionBranche } from "../../types";
 
 interface Overview {
-  partenaire: { nomCommerce: string; nomResponsable: string; localisation: string };
+  // `identifiant` (ex. 1.0001) : null tant que l'administration n'a pas attribué de catégorie.
+  partenaire: { nomCommerce: string; nomResponsable: string; localisation: string; identifiant?: string | null };
   produit: "incendie" | "accident";
   clientsIncendie: number;
   clientsAccident: number;
@@ -96,7 +97,9 @@ export default function PartenaireDashboard() {
         <>
           <PageHeader
             title={`Bonjour, ${data.partenaire.nomResponsable.split(" ")[0]} 👋`}
-            subtitle={`${data.partenaire.nomCommerce} — ${data.partenaire.localisation}`}
+            subtitle={`${data.partenaire.nomCommerce} — ${data.partenaire.localisation}${
+              data.partenaire.identifiant ? ` · Identifiant ${data.partenaire.identifiant}` : ""
+            }`}
           />
 
           {/* Filtre de période */}

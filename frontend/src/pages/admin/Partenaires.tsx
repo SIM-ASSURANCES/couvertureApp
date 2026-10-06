@@ -6,6 +6,8 @@ import { api } from "../../api";
 import { useAuth } from "../../auth";
 import { exportExcel, exportExcelMultiSheet } from "../../xlsx";
 import type { Partenaire, CatalogueProduitBranche, SouscriptionBranche } from "../../types";
+import SelectCategoriePartenaire from "../../components/SelectCategoriePartenaire";
+import { libelleCategorie } from "../../categoriesPartenaires";
 
 interface PartenaireDetails {
   partenaire: {
@@ -28,6 +30,9 @@ interface PartenaireDetails {
 
 interface AgentDistributionAdmin {
   id: string;
+  // "<identifiant du partenaire>.<n°>" (ex. 1.0001.01) — null tant que le
+  // partenaire n'a pas d'identifiant.
+  identifiant: string | null;
   nom: string;
   telephone: string;
   localisation: string | null;
@@ -264,13 +269,14 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                   <table className="tbl">
                     <thead>
                       <tr>
-                        <th>Nom</th><th>Téléphone</th><th>Localisation</th><th>Statut</th>
+                        <th>Identifiant</th><th>Nom</th><th>Téléphone</th><th>Localisation</th><th>Statut</th>
                         <th>Souscriptions</th><th>Commission</th><th></th>
                       </tr>
                     </thead>
                     <tbody>
                       {(agents ?? []).map((a) => (
                         <tr key={a.id}>
+                          <td style={{ fontWeight: 700, whiteSpace: "nowrap" }}>{a.identifiant ?? <span className="muted">—</span>}</td>
                           <td>{a.nom}</td>
                           <td>{a.telephone}</td>
                           <td>{a.localisation ?? <span className="muted">—</span>}</td>
@@ -298,7 +304,7 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                         </tr>
                       ))}
                       {(agents ?? []).length === 0 && (
-                        <tr><td colSpan={7}><div className="empty">Aucun agent de distribution.</div></td></tr>
+                        <tr><td colSpan={8}><div className="empty">Aucun agent de distribution.</div></td></tr>
                       )}
                     </tbody>
                   </table>
@@ -418,8 +424,7 @@ function EditModal({
     nomResponsable: partenaire.nomResponsable,
     telephone: partenaire.telephone,
     localisation: partenaire.localisation ?? "",
-    typeCommerce: (partenaire.typeCommerce ?? "Electronique") as string,
-    produit: (partenaire.produitIncendie ? "incendie" : "accident") as "incendie" | "accident",
+    categorie: partenaire.categorie != null ? String(partenaire.categorie) : "",
     email: partenaire.email ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -430,7 +435,11 @@ function EditModal({
     setSaving(true);
     setError("");
     try {
-      await api.patch(`/partenaires/${partenaire.id}`, form);
+      // Pas de catégorie choisie (partenaire existant) : champ omis, jamais envoyé vide.
+      await api.patch(`/partenaires/${partenaire.id}`, {
+        ...form,
+        categorie: form.categorie === "" ? undefined : Number(form.categorie),
+      });
       onSaved("Partenaire modifié ✓");
       onClose();
     } catch (err) {
@@ -464,28 +473,17 @@ function EditModal({
             <label className="label">Localisation <span className="req">*</span></label>
             <input className="input" required value={form.localisation} onChange={(e) => setForm({ ...form, localisation: e.target.value })} />
           </div>
-          <div className="field">
-            <label className="label">Type de commerce <span className="req">*</span></label>
-            <select className="select" value={form.typeCommerce} onChange={(e) => setForm({ ...form, typeCommerce: e.target.value })}>
-              <option value="Electronique">Electronique</option>
-              <option value="Vulcanisateur">Vulcanisateur</option>
-              <option value="MecaniqueGarage">Mécanique / garage</option>
-              <option value="AccessoireAuto">Accessoire auto</option>
-            </select>
-          </div>
-          <div className="field">
-            <label className="label">Produit <span className="req">*</span></label>
-            <div style={{ display: "flex", gap: 16, marginTop: 2 }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                <input type="radio" name="editProduit" value="incendie" checked={form.produit === "incendie"} onChange={() => setForm({ ...form, produit: "incendie" })} />
-                <span>Incendie</span>
-              </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
-                <input type="radio" name="editProduit" value="accident" checked={form.produit === "accident"} onChange={() => setForm({ ...form, produit: "accident" })} />
-                <span>Accidents</span>
-              </label>
+          <SelectCategoriePartenaire
+            value={form.categorie}
+            onChange={(v) => setForm({ ...form, categorie: v })}
+            verrouille={!!partenaire.identifiant}
+          />
+          {partenaire.identifiant && (
+            <div className="field">
+              <label className="label">Identifiant</label>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>{partenaire.identifiant}</div>
             </div>
-          </div>
+          )}
           <div className="field">
             <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>
             <input
@@ -854,6 +852,7 @@ const empty = {
   nomResponsable: "",
   telephone: "",
   localisation: "",
+  categorie: "",
   email: "",
 };
 
@@ -946,6 +945,8 @@ export default function Partenaires() {
         nomResponsable: form.nomResponsable,
         telephone: form.telephone,
         localisation: form.localisation,
+        // Catégorie requise : elle donne son identifiant au partenaire (ex. 1.0001).
+        categorie: Number(form.categorie),
         // Ni `produit` ni `sousBranche` : un seul QR unique est généré, le
         // client choisit son Assurance (Accidents/Dommages) puis son produit
         // après le scan (refonte 2026-08-07).
@@ -1179,6 +1180,7 @@ export default function Partenaires() {
               <table className="tbl">
                 <thead>
                   <tr>
+                    <th>Identifiant</th>
                     <th>Commerce</th>
                     <th>Localisation</th>
                     <th>Produit</th>
@@ -1190,6 +1192,17 @@ export default function Partenaires() {
                 <tbody>
                   {data.map((p) => (
                     <tr key={p.id}>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {p.identifiant ? (
+                          <>
+                            <strong>{p.identifiant}</strong>
+                            <div className="muted" style={{ fontSize: 12 }}>{libelleCategorie(p.categorie)}</div>
+                          </>
+                        ) : (
+                          // Partenaire créé avant les identifiants : l'admin choisit sa catégorie via ✏️ Modifier.
+                          <span className="muted" title="Catégorie à choisir (bouton Modifier)">—</span>
+                        )}
+                      </td>
                       <td>
                         <strong>{p.nomCommerce}</strong>
                         <div className="muted" style={{ fontSize: 12 }}>
@@ -1338,7 +1351,7 @@ export default function Partenaires() {
                   ))}
                   {data.length === 0 && (
                     <tr>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="empty">Aucun partenaire trouvé.</div>
                       </td>
                     </tr>
@@ -1382,6 +1395,11 @@ export default function Partenaires() {
                 onChange={(e) => setForm({ ...form, localisation: e.target.value })}
               />
             </div>
+            <SelectCategoriePartenaire
+              requis
+              value={form.categorie}
+              onChange={(v) => setForm({ ...form, categorie: v })}
+            />
             <div className="field">
               <label className="label">Assurance</label>
               <div

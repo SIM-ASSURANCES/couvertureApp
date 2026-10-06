@@ -277,6 +277,9 @@ export default function Contrats() {
                     </td>
                     <td>
                       <strong>{c.partenaire}</strong>
+                      {c.identifiantIntermediaire && (
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>N° {c.identifiantIntermediaire}</div>
+                      )}
                       {c.partenaireResponsable && (
                         <div className="muted" style={{ fontSize: 12 }}>{c.partenaireResponsable}</div>
                       )}
@@ -468,6 +471,9 @@ export default function Contrats() {
                     <td className="muted">Partenaire</td>
                     <td>
                       {detail.partenaire}
+                      {detail.identifiantIntermediaire && (
+                        <div style={{ fontSize: 12, fontWeight: 700 }}>N° {detail.identifiantIntermediaire}</div>
+                      )}
                       {detail.partenaireResponsable && (
                         <div className="muted" style={{ fontSize: 12 }}>{detail.partenaireResponsable}</div>
                       )}

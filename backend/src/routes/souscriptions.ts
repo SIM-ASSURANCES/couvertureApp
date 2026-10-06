@@ -62,6 +62,9 @@ souscriptionsRouter.get(
       // Ne jamais les additionner — voir pages/admin/Contrats.tsx.
       fg?: number | null;
       accessoires?: number | null;
+      // Identifiant de l'intermédiaire vendeur : celui du sous-agent (ex.
+      // 1.0001.01) s'il a vendu le contrat, sinon celui du partenaire (1.0001).
+      identifiantIntermediaire?: string | null;
       signature?: string | null;
       // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale,
       // RelaxVoyage, SecurHome+, SecurPro Dommages) — voir services/contratGenerique.ts
@@ -134,7 +137,8 @@ souscriptionsRouter.get(
           numeroMaison: true,
           signature: true,
           createdAt: true,
-          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
+          agentDistribution: { select: { identifiant: true } },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -166,6 +170,7 @@ souscriptionsRouter.get(
           primeTTC: s.montantPrime,
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
+          identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
           signature: s.signature,
         });
       }
@@ -191,7 +196,8 @@ souscriptionsRouter.get(
           signature: true,
           waveStatut: true,
           waveTransactionId: true,
-          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
+          agentDistribution: { select: { identifiant: true } },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -218,6 +224,7 @@ souscriptionsRouter.get(
           primeTTC: s.montantPrime,
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
+          identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
           signature: s.signature,
         });
       }
@@ -260,7 +267,8 @@ souscriptionsRouter.get(
             dateDebut: dateEffetRange,
           },
           include: {
-            partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+            partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
+            agentDistribution: { select: { identifiant: true } },
             produit: { select: { code: true, libelle: true } },
             // Dernière échéance réglée : porte la référence Wave quand elle
             // n'a pas été recopiée sur la souscription (cas des abonnements).
@@ -343,6 +351,7 @@ souscriptionsRouter.get(
             taxes,
             fg,
             accessoires,
+            identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
             signature: d.signature,
             produitLibelle: d.produitLibelle,
             compagnie: d.compagnie,

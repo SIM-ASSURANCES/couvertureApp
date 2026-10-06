@@ -13,6 +13,10 @@ function fmtDate(d: string) {
 
 interface Moi {
   id: string;
+  // Identifiant du sous-agent (ex. 1.0001.01) et de son partenaire (1.0001) ;
+  // null tant que le partenaire n'a pas reçu le sien.
+  identifiant?: string | null;
+  partenaireIdentifiant?: string | null;
   nom: string;
   telephone: string;
   localisation: string | null;
@@ -227,6 +231,9 @@ export default function AgentDistributionDashboard() {
             <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 24, display: "block", marginBottom: 8 }} />
             <div style={{ fontSize: 15, fontWeight: 700 }}>Bonjour {moi?.nom ?? ""}</div>
             {moi && <div style={{ fontSize: 12, opacity: 0.8 }}>Agent de {moi.partenaireNom}</div>}
+            {moi?.identifiant && (
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>Identifiant {moi.identifiant}</div>
+            )}
           </div>
           <button onClick={deconnexion} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", padding: "5px 10px", borderRadius: 8, fontSize: 11, cursor: "pointer" }}>
             Déconnexion

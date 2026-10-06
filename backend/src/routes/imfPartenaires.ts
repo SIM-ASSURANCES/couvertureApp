@@ -13,6 +13,7 @@ import {
 } from "../services/cataloguesImf.js";
 import { ensureProduitsImf, ensureBaremesImf } from "../services/provisioningImf.js";
 import { PRODUITS_TARIF_FIXE_IMF } from "../services/baremesImfDefaut.js";
+import { attribuerIdentifiantPartenaire, CATEGORIE_MICROFINANCE } from "../services/identifiantsPartenaires.js";
 import { imfPartenairesReseauRouter } from "./imfPartenairesReseau.js";
 
 /**
@@ -182,6 +183,9 @@ imfPartenairesRouter.post(
             statut: "actif",
           },
         });
+        // Une institution de microfinance est par nature de la catégorie 5° :
+        // identifiant attribué d'office (ex. 5.0001), dans la même transaction.
+        await attribuerIdentifiantPartenaire(partenaire.id, CATEGORIE_MICROFINANCE, tx);
         const cree = await tx.imf.create({
           data: {
             code,
