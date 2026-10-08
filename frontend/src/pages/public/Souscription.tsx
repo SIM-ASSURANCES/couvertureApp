@@ -97,6 +97,15 @@ function dureeOptionDecesMois(produitCode?: string): number {
   return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
 }
 
+// Périodicité (durée) du CONTRAT RelaxAccidents Frais Médicaux — 2 mois pour le
+// grand public, 1 mois pour la version Livreurs/MotoTaxis. Distincte de la
+// durée de l'option Décès ci-dessus, même si les valeurs coïncident. Miroir de
+// dureeFormuleMois() côté serveur (backend/src/services/paiementWave.ts), qui
+// fait foi pour la date de fin réelle : à garder synchronisés.
+function dureeContratRafMois(produitCode?: string): number {
+  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
+}
+
 function isRelaxVoyage(p?: string): p is "relaxvoyage" {
   return p === "relaxvoyage";
 }
@@ -437,11 +446,15 @@ function TarifCard({
   selected,
   onSelect,
   masquerCapitalGaranti,
+  periodicite,
 }: {
   prime: number;
   capitalGaranti: number;
   selected: boolean;
   onSelect: () => void;
+  // Périodicité du contrat affichée sous le prix (ex. « 2 mois ») — renseignée
+  // pour RelaxAccidents Frais Médicaux, absente pour les autres produits.
+  periodicite?: string;
   // RelaxVoyage : le détail des garanties (Décès/IPT/Frais de Santé/Bagages)
   // est déjà affiché juste en dessous du sélecteur — cette ligne y ferait
   // doublon.
@@ -473,6 +486,12 @@ function TarifCard({
           <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 13 }}>
             Capital garanti :{" "}
             <strong style={{ color: "var(--text)" }}>{fcfa(capitalGaranti)}</strong>
+          </div>
+        )}
+        {periodicite && (
+          <div style={{ marginTop: 4, color: "var(--text-2)", fontSize: 13 }}>
+            Périodicité du contrat :{" "}
+            <strong style={{ color: "var(--text)" }}>{periodicite}</strong>
           </div>
         )}
       </div>
@@ -2433,6 +2452,7 @@ export default function Souscription() {
       } else {
         l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
       }
+      l.push({ label: "Périodicité du contrat", valeur: `${dureeContratRafMois(p)} mois` });
       l.push({
         label: "Option Décès",
         valeur: optionDeces
@@ -3548,6 +3568,11 @@ export default function Souscription() {
                         selected={selectedFormule === t.libelleVariante}
                         onSelect={() => setSelectedFormule(t.libelleVariante)}
                         masquerCapitalGaranti={qrInfo?.produit === "relaxvoyage"}
+                        periodicite={
+                          isRelaxAccidentsFraisMedicaux(qrInfo?.produit)
+                            ? `${dureeContratRafMois(qrInfo?.produit)} mois`
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -5074,7 +5099,7 @@ export default function Souscription() {
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
                     Votre assurance RelaxAccidents Frais Médicaux
                     {isRafLivreurs(qrInfo?.produit) ? " Livreurs/MotoTaxis" : ""} est activée pour{" "}
-                    <strong>{isRafLivreurs(qrInfo?.produit) ? "1 mois" : "2 mois"}</strong>.
+                    <strong>{dureeContratRafMois(qrInfo?.produit)} mois</strong>.
                   </div>
                   {result?.numeroPolice && (
                     <div
