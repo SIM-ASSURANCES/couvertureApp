@@ -18,9 +18,10 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // À incrémenter à CHAQUE APK distribué : Android ne reconnaît une mise à
-        // jour que si versionCode augmente (1 = APK du 2026-09-24, 2 = 2026-10-06).
-        versionCode 3
-        versionName "1.2"
+        // jour que si versionCode augmente (1 = APK du 2026-09-24, 2 = 2026-10-06,
+        // 3 = 2026-10-08 périodicité RAF, 4 = 2026-10-08 Assurances Santé).
+        versionCode 4
+        versionName "1.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
