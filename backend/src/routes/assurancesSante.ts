@@ -11,6 +11,7 @@ import {
   PRODUITS_SANTE,
   VALIDATION_SANTE,
   estProduitSante,
+  lireFicheSante,
   lirePersonnesAssureesSante,
   tauxPriseEnChargeDuTarif,
 } from "../services/assurancesSante.js";
@@ -67,7 +68,12 @@ assurancesSanteRouter.get(
         nom: s.nom,
         prenom: s.prenom,
         telephone: s.telephone,
+        email: s.email,
+        sexe: s.sexe,
         dateNaissance: s.dateNaissance,
+        // Fiche de l'assuré principal (dont ses données de santé) : c'est ce
+        // que l'admin examine pour valider. Route réservée aux admins.
+        ficheSante: lireFicheSante(s.donneesSpecifiques),
         personnesAssurees: lirePersonnesAssureesSante(s.donneesSpecifiques),
         partenaire: s.partenaire.nomResponsable || s.partenaire.nomCommerce,
         agent: s.agentDistribution?.nom ?? null,
@@ -159,7 +165,7 @@ assurancesSanteRouter.post(
 
     await sendSMS(
       s.telephone,
-      messageDemandeSanteValidee(s.prenom ?? "", s.produit.libelle, echeance.montant, wave?.checkoutUrl ?? successUrl)
+      messageDemandeSanteValidee(s.prenom || s.nom || "", s.produit.libelle, echeance.montant, wave?.checkoutUrl ?? successUrl)
     );
     if (modeTest) await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
 
@@ -195,7 +201,7 @@ assurancesSanteRouter.post(
         validationMotif: motif || null,
       },
     });
-    await sendSMS(s.telephone, messageDemandeSanteRefusee(s.prenom ?? "", s.produit.libelle));
+    await sendSMS(s.telephone, messageDemandeSanteRefusee(s.prenom || s.nom || "", s.produit.libelle));
     await logAction({
       adminId: req.user!.sub,
       typeAction: "modification",

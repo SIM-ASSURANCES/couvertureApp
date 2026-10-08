@@ -14,15 +14,27 @@ import {
   genererContratAssuranceSante,
 } from "../../contract";
 import {
+  AGE_MAX_ASSURE_PRINCIPAL,
+  AGE_MIN_ASSURE_PRINCIPAL,
   COMPOSITION_SANTE,
   DELAI_CARTE_PHYSIQUE_JOURS,
   DUREE_CONTRAT_SANTE_MOIS,
   GARANTIES_SANTE,
+  GROUPES_SANGUINS,
+  SAISIE_FICHE_SANTE_VIDE,
   SAISIE_PERSONNE_SANTE_VIDE,
+  SITUATIONS_MATRIMONIALES,
+  ageAssurePrincipalValide,
+  emailFacultatifValide,
   estProduitSante,
+  ficheSanteDepuisSaisie,
+  libelleGroupeSanguin,
+  libelleSituationMatrimoniale,
   personnesAssureesSante,
+  tensionArterielleValide,
   type PersonneAssureeSante,
   type ProduitSante,
+  type SaisieFicheSante,
   type SaisiePersonneSante,
 } from "../../assurancesSante";
 import { telechargerCarte } from "../../carte";
@@ -1744,12 +1756,14 @@ function AssuranceSanteForm({
   produit,
   nom,
   setNom,
-  prenom,
-  setPrenom,
   telephone,
   setTelephone,
   dateNaissance,
   setDateNaissance,
+  sexe,
+  setSexe,
+  fiche,
+  setFiche,
   conjoint,
   setConjoint,
   enfants,
@@ -1757,14 +1771,17 @@ function AssuranceSanteForm({
   sigRef,
 }: {
   produit: ProduitSante;
+  /** « Nom complet » de l'assuré principal, enregistré tel quel. */
   nom: string;
   setNom: (v: string) => void;
-  prenom: string;
-  setPrenom: (v: string) => void;
   telephone: string;
   setTelephone: (v: string) => void;
   dateNaissance: string;
   setDateNaissance: (v: string) => void;
+  sexe: "masculin" | "feminin" | "";
+  setSexe: (v: "masculin" | "feminin") => void;
+  fiche: SaisieFicheSante;
+  setFiche: (v: SaisieFicheSante) => void;
   conjoint: SaisiePersonneSante;
   setConjoint: (v: SaisiePersonneSante) => void;
   enfants: SaisiePersonneSante[];
@@ -1772,20 +1789,100 @@ function AssuranceSanteForm({
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
   const regle = COMPOSITION_SANTE[produit];
+  const champ = (cle: keyof SaisieFicheSante) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setFiche({ ...fiche, [cle]: e.target.value });
+  const aide: React.CSSProperties = { fontSize: 12, color: "#5b6b80", marginTop: 5 };
+  const alerte: React.CSSProperties = { ...aide, color: "#dc2626", fontWeight: 600 };
+  const ageHorsBornes = !!dateNaissance && !ageAssurePrincipalValide(dateNaissance);
+  const tensionSaisieInvalide = !!fiche.tensionArterielle.trim() && !tensionArterielleValide(fiche.tensionArterielle);
+  const boutonSexe = (valeur: "masculin" | "feminin", libelle: string) => (
+    <button
+      type="button"
+      onClick={() => setSexe(valeur)}
+      style={{
+        flex: 1,
+        height: 44,
+        borderRadius: 10,
+        border: sexe === valeur ? "1.5px solid #004b9c" : "1.5px solid #dde3ec",
+        background: sexe === valeur ? "#e6f1fb" : "#fff",
+        color: sexe === valeur ? "#004b9c" : "#5b6b80",
+        fontWeight: 700,
+        fontSize: 14,
+        cursor: "pointer",
+      }}
+    >
+      {libelle}
+    </button>
+  );
 
   return (
     <>
-      <FieldRow label="Prénom *">
-        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      <FieldRow label="Nom complet *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex : Kouassi Jean-Baptiste" style={inputStyle} />
       </FieldRow>
-      <FieldRow label="Nom *">
-        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      <FieldRow label="Profession *">
+        <input value={fiche.profession} onChange={champ("profession")} placeholder="Ex : Enseignant, Commerçant…" style={inputStyle} />
       </FieldRow>
-      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+      <FieldRow label="Lieu de résidence *">
+        <input value={fiche.lieuResidence} onChange={champ("lieuResidence")} placeholder="Ex : Cocody Riviera 3, Abidjan" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="N° CMU (optionnel)">
+        <input value={fiche.numeroCmu} onChange={champ("numeroCmu")} placeholder="Ex : CMU123456789" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Téléphone mobile *">
         <PhoneInput value={telephone} onChange={setTelephone} />
       </FieldRow>
+      <FieldRow label="Email (optionnel)">
+        <input type="email" value={fiche.email} onChange={champ("email")} placeholder="Ex : kouassi@email.com" style={inputStyle} />
+        {!emailFacultatifValide(fiche.email) && <div style={alerte}>Adresse email invalide.</div>}
+      </FieldRow>
+      <FieldRow label="Sexe *">
+        <div style={{ display: "flex", gap: 8 }}>
+          {boutonSexe("masculin", "♂ Homme")}
+          {boutonSexe("feminin", "♀ Femme")}
+        </div>
+      </FieldRow>
+      <FieldRow label="Situation matrimoniale *">
+        <select value={fiche.situationMatrimoniale} onChange={champ("situationMatrimoniale")} style={inputStyle}>
+          <option value="">Sélectionner…</option>
+          {SITUATIONS_MATRIMONIALES.map((s) => (
+            <option key={s.valeur} value={s.valeur}>
+              {s.libelle}
+            </option>
+          ))}
+        </select>
+      </FieldRow>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <FieldRow label="Poids (kg) *">
+            <input inputMode="decimal" value={fiche.poidsKg} onChange={champ("poidsKg")} placeholder="Ex : 70" style={inputStyle} />
+          </FieldRow>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FieldRow label="Taille (cm) *">
+            <input inputMode="decimal" value={fiche.tailleCm} onChange={champ("tailleCm")} placeholder="Ex : 170" style={inputStyle} />
+          </FieldRow>
+        </div>
+      </div>
       <FieldRow label="Date de naissance *">
         <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
+        <div style={ageHorsBornes ? alerte : aide}>
+          Conditions : entre {AGE_MIN_ASSURE_PRINCIPAL} et {AGE_MAX_ASSURE_PRINCIPAL} ans
+        </div>
+      </FieldRow>
+      <FieldRow label="Tension artérielle *">
+        <input inputMode="numeric" value={fiche.tensionArterielle} onChange={champ("tensionArterielle")} placeholder="...../....." style={inputStyle} />
+        <div style={tensionSaisieInvalide ? alerte : aide}>Format : systolique/diastolique (ex : 120/80)</div>
+      </FieldRow>
+      <FieldRow label="Groupe sanguin *">
+        <select value={fiche.groupeSanguin} onChange={champ("groupeSanguin")} style={inputStyle}>
+          <option value="">Sélectionner…</option>
+          {GROUPES_SANGUINS.map((g) => (
+            <option key={g} value={g}>
+              {libelleGroupeSanguin(g)}
+            </option>
+          ))}
+        </select>
       </FieldRow>
 
       {regle.conjoint !== "aucun" && (
@@ -1990,6 +2087,9 @@ export default function Souscription() {
   // Champs Assurances Santé (Solo, Duo, Famille) — personnes couvertes en plus
   // du souscripteur. `nom`/`prenom`/`telephone`/`dateNaissance`/`sigRef` et la
   // formule (`selectedFormule`) sont partagés avec les branches ci-dessus.
+  // Fiche de l'assuré principal (profession, résidence, poids, taille,
+  // tension, groupe sanguin…) — `nom` porte ici le « Nom complet ».
+  const [ficheSante, setFicheSante] = useState<SaisieFicheSante>(SAISIE_FICHE_SANTE_VIDE);
   const [conjointSante, setConjointSante] = useState<SaisiePersonneSante>(SAISIE_PERSONNE_SANTE_VIDE);
   const [enfantsSante, setEnfantsSante] = useState<SaisiePersonneSante[]>([]);
 
@@ -2420,10 +2520,12 @@ export default function Souscription() {
       return;
     }
     if (estProduitSante(produit)) {
-      if (p.nom) setNom(p.nom);
-      if (p.prenom) setPrenom(p.prenom);
+      // Un seul champ « Nom complet » pour la Santé.
+      const nomComplet = [p.nom, p.prenom].filter(Boolean).join(" ");
+      if (nomComplet) setNom(nomComplet);
       if (telephoneClient) setTelephone(telephoneClient);
       if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
+      if (p.sexe) setSexe(p.sexe);
       return;
     }
     if (isRelaxAccidentsGenerale(produit)) {
@@ -2676,10 +2778,19 @@ export default function Souscription() {
     if (estProduitSante(p)) {
       const taux = tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.donneesSpecifiques?.tauxPriseEnCharge;
       const personne = (x: SaisiePersonneSante | PersonneAssureeSante) => `${x.prenom} ${x.nom} (né(e) le ${dfr(x.dateNaissance)})`;
-      l.push({ label: "Prénom", valeur: prenom });
-      l.push({ label: "Nom", valeur: nom });
-      l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Nom complet", valeur: nom });
+      l.push({ label: "Profession", valeur: ficheSante.profession });
+      l.push({ label: "Lieu de résidence", valeur: ficheSante.lieuResidence });
+      if (ficheSante.numeroCmu.trim()) l.push({ label: "N° CMU", valeur: ficheSante.numeroCmu });
+      l.push({ label: "Téléphone mobile", valeur: telephone });
+      if (ficheSante.email.trim()) l.push({ label: "Email", valeur: ficheSante.email });
+      l.push({ label: "Sexe", valeur: sexe === "masculin" ? "Homme" : sexe === "feminin" ? "Femme" : "—" });
+      l.push({ label: "Situation matrimoniale", valeur: libelleSituationMatrimoniale(ficheSante.situationMatrimoniale) });
+      l.push({ label: "Poids", valeur: ficheSante.poidsKg ? `${ficheSante.poidsKg} kg` : "—" });
+      l.push({ label: "Taille", valeur: ficheSante.tailleCm ? `${ficheSante.tailleCm} cm` : "—" });
       l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
+      l.push({ label: "Tension artérielle", valeur: ficheSante.tensionArterielle });
+      l.push({ label: "Groupe sanguin", valeur: libelleGroupeSanguin(ficheSante.groupeSanguin) });
       l.push({ label: "Produit", valeur: `${COMPOSITION_SANTE[p].libelle} — ${COMPOSITION_SANTE[p].description}` });
       l.push({ label: "Prise en charge", valeur: taux != null ? `${taux} %` : "—" });
       l.push({ label: "Durée du contrat", valeur: `${DUREE_CONTRAT_SANTE_MOIS} mois` });
@@ -2865,7 +2976,7 @@ export default function Souscription() {
     if ((isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
-    if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit))) return;
+    if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit) || !ficheSanteDepuisSaisie(ficheSante) || !sexe)) return;
     if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
@@ -2966,16 +3077,20 @@ export default function Souscription() {
         return;
       } else if (estProduitSante(qrInfo.produit)) {
         const personnesAssurees = personnesSante(qrInfo.produit);
-        if (!selectedFormule || !personnesAssurees) return;
+        const fiche = ficheSanteDepuisSaisie(ficheSante);
+        if (!selectedFormule || !personnesAssurees || !fiche || !sexe) return;
         const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             qrToken: token,
-            nom,
-            prenom,
+            // « Nom complet », enregistré tel que saisi (pas de prénom séparé).
+            nom: nom.trim(),
             telephone,
+            email: ficheSante.email.trim() || undefined,
+            sexe,
             dateNaissance,
+            ficheSante: fiche,
             formule: selectedFormule,
             personnesAssurees,
             signature,
@@ -4161,21 +4276,32 @@ export default function Souscription() {
                 </div>
               )}
 
-              <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 18 }}>
-                Vos informations
-              </div>
+              {estProduitSante(qrInfo?.produit) ? (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontWeight: 800, fontSize: 17 }}>🛡️ Assuré principal</div>
+                  <div style={{ color: "#5b6b80", fontSize: 13, marginTop: 2 }}>
+                    La personne principale couverte par le contrat
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 18 }}>
+                  Vos informations
+                </div>
+              )}
 
               {estProduitSante(qrInfo?.produit) ? (
                 <AssuranceSanteForm
                   produit={qrInfo.produit}
                   nom={nom}
                   setNom={setNom}
-                  prenom={prenom}
-                  setPrenom={setPrenom}
                   telephone={telephone}
                   setTelephone={setTelephone}
                   dateNaissance={dateNaissance}
                   setDateNaissance={setDateNaissance}
+                  sexe={sexe}
+                  setSexe={setSexe}
+                  fiche={ficheSante}
+                  setFiche={setFicheSante}
                   conjoint={conjointSante}
                   setConjoint={setConjointSante}
                   enfants={enfantsSante}
@@ -4756,10 +4882,12 @@ export default function Souscription() {
                 const bloque =
                   submitting ||
                   (estProduitSante(qrInfo?.produit)
-                    ? !nom ||
-                      !prenom ||
+                    ? nom.trim().length < 3 ||
                       phoneInvalid(telephone) ||
-                      !dateNaissance ||
+                      !sexe ||
+                      !ageAssurePrincipalValide(dateNaissance) ||
+                      !emailFacultatifValide(ficheSante.email) ||
+                      !ficheSanteDepuisSaisie(ficheSante) ||
                       !selectedFormule ||
                       !personnesSante(qrInfo.produit)
                     : isRelaxAccidentsGenerale(qrInfo?.produit)

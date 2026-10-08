@@ -134,6 +134,55 @@ export function tauxPriseEnChargeDuTarif(donneesSpecifiques: unknown): number | 
   return typeof taux === "number" && taux > 0 && taux <= 100 ? taux : null;
 }
 
+// ── Fiche de l'assuré principal (formulaire de demande fourni le 2026-10-08) ──
+// Nom complet (enregistré tel quel dans Souscription.nom, sans le découper),
+// téléphone, email, sexe et date de naissance vivent dans les colonnes de la
+// souscription ; le reste est ici. Poids, taille, tension et groupe sanguin
+// sont des données de santé : elles ne servent qu'à l'admin qui valide la
+// demande et ne doivent sortir par aucune route publique ni figurer au contrat.
+
+/** L'assuré principal doit avoir entre 15 et 65 ans à la date de la demande. */
+export const AGE_MIN_ASSURE_PRINCIPAL = 15;
+export const AGE_MAX_ASSURE_PRINCIPAL = 65;
+
+export const SITUATIONS_MATRIMONIALES = ["celibataire", "marie", "divorce", "veuf", "union_libre"] as const;
+export const GROUPES_SANGUINS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "inconnu"] as const;
+
+/** Tension « systolique/diastolique » (ex. 120/80), dans des bornes physiologiquement possibles. */
+export function tensionArterielleValide(valeur: string): boolean {
+  const m = /^(\d{2,3})\/(\d{2,3})$/.exec(valeur.trim());
+  if (!m) return false;
+  const systolique = Number(m[1]);
+  const diastolique = Number(m[2]);
+  return systolique >= 60 && systolique <= 300 && diastolique >= 30 && diastolique <= 200 && systolique > diastolique;
+}
+
+export const ficheSanteSchema = z.object({
+  profession: z.string().trim().min(2).max(120),
+  lieuResidence: z.string().trim().min(2).max(200),
+  numeroCmu: z.string().trim().max(40).optional(),
+  situationMatrimoniale: z.enum(SITUATIONS_MATRIMONIALES),
+  poidsKg: z.number().min(20).max(300),
+  tailleCm: z.number().min(80).max(250),
+  tensionArterielle: z.string().trim().refine(tensionArterielleValide, "Tension artérielle invalide (ex. 120/80)"),
+  groupeSanguin: z.enum(GROUPES_SANGUINS),
+});
+export type FicheSante = z.infer<typeof ficheSanteSchema>;
+
+/** Âge révolu à une date donnée (aujourd'hui par défaut). */
+export function ageRevolu(dateNaissance: Date, a: Date = new Date()): number {
+  const anniversairePasse =
+    a.getMonth() > dateNaissance.getMonth() ||
+    (a.getMonth() === dateNaissance.getMonth() && a.getDate() >= dateNaissance.getDate());
+  return a.getFullYear() - dateNaissance.getFullYear() - (anniversairePasse ? 0 : 1);
+}
+
+/** Relit la fiche stockée dans `Souscription.donneesSpecifiques.ficheSante` — `null` si absente ou abîmée. */
+export function lireFicheSante(donneesSpecifiques: unknown): FicheSante | null {
+  const lu = ficheSanteSchema.safeParse((donneesSpecifiques as { ficheSante?: unknown } | null)?.ficheSante);
+  return lu.success ? lu.data : null;
+}
+
 export const personneAssureeSanteSchema = z.object({
   lien: z.enum(["conjoint", "enfant"]),
   nom: z.string().trim().min(1).max(120),

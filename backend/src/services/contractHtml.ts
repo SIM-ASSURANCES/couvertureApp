@@ -126,6 +126,8 @@ export interface ContratAssuranceSante {
   prenom?: string | null;
   telephone: string;
   dateNaissance?: string | null;
+  profession?: string | null;
+  lieuResidence?: string | null;
   produitLibelle: string;
   description: string;
   tauxPriseEnCharge: number;
@@ -420,6 +422,7 @@ const CSS = `
   table{width:100%;border-collapse:collapse;margin-bottom:10px;page-break-inside:avoid;}
   td{padding:5px 9px;border:1px solid #e3e9f1;font-size:12px;vertical-align:top;}
   td.k{background:#f5f8fc;font-weight:600;width:34%;color:#5b6b80;}
+  .sante td.k{width:23%;text-align:left;}
   .cg h3{font-size:13px;margin:14px 0 4px;color:#0f1b2d;}
   .cg p{margin:4px 0;font-size:11.5px;color:#25324a;}
   .cg ul{margin:4px 0 8px 18px;padding:0;}
@@ -970,8 +973,11 @@ export async function renderContratSecurhomeIncendie(c: ContratSecurhomeIncendie
  * couvertes (souscripteur, conjoint, enfants) sont listées nommément.
  */
 export async function renderContratAssuranceSante(c: ContratAssuranceSante): Promise<string> {
+  // Le formulaire Santé n'a qu'un champ « Nom complet » (dans `nom`) : pas de
+  // prénom séparé à afficher, donc pas de tiret à sa place.
+  const nomSouscripteur = val([c.prenom, c.nom].filter(Boolean).join(" "));
   const assures: { qualite: string; nom: string; dateNaissance?: string | null }[] = [
-    { qualite: "Assuré principal (souscripteur)", nom: `${val(c.prenom)} ${val(c.nom)}`, dateNaissance: c.dateNaissance },
+    { qualite: "Assuré principal", nom: nomSouscripteur, dateNaissance: c.dateNaissance },
     ...c.personnesAssurees.map((p) => ({
       qualite: p.lien === "conjoint" ? "Conjoint(e)" : "Enfant",
       nom: `${val(p.prenom)} ${val(p.nom)}`,
@@ -987,7 +993,9 @@ export async function renderContratAssuranceSante(c: ContratAssuranceSante): Pro
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td style="white-space:nowrap;">${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Souscripteur</td><td style="text-align:left;">${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td style="white-space:nowrap;">${val(c.telephone)}</td></tr>
+    <tr><td class="k">Souscripteur</td><td colspan="3" style="text-align:left;">${nomSouscripteur}</td></tr>
+    <tr><td class="k">Contact</td><td style="white-space:nowrap;">${val(c.telephone)}</td><td class="k">Profession</td><td style="text-align:left;">${val(c.profession)}</td></tr>
+    ${c.lieuResidence ? `<tr><td class="k">Lieu de résidence</td><td colspan="3" style="text-align:left;">${val(c.lieuResidence)}</td></tr>` : ""}
     <tr><td class="k">Formule</td><td colspan="3" style="text-align:left;">${val(c.produitLibelle)} — ${val(c.description)}</td></tr>
     <tr><td class="k">Taux de prise en charge</td><td><strong>${val(c.tauxPriseEnCharge)} %</strong></td><td class="k">Prime TTC annuelle</td><td style="white-space:nowrap;"><strong>${fcfa(c.montant)}</strong></td></tr>
   </table>
@@ -1012,7 +1020,6 @@ export async function renderContratAssuranceSante(c: ContratAssuranceSante): Pro
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
     les Conditions Générales de l'Assurance Santé et les présentes Conditions Particulières.
-    <br/><br/>
     Les frais relevant des garanties ci-dessus sont pris en charge à hauteur de <b>${val(c.tauxPriseEnCharge)} %</b>
     pour chacune des personnes assurées désignées, pendant la période de validité du contrat.
   </div>
@@ -1023,7 +1030,9 @@ export async function renderContratAssuranceSante(c: ContratAssuranceSante): Pro
   const cgSection = cg
     ? `<div class="pagebreak"></div><h2>Conditions Générales — ASSURANCE SANTÉ</h2><div class="cg">${cg}</div>`
     : "";
-  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+  // `.sante` : colonnes de libellés plus étroites que les autres contrats, pour
+  // que nom complet, profession et résidence tiennent sur une ligne.
+  return document_(`Contrat ${c.numeroPolice}`, `<div class="sante">${cp}</div>` + cgSection);
 }
 
 export async function renderContratSecurecolte(c: ContratSecurecolte): Promise<string> {

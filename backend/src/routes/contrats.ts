@@ -27,7 +27,7 @@ import {
   renderContratCoupsdurs,
   renderContratDeces,
 } from "../services/contractHtml.js";
-import { COMPOSITION_SANTE, PRODUITS_SANTE, estProduitSante, personneAssureeSanteSchema } from "../services/assurancesSante.js";
+import { COMPOSITION_SANTE, PRODUITS_SANTE, estProduitSante, lireFicheSante, personneAssureeSanteSchema } from "../services/assurancesSante.js";
 
 export const contratsRouter = Router();
 
@@ -354,6 +354,8 @@ const assuranceSanteSchema = z.object({
     prenom: texteOpt(120),
     telephone: texte(40).default(""),
     dateNaissance: texteOpt(40),
+    profession: texteOpt(120),
+    lieuResidence: texteOpt(200),
     produitLibelle: texte(60).default(""),
     description: texte(120).default(""),
     tauxPriseEnCharge: z.number().min(0).max(100).default(0),
@@ -716,6 +718,9 @@ async function chargerDonneesVerifieesServeur(
     // CODES_PRODUIT_PAR_TYPE a déjà écarté tout autre produit ; un contrat
     // Santé sans taux de prise en charge serait un contrat sans garantie.
     if (!estProduitSante(s.produit.code) || d.tauxPriseEnCharge == null) return null;
+    // De la fiche de l'assuré principal, seules la profession et la résidence
+    // vont au contrat — jamais ses données de santé (poids, tension…).
+    const fiche = lireFicheSante(s.donneesSpecifiques);
     return {
       numeroPolice: d.numeroPolice ?? "",
       partenaire: d.partenaire,
@@ -725,6 +730,8 @@ async function chargerDonneesVerifieesServeur(
       prenom: d.prenom,
       telephone: d.telephone,
       dateNaissance,
+      profession: fiche?.profession ?? null,
+      lieuResidence: fiche?.lieuResidence ?? null,
       // Nom court : le gabarit écrit déjà « ASSURANCE SANTÉ » devant.
       produitLibelle: COMPOSITION_SANTE[s.produit.code].libelle,
       description: COMPOSITION_SANTE[s.produit.code].description,

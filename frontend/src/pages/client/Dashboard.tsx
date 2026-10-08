@@ -271,7 +271,7 @@ export default function ClientDashboard() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", maxWidth: 560, margin: "0 auto" }}>
           <div>
             <img src="/logo_sim.webp" alt="SIM Assurances" style={{ height: 36, display: "block", marginBottom: 10 }} />
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Bonjour {moi?.prenom ?? ""}</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Bonjour {moi?.prenom || moi?.nom || ""}</div>
           </div>
           <button onClick={deconnexion} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", padding: "8px 14px", borderRadius: 10, fontSize: 13, cursor: "pointer" }}>
             Déconnexion

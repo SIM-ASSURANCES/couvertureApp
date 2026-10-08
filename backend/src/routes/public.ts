@@ -51,6 +51,10 @@ import {
   lirePersonnesAssureesSante,
   paiementBloqueParValidation,
   VALIDATION_SANTE,
+  ficheSanteSchema,
+  ageRevolu,
+  AGE_MIN_ASSURE_PRINCIPAL,
+  AGE_MAX_ASSURE_PRINCIPAL,
   type PersonneAssureeSante,
 } from "../services/assurancesSante.js";
 
@@ -1940,7 +1944,9 @@ publicRouter.post(
 const formuleSchema = z.object({
   qrToken: z.string(),
   nom: z.string().min(1),
-  prenom: z.string().min(1),
+  // Obligatoire pour tous les produits SAUF la Santé, dont le formulaire n'a
+  // qu'un champ « Nom complet » (enregistré dans `nom`) — vérifié plus bas.
+  prenom: z.string().max(120).default(""),
   telephone: z.string().min(6),
   dateNaissance: optionalDate,
   // Affiché sur la carte de prise en charge (refonte Novelia).
@@ -1968,6 +1974,10 @@ const formuleSchema = z.object({
   // Assurances Santé uniquement — personnes couvertes en plus du souscripteur
   // (conjoint, enfants), contrôlées par validerPersonnesAssureesSante.
   personnesAssurees: z.array(personneAssureeSanteSchema).max(4).optional(),
+  // Assurances Santé uniquement — fiche de l'assuré principal (profession,
+  // résidence, poids, taille, tension, groupe sanguin…) et email facultatif.
+  ficheSante: ficheSanteSchema.optional(),
+  email: z.preprocess((v) => (v === "" || v == null ? undefined : v), z.string().trim().email().max(160).optional()),
   ...champsNovelia,
   ...moyenPaiementField,
 });
@@ -2027,9 +2037,21 @@ publicRouter.post(
     // Assurances Santé : la date de naissance du souscripteur est obligatoire,
     // et les personnes déclarées doivent correspondre au produit (Solo : aucune,
     // Duo : le conjoint, Famille : conjoint et jusqu'à 3 enfants).
+    if (!estProduitSante(code) && !data.prenom.trim()) {
+      return res.status(400).json({ error: "Données invalides", details: [{ path: ["prenom"], message: "Required" }] });
+    }
     if (estProduitSante(code)) {
       if (!data.dateNaissance || data.dateNaissance > new Date()) {
         return res.status(400).json({ error: "Date de naissance du souscripteur manquante ou invalide." });
+      }
+      const age = ageRevolu(data.dateNaissance);
+      if (age < AGE_MIN_ASSURE_PRINCIPAL || age > AGE_MAX_ASSURE_PRINCIPAL) {
+        return res.status(400).json({
+          error: `L'assuré principal doit avoir entre ${AGE_MIN_ASSURE_PRINCIPAL} et ${AGE_MAX_ASSURE_PRINCIPAL} ans.`,
+        });
+      }
+      if (!data.sexe || !data.ficheSante) {
+        return res.status(400).json({ error: "Fiche de l'assuré principal incomplète (sexe, profession, résidence, poids, taille, tension, groupe sanguin…)." });
       }
       const erreurPersonnes = validerPersonnesAssureesSante(code, data.personnesAssurees ?? []);
       if (erreurPersonnes) return res.status(400).json({ error: erreurPersonnes });
@@ -2109,8 +2131,10 @@ publicRouter.post(
         agentDistributionId: qr.agentDistributionId,
         clientId: client.id,
         nom: data.nom,
-        prenom: data.prenom,
+        // Santé : « Nom complet » est dans `nom`, pas de prénom séparé.
+        prenom: data.prenom.trim() || null,
         telephone: data.telephone,
+        email: sante ? data.email ?? null : undefined,
         dateNaissance: data.dateNaissance ?? null,
         sexe: data.sexe ?? null,
         civilite: data.civilite ?? null,
@@ -2157,6 +2181,9 @@ publicRouter.post(
                 formule: tarif.libelleVariante,
                 tauxPriseEnCharge: sante.tauxPriseEnCharge,
                 personnesAssurees: sante.personnesAssurees,
+                // Fiche de l'assuré principal — données de santé, lues
+                // uniquement par l'admin qui valide la demande.
+                ficheSante: data.ficheSante,
                 // QR d'origine, pour rebâtir le lien de retour de paiement à
                 // la validation (le client n'est plus devant le formulaire).
                 qrToken: data.qrToken,

@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Check, X, Send } from "lucide-react";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate } from "../../components/ui";
 import { BadgeAssurance } from "../../components/BadgeAssurance";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
-import type { PersonneAssureeSante } from "../../assurancesSante";
+import {
+  ageRevolu,
+  libelleGroupeSanguin,
+  libelleSituationMatrimoniale,
+  type FicheSante,
+  type PersonneAssureeSante,
+} from "../../assurancesSante";
 
 // Assurances Santé (Solo, Duo, Famille) : le client ne paie pas à la
 // souscription. Il dépose une demande, validée ou refusée ici ; la validation
@@ -23,7 +29,12 @@ interface Demande {
   nom: string | null;
   prenom: string | null;
   telephone: string;
+  email: string | null;
+  sexe: "masculin" | "feminin" | null;
   dateNaissance: string | null;
+  // Fiche de l'assuré principal, dont ses données de santé : absente pour une
+  // demande déposée avant l'ajout du formulaire.
+  ficheSante: FicheSante | null;
   personnesAssurees: PersonneAssureeSante[];
   partenaire: string;
   agent: string | null;
@@ -44,10 +55,51 @@ const ONGLETS: { etat: Etat; libelle: string; vide: string }[] = [
 
 const dateFr = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "—");
 
+/** Fiche de l'assuré principal, telle que le client l'a remplie — ce que l'admin examine avant de valider. */
+function FicheAssurePrincipal({ d }: { d: Demande }) {
+  const f = d.ficheSante;
+  const age = d.dateNaissance ? ageRevolu(d.dateNaissance.slice(0, 10)) : null;
+  // Indice de masse corporelle : simple calcul à partir du poids et de la taille déclarés.
+  const imc = f ? f.poidsKg / (f.tailleCm / 100) ** 2 : null;
+  const lignes: [string, string][] = [
+    ["Sexe", d.sexe === "masculin" ? "Homme" : d.sexe === "feminin" ? "Femme" : "—"],
+    ["Date de naissance", `${dateFr(d.dateNaissance)}${age != null ? ` (${age} ans)` : ""}`],
+    ["Email", d.email || "—"],
+    ...(f
+      ? ([
+          ["Profession", f.profession],
+          ["Lieu de résidence", f.lieuResidence],
+          ["N° CMU", f.numeroCmu || "—"],
+          ["Situation matrimoniale", libelleSituationMatrimoniale(f.situationMatrimoniale)],
+          ["Poids", `${f.poidsKg} kg`],
+          ["Taille", `${f.tailleCm} cm`],
+          ["IMC (calculé)", imc != null ? imc.toFixed(1).replace(".", ",") : "—"],
+          ["Tension artérielle", f.tensionArterielle],
+          ["Groupe sanguin", libelleGroupeSanguin(f.groupeSanguin)],
+        ] as [string, string][])
+      : []),
+  ];
+  return (
+    <div style={{ padding: "14px 18px", background: "var(--bg-2)" }}>
+      <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Fiche de l'assuré principal</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "8px 24px" }}>
+        {lignes.map(([label, valeur]) => (
+          <div key={label} style={{ fontSize: 13 }}>
+            <span className="muted">{label} : </span>
+            <strong>{valeur}</strong>
+          </div>
+        ))}
+      </div>
+      {!f && <div className="muted" style={{ fontSize: 12.5, marginTop: 8 }}>Fiche détaillée non renseignée pour cette demande.</div>}
+    </div>
+  );
+}
+
 export default function DemandesSante() {
   const [etat, setEtat] = useState<Etat>("a_valider");
   const { data, loading, error, reload } = useFetch<Reponse>(`/assurances-sante/demandes?etat=${etat}`);
   const [enCours, setEnCours] = useState("");
+  const [ficheOuverte, setFicheOuverte] = useState("");
   const [toast, setToast] = useState("");
 
   function notify(m: string) {
@@ -136,7 +188,8 @@ export default function DemandesSante() {
               </thead>
               <tbody>
                 {data.demandes.map((d) => (
-                  <tr key={d.id}>
+                  <Fragment key={d.id}>
+                  <tr>
                     <td className="muted">{fmtDate(d.createdAt)}</td>
                     <td>
                       <BadgeAssurance sousBranche="ASSURANCES_SANTE">{d.produitLibelle}</BadgeAssurance>
@@ -149,6 +202,13 @@ export default function DemandesSante() {
                       <div className="muted" style={{ fontSize: 12 }}>
                         {d.telephone} · né(e) le {dateFr(d.dateNaissance)}
                       </div>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: "4px 10px", fontSize: 12, marginTop: 6 }}
+                        onClick={() => setFicheOuverte(ficheOuverte === d.id ? "" : d.id)}
+                      >
+                        {ficheOuverte === d.id ? "Masquer la fiche" : "Voir la fiche"}
+                      </button>
                     </td>
                     <td style={{ fontSize: 12.5 }}>
                       {d.personnesAssurees.length === 0 ? (
@@ -201,6 +261,14 @@ export default function DemandesSante() {
                       )}
                     </td>
                   </tr>
+                  {ficheOuverte === d.id && (
+                    <tr>
+                      <td colSpan={7} style={{ padding: 0 }}>
+                        <FicheAssurePrincipal d={d} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
                 {data.demandes.length === 0 && (
                   <tr>
