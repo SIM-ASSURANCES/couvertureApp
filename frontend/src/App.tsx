@@ -29,6 +29,7 @@ const Carte = lazy(() => import("./pages/admin/Carte"));
 const ClientsIncendie = lazy(() => import("./pages/admin/ClientsIncendie"));
 const ClientsAccident = lazy(() => import("./pages/admin/ClientsAccident"));
 const PaiementsEnAttente = lazy(() => import("./pages/admin/PaiementsEnAttente"));
+const DemandesSante = lazy(() => import("./pages/admin/DemandesSante"));
 const Contrats = lazy(() => import("./pages/admin/Contrats"));
 const Sinistres = lazy(() => import("./pages/admin/Sinistres"));
 const Performance = lazy(() => import("./pages/admin/Performance"));
@@ -120,6 +121,7 @@ export default function App() {
               <Route path="incendie" element={<ClientsIncendie />} />
               <Route path="accident" element={<ClientsAccident />} />
               <Route path="paiements-en-attente" element={<PaiementsEnAttente />} />
+              <Route path="demandes-sante" element={<DemandesSante />} />
               <Route path="contrats" element={<Contrats />} />
               <Route path="sinistres" element={<Sinistres />} />
               <Route path="performance" element={<Performance />} />

@@ -13,12 +13,15 @@ export function estProduitSante(code?: string | null): code is ProduitSante {
 /** Durée du contrat (et de chaque renouvellement), en mois. */
 export const DUREE_CONTRAT_SANTE_MOIS = 12;
 
+/** Délai de remise de la carte physique de prise en charge par SIM Assurances, après paiement. */
+export const DELAI_CARTE_PHYSIQUE_JOURS = 7;
+
 // `libelle` est le nom court affiché au client une fois dans « Assurances
 // Santé » (en base le produit s'appelle « Santé Solo », etc., pour rester
 // lisible sur les factures et dans les listes d'administration).
 export const COMPOSITION_SANTE: Record<
   ProduitSante,
-  { libelle: string; pictogramme: string; personnes: number; description: string; conjoint: "aucun" | "requis" | "facultatif"; enfantsMax: number }
+  { libelle: string; pictogramme: string; personnes: number; description: string; conjoint: "aucun" | "requis"; enfantsMax: number }
 > = {
   sante_solo: { libelle: "Solo", pictogramme: "👤", personnes: 1, description: "1 personne", conjoint: "aucun", enfantsMax: 0 },
   sante_duo: { libelle: "Duo", pictogramme: "👫", personnes: 2, description: "2 personnes — couple", conjoint: "requis", enfantsMax: 0 },
@@ -27,7 +30,8 @@ export const COMPOSITION_SANTE: Record<
     pictogramme: "👨‍👩‍👧‍👦",
     personnes: 5,
     description: "5 personnes — couple + 3 enfants",
-    conjoint: "facultatif",
+    // Conjoint obligatoire pour Famille aussi (décision du 2026-10-08).
+    conjoint: "requis",
     enfantsMax: 3,
   },
 };
@@ -77,19 +81,18 @@ function saisieComplete(p: SaisiePersonneSante): boolean {
 /**
  * Personnes couvertes en plus du souscripteur, telles qu'envoyées au serveur —
  * ou `null` tant que la saisie ne correspond pas au produit (conjoint manquant
- * pour un Duo, aucune personne déclarée pour une Famille, fiche incomplète…).
+ * pour un Duo ou une Famille, fiche d'enfant incomplète…).
  */
 export function personnesAssureesSante(
   produit: ProduitSante,
-  saisie: { avecConjoint: boolean; conjoint: SaisiePersonneSante; enfants: SaisiePersonneSante[] }
+  saisie: { conjoint: SaisiePersonneSante; enfants: SaisiePersonneSante[] }
 ): PersonneAssureeSante[] | null {
   const regle = COMPOSITION_SANTE[produit];
-  const conjointDeclare = regle.conjoint === "requis" || (regle.conjoint === "facultatif" && saisie.avecConjoint);
+  const conjointDeclare = regle.conjoint === "requis";
   const enfants = saisie.enfants.slice(0, regle.enfantsMax);
 
   if (conjointDeclare && !saisieComplete(saisie.conjoint)) return null;
   if (enfants.some((e) => !saisieComplete(e))) return null;
-  if (produit === "sante_famille" && !conjointDeclare && enfants.length === 0) return null;
 
   const nettoyer = (lien: PersonneAssureeSante["lien"], p: SaisiePersonneSante): PersonneAssureeSante => ({
     lien,

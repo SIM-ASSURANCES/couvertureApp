@@ -49,6 +49,8 @@ import {
   tauxPriseEnChargeDuTarif,
   validerPersonnesAssureesSante,
   lirePersonnesAssureesSante,
+  paiementBloqueParValidation,
+  VALIDATION_SANTE,
   type PersonneAssureeSante,
 } from "../services/assurancesSante.js";
 
@@ -1065,9 +1067,11 @@ async function resoudreReferenceDjogana(
   }
   const p = await prisma.paiement.findUnique({
     where: { id },
-    select: { montant: true, souscription: { select: { telephone: true } } },
+    select: { montant: true, souscription: { select: { telephone: true, validationStatut: true } } },
   });
-  return p ? { montant: p.montant, telephone: p.souscription.telephone } : null;
+  // Assurances Santé : rien à payer tant que la demande n'est pas validée.
+  if (!p || paiementBloqueParValidation(p.souscription.validationStatut)) return null;
+  return { montant: p.montant, telephone: p.souscription.telephone };
 }
 
 /** Étape 1 : vérifie que le téléphone a un compte Djogana puis envoie l'OTP. */
@@ -1142,9 +1146,14 @@ publicRouter.post(
 
     const p = await prisma.paiement.findUnique({
       where: { id: data.id },
-      include: { souscription: { select: { telephone: true } } },
+      include: { souscription: { select: { telephone: true, validationStatut: true } } },
     });
     if (!p) return res.status(404).json({ error: "Échéance introuvable" });
+    // Vérifié AVANT tout débit Peya pay : confirmerEcheance refuserait ensuite
+    // d'activer le contrat, mais le compte du client aurait déjà été prélevé.
+    if (paiementBloqueParValidation(p.souscription.validationStatut)) {
+      return res.status(403).json({ error: "Cette demande doit d'abord être validée par SIM Assurances." });
+    }
     if (numeroLocal(p.souscription.telephone) !== numeroLocal(data.telephone)) {
       return res.status(400).json({ error: "Numéro de téléphone incohérent avec la souscription" });
     }
@@ -2062,6 +2071,23 @@ publicRouter.post(
       const tauxPriseEnCharge = tauxPriseEnChargeDuTarif(tarif.donneesSpecifiques);
       if (tauxPriseEnCharge == null) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
       sante = { tauxPriseEnCharge, personnesAssurees: data.personnesAssurees ?? [] };
+      // Une demande déjà déposée (en attente de validation, ou validée mais
+      // pas encore payée) ne doit pas être doublée : le client attend son SMS.
+      const demandeEnCours = await prisma.souscription.findFirst({
+        where: {
+          produitId: prod.id,
+          nom: { equals: data.nom.trim(), mode: "insensitive" },
+          telephone: data.telephone.trim(),
+          waveStatut: { not: "confirme" },
+          validationStatut: { in: [VALIDATION_SANTE.EN_ATTENTE, VALIDATION_SANTE.VALIDEE] },
+        },
+        select: { id: true },
+      });
+      if (demandeEnCours) {
+        return res.status(409).json({
+          error: "Une demande est déjà en cours pour ce nom et ce numéro. Vous recevrez votre lien de paiement par SMS après validation par SIM Assurances.",
+        });
+      }
     }
 
     // Le total payé recalculé ici, jamais confié au client : prime de la
@@ -2095,6 +2121,9 @@ publicRouter.post(
         montantPrime: montantTotal,
         capitalGaranti: tarif.capitalGaranti,
         waveStatut: "en_attente",
+        // Assurances Santé : demande soumise à la validation d'un admin, sans
+        // paiement immédiat (voir routes/assurancesSante.ts).
+        validationStatut: sante ? VALIDATION_SANTE.EN_ATTENTE : null,
         nombreEcheances: 1,
         donneesSpecifiques:
           code === "relaxvoyage"
@@ -2128,6 +2157,9 @@ publicRouter.post(
                 formule: tarif.libelleVariante,
                 tauxPriseEnCharge: sante.tauxPriseEnCharge,
                 personnesAssurees: sante.personnesAssurees,
+                // QR d'origine, pour rebâtir le lien de retour de paiement à
+                // la validation (le client n'est plus devant le formulaire).
+                qrToken: data.qrToken,
               }
             : data.signature || optionDeces
             ? {
@@ -2144,6 +2176,20 @@ publicRouter.post(
         },
       },
     });
+
+    // Assurances Santé : la demande est déposée, rien n'est payé ici. Le lien
+    // de paiement Wave partira par SMS quand un admin l'aura validée — et
+    // l'identifiant du paiement n'est pas renvoyé au navigateur d'ici là.
+    if (sante) {
+      await notifyPartenaire(
+        qr.partenaireId,
+        "souscription",
+        `Nouvelle demande ${prod.libelle}`,
+        `Nouvelle demande ${prod.libelle} (${montantTotal} FCFA) via votre QR code, en attente de validation par SIM Assurances.`,
+        "/partenaire/souscriptions"
+      );
+      return res.status(201).json({ souscriptionId: s.id, montant: montantTotal, enAttenteValidation: true });
+    }
 
     const echeance = await prisma.paiement.findUniqueOrThrow({
       where: { souscriptionId_numeroEcheance: { souscriptionId: s.id, numeroEcheance: 1 } },

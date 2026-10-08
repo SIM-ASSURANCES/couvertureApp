@@ -15,6 +15,7 @@ import {
 } from "../../contract";
 import {
   COMPOSITION_SANTE,
+  DELAI_CARTE_PHYSIQUE_JOURS,
   DUREE_CONTRAT_SANTE_MOIS,
   GARANTIES_SANTE,
   SAISIE_PERSONNE_SANTE_VIDE,
@@ -323,6 +324,9 @@ type Step =
   | "confirm"
   | "retry"
   | "djogana-otp"
+  // Assurances Santé : demande déposée, en attente de validation par un admin
+  // (aucun paiement à ce stade — le lien Wave arrivera par SMS).
+  | "sante-demande"
   | "success"
   | "error";
 
@@ -1734,8 +1738,8 @@ function PersonneSanteFields({
 
 // Formulaire commun aux trois produits Santé : identité du souscripteur (assuré
 // principal), puis les personnes couvertes selon le produit — personne pour
-// Solo, le conjoint pour Duo, le conjoint (facultatif) et jusqu'à 3 enfants
-// pour Famille. Le serveur revérifie cette composition.
+// Solo, le conjoint pour Duo, le conjoint et jusqu'à 3 enfants pour Famille.
+// Le serveur revérifie cette composition.
 function AssuranceSanteForm({
   produit,
   nom,
@@ -1746,8 +1750,6 @@ function AssuranceSanteForm({
   setTelephone,
   dateNaissance,
   setDateNaissance,
-  avecConjoint,
-  setAvecConjoint,
   conjoint,
   setConjoint,
   enfants,
@@ -1763,8 +1765,6 @@ function AssuranceSanteForm({
   setTelephone: (v: string) => void;
   dateNaissance: string;
   setDateNaissance: (v: string) => void;
-  avecConjoint: boolean;
-  setAvecConjoint: (v: boolean) => void;
   conjoint: SaisiePersonneSante;
   setConjoint: (v: SaisiePersonneSante) => void;
   enfants: SaisiePersonneSante[];
@@ -1772,7 +1772,6 @@ function AssuranceSanteForm({
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
   const regle = COMPOSITION_SANTE[produit];
-  const conjointAffiche = regle.conjoint === "requis" || (regle.conjoint === "facultatif" && avecConjoint);
 
   return (
     <>
@@ -1798,13 +1797,7 @@ function AssuranceSanteForm({
               : "Vous, votre conjoint(e) et jusqu'à 3 enfants."}
           </div>
 
-          {regle.conjoint === "facultatif" && (
-            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, cursor: "pointer", marginBottom: 14 }}>
-              <input type="checkbox" checked={avecConjoint} onChange={(e) => setAvecConjoint(e.target.checked)} />
-              Couvrir mon/ma conjoint(e)
-            </label>
-          )}
-          {conjointAffiche && <PersonneSanteFields titre="Conjoint(e)" valeur={conjoint} onChange={setConjoint} />}
+          <PersonneSanteFields titre="Conjoint(e)" valeur={conjoint} onChange={setConjoint} />
 
           {enfants.map((enfant, i) => (
             <PersonneSanteFields
@@ -1997,7 +1990,6 @@ export default function Souscription() {
   // Champs Assurances Santé (Solo, Duo, Famille) — personnes couvertes en plus
   // du souscripteur. `nom`/`prenom`/`telephone`/`dateNaissance`/`sigRef` et la
   // formule (`selectedFormule`) sont partagés avec les branches ci-dessus.
-  const [avecConjointSante, setAvecConjointSante] = useState(true);
   const [conjointSante, setConjointSante] = useState<SaisiePersonneSante>(SAISIE_PERSONNE_SANTE_VIDE);
   const [enfantsSante, setEnfantsSante] = useState<SaisiePersonneSante[]>([]);
 
@@ -2633,7 +2625,6 @@ export default function Souscription() {
   /** Assurances Santé : personnes couvertes en plus du souscripteur, ou `null` tant que la saisie est incomplète. */
   function personnesSante(produit: ProduitSante): PersonneAssureeSante[] | null {
     return personnesAssureesSante(produit, {
-      avecConjoint: avecConjointSante,
       conjoint: conjointSante,
       enfants: enfantsSante,
     });
@@ -2988,17 +2979,14 @@ export default function Souscription() {
             formule: selectedFormule,
             personnesAssurees,
             signature,
-            moyenPaiement,
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
-        setResult({
-          checkoutUrl: data.checkoutUrl,
-          souscriptionId: data.souscriptionId,
-          montant: data.montant,
-        });
-        await finaliserApresInitiate(data);
+        if (!res.ok) throw new Error(data.error || "Erreur lors de l'envoi de la demande");
+        // Pas de paiement ici : la demande part en validation chez SIM
+        // Assurances, le lien de paiement Wave arrivera par SMS.
+        setResult({ souscriptionId: data.souscriptionId, montant: data.montant });
+        setStep("sante-demande");
         return;
       } else if (qrInfo.produit === "securpro_dommages") {
         const res = await fetch(`${BASE}/public/souscriptions/securpro_dommages/initiate`, {
@@ -4188,8 +4176,6 @@ export default function Souscription() {
                   setTelephone={setTelephone}
                   dateNaissance={dateNaissance}
                   setDateNaissance={setDateNaissance}
-                  avecConjoint={avecConjointSante}
-                  setAvecConjoint={setAvecConjointSante}
                   conjoint={conjointSante}
                   setConjoint={setConjointSante}
                   enfants={enfantsSante}
@@ -4976,13 +4962,34 @@ export default function Souscription() {
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ fontSize: 13.5, color: "#5b6b80", fontWeight: 600 }}>Montant à payer</span>
+                    <span style={{ fontSize: 13.5, color: "#5b6b80", fontWeight: 600 }}>
+                      {estProduitSante(qrInfo.produit) ? "Prime annuelle" : "Montant à payer"}
+                    </span>
                     <span style={{ fontSize: 21, fontWeight: 800, color: "var(--sim-primary)" }}>{fcfa(montant)}</span>
                   </div>
                 );
               })()}
 
-              {qrInfo.produit !== "incendie" && (
+              {/* Assurances Santé : rien n'est payé maintenant. */}
+              {estProduitSante(qrInfo.produit) && (
+                <div
+                  style={{
+                    marginTop: 14,
+                    background: "#fdf3e3",
+                    border: "1px solid #f5d9a8",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    fontSize: 13,
+                    color: "#7a4a05",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <strong>Vous ne payez pas maintenant.</strong> Votre demande est d'abord validée par SIM Assurances ;
+                  vous recevrez ensuite par SMS le lien de paiement Wave avec le montant exact.
+                </div>
+              )}
+
+              {qrInfo.produit !== "incendie" && !estProduitSante(qrInfo.produit) && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 12.5, color: "#5b6b80", fontWeight: 600, marginBottom: 6 }}>
                     Moyen de paiement
@@ -5046,6 +5053,8 @@ export default function Souscription() {
                   ? "Traitement…"
                   : qrInfo.produit === "incendie"
                   ? "Confirmer la souscription →"
+                  : estProduitSante(qrInfo.produit)
+                  ? "Envoyer ma demande →"
                   : "Confirmer et payer →"}
               </button>
               <button
@@ -5211,6 +5220,61 @@ export default function Souscription() {
             </div>
           )}
 
+          {/* ── ASSURANCES SANTÉ : DEMANDE ENVOYÉE, EN ATTENTE DE VALIDATION ── */}
+          {step === "sante-demande" && estProduitSante(qrInfo?.produit) && (
+            <div style={{ textAlign: "center" }}>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  background: "#e6f1fb",
+                  borderRadius: "50%",
+                  display: "grid",
+                  placeItems: "center",
+                  margin: "0 auto 20px",
+                  fontSize: 32,
+                }}
+              >
+                📨
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>Demande envoyée</div>
+              <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                Votre demande d'Assurance Santé {COMPOSITION_SANTE[qrInfo.produit].libelle} a bien été enregistrée.
+              </div>
+              <div
+                style={{
+                  textAlign: "left",
+                  background: "var(--sim-primary-50, #e6f1fb)",
+                  borderRadius: 14,
+                  padding: "16px 18px",
+                  fontSize: 13.5,
+                  color: "#0f1b2d",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>Et maintenant ?</div>
+                <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <li>SIM Assurances étudie et valide votre demande.</li>
+                  <li>
+                    Vous recevez un SMS au {telephone} avec le lien de paiement Wave
+                    {result?.montant != null && (
+                      <>
+                        {" "}
+                        (<strong>{fcfa(result.montant)}</strong>)
+                      </>
+                    )}
+                    .
+                  </li>
+                  <li>Après paiement, votre contrat et votre facture sont à télécharger sur votre téléphone.</li>
+                  <li>
+                    Votre carte de prise en charge vous est remise par SIM Assurances sous{" "}
+                    {DELAI_CARTE_PHYSIQUE_JOURS} jours.
+                  </li>
+                </ol>
+              </div>
+            </div>
+          )}
+
           {/* ── SUCCÈS ── */}
           {step === "success" && (
             <div style={{ textAlign: "center" }}>
@@ -5242,7 +5306,8 @@ export default function Souscription() {
                     🎉 Souscription confirmée !
                   </div>
                   <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
-                    Votre Assurance Santé {COMPOSITION_SANTE[qrInfo.produit].libelle} est activée.
+                    Votre Assurance Santé {COMPOSITION_SANTE[qrInfo.produit].libelle} est activée. Votre carte de
+                    prise en charge vous sera remise par SIM Assurances sous {DELAI_CARTE_PHYSIQUE_JOURS} jours.
                   </div>
                   {result?.numeroPolice && (
                     <div

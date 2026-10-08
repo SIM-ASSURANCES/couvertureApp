@@ -795,6 +795,17 @@ model Souscription {
   analyseIAAt    DateTime?
   niveauRisqueIA String?
 
+  // --- Validation préalable par un admin (Assurances Santé, 2026-10-08) ---
+  // Le client ne paie pas à la souscription : il dépose une demande
+  // ("en_attente"), un admin la valide ("validee" — le lien de paiement Wave
+  // part alors par SMS) ou la refuse ("refusee"). `null` pour tous les autres
+  // produits, payés directement. Aucun paiement ne s'active tant que le statut
+  // n'est pas "validee" (voir services/paiementWave.ts::activerOuProlonger).
+  validationStatut     String?
+  validationAt         DateTime?
+  validationParAdminId String?
+  validationMotif      String?
+
   // Index ajoutés (2026-09-04) pour le Tableau de bord et la page Contrats
   // admin — ces requêtes filtrent quasi systématiquement par produitId/
   // waveStatut/partenaireId et trient par createdAt ; sans index, chacune
@@ -808,6 +819,7 @@ model Souscription {
   @@index([partenaireId, createdAt])
   @@index([dateDebut])
   @@index([dateFin])
+  @@index([validationStatut, createdAt])
 }
 
 /**

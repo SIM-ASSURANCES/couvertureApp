@@ -1,9 +1,9 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, messageRelaxVoyageActive, sendSMS, dateDebutPremiereActivation } from "./notify.js";
+import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, messageClientSante, messageRelaxVoyageActive, sendSMS, dateDebutPremiereActivation } from "./notify.js";
 import { genererCarte, renouvelerCarte } from "./novelia.js";
 import { emettreFacture } from "./facture.js";
-import { DUREE_CONTRAT_SANTE_MOIS, estProduitSante } from "./assurancesSante.js";
+import { DUREE_CONTRAT_SANTE_MOIS, estProduitSante, paiementBloqueParValidation } from "./assurancesSante.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -71,6 +71,18 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
  */
 async function activerOuProlonger(p: Paiement): Promise<void> {
   if (p.statut === "paye") return;
+
+  // Assurances Santé : la demande doit avoir été validée par un admin avant
+  // tout paiement. Verrou placé ici, point d'entrée unique de toutes les
+  // confirmations, pour qu'aucun canal (Wave, Peya pay, mode test) ne puisse
+  // activer un contrat sur une demande en attente ou refusée.
+  const soumise = await prisma.souscription.findUnique({
+    where: { id: p.souscriptionId },
+    select: { validationStatut: true },
+  });
+  if (paiementBloqueParValidation(soumise?.validationStatut)) {
+    throw new Error(`Paiement ${p.id} refusé : demande non validée (${soumise?.validationStatut}).`);
+  }
 
   await prisma.paiement.update({
     where: { id: p.id },
@@ -176,7 +188,9 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
       });
       await genererCarte(s.id);
       if (motDePasse) {
-        await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+        // Santé : le SMS annonce aussi la carte physique, remise sous 7 jours.
+        const message = estProduitSante(s.produit.code) ? messageClientSante : messageClientRelax;
+        await sendSMS(s.telephone, message(numeroPolice, motDePasse, lienClientRelax()));
       } else {
         await sendSMS(s.telephone, messageRelaxVoyageActive(s.prenom ?? "", numeroPolice));
       }

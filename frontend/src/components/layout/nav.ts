@@ -69,6 +69,8 @@ export const adminNav: AdminNavEntry[] = [
           { to: "/admin/incendie", label: "Clients Dommages", icon: Flame },
           { to: "/admin/clients-accidents", label: "Clients Accidents", icon: FileText },
           { to: "/admin/accident", label: "Clients Accidents (historique)", icon: ShieldCheck },
+          // Assurances Santé : demandes à valider avant paiement (lien Wave par SMS).
+          { to: "/admin/demandes-sante", label: "Demandes Santé", icon: HeartPulse },
           { to: "/admin/paiements-en-attente", label: "Paiement en attente", icon: Clock },
           { to: "/admin/contrats", label: "Contrats", icon: FileText },
           { to: "/admin/sinistres", label: "Sinistres", icon: AlertTriangle },

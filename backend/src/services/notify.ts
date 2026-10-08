@@ -223,6 +223,28 @@ export function messageClientRelax(
 }
 
 /**
+ * Assurances Santé — demande validée par un admin : lien de paiement Wave et
+ * montant exact à régler (le client ne paie jamais avant cette validation).
+ */
+export function messageDemandeSanteValidee(prenom: string, produit: string, montant: number, lienPaiement: string) {
+  return `SIM Assurances : ${prenom}, votre demande ${produit} est validée. Payez ${montant} FCFA par Wave : ${lienPaiement}`;
+}
+
+/** Assurances Santé — demande refusée par un admin. */
+export function messageDemandeSanteRefusee(prenom: string, produit: string) {
+  return `SIM Assurances : ${prenom}, votre demande ${produit} n'a pas pu être acceptée. Contactez SIM Assurances pour plus d'informations.`;
+}
+
+/**
+ * Assurances Santé — contrat activé après paiement : accès à l'espace client
+ * (contrat et facture à télécharger) et annonce de la carte physique de prise
+ * en charge, remise par SIM Assurances sous 7 jours.
+ */
+export function messageClientSante(numeroPolice: string, motDePasse: string, lien: string) {
+  return `SIM Assurances : contrat Santé activé, N° ${numeroPolice}. Contrat et facture dans votre espace client : mot de passe ${motDePasse} sur ${lien}. Votre carte de prise en charge vous sera remise sous 7 jours.`;
+}
+
+/**
  * Activation RelaxVoyage : contrat confirmé, sans accès espace client
  * (couverture 24h non renouvelable — un compte n'aurait aucune utilité).
  */

@@ -24,6 +24,7 @@ import { notificationsRouter } from "./routes/notifications.js";
 import { relaxRouter } from "./routes/relax.js";
 import { assurancesAccidentsRouter } from "./routes/assurancesAccidents.js";
 import { assurancesBrancheRouter } from "./routes/assurancesBranche.js";
+import { assurancesSanteRouter } from "./routes/assurancesSante.js";
 import { agentImfRouter, publicImfRouter } from "./routes/imf.js";
 import { imfPartenairesRouter } from "./routes/imfPartenaires.js";
 import { clientRouter } from "./routes/client.js";
@@ -160,6 +161,14 @@ app.use(
   requireAuth("admin"),
   requireBranche("INCENDIE_ACCIDENT"),
   assurancesBrancheRouter
+);
+// Demandes d'Assurances Santé à valider par un admin avant paiement (le lien
+// Wave part par SMS à la validation) — même branche, mêmes accès.
+app.use(
+  "/api/assurances-sante",
+  requireAuth("admin"),
+  requireBranche("INCENDIE_ACCIDENT"),
+  assurancesSanteRouter
 );
 // Branche « IMF Partenaires » — gestion multi-IMF (chaque IMF = un Partenaire
 // avec son paramétrage propre). Voir routes/imfPartenaires.ts.

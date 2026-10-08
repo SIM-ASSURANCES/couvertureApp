@@ -143,10 +143,20 @@ async function purgerAttentesExpirees(): Promise<void> {
     where: {
       produitId: { in: produits.map((p) => p.id) },
       waveStatut: { in: ["en_attente", "echoue"] },
+      // Jamais une demande Santé : elle attend la validation d'un admin, puis
+      // le paiement du client par le lien reçu par SMS — sans délai imposé.
+      validationStatut: null,
       createdAt: { lt: new Date(Date.now() - DELAI_EXPIRATION_ATTENTE_MS) },
     },
   });
 }
+
+/**
+ * Filtre « paiement en attente » : une demande Santé non encore validée (ou
+ * refusée) n'attend aucun paiement — elle relève de la page Demandes Santé.
+ * Seules les demandes validées, dont le lien Wave est parti, y figurent.
+ */
+const HORS_DEMANDES_NON_VALIDEES = { OR: [{ validationStatut: null }, { validationStatut: "validee" }] };
 
 /** Catalogue des produits filtrables (modèle générique + les deux entrées historiques). */
 assurancesBrancheRouter.get(
@@ -202,6 +212,7 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, lim
           : f.statut === "attente"
           ? { in: ["en_attente", "echoue"] }
           : undefined,
+      ...(f.statut === "attente" ? HORS_DEMANDES_NON_VALIDEES : {}),
       ...(f.renouvellementProche
         ? {
             cycleFacturation: null,
@@ -359,6 +370,7 @@ async function agregatGenerique(f: Filtres): Promise<{ nombre: number; montant: 
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
       waveStatut:
         f.statut === "confirme" ? "confirme" : f.statut === "attente" ? { in: ["en_attente", "echoue"] } : undefined,
+      ...(f.statut === "attente" ? HORS_DEMANDES_NON_VALIDEES : {}),
     },
     _count: true,
     _sum: { montantPrime: true },

@@ -22,11 +22,26 @@ export function estProduitSante(code: string): code is ProduitSante {
 /** Durée du contrat et de chacun de ses renouvellements (voir paiementWave.ts::dureeFormuleMois). */
 export const DUREE_CONTRAT_SANTE_MOIS = 12;
 
+/** Délai annoncé au client pour la remise de sa carte physique de prise en charge, après paiement. */
+export const DELAI_CARTE_PHYSIQUE_JOURS = 7;
+
 /**
- * Qui est couvert, en plus du souscripteur. Solo : personne. Duo : le conjoint
- * (obligatoire). Famille : le conjoint et jusqu'à trois enfants — au moins une
- * personne, sans quoi c'est un Solo ; le conjoint reste facultatif pour ne pas
- * écarter un parent seul.
+ * Une souscription Santé n'est jamais payée directement : le client dépose une
+ * demande, un admin la valide (le lien de paiement Wave part alors par SMS) ou
+ * la refuse. Valeurs de `Souscription.validationStatut` — `null` pour les
+ * autres produits.
+ */
+export const VALIDATION_SANTE = { EN_ATTENTE: "en_attente", VALIDEE: "validee", REFUSEE: "refusee" } as const;
+
+/** Vrai si une souscription soumise à validation n'a pas (encore) été validée : aucun paiement ne doit alors aboutir. */
+export function paiementBloqueParValidation(validationStatut: string | null | undefined): boolean {
+  return !!validationStatut && validationStatut !== VALIDATION_SANTE.VALIDEE;
+}
+
+/**
+ * Qui est couvert, en plus du souscripteur. Solo : personne. Duo : le conjoint.
+ * Famille : le conjoint (obligatoire lui aussi — décision du 2026-10-08, pas
+ * de parent seul) et jusqu'à trois enfants.
  */
 // `libelle` est le nom court (Solo, Duo, Famille), affiché là où le contexte
 // « Assurances Santé » est déjà donné ; `libelleProduit` est le nom enregistré
@@ -41,7 +56,7 @@ export const COMPOSITION_SANTE: Record<
     ordre: number;
     personnes: number;
     description: string;
-    conjoint: "aucun" | "requis" | "facultatif";
+    conjoint: "aucun" | "requis";
     enfantsMax: number;
   }
 > = {
@@ -53,7 +68,7 @@ export const COMPOSITION_SANTE: Record<
     ordre: 2,
     personnes: 5,
     description: "5 personnes — couple + 3 enfants",
-    conjoint: "facultatif",
+    conjoint: "requis",
     enfantsMax: 3,
   },
 };
@@ -142,15 +157,12 @@ export function validerPersonnesAssureesSante(code: ProduitSante, personnes: Per
   const enfants = personnes.filter((p) => p.lien === "enfant").length;
 
   if (regle.conjoint === "aucun" && conjoints > 0) return `La formule ${regle.libelle} ne couvre que le souscripteur.`;
-  if (regle.conjoint === "requis" && conjoints !== 1) return `La formule ${regle.libelle} couvre le souscripteur et son conjoint : renseignez le conjoint.`;
   if (conjoints > 1) return "Un seul conjoint peut être couvert.";
+  if (regle.conjoint === "requis" && conjoints !== 1) return `La formule ${regle.libelle} couvre le souscripteur et son conjoint : renseignez le conjoint.`;
   if (enfants > regle.enfantsMax) {
     return regle.enfantsMax === 0
       ? `La formule ${regle.libelle} ne couvre pas d'enfant.`
       : `La formule ${regle.libelle} couvre au plus ${regle.enfantsMax} enfants.`;
-  }
-  if (code === "sante_famille" && personnes.length === 0) {
-    return "La formule Famille couvre le souscripteur et sa famille : renseignez au moins un conjoint ou un enfant.";
   }
   if (personnes.some((p) => !dateNaissancePlausible(p.dateNaissance))) {
     return "Date de naissance invalide pour l'une des personnes couvertes.";
