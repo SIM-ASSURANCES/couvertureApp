@@ -20,9 +20,10 @@ android {
         // À incrémenter à CHAQUE APK distribué : Android ne reconnaît une mise à
         // jour que si versionCode augmente (1 = APK du 2026-09-24, 2 = 2026-10-06,
         // 3 = 2026-10-08 périodicité RAF, 4 = 2026-10-08 Assurances Santé,
-        // 5 = 2026-10-08 produits Santé Solo/Duo/Famille).
-        versionCode 5
-        versionName "1.4"
+        // 5 = 2026-10-08 produits Santé Solo/Duo/Famille,
+        // 6 = 2026-10-08 demande Santé validée par un admin avant paiement).
+        versionCode 6
+        versionName "1.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
