@@ -1407,7 +1407,7 @@ export default function Partenaires() {
                 style={{ fontSize: 13, marginTop: 2, background: "var(--sim-primary-50, #e6f1fb)", borderRadius: 8, padding: "10px 12px" }}
               >
                 Un seul QR code unique sera généré : le client choisira d'abord son Assurance
-                (Accidents ou Dommages), puis son produit, après l'avoir scanné.
+                (Accidents, Dommages ou Santé), puis son produit, après l'avoir scanné.
               </div>
             </div>
             <div className="field">

@@ -66,7 +66,7 @@ export default function PartenaireQr() {
         title="Mes QR codes"
         subtitle={
           qrUnifie
-            ? "Présentez ce QR code à vos clients : ils choisiront leur Assurance (Accidents ou Dommages) puis leur produit après l'avoir scanné."
+            ? "Présentez ce QR code à vos clients : ils choisiront leur Assurance (Accidents, Dommages ou Santé) puis leur produit après l'avoir scanné."
             : sousBranche
             ? "Présentez ce QR code à vos clients : ils choisiront leur produit après l'avoir scanné."
             : produit === "incendie"

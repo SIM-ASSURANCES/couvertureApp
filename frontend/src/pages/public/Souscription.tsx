@@ -252,13 +252,24 @@ interface ChooserInfo {
 // renvoie le ChooserInfo habituel (liste de produits) sans rien changer côté
 // composant en aval.
 interface ChooserBrancheOption {
-  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+  // La liste vient du serveur (ASSURANCES_QR_UNIQUE, backend/src/routes/public.ts).
+  // « Assurances Santé » (2026-10-08) n'a encore aucun produit au catalogue.
+  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | "ASSURANCES_SANTE";
   libelle: string;
 }
 interface ChooserBrancheInfo {
   partenaire: { id: string; nomCommerce: string };
   options: ChooserBrancheOption[];
 }
+
+// Titre de l'en-tête une fois l'Assurance choisie. Une table plutôt qu'un
+// « Accidents, sinon Dommages » : avec une 3e Assurance, le « sinon » aurait
+// intitulé la page Santé « Assurances Dommages ».
+const LIBELLES_ASSURANCES: Record<string, string> = {
+  ASSURANCES_ACCIDENTS: "Assurances Accidents",
+  ASSURANCES_DOMMAGES: "Assurances Dommages",
+  ASSURANCES_SANTE: "Assurances Santé",
+};
 
 interface TarifAccident {
   id: number;
@@ -2227,7 +2238,7 @@ export default function Souscription() {
   }
 
   /** Choix de l'Assurance depuis l'écran de premier niveau (QR unique, refonte 2026-08-07). */
-  async function choisirBranche(sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES") {
+  async function choisirBranche(sousBranche: ChooserBrancheOption["sousBranche"]) {
     if (!token) return;
     setStep("loading");
     try {
@@ -3312,7 +3323,7 @@ export default function Souscription() {
               {/* Libellé plus long que les autres en-têtes de cet écran
                   (noms de produits courts) — taille réduite pour ne pas
                   déborder sur deux lignes de façon disproportionnée. */}
-              <div style={{ fontSize: 15, fontWeight: 800 }}>Assurances Accidents et Dommages</div>
+              <div style={{ fontSize: 15, fontWeight: 800 }}>Assurances Accidents, Dommages et Santé</div>
               <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
                 via {chooserBrancheInfo.partenaire.nomCommerce}
               </div>
@@ -3321,7 +3332,7 @@ export default function Souscription() {
           {!qrInfo && chooserInfo && (
             <div>
               <div style={{ fontSize: 18, fontWeight: 800 }}>
-                {chooserInfo.sousBranche === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"}
+                {LIBELLES_ASSURANCES[chooserInfo.sousBranche] ?? "Nos Assurances"}
               </div>
               <div style={{ fontSize: 13, opacity: 0.8, marginTop: 4 }}>
                 via {chooserInfo.partenaire.nomCommerce}
@@ -3427,12 +3438,35 @@ export default function Souscription() {
                   ← Retour au choix de l'Assurance
                 </button>
               )}
-              <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
-                Choisissez votre produit
-              </div>
-              <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 20 }}>
-                Sélectionnez le produit qui vous intéresse pour poursuivre votre souscription.
-              </div>
+              {chooserInfo.produits.length > 0 && (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
+                    Choisissez votre produit
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 20 }}>
+                    Sélectionnez le produit qui vous intéresse pour poursuivre votre souscription.
+                  </div>
+                </>
+              )}
+              {/* Assurance sans produit au catalogue (ex. Assurances Santé à son
+                  lancement) : un message plutôt qu'un écran vide. */}
+              {chooserInfo.produits.length === 0 && (
+                <div
+                  style={{
+                    background: "var(--sim-primary-50, #e6f1fb)",
+                    borderRadius: 14,
+                    padding: "18px 20px",
+                    color: "#0f1b2d",
+                    fontSize: 14,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Bientôt disponible</div>
+                  <div style={{ color: "#5b6b80", fontSize: 13 }}>
+                    Les produits de cette Assurance arrivent prochainement. Vous pouvez dès maintenant
+                    découvrir nos autres Assurances.
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {chooserInfo.produits.map((p) => (
                   <button

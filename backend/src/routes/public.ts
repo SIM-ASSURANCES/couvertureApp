@@ -308,6 +308,20 @@ export async function construireChooserProduits(
   };
 }
 
+/**
+ * Assurances proposées après le scan d'un QR unique, dans l'ordre d'affichage.
+ * Source unique : sert à la fois les options affichées au prospect et les
+ * valeurs acceptées en `?sousBranche=` (voir GET /qr/:token). Ajouter une
+ * Assurance = une ligne ici ; ses produits sont ceux dont `Produit.sousBranche`
+ * porte la même valeur. « Assurances Santé » (2026-10-08) n'a encore aucun
+ * produit au catalogue : l'écran client affiche alors « bientôt disponible ».
+ */
+const ASSURANCES_QR_UNIQUE = [
+  { sousBranche: "ASSURANCES_ACCIDENTS", libelle: "Assurances Accidents" },
+  { sousBranche: "ASSURANCES_DOMMAGES", libelle: "Assurances Dommages" },
+  { sousBranche: "ASSURANCES_SANTE", libelle: "Assurances Santé" },
+] as const;
+
 export const publicRouter = Router();
 
 /**
@@ -369,21 +383,15 @@ publicRouter.get(
       // scanné du début à la fin : le choix d'Assurance est transmis en
       // query (?sousBranche=...) lors du second appel à cette même route.
       if (!qr.produitId && !qr.sousBranche) {
-        const sousBrancheChoisie = req.query.sousBranche;
-        if (
-          sousBrancheChoisie !== "ASSURANCES_ACCIDENTS" &&
-          sousBrancheChoisie !== "ASSURANCES_DOMMAGES"
-        ) {
+        const assurance = ASSURANCES_QR_UNIQUE.find((a) => a.sousBranche === req.query.sousBranche);
+        if (!assurance) {
           return res.json({
             type: "chooser-branche",
             partenaire: { id: qr.partenaire.id, nomCommerce: qr.partenaire.nomCommerce },
-            options: [
-              { sousBranche: "ASSURANCES_ACCIDENTS", libelle: "Assurances Accidents" },
-              { sousBranche: "ASSURANCES_DOMMAGES", libelle: "Assurances Dommages" },
-            ],
+            options: ASSURANCES_QR_UNIQUE,
           });
         }
-        return res.json(await construireChooserProduits(sousBrancheChoisie, qr.partenaire));
+        return res.json(await construireChooserProduits(assurance.sousBranche, qr.partenaire));
       }
 
       // QR "sélecteur" classique (un par partenaire/Assurance, figé à la
