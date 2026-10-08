@@ -11,7 +11,19 @@ import {
   genererContratSecurhome,
   genererContratSecurMoto,
   genererContratSecurhomeIncendie,
+  genererContratAssuranceSante,
 } from "../../contract";
+import {
+  COMPOSITION_SANTE,
+  DUREE_CONTRAT_SANTE_MOIS,
+  GARANTIES_SANTE,
+  SAISIE_PERSONNE_SANTE_VIDE,
+  estProduitSante,
+  personnesAssureesSante,
+  type PersonneAssureeSante,
+  type ProduitSante,
+  type SaisiePersonneSante,
+} from "../../assurancesSante";
 import { telechargerCarte } from "../../carte";
 import { telechargerFacture } from "../../facture";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -133,9 +145,10 @@ const PRODUITS_ACCIDENTS = [
   "relaxaccidents",
 ];
 const PRODUITS_DOMMAGES = ["securhome_dommages", "securpro_dommages", "securhome", "securmoto"];
-function sousBrancheDuProduit(code: string): "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | null {
+function sousBrancheDuProduit(code: string): ChooserBrancheOption["sousBranche"] | null {
   if (PRODUITS_ACCIDENTS.includes(code)) return "ASSURANCES_ACCIDENTS";
   if (PRODUITS_DOMMAGES.includes(code)) return "ASSURANCES_DOMMAGES";
+  if (estProduitSante(code)) return "ASSURANCES_SANTE";
   return null;
 }
 
@@ -187,7 +200,8 @@ function produitSurModeleGenerique(p?: string): boolean {
     p === "securpro_dommages" ||
     p === "securhome_dommages" ||
     p === "securhome" ||
-    p === "securmoto"
+    p === "securmoto" ||
+    estProduitSante(p)
   );
 }
 
@@ -220,7 +234,9 @@ interface QrInfo {
     | "securpro_dommages"
     | "securhome_dommages"
     | "securhome"
-    | "securmoto";
+    | "securmoto"
+    // Assurances Santé : Solo, Duo, Famille (voir assurancesSante.ts).
+    | ProduitSante;
   partenaire: { id: string; nomCommerce: string };
   montantPrime?: number | null;
   capitalGaranti?: number | null;
@@ -253,7 +269,6 @@ interface ChooserInfo {
 // composant en aval.
 interface ChooserBrancheOption {
   // La liste vient du serveur (ASSURANCES_QR_UNIQUE, backend/src/routes/public.ts).
-  // « Assurances Santé » (2026-10-08) n'a encore aucun produit au catalogue.
   sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | "ASSURANCES_SANTE";
   libelle: string;
 }
@@ -295,8 +310,9 @@ interface TarifFormule {
   primeHT?: number | null;
   fg?: number | null;
   taxes?: number | null;
-  // RelaxVoyage uniquement — { fraisSante?: number; bagages?: string }.
-  donneesSpecifiques?: { fraisSante?: number; bagages?: string } | null;
+  // RelaxVoyage — { fraisSante?: number; bagages?: string } ; Assurances Santé
+  // — { tauxPriseEnCharge: number } (70 ou 80 %).
+  donneesSpecifiques?: { fraisSante?: number; bagages?: string; tauxPriseEnCharge?: number } | null;
 }
 
 type Step =
@@ -1606,6 +1622,227 @@ function SecurhomeIncendieForm({
   );
 }
 
+// Assurances Santé (2026-10-08) — Solo, Duo, Famille. Une carte par formule :
+// le taux de prise en charge (70 % ou 80 %) et la prime annuelle. Les garanties
+// étant les mêmes pour toutes les formules, elles sont affichées une seule
+// fois sous le sélecteur.
+function FormuleSanteCard({
+  tarif,
+  selected,
+  onSelect,
+}: {
+  tarif: TarifFormule;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const taux = tarif.donneesSpecifiques?.tauxPriseEnCharge;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        width: "100%",
+        padding: "18px 22px",
+        border: `2px solid ${selected ? "var(--sim-primary)" : "var(--border-strong)"}`,
+        borderRadius: 14,
+        background: selected ? "var(--sim-primary-50)" : "#fff",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "all 0.15s",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 16,
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+          {taux != null ? `Prise en charge à ${taux} %` : "Formule"}
+        </div>
+        <div style={{ marginTop: 4, fontSize: 22, fontWeight: 800, color: "var(--sim-primary)" }}>
+          {fcfa(tarif.prime)}
+        </div>
+        <div style={{ marginTop: 2, color: "var(--text-2)", fontSize: 13 }}>par an</div>
+      </div>
+      <div
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          border: `2px solid ${selected ? "var(--sim-primary)" : "var(--border-strong)"}`,
+          background: selected ? "var(--sim-primary)" : "transparent",
+          flexShrink: 0,
+          display: "grid",
+          placeItems: "center",
+        }}
+      >
+        {selected && (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+    </button>
+  );
+}
+
+/** Fiche d'une personne couverte en plus du souscripteur (conjoint ou enfant). */
+function PersonneSanteFields({
+  titre,
+  valeur,
+  onChange,
+  onRetirer,
+}: {
+  titre: string;
+  valeur: SaisiePersonneSante;
+  onChange: (v: SaisiePersonneSante) => void;
+  onRetirer?: () => void;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border-strong, #dde3ec)",
+        borderRadius: 12,
+        padding: "14px 14px 2px",
+        marginBottom: 14,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{titre}</div>
+        {onRetirer && (
+          <button
+            type="button"
+            onClick={onRetirer}
+            style={{ background: "none", border: "none", padding: 0, color: "#dc2626", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+          >
+            Retirer
+          </button>
+        )}
+      </div>
+      <FieldRow label="Prénom *">
+        <input value={valeur.prenom} onChange={(e) => onChange({ ...valeur, prenom: e.target.value })} placeholder="Prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={valeur.nom} onChange={(e) => onChange({ ...valeur, nom: e.target.value })} placeholder="Nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Date de naissance *">
+        <DateNaissanceInput value={valeur.dateNaissance} onChange={(v) => onChange({ ...valeur, dateNaissance: v })} />
+      </FieldRow>
+    </div>
+  );
+}
+
+// Formulaire commun aux trois produits Santé : identité du souscripteur (assuré
+// principal), puis les personnes couvertes selon le produit — personne pour
+// Solo, le conjoint pour Duo, le conjoint (facultatif) et jusqu'à 3 enfants
+// pour Famille. Le serveur revérifie cette composition.
+function AssuranceSanteForm({
+  produit,
+  nom,
+  setNom,
+  prenom,
+  setPrenom,
+  telephone,
+  setTelephone,
+  dateNaissance,
+  setDateNaissance,
+  avecConjoint,
+  setAvecConjoint,
+  conjoint,
+  setConjoint,
+  enfants,
+  setEnfants,
+  sigRef,
+}: {
+  produit: ProduitSante;
+  nom: string;
+  setNom: (v: string) => void;
+  prenom: string;
+  setPrenom: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+  dateNaissance: string;
+  setDateNaissance: (v: string) => void;
+  avecConjoint: boolean;
+  setAvecConjoint: (v: boolean) => void;
+  conjoint: SaisiePersonneSante;
+  setConjoint: (v: SaisiePersonneSante) => void;
+  enfants: SaisiePersonneSante[];
+  setEnfants: (v: SaisiePersonneSante[]) => void;
+  sigRef: React.RefObject<SignaturePadHandle | null>;
+}) {
+  const regle = COMPOSITION_SANTE[produit];
+  const conjointAffiche = regle.conjoint === "requis" || (regle.conjoint === "facultatif" && avecConjoint);
+
+  return (
+    <>
+      <FieldRow label="Prénom *">
+        <input value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Votre prénom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Nom *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Votre nom" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Téléphone * (pour recevoir votre confirmation)">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+      <FieldRow label="Date de naissance *">
+        <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
+      </FieldRow>
+
+      {regle.conjoint !== "aucun" && (
+        <>
+          <div style={{ fontWeight: 800, fontSize: 17, margin: "10px 0 6px" }}>Personnes couvertes</div>
+          <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 14 }}>
+            {produit === "sante_duo"
+              ? "Vous et votre conjoint(e)."
+              : "Vous, votre conjoint(e) et jusqu'à 3 enfants."}
+          </div>
+
+          {regle.conjoint === "facultatif" && (
+            <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13.5, cursor: "pointer", marginBottom: 14 }}>
+              <input type="checkbox" checked={avecConjoint} onChange={(e) => setAvecConjoint(e.target.checked)} />
+              Couvrir mon/ma conjoint(e)
+            </label>
+          )}
+          {conjointAffiche && <PersonneSanteFields titre="Conjoint(e)" valeur={conjoint} onChange={setConjoint} />}
+
+          {enfants.map((enfant, i) => (
+            <PersonneSanteFields
+              key={i}
+              titre={`Enfant ${i + 1}`}
+              valeur={enfant}
+              onChange={(v) => setEnfants(enfants.map((e, j) => (j === i ? v : e)))}
+              onRetirer={() => setEnfants(enfants.filter((_, j) => j !== i))}
+            />
+          ))}
+          {enfants.length < regle.enfantsMax && (
+            <button
+              type="button"
+              onClick={() => setEnfants([...enfants, SAISIE_PERSONNE_SANTE_VIDE])}
+              style={{
+                width: "100%",
+                padding: "11px 0",
+                marginBottom: 18,
+                background: "#fff",
+                color: "#004b9c",
+                border: "1.5px dashed #004b9c",
+                borderRadius: 12,
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              + Ajouter un enfant ({enfants.length}/{regle.enfantsMax})
+            </button>
+          )}
+        </>
+      )}
+
+      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+    </>
+  );
+}
+
 export default function Souscription() {
   const { token, produit: produitParam } = useParams<{ token: string; produit?: string }>();
   const navigate = useNavigate();
@@ -1757,6 +1994,13 @@ export default function Souscription() {
   const [nombrePiecesSecurhome, setNombrePiecesSecurhome] = useState<"" | "1" | "2" | "3" | "4" | "5">("");
   const [statutOccupationSecurhome, setStatutOccupationSecurhome] = useState<"proprietaire" | "locataire" | "">("");
 
+  // Champs Assurances Santé (Solo, Duo, Famille) — personnes couvertes en plus
+  // du souscripteur. `nom`/`prenom`/`telephone`/`dateNaissance`/`sigRef` et la
+  // formule (`selectedFormule`) sont partagés avec les branches ci-dessus.
+  const [avecConjointSante, setAvecConjointSante] = useState(true);
+  const [conjointSante, setConjointSante] = useState<SaisiePersonneSante>(SAISIE_PERSONNE_SANTE_VIDE);
+  const [enfantsSante, setEnfantsSante] = useState<SaisiePersonneSante[]>([]);
+
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
   const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
@@ -1867,6 +2111,9 @@ export default function Souscription() {
     // SecurMoto (Assurances Dommages).
     valeurMoto?: number | null;
     ageMoto?: AgeMoto | null;
+    // Assurances Santé (Solo, Duo, Famille).
+    tauxPriseEnCharge?: number | null;
+    nombrePersonnesAssurees?: number | null;
     resultat?: ResultatTarifImf | ResultatSecurhome | ResultatSecurMoto | null;
   } | null>(null);
 
@@ -1984,6 +2231,8 @@ export default function Souscription() {
             optionDeces: data.optionDeces ?? null,
             valeurMoto: data.valeurMoto ?? null,
             ageMoto: data.ageMoto ?? null,
+            tauxPriseEnCharge: data.tauxPriseEnCharge ?? null,
+            nombrePersonnesAssurees: data.nombrePersonnesAssurees ?? null,
             resultat: data.resultat ?? null,
           });
           // Le serveur ne renvoie plus les IMAGES (audit sécurité 2026-10-05),
@@ -2178,6 +2427,13 @@ export default function Souscription() {
       if (telephoneClient) setTelephone(telephoneClient);
       return;
     }
+    if (estProduitSante(produit)) {
+      if (p.nom) setNom(p.nom);
+      if (p.prenom) setPrenom(p.prenom);
+      if (telephoneClient) setTelephone(telephoneClient);
+      if (dateNaissanceStr) setDateNaissance(dateNaissanceStr);
+      return;
+    }
     if (isRelaxAccidentsGenerale(produit)) {
       if (p.nom) setNom(p.nom);
       if (p.prenom) setPrenom(p.prenom);
@@ -2227,6 +2483,12 @@ export default function Souscription() {
       // choisi explicitement par le souscripteur (voir SecurhomeIncendieForm).
       const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/securhome`).then((r) => r.json());
       setTarifsFormule(formules);
+    } else if (estProduitSante(produit)) {
+      // Pas de présélection : entre 70 % et 80 % l'écart de prime est
+      // important, le souscripteur choisit explicitement sa formule.
+      const formules: TarifFormule[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
+      setTarifsFormule([...formules].sort((a, b) => a.prime - b.prime));
+      setSelectedFormule(null);
     } else if (isRelax(produit)) {
       const tarifs: TarifRelax[] = await fetch(`${BASE}/public/tarifs/${produit}`).then((r) => r.json());
       setTarifsRelax(tarifs);
@@ -2317,6 +2579,8 @@ export default function Souscription() {
       }
       if (isSecurhomeIncendie(p))
         return tarifsFormule.find((t) => t.libelleVariante === nombrePiecesSecurhome)?.prime ?? null;
+      if (estProduitSante(p))
+        return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
       if (isSecurproDommages(p)) {
         const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
         if (!bar) return null;
@@ -2366,6 +2630,15 @@ export default function Souscription() {
     return null;
   }
 
+  /** Assurances Santé : personnes couvertes en plus du souscripteur, ou `null` tant que la saisie est incomplète. */
+  function personnesSante(produit: ProduitSante): PersonneAssureeSante[] | null {
+    return personnesAssureesSante(produit, {
+      avecConjoint: avecConjointSante,
+      conjoint: conjointSante,
+      enfants: enfantsSante,
+    });
+  }
+
   /** Informations saisies, telles qu'elles seront enregistrées — écran de vérification. */
   function lignesRecapitulatif(): { label: string; valeur: string }[] {
     const p = qrInfo?.produit;
@@ -2406,6 +2679,23 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Nombre de pièces", valeur: nombrePiecesSecurhome || "—" });
       l.push({ label: "Statut d'occupation", valeur: statutOccupationSecurhome === "proprietaire" ? "Propriétaire" : statutOccupationSecurhome === "locataire" ? "Locataire" : "—" });
+      return l;
+    }
+
+    if (estProduitSante(p)) {
+      const taux = tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.donneesSpecifiques?.tauxPriseEnCharge;
+      const personne = (x: SaisiePersonneSante | PersonneAssureeSante) => `${x.prenom} ${x.nom} (né(e) le ${dfr(x.dateNaissance)})`;
+      l.push({ label: "Prénom", valeur: prenom });
+      l.push({ label: "Nom", valeur: nom });
+      l.push({ label: "Téléphone", valeur: telephone });
+      l.push({ label: "Date de naissance", valeur: dfr(dateNaissance) });
+      l.push({ label: "Produit", valeur: `${COMPOSITION_SANTE[p].libelle} — ${COMPOSITION_SANTE[p].description}` });
+      l.push({ label: "Prise en charge", valeur: taux != null ? `${taux} %` : "—" });
+      l.push({ label: "Durée du contrat", valeur: `${DUREE_CONTRAT_SANTE_MOIS} mois` });
+      let numeroEnfant = 0;
+      for (const x of personnesSante(p) ?? []) {
+        l.push({ label: x.lien === "conjoint" ? "Conjoint(e)" : `Enfant ${++numeroEnfant}`, valeur: personne(x) });
+      }
       return l;
     }
 
@@ -2584,6 +2874,7 @@ export default function Souscription() {
     if ((isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
+    if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit))) return;
     if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
@@ -2598,6 +2889,7 @@ export default function Souscription() {
       isSecurhomeDommages(qrInfo.produit) ||
       isSecurMoto(qrInfo.produit) ||
       isSecurhomeIncendie(qrInfo.produit) ||
+      estProduitSante(qrInfo.produit) ||
       isRelaxAccidentsFraisMedicaux(qrInfo.produit) ||
       isRelax(qrInfo.produit)
         ? signatureCapturee ?? undefined
@@ -2678,6 +2970,33 @@ export default function Souscription() {
           souscriptionId: data.souscriptionId,
           montant: data.montant,
           capitalGaranti: data.capitalGaranti,
+        });
+        await finaliserApresInitiate(data);
+        return;
+      } else if (estProduitSante(qrInfo.produit)) {
+        const personnesAssurees = personnesSante(qrInfo.produit);
+        if (!selectedFormule || !personnesAssurees) return;
+        const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrToken: token,
+            nom,
+            prenom,
+            telephone,
+            dateNaissance,
+            formule: selectedFormule,
+            personnesAssurees,
+            signature,
+            moyenPaiement,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur lors de la souscription");
+        setResult({
+          checkoutUrl: data.checkoutUrl,
+          souscriptionId: data.souscriptionId,
+          montant: data.montant,
         });
         await finaliserApresInitiate(data);
         return;
@@ -3015,6 +3334,10 @@ export default function Souscription() {
       }, result.souscriptionId);
       return;
     }
+    if (estProduitSante(qrInfo.produit)) {
+      genererContratAssuranceSante(result.numeroPolice ?? "", result.souscriptionId);
+      return;
+    }
     if (isSecurhomeIncendie(qrInfo.produit)) {
       if (!result.nombrePieces || !result.statutOccupation) return;
       genererContratSecurhomeIncendie({
@@ -3293,6 +3616,8 @@ export default function Souscription() {
               <div style={{ fontSize: 18, fontWeight: 800 }}>
                 {qrInfo.produit === "incendie"
                   ? "Assurance Incendie"
+                  : estProduitSante(qrInfo.produit)
+                  ? `Assurance Santé ${COMPOSITION_SANTE[qrInfo.produit].libelle}`
                   : isRafLivreurs(qrInfo.produit)
                   ? "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis"
                   : isAccidentLike(qrInfo.produit)
@@ -3490,7 +3815,17 @@ export default function Souscription() {
                     }}
                   >
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 15, color: "#0f1b2d" }}>{p.libelle}</div>
+                      <div style={{ fontWeight: 700, fontSize: 15, color: "#0f1b2d" }}>
+                        {estProduitSante(p.code)
+                          ? `${COMPOSITION_SANTE[p.code].pictogramme} ${COMPOSITION_SANTE[p.code].libelle}`
+                          : p.libelle}
+                      </div>
+                      {/* Assurances Santé : qui est couvert (1 personne, couple, famille). */}
+                      {estProduitSante(p.code) && (
+                        <div style={{ fontSize: 13, color: "#0f1b2d", marginTop: 2 }}>
+                          {COMPOSITION_SANTE[p.code].description}
+                        </div>
+                      )}
                       {p.disponible ? (
                         p.montantPrime != null && (
                           <div style={{ fontSize: 13, color: "#5b6b80", marginTop: 2 }}>
@@ -3777,6 +4112,47 @@ export default function Souscription() {
                 </div>
               )}
 
+              {/* Assurances Santé : choix de la formule (taux de prise en charge),
+                  puis les garanties — identiques pour toutes les formules. */}
+              {estProduitSante(qrInfo?.produit) && (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 4 }}>
+                    Choisissez votre formule
+                  </div>
+                  <div style={{ fontSize: 13, color: "#5b6b80", marginBottom: 10 }}>
+                    {COMPOSITION_SANTE[qrInfo.produit].description} · contrat de {DUREE_CONTRAT_SANTE_MOIS} mois
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {tarifsFormule.map((t) => (
+                      <FormuleSanteCard
+                        key={t.id}
+                        tarif={t}
+                        selected={selectedFormule === t.libelleVariante}
+                        onSelect={() => setSelectedFormule(t.libelleVariante)}
+                      />
+                    ))}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 16,
+                      background: "var(--sim-primary-50, #e6f1fb)",
+                      borderRadius: 14,
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Garanties incluses</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {GARANTIES_SANTE.map((g) => (
+                        <div key={g.rubrique} style={{ fontSize: 13 }}>
+                          <strong style={{ color: "#0f1b2d" }}>{g.rubrique}</strong>
+                          <div style={{ color: "#5b6b80", marginTop: 2 }}>{g.actes.join(" · ")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Récapitulatif incendie : capital garanti uniquement (prime masquée) */}
               {qrInfo?.produit === "incendie" && qrInfo.capitalGaranti && (
                 <div
@@ -3801,7 +4177,26 @@ export default function Souscription() {
                 Vos informations
               </div>
 
-              {isSecurhomeIncendie(qrInfo?.produit) ? (
+              {estProduitSante(qrInfo?.produit) ? (
+                <AssuranceSanteForm
+                  produit={qrInfo.produit}
+                  nom={nom}
+                  setNom={setNom}
+                  prenom={prenom}
+                  setPrenom={setPrenom}
+                  telephone={telephone}
+                  setTelephone={setTelephone}
+                  dateNaissance={dateNaissance}
+                  setDateNaissance={setDateNaissance}
+                  avecConjoint={avecConjointSante}
+                  setAvecConjoint={setAvecConjointSante}
+                  conjoint={conjointSante}
+                  setConjoint={setConjointSante}
+                  enfants={enfantsSante}
+                  setEnfants={setEnfantsSante}
+                  sigRef={sigRef}
+                />
+              ) : isSecurhomeIncendie(qrInfo?.produit) ? (
                 <SecurhomeIncendieForm
                   nom={nom}
                   setNom={setNom}
@@ -4374,7 +4769,14 @@ export default function Souscription() {
                 }
                 const bloque =
                   submitting ||
-                  (isRelaxAccidentsGenerale(qrInfo?.produit)
+                  (estProduitSante(qrInfo?.produit)
+                    ? !nom ||
+                      !prenom ||
+                      phoneInvalid(telephone) ||
+                      !dateNaissance ||
+                      !selectedFormule ||
+                      !personnesSante(qrInfo.produit)
+                    : isRelaxAccidentsGenerale(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
                       phoneInvalid(telephone) ||
@@ -4834,7 +5236,65 @@ export default function Souscription() {
                 </svg>
               </div>
 
-              {isSecurhomeIncendie(qrInfo?.produit) ? (
+              {estProduitSante(qrInfo?.produit) ? (
+                <>
+                  <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
+                    🎉 Souscription confirmée !
+                  </div>
+                  <div style={{ color: "#5b6b80", fontSize: 14, marginBottom: 20 }}>
+                    Votre Assurance Santé {COMPOSITION_SANTE[qrInfo.produit].libelle} est activée.
+                  </div>
+                  {result?.numeroPolice && (
+                    <div
+                      style={{
+                        background: "#e8f6ec",
+                        border: "1px solid #bbf7d0",
+                        borderRadius: 12,
+                        padding: "16px 20px",
+                        marginBottom: 16,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#15803d", fontWeight: 600 }}>
+                        Numéro de police
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: 1, marginTop: 4 }}>
+                        {result.numeroPolice}
+                      </div>
+                      {result.tauxPriseEnCharge != null && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
+                          Prise en charge : {result.tauxPriseEnCharge} %
+                        </div>
+                      )}
+                      {result.nombrePersonnesAssurees != null && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Personnes assurées : {result.nombrePersonnesAssurees}
+                        </div>
+                      )}
+                      {result.dateFin && (
+                        <div style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
+                          Valable jusqu'au {new Date(result.dateFin).toLocaleDateString("fr-FR")}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={telechargerContrat}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      background: "#004b9c",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 12,
+                      fontWeight: 700,
+                      fontSize: 15,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⬇ Télécharger mon contrat
+                  </button>
+                </>
+              ) : isSecurhomeIncendie(qrInfo?.produit) ? (
                 <>
                   <div style={{ fontWeight: 800, fontSize: 19, marginBottom: 8 }}>
                     🎉 Souscription confirmée !

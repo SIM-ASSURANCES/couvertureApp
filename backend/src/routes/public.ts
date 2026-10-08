@@ -42,6 +42,15 @@ import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDa
 import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
+import {
+  PRODUITS_SANTE,
+  estProduitSante,
+  personneAssureeSanteSchema,
+  tauxPriseEnChargeDuTarif,
+  validerPersonnesAssureesSante,
+  lirePersonnesAssureesSante,
+  type PersonneAssureeSante,
+} from "../services/assurancesSante.js";
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 function isProduitRelax(p: string): p is (typeof PRODUITS_RELAX)[number] {
@@ -93,6 +102,8 @@ const PRODUITS_FORMULE = [
   "relaxvoyage",
   "relaxaccidents",
   "securhome",
+  // Assurances Santé (2026-10-08) : Solo, Duo, Famille — voir services/assurancesSante.ts.
+  ...PRODUITS_SANTE,
 ] as const;
 function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
   return (PRODUITS_FORMULE as readonly string[]).includes(p);
@@ -313,8 +324,8 @@ export async function construireChooserProduits(
  * Source unique : sert à la fois les options affichées au prospect et les
  * valeurs acceptées en `?sousBranche=` (voir GET /qr/:token). Ajouter une
  * Assurance = une ligne ici ; ses produits sont ceux dont `Produit.sousBranche`
- * porte la même valeur. « Assurances Santé » (2026-10-08) n'a encore aucun
- * produit au catalogue : l'écran client affiche alors « bientôt disponible ».
+ * porte la même valeur (Santé : Solo, Duo, Famille — services/assurancesSante.ts).
+ * Une Assurance sans produit affiche « bientôt disponible » côté client.
  */
 const ASSURANCES_QR_UNIQUE = [
   { sousBranche: "ASSURANCES_ACCIDENTS", libelle: "Assurances Accidents" },
@@ -1945,6 +1956,9 @@ const formuleSchema = z.object({
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
   // SecurHome uniquement — locataire ou propriétaire de la maison assurée.
   statutOccupation: z.enum(["proprietaire", "locataire"]).optional(),
+  // Assurances Santé uniquement — personnes couvertes en plus du souscripteur
+  // (conjoint, enfants), contrôlées par validerPersonnesAssureesSante.
+  personnesAssurees: z.array(personneAssureeSanteSchema).max(4).optional(),
   ...champsNovelia,
   ...moyenPaiementField,
 });
@@ -2001,6 +2015,16 @@ publicRouter.post(
     if (code === "securhome" && !data.statutOccupation) {
       return res.status(400).json({ error: "Statut d'occupation manquant (locataire ou propriétaire)." });
     }
+    // Assurances Santé : la date de naissance du souscripteur est obligatoire,
+    // et les personnes déclarées doivent correspondre au produit (Solo : aucune,
+    // Duo : le conjoint, Famille : conjoint et jusqu'à 3 enfants).
+    if (estProduitSante(code)) {
+      if (!data.dateNaissance || data.dateNaissance > new Date()) {
+        return res.status(400).json({ error: "Date de naissance du souscripteur manquante ou invalide." });
+      }
+      const erreurPersonnes = validerPersonnesAssureesSante(code, data.personnesAssurees ?? []);
+      if (erreurPersonnes) return res.status(400).json({ error: erreurPersonnes });
+    }
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -2027,6 +2051,17 @@ publicRouter.post(
     if (code === "relaxaccidents") {
       relaxAccidentsGenerale = parseFormuleRelaxAccidentsGenerale(tarif.libelleVariante ?? "");
       if (!relaxAccidentsGenerale) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
+    }
+
+    // Assurances Santé : le taux de prise en charge vient de la formule
+    // TROUVÉE en base (jamais d'un champ envoyé par le client) et est figé sur
+    // la souscription — le contrat reste celui qui a été vendu même si le
+    // barème change ensuite.
+    let sante: { tauxPriseEnCharge: number; personnesAssurees: PersonneAssureeSante[] } | null = null;
+    if (estProduitSante(code)) {
+      const tauxPriseEnCharge = tauxPriseEnChargeDuTarif(tarif.donneesSpecifiques);
+      if (tauxPriseEnCharge == null) return res.status(400).json({ error: "Formule indisponible pour ce produit" });
+      sante = { tauxPriseEnCharge, personnesAssurees: data.personnesAssurees ?? [] };
     }
 
     // Le total payé recalculé ici, jamais confié au client : prime de la
@@ -2086,6 +2121,13 @@ publicRouter.post(
                 signature: data.signature ?? null,
                 nombrePieces: Number(data.formule),
                 statutOccupation: data.statutOccupation,
+              }
+            : sante
+            ? {
+                signature: data.signature ?? null,
+                formule: tarif.libelleVariante,
+                tauxPriseEnCharge: sante.tauxPriseEnCharge,
+                personnesAssurees: sante.personnesAssurees,
               }
             : data.signature || optionDeces
             ? {
@@ -2591,6 +2633,11 @@ publicRouter.get(
       // SecurMoto (Assurances Dommages).
       valeurMoto: donneesSpecifiques?.valeurMoto ?? null,
       ageMoto: donneesSpecifiques?.ageMoto ?? null,
+      // Assurances Santé (Solo, Duo, Famille) — l'écran de succès n'affiche que
+      // le NOMBRE de personnes assurées : leurs noms et dates de naissance
+      // (dont des enfants) ne sont pas renvoyés par cette route sans compte.
+      tauxPriseEnCharge: tauxPriseEnChargeDuTarif(s.donneesSpecifiques),
+      nombrePersonnesAssurees: 1 + lirePersonnesAssureesSante(s.donneesSpecifiques).length,
       resultat: s.resultat ?? null,
     });
   })

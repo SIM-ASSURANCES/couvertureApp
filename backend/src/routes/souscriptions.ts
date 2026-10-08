@@ -16,6 +16,7 @@ import {
 import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
+import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
 
 export const souscriptionsRouter = Router();
 souscriptionsRouter.use(requireAuth("admin"));
@@ -98,6 +99,9 @@ souscriptionsRouter.get(
       // SecurMoto uniquement.
       valeurMoto?: number | null;
       ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
+      // Assurances Santé (Solo, Duo, Famille).
+      tauxPriseEnCharge?: number | null;
+      personnesAssurees?: { lien: "conjoint" | "enfant"; nom: string; prenom: string; dateNaissance: string }[];
       /** RelaxMoto/RelaxAuto : périodicité mentionnée sur le contrat PDF. */
       cycleFacturation?: "mensuel" | "annuel" | null;
       // Référence de la transaction Wave, uniquement quand le paiement est
@@ -235,7 +239,7 @@ souscriptionsRouter.get(
     if (type !== "incendie" && type !== "accident") {
       const produitsGeneriques = await prisma.produit.findMany({
         where: {
-          sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] },
+          sousBranche: { in: [...SOUS_BRANCHES_ASSURANCES] },
           ...(type ? { code: type } : {}),
         },
       });
@@ -383,6 +387,9 @@ souscriptionsRouter.get(
             nombrePieces: d.nombrePieces,
             valeurMoto: d.valeurMoto,
             ageMoto: d.ageMoto,
+            // Assurances Santé (Solo, Duo, Famille).
+            tauxPriseEnCharge: d.tauxPriseEnCharge,
+            personnesAssurees: d.personnesAssurees,
             resultat: d.resultat,
             cycleFacturation: s.cycleFacturation,
             referenceWave:

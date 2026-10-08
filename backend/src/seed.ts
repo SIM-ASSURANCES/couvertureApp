@@ -4,6 +4,7 @@ import { formuleRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGen
 import { resoudreOuCreerClient } from "./services/clients.js";
 import { emettreFacture } from "./services/facture.js";
 import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenaires.js";
+import { COMPOSITION_SANTE, FORMULES_SANTE, PRODUITS_SANTE, SOUS_BRANCHE_SANTE } from "./services/assurancesSante.js";
 
 const prisma = new PrismaClient();
 
@@ -642,7 +643,47 @@ async function seedCatalogueAssurancesAccidentsDommages() {
     });
   }
 
-  console.log("[seed] Catalogue Assurances Accidents/Dommages synchronisé.");
+  // Assurances Santé (2026-10-08) — Solo, Duo et Famille, tarif FIXE par
+  // formule (taux de prise en charge 70 % ou 80 %), voir
+  // services/assurancesSante.ts. `update: {}` partout : un libellé, un statut
+  // ou un prix modifié ensuite par l'admin n'est jamais écrasé au redémarrage.
+  // Taux de commission posé à 0 à la création : sans cela le défaut de 20 %
+  // (services/commission.ts) s'appliquerait à des primes de plusieurs
+  // centaines de milliers de francs sans avoir été décidé.
+  for (const code of PRODUITS_SANTE) {
+    const composition = COMPOSITION_SANTE[code];
+    const produit = await prisma.produit.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        libelle: composition.libelleProduit,
+        branche: "INCENDIE_ACCIDENT",
+        sousBranche: SOUS_BRANCHE_SANTE,
+        typePaiement: "WAVE",
+        ordre: composition.ordre,
+        actif: true,
+        tauxCommission: 0,
+      },
+    });
+    for (const formule of FORMULES_SANTE[code]) {
+      await prisma.tarifProduit.upsert({
+        where: { produitId_libelleVariante: { produitId: produit.id, libelleVariante: formule.cle } },
+        update: {},
+        create: {
+          produitId: produit.id,
+          libelleVariante: formule.cle,
+          prime: formule.prime,
+          // Pas de capital en santé : la garantie est un taux de prise en charge.
+          capitalGaranti: 0,
+          commission: 0,
+          donneesSpecifiques: { tauxPriseEnCharge: formule.tauxPriseEnCharge },
+        },
+      });
+    }
+  }
+
+  console.log("[seed] Catalogue Assurances Accidents/Dommages/Santé synchronisé.");
 }
 
 /**

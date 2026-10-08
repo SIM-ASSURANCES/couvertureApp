@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank, HeartPulse, Coins } from "lucide-react";
+import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import {
   PageHeader,
   StatCard,
@@ -11,7 +12,6 @@ import {
   statutIncendieBadge,
   waveBadge,
   nb,
-  Badge,
 } from "../../components/ui";
 import { useFetch } from "../../useFetch";
 import type { CatalogueProduitBranche, SouscriptionBranche } from "../../types";
@@ -80,7 +80,7 @@ export default function AdminDashboard() {
 
   // Filtres "type d'assurance" / "type de produit" des dernières souscriptions
   // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
-  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
+  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | SousBrancheAssurance>("");
   const [produitFiltre, setProduitFiltre] = useState("");
   const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
 
@@ -266,9 +266,9 @@ export default function AdminDashboard() {
             )}
             <StatCard
               icon={<HeartPulse size={20} />}
-              label="Souscriptions Assurances Accidents et Dommages"
+              label="Souscriptions Assurances Accidents, Dommages et Santé"
               value={nb(data.accidentTotal + data.incendieTotal + generiqueConfirmesTotal)}
-              trend="Toutes confirmées, Accidents + Dommages"
+              trend="Toutes confirmées, Accidents + Dommages + Santé"
               color="#15803d"
               bg="#e8f6ec"
             />
@@ -312,13 +312,12 @@ export default function AdminDashboard() {
                   style={{ width: 180, height: 40 }}
                   value={sousBrancheFiltre}
                   onChange={(e) => {
-                    setSousBrancheFiltre(e.target.value as "" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES");
+                    setSousBrancheFiltre(e.target.value as "" | SousBrancheAssurance);
                     setProduitFiltre("");
                   }}
                 >
                   <option value="">Toutes les Assurances</option>
-                  <option value="ASSURANCES_ACCIDENTS">Assurances Accidents</option>
-                  <option value="ASSURANCES_DOMMAGES">Assurances Dommages</option>
+                  <OptionsAssurances />
                 </select>
                 <select
                   className="select"
@@ -353,11 +352,7 @@ export default function AdminDashboard() {
                   {(recents ?? []).map((r) => (
                     <tr key={r.id}>
                       <td>
-                        {r.sousBranche === "ASSURANCES_DOMMAGES" ? (
-                          <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
-                        ) : (
-                          <Badge kind="info"><ShieldCheck size={12} /> {r.produitLibelle}</Badge>
-                        )}
+                        <BadgeAssurance sousBranche={r.sousBranche}>{r.produitLibelle}</BadgeAssurance>
                       </td>
                       <td>
                         <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>

@@ -8,6 +8,7 @@ import { attribuerIdentifiantAgent } from "../services/identifiantsPartenaires.j
 import { qrDataUrl, newQrToken } from "../services/qr.js";
 import { commissionStatsPartenaire, commissionTotaleAgentsDuPartenaire, commissionTotalePartenaire } from "../services/commission.js";
 import { statsGeneriques } from "./stats.js";
+import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
 import {
   parseFiltres,
   fetchGenerique,
@@ -105,7 +106,8 @@ meRouter.get(
     const produit = p.produitIncendie ? "incendie" : "accident";
     const inc = depuisBareme(incGroups, tarifsInc);
     const acc = depuisBareme(accGroups, tarifsAcc);
-    const caGenerique = generique.ASSURANCES_ACCIDENTS.ca + generique.ASSURANCES_DOMMAGES.ca;
+    const caGenerique =
+      generique.ASSURANCES_ACCIDENTS.ca + generique.ASSURANCES_DOMMAGES.ca + generique.ASSURANCES_SANTE.ca;
 
     const estIncendie = produit === "incendie";
 
@@ -154,7 +156,7 @@ meRouter.get(
   "/catalogue-branche",
   asyncHandler(async (_req, res) => {
     const produits = await prisma.produit.findMany({
-      where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+      where: { sousBranche: { in: [...SOUS_BRANCHES_ASSURANCES] } },
       orderBy: { ordre: "asc" },
     });
     res.json([

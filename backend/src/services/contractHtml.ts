@@ -7,6 +7,7 @@
 
 import { prisma } from "../db.js";
 import { garantiesRelaxAccidentsGenerale, INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE, type Classe } from "./relaxAccidentsGenerale.js";
+import { GARANTIES_SANTE, type PersonneAssureeSante } from "./assurancesSante.js";
 
 const APP_PUBLIC_URL = process.env.APP_PUBLIC_URL || "http://localhost:5173";
 
@@ -112,6 +113,24 @@ export interface ContratRelaxAccidentsGenerale {
   classe: Classe;
   cnpsDeclare: boolean;
   cycle?: "annuel" | "mensuel" | null;
+  signature?: string | null;
+}
+
+/** Assurances Santé (Solo, Duo, Famille) — voir services/assurancesSante.ts. */
+export interface ContratAssuranceSante {
+  numeroPolice: string;
+  partenaire: string;
+  dateDebut: string;
+  dateFin: string;
+  nom?: string | null;
+  prenom?: string | null;
+  telephone: string;
+  dateNaissance?: string | null;
+  produitLibelle: string;
+  description: string;
+  tauxPriseEnCharge: number;
+  montant: number;
+  personnesAssurees: PersonneAssureeSante[];
   signature?: string | null;
 }
 
@@ -475,7 +494,26 @@ export const CLES_CONDITIONS_GENERALES = [
   { cle: "relaxmoto", libelle: "RelaxMoto / RelaxAuto" },
   { cle: "relaxvoyage", libelle: "RelaxVoyage" },
   { cle: "relaxaccidents", libelle: "RelaxAccidents générale" },
+  // Aucun fichier statique livré pour la Santé : tant que rien n'est saisi ici,
+  // le contrat ne comporte que ses Conditions Particulières (voir loadCGSaisies).
+  { cle: "sante", libelle: "Assurances Santé (Solo, Duo, Famille)" },
 ] as const;
+
+/**
+ * Conditions Générales saisies par l'administrateur, sans repli sur un fichier
+ * statique — `null` si rien n'a été saisi. À utiliser pour une famille de
+ * produits qui n'a pas de fichier `cg-<cle>.html` : loadCG irait le chercher
+ * sur le frontend, qui répond par la page d'accueil de l'application (repli
+ * SPA, statut 200) à toute adresse inconnue.
+ */
+async function loadCGSaisies(cle: string): Promise<string | null> {
+  try {
+    const saisie = await prisma.conditionsGenerales.findUnique({ where: { cle } });
+    return saisie?.contenuHtml.trim() ? saisie.contenuHtml : null;
+  } catch {
+    return null;
+  }
+}
 
 function document_(title: string, inner: string): string {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title>
@@ -923,6 +961,68 @@ export async function renderContratSecurhomeIncendie(c: ContratSecurhomeIncendie
 
   const cg = await loadCG("incendie");
   const cgSection = `<div class="pagebreak"></div><h2>Conditions Générales — SECURDOMMAGE</h2><div class="cg">${cg}</div>`;
+  return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
+}
+
+/**
+ * Assurances Santé (Solo, Duo, Famille) — les garanties sont les mêmes pour
+ * toutes les formules, seul le taux de prise en charge change. Les personnes
+ * couvertes (souscripteur, conjoint, enfants) sont listées nommément.
+ */
+export async function renderContratAssuranceSante(c: ContratAssuranceSante): Promise<string> {
+  const assures: { qualite: string; nom: string; dateNaissance?: string | null }[] = [
+    { qualite: "Assuré principal (souscripteur)", nom: `${val(c.prenom)} ${val(c.nom)}`, dateNaissance: c.dateNaissance },
+    ...c.personnesAssurees.map((p) => ({
+      qualite: p.lien === "conjoint" ? "Conjoint(e)" : "Enfant",
+      nom: `${val(p.prenom)} ${val(p.nom)}`,
+      dateNaissance: p.dateNaissance,
+    })),
+  ];
+  const cp = `
+  ${header(c.numeroPolice)}
+  <h1>Bulletin de souscription — ASSURANCE SANTÉ ${esc(c.produitLibelle.toUpperCase())}</h1>
+  <div class="sub">Assurance Santé · Distribué via ${val(c.partenaire)}</div>
+
+  <h2>Conditions Particulières</h2>
+  <table>
+    <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
+    <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td style="white-space:nowrap;">${dfr(c.dateFin)}</td></tr>
+    <tr><td class="k">Souscripteur</td><td style="text-align:left;">${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td style="white-space:nowrap;">${val(c.telephone)}</td></tr>
+    <tr><td class="k">Formule</td><td colspan="3" style="text-align:left;">${val(c.produitLibelle)} — ${val(c.description)}</td></tr>
+    <tr><td class="k">Taux de prise en charge</td><td><strong>${val(c.tauxPriseEnCharge)} %</strong></td><td class="k">Prime TTC annuelle</td><td style="white-space:nowrap;"><strong>${fcfa(c.montant)}</strong></td></tr>
+  </table>
+
+  <h2>Personnes assurées (${assures.length})</h2>
+  <table>
+    ${assures
+      .map(
+        (a) =>
+          `<tr><td class="k">${a.qualite}</td><td style="text-align:left;">${a.nom}</td><td class="k">Date de naissance</td><td>${dfr(a.dateNaissance)}</td></tr>`
+      )
+      .join("")}
+  </table>
+
+  <h2>Garanties — prise en charge à ${val(c.tauxPriseEnCharge)} %</h2>
+  <table>
+    ${GARANTIES_SANTE.map(
+      (g) => `<tr><td class="k">${esc(g.rubrique)}</td><td colspan="3" style="text-align:left;">${g.actes.map(esc).join(" · ")}</td></tr>`
+    ).join("")}
+  </table>
+
+  <div class="note">
+    Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est constitué par
+    les Conditions Générales de l'Assurance Santé et les présentes Conditions Particulières.
+    <br/><br/>
+    Les frais relevant des garanties ci-dessus sont pris en charge à hauteur de <b>${val(c.tauxPriseEnCharge)} %</b>
+    pour chacune des personnes assurées désignées, pendant la période de validité du contrat.
+  </div>
+  ${RECLAMATION}
+  ${signatures(c.signature)}`;
+
+  const cg = await loadCGSaisies("sante");
+  const cgSection = cg
+    ? `<div class="pagebreak"></div><h2>Conditions Générales — ASSURANCE SANTÉ</h2><div class="cg">${cg}</div>`
+    : "";
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 

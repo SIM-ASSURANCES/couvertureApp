@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMotDePasseClient, lienClientRelax, messageClientRelax, messageRelaxVoyageActive, sendSMS, dateDebutPremiereActivation } from "./notify.js";
 import { genererCarte, renouvelerCarte } from "./novelia.js";
 import { emettreFacture } from "./facture.js";
+import { DUREE_CONTRAT_SANTE_MOIS, estProduitSante } from "./assurancesSante.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -42,6 +43,8 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
   }
   if (produitCode === "relaxaccidents_fraismedicaux") return 2;
   if (produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
+  // Assurances Santé (Solo, Duo, Famille) : contrat annuel.
+  if (estProduitSante(produitCode)) return DUREE_CONTRAT_SANTE_MOIS;
   return 3;
 }
 

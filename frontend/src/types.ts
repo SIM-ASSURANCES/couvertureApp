@@ -42,7 +42,8 @@ export interface Partenaire {
 // "type de produit" du tableau de bord, des détails partenaire et des pages
 // Clients/Contrats. ---
 
-export type SousBrancheAccidentsDommages = "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+// Nom historique : couvre aussi « Assurances Santé » depuis le 2026-10-08.
+export type SousBrancheAccidentsDommages = "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES" | "ASSURANCES_SANTE";
 
 export interface CatalogueProduitBranche {
   sousBranche: SousBrancheAccidentsDommages;

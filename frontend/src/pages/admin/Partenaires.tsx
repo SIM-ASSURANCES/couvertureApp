@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, Flame, ShieldCheck, SlidersHorizontal, KeyRound, RefreshCw, Send } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, SlidersHorizontal, KeyRound, RefreshCw, Send } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
+import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
@@ -55,7 +56,7 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
 
   // Filtres "type d'assurance" / "type de produit" du tableau des souscripteurs
   // (vue unifiée tous produits, modèle générique + historiques Incendie/Accident).
-  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES">("");
+  const [sousBrancheFiltre, setSousBrancheFiltre] = useState<"" | SousBrancheAssurance>("");
   const [produitFiltre, setProduitFiltre] = useState("");
   const { data: catalogue } = useFetch<CatalogueProduitBranche[]>("/assurances-branche/catalogue");
   const souscripteursParams = new URLSearchParams();
@@ -210,13 +211,12 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                   style={{ width: 170, height: 36 }}
                   value={sousBrancheFiltre}
                   onChange={(e) => {
-                    setSousBrancheFiltre(e.target.value as "" | "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES");
+                    setSousBrancheFiltre(e.target.value as "" | SousBrancheAssurance);
                     setProduitFiltre("");
                   }}
                 >
                   <option value="">Toutes les Assurances</option>
-                  <option value="ASSURANCES_ACCIDENTS">Assurances Accidents</option>
-                  <option value="ASSURANCES_DOMMAGES">Assurances Dommages</option>
+                  <OptionsAssurances />
                 </select>
                 <select
                   className="select"
@@ -240,11 +240,7 @@ function DetailsModal({ partenaireId, onClose }: { partenaireId: string; onClose
                   {(souscripteurs ?? []).map((s) => (
                     <tr key={s.id}>
                       <td>
-                        {s.sousBranche === "ASSURANCES_DOMMAGES" ? (
-                          <Badge kind="warning"><Flame size={12} /> {s.produitLibelle}</Badge>
-                        ) : (
-                          <Badge kind="info"><ShieldCheck size={12} /> {s.produitLibelle}</Badge>
-                        )}
+                        <BadgeAssurance sousBranche={s.sousBranche}>{s.produitLibelle}</BadgeAssurance>
                       </td>
                       <td>{[s.prenom, s.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</td>
                       <td>{s.telephone}</td>

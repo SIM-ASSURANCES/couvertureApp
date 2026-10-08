@@ -8,6 +8,7 @@ import ListeFactures from "../../components/ListeFactures";
 import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
 import { garantiesRelaxAccidentsGenerale, INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE, type Classe } from "../../relaxAccidentsGenerale";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
+import { GARANTIES_SANTE, estProduitSante, type PersonneAssureeSante } from "../../assurancesSante";
 
 function fcfa(n: number) {
   return n.toLocaleString("fr-FR") + " FCFA";
@@ -45,6 +46,10 @@ interface Moi {
   // `cycleFacturation` ci-dessus, qui reste toujours null pour ce produit
   // (pas un abonnement reconductible comme RelaxMoto/Auto).
   periodicite?: "annuel" | "mensuel" | null;
+  // Assurances Santé (Solo, Duo, Famille) — taux de prise en charge et
+  // personnes couvertes en plus du souscripteur.
+  tauxPriseEnCharge?: number | null;
+  personnesAssurees?: PersonneAssureeSante[];
 }
 
 interface ProduitDisponible {
@@ -330,10 +335,18 @@ export default function ClientDashboard() {
               {moi.produitCode !== "relaxmoto" &&
                 moi.produitCode !== "relaxauto" &&
                 moi.produitCode !== "relaxvoyage" &&
-                moi.produitCode !== "relaxaccidents" && (
+                moi.produitCode !== "relaxaccidents" &&
+                // Santé : pas de capital, la garantie est un taux de prise en charge.
+                !estProduitSante(moi.produitCode) && (
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
                   <span>Capital garanti</span>
                   <strong style={{ color: "#0f1b2d" }}>{fcfa(moi.capitalGaranti)}</strong>
+                </div>
+              )}
+              {estProduitSante(moi.produitCode) && moi.tauxPriseEnCharge != null && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#5b6b80", marginBottom: 4 }}>
+                  <span>Prise en charge</span>
+                  <strong style={{ color: "#0f1b2d" }}>{moi.tauxPriseEnCharge} %</strong>
                 </div>
               )}
               {moi.dateDebut && (
@@ -430,6 +443,41 @@ export default function ClientDashboard() {
                 );
               })()}
 
+              {estProduitSante(moi.produitCode) && (
+                <>
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>
+                      Personnes assurées ({1 + (moi.personnesAssurees?.length ?? 0)})
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[
+                        { qualite: "Vous", nom: [moi.prenom, moi.nom].filter(Boolean).join(" ") },
+                        ...(moi.personnesAssurees ?? []).map((p) => ({
+                          qualite: p.lien === "conjoint" ? "Conjoint(e)" : "Enfant",
+                          nom: `${p.prenom} ${p.nom}`,
+                        })),
+                      ].map((a, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                          <span style={{ color: "#5b6b80" }}>{a.qualite}</span>
+                          <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{a.nom}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                    <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Garanties incluses</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {GARANTIES_SANTE.map((g) => (
+                        <div key={g.rubrique} style={{ fontSize: 12.5 }}>
+                          <strong style={{ color: "#0f1b2d" }}>{g.rubrique}</strong>
+                          <div style={{ color: "#5b6b80", marginTop: 2 }}>{g.actes.join(" · ")}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
               {moi.optionDeces && (
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
                   <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Option Décès</div>
@@ -444,7 +492,7 @@ export default function ClientDashboard() {
 
               {/* RelaxVoyage : pièce d'identité collectée, pas de photo
                   selfie ni de carte de prise en charge (voir Souscription.tsx). */}
-              {moi.produitCode !== "relaxvoyage" && (
+              {moi.produitCode !== "relaxvoyage" && !estProduitSante(moi.produitCode) && (
                 <button
                   onClick={voirCarte}
                   disabled={telechargementCarte}

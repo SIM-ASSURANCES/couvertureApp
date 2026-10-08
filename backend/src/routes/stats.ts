@@ -4,6 +4,7 @@ import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
 import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT, PRODUITS_COMMISSION_DYNAMIQUE } from "../services/commission.js";
+import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth("admin"));
@@ -43,10 +44,12 @@ export async function statsGeneriques(dateWhere: DateWhereStats & { partenaireId
   const totals = {
     ASSURANCES_ACCIDENTS: { primes: 0, ca: 0, taxes: 0, fg: 0 },
     ASSURANCES_DOMMAGES: { primes: 0, ca: 0, taxes: 0, fg: 0 },
+    // Assurances Santé (2026-10-08) : Solo, Duo, Famille.
+    ASSURANCES_SANTE: { primes: 0, ca: 0, taxes: 0, fg: 0 },
   };
 
   const produits = await prisma.produit.findMany({
-    where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+    where: { sousBranche: { in: [...SOUS_BRANCHES_ASSURANCES] } },
   });
   if (produits.length === 0) return totals;
   const produitParId = new Map(produits.map((p) => [p.id, p]));
@@ -203,7 +206,9 @@ statsRouter.get(
     const taxesAccident = acc.taxes + generiques.ASSURANCES_ACCIDENTS.taxes;
     const caIncendie = inc.ca + generiques.ASSURANCES_DOMMAGES.ca;
     const taxesIncendie = inc.taxes + generiques.ASSURANCES_DOMMAGES.taxes;
-    const fgTotal = acc.fg + inc.fg + generiques.ASSURANCES_ACCIDENTS.fg + generiques.ASSURANCES_DOMMAGES.fg;
+    // Assurances Santé : aucun modèle historique, tout vient du modèle générique.
+    const sante = generiques.ASSURANCES_SANTE;
+    const fgTotal = acc.fg + inc.fg + generiques.ASSURANCES_ACCIDENTS.fg + generiques.ASSURANCES_DOMMAGES.fg + sante.fg;
 
     // Prime Incendie/Dommages TTC = somme des montants payés, PAIEMENTS
     // confirmés (1er + renouvellements), pas lignes distinctes, + produits
@@ -225,11 +230,13 @@ statsRouter.get(
       accidentTotal,
       primesAccident: Math.round(primesAccident),
       primesIncendie: Math.round(primesIncendie),
-      chiffreAffaires: Math.round(caIncendie + caAccident),
-      taxes: Math.round(taxesIncendie + taxesAccident),
+      primesSante: Math.round(sante.primes),
+      chiffreAffaires: Math.round(caIncendie + caAccident + sante.ca),
+      taxes: Math.round(taxesIncendie + taxesAccident + sante.taxes),
       fgTotal: Math.round(fgTotal),
       caIncendie: Math.round(caIncendie),
       caAccident: Math.round(caAccident),
+      caSante: Math.round(sante.ca),
       budgetIncendie: budget.budgetIncendie,
       budgetAccident: budget.budgetAccident,
       params,

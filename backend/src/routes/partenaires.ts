@@ -752,7 +752,8 @@ partenairesRouter.get(
     }
     const sousBranches = qrSelecteur.sousBranche
       ? [qrSelecteur.sousBranche]
-      : ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"];
+      : // QR unique : le partenaire vend dans toutes les Assurances.
+        ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES", "ASSURANCES_SANTE"];
 
     const [produits, avecDesactives] = await Promise.all([
       prisma.produit.findMany({

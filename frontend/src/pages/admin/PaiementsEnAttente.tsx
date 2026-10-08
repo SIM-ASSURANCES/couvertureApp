@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet, Flame, ShieldCheck } from "lucide-react";
+import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet } from "lucide-react";
+import { BadgeAssurance } from "../../components/BadgeAssurance";
 import {
   PageHeader,
   Card,
   Loader,
   ErrorBox,
-  Badge,
   waveBadge,
   fcfa,
   fmtDate,
@@ -280,11 +280,7 @@ export default function PaiementsEnAttente() {
                 {genData.map((r) => (
                   <tr key={r.id}>
                     <td>
-                      {r.sousBranche === "ASSURANCES_DOMMAGES" ? (
-                        <Badge kind="warning"><Flame size={12} /> {r.produitLibelle}</Badge>
-                      ) : (
-                        <Badge kind="info"><ShieldCheck size={12} /> {r.produitLibelle}</Badge>
-                      )}
+                      <BadgeAssurance sousBranche={r.sousBranche}>{r.produitLibelle}</BadgeAssurance>
                     </td>
                     <td>
                       <strong>{[r.prenom, r.nom].filter(Boolean).join(" ") || <span className="muted">—</span>}</strong>

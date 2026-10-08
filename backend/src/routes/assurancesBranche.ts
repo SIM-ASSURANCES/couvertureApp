@@ -15,6 +15,7 @@ import {
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
 import { verifierPaiementEcheance } from "../services/paiementWave.js";
+import { SOUS_BRANCHES_ASSURANCES, estSousBrancheAssurance, type SousBrancheAssurance } from "../services/sousBranches.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -30,7 +31,8 @@ import { verifierPaiementEcheance } from "../services/paiementWave.js";
 export const assurancesBrancheRouter = Router();
 assurancesBrancheRouter.use(requireAuth("admin"));
 
-type SousBranche = "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+// Assurances Santé (2026-10-08) rejoint la vue unifiée — voir services/sousBranches.ts.
+type SousBranche = SousBrancheAssurance;
 
 export const CODE_INCENDIE_HISTORIQUE = "incendie_historique";
 export const CODE_ACCIDENT_HISTORIQUE = "accident_historique";
@@ -107,7 +109,7 @@ export interface Filtres {
 export function parseFiltres(query: Record<string, string | undefined>): Filtres {
   const { sousBranche, produit, partenaireId, from, to, statut, generiqueSeul, renouvellementProche } = query;
   return {
-    sousBranche: sousBranche === "ASSURANCES_ACCIDENTS" || sousBranche === "ASSURANCES_DOMMAGES" ? sousBranche : undefined,
+    sousBranche: estSousBrancheAssurance(sousBranche) ? sousBranche : undefined,
     produit: produit || undefined,
     partenaireId: partenaireId || undefined,
     from: from ? new Date(`${from}T00:00:00`) : undefined,
@@ -133,7 +135,7 @@ const DELAI_EXPIRATION_ATTENTE_MS = 24 * 60 * 60 * 1000;
  */
 async function purgerAttentesExpirees(): Promise<void> {
   const produits = await prisma.produit.findMany({
-    where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+    where: { sousBranche: { in: [...SOUS_BRANCHES_ASSURANCES] } },
     select: { id: true },
   });
   if (produits.length === 0) return;
@@ -151,7 +153,7 @@ assurancesBrancheRouter.get(
   "/catalogue",
   asyncHandler(async (_req, res) => {
     const produits = await prisma.produit.findMany({
-      where: { sousBranche: { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+      where: { sousBranche: { in: [...SOUS_BRANCHES_ASSURANCES] } },
       orderBy: { ordre: "asc" },
     });
     res.json([
@@ -174,7 +176,7 @@ export async function fetchGenerique(f: Filtres, limit?: number): Promise<Souscr
   if (f.produit === CODE_INCENDIE_HISTORIQUE || f.produit === CODE_ACCIDENT_HISTORIQUE) return [];
 
   const produits = await prisma.produit.findMany({
-    where: { sousBranche: f.sousBranche ? f.sousBranche : { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+    where: { sousBranche: f.sousBranche ? f.sousBranche : { in: [...SOUS_BRANCHES_ASSURANCES] } },
   });
   return fetchGeneriqueParProduitIds(produits.map((p) => p.id), f, limit);
 }
@@ -248,7 +250,9 @@ export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promi
   // Incendie n'a pas de paiement Wave en attente à proprement parler (la
   // prime est incluse dans l'achat) — exclu du mode "attente".
   if (f.statut === "attente") return [];
-  if (f.sousBranche === "ASSURANCES_ACCIDENTS") return [];
+  // Incendie historique n'appartient qu'aux Dommages : écarté pour tout autre
+  // filtre d'Assurance (un « sauf Accidents » l'aurait rangé dans la Santé).
+  if (f.sousBranche && f.sousBranche !== "ASSURANCES_DOMMAGES") return [];
   if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE) return [];
   const rows = await prisma.souscriptionIncendie.findMany({
     where: {
@@ -293,7 +297,7 @@ export async function fetchAccidentHistorique(f: Filtres, limit?: number): Promi
   // doublon ici.
   if (f.statut === "attente") return [];
   if (f.renouvellementProche) return [];
-  if (f.sousBranche === "ASSURANCES_DOMMAGES") return [];
+  if (f.sousBranche && f.sousBranche !== "ASSURANCES_ACCIDENTS") return [];
   if (f.produit && f.produit !== CODE_ACCIDENT_HISTORIQUE) return [];
   const rows = await prisma.souscriptionAccident.findMany({
     where: {
@@ -342,7 +346,7 @@ async function agregatGenerique(f: Filtres): Promise<{ nombre: number; montant: 
     return { nombre: 0, montant: 0 };
   } else {
     const produits = await prisma.produit.findMany({
-      where: { sousBranche: f.sousBranche ? f.sousBranche : { in: ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] } },
+      where: { sousBranche: f.sousBranche ? f.sousBranche : { in: [...SOUS_BRANCHES_ASSURANCES] } },
       select: { id: true },
     });
     produitIds = produits.map((p) => p.id);
@@ -363,7 +367,7 @@ async function agregatGenerique(f: Filtres): Promise<{ nombre: number; montant: 
 }
 
 async function agregatIncendieHistorique(f: Filtres): Promise<{ nombre: number; montant: number }> {
-  if (f.generiqueSeul || f.statut === "attente" || f.sousBranche === "ASSURANCES_ACCIDENTS") return { nombre: 0, montant: 0 };
+  if (f.generiqueSeul || f.statut === "attente" || (f.sousBranche && f.sousBranche !== "ASSURANCES_DOMMAGES")) return { nombre: 0, montant: 0 };
   if (f.produit && f.produit !== CODE_INCENDIE_HISTORIQUE) return { nombre: 0, montant: 0 };
   const agg = await prisma.souscriptionIncendie.aggregate({
     where: {
@@ -378,7 +382,7 @@ async function agregatIncendieHistorique(f: Filtres): Promise<{ nombre: number; 
 }
 
 async function agregatAccidentHistorique(f: Filtres): Promise<{ nombre: number; montant: number }> {
-  if (f.generiqueSeul || f.statut === "attente" || f.sousBranche === "ASSURANCES_DOMMAGES") return { nombre: 0, montant: 0 };
+  if (f.generiqueSeul || f.statut === "attente" || (f.sousBranche && f.sousBranche !== "ASSURANCES_ACCIDENTS")) return { nombre: 0, montant: 0 };
   if (f.produit && f.produit !== CODE_ACCIDENT_HISTORIQUE) return { nombre: 0, montant: 0 };
   const agg = await prisma.souscriptionAccident.aggregate({
     where: {

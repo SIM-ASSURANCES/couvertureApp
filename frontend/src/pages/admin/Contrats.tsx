@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Download, FileText, Flame, ShieldCheck, Eye, X, FileSpreadsheet, Trash2, CreditCard } from "lucide-react";
+import { Download, FileText, Eye, X, FileSpreadsheet, Trash2, CreditCard } from "lucide-react";
+import { ASSURANCES, BadgeAssurance, type SousBrancheAssurance } from "../../components/BadgeAssurance";
+import { estProduitSante } from "../../assurancesSante";
 import {
   PageHeader,
   Card,
   Loader,
   ErrorBox,
-  Badge,
   fcfa,
   fmtDate,
   EcheanceDate,
@@ -42,7 +43,7 @@ type TypeCarte =
   | "relaxaccidents";
 
 interface CatalogueEntry {
-  sousBranche: "ASSURANCES_ACCIDENTS" | "ASSURANCES_DOMMAGES";
+  sousBranche: SousBrancheAssurance;
   code: string;
   libelle: string;
 }
@@ -63,19 +64,22 @@ interface Contrat extends DonneesContrat {
 function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
   const entree = catalogue?.find((p) => p.code === c.type);
   const libelle = c.produitLibelle ?? entree?.libelle ?? (c.type === "accident" ? "Accidents (historique)" : c.type);
-  const estDommages = entree ? entree.sousBranche === "ASSURANCES_DOMMAGES" : c.type === "incendie";
-  return estDommages ? (
-    <Badge kind="warning">
-      <Flame size={13} /> {libelle}
-    </Badge>
-  ) : (
-    <Badge kind="info">
-      <ShieldCheck size={13} /> {libelle}
-    </Badge>
+  // Hors catalogue (Incendie historique, masqué des filtres) : rangé en Dommages.
+  const sousBranche = entree?.sousBranche ?? (c.type === "incendie" ? "ASSURANCES_DOMMAGES" : "ASSURANCES_ACCIDENTS");
+  return (
+    <BadgeAssurance sousBranche={sousBranche} taille={13}>
+      {libelle}
+    </BadgeAssurance>
   );
 }
 
 const genererContrat = genererContratDepuisDonnees;
+
+/** Colonne « Capital garanti » : un produit Santé n'a pas de capital, sa garantie est un taux de prise en charge. */
+function garantieContrat(c: Contrat): string {
+  if (!estProduitSante(c.type)) return fcfa(c.capitalGaranti);
+  return c.tauxPriseEnCharge != null ? `${c.tauxPriseEnCharge} % (prise en charge)` : "—";
+}
 
 /** Route de suppression : les deux modèles historiques gardent leurs routes dédiées, tout le reste passe par le modèle générique. */
 function routeSuppression(c: Contrat): string {
@@ -225,16 +229,13 @@ export default function Contrats() {
               onChange={(e) => setType(e.target.value)}
             >
               <option value="">Tous produits</option>
-              <optgroup label="Assurances Accidents">
-                {(catalogue ?? []).filter((p) => p.sousBranche === "ASSURANCES_ACCIDENTS").map((p) => (
-                  <option key={p.code} value={p.code}>{p.libelle}</option>
-                ))}
-              </optgroup>
-              <optgroup label="Assurances Dommages">
-                {(catalogue ?? []).filter((p) => p.sousBranche === "ASSURANCES_DOMMAGES").map((p) => (
-                  <option key={p.code} value={p.code}>{p.libelle}</option>
-                ))}
-              </optgroup>
+              {ASSURANCES.map((a) => (
+                <optgroup key={a.sousBranche} label={a.libelle}>
+                  {(catalogue ?? []).filter((p) => p.sousBranche === a.sousBranche).map((p) => (
+                    <option key={p.code} value={p.code}>{p.libelle}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
         }
@@ -293,7 +294,7 @@ export default function Contrats() {
                     <td>
                       <strong>{fcfa(c.montant)}</strong>
                     </td>
-                    <td className="muted">{fcfa(c.capitalGaranti)}</td>
+                    <td className="muted">{garantieContrat(c)}</td>
                     <td className="muted">
                       <EcheanceDate date={c.dateFin} />
                     </td>
@@ -450,11 +451,20 @@ export default function Contrats() {
                 }}
               >
                 <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
-                  Capital garanti
+                  {estProduitSante(detail.type) ? "Taux de prise en charge" : "Capital garanti"}
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 18 }}>
-                  {fcfa(detail.capitalGaranti)}
+                  {garantieContrat(detail)}
                 </div>
+                {estProduitSante(detail.type) && (
+                  <div className="muted" style={{ fontSize: 12.5, marginTop: 6 }}>
+                    {1 + (detail.personnesAssurees?.length ?? 0)} personne(s) assurée(s)
+                    {(detail.personnesAssurees ?? []).length > 0 &&
+                      ` : l'assuré(e) principal(e), ${(detail.personnesAssurees ?? [])
+                        .map((p) => `${p.prenom} ${p.nom} (${p.lien === "conjoint" ? "conjoint(e)" : "enfant"})`)
+                        .join(", ")}`}
+                  </div>
+                )}
               </div>
 
               <table className="tbl" style={{ width: "100%" }}>

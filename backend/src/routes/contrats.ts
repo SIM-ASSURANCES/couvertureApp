@@ -21,11 +21,13 @@ import {
   renderContratSecurhome,
   renderContratSecurMoto,
   renderContratSecurhomeIncendie,
+  renderContratAssuranceSante,
   renderContratSecurecolte,
   renderContratSecurstock,
   renderContratCoupsdurs,
   renderContratDeces,
 } from "../services/contractHtml.js";
+import { COMPOSITION_SANTE, PRODUITS_SANTE, estProduitSante, personneAssureeSanteSchema } from "../services/assurancesSante.js";
 
 export const contratsRouter = Router();
 
@@ -336,6 +338,31 @@ const securhomeIncendieSchema = z.object({
   }),
 });
 
+// Assurances Santé (Solo, Duo, Famille). Né après la relecture serveur
+// systématique : tout ce qu'affiche le PDF vient de la base (voir
+// chargerDonneesVerifieesServeur), l'appelant n'envoie donc que le numéro de
+// police — les autres champs n'existent ici que pour typer `data`.
+const assuranceSanteSchema = z.object({
+  type: z.literal("assurance_sante"),
+  souscriptionId: souscriptionIdSchema,
+  data: z.object({
+    numeroPolice: texte(60),
+    partenaire: texte(200).default(""),
+    dateDebut: texte(40).default(""),
+    dateFin: texte(40).default(""),
+    nom: texteOpt(120),
+    prenom: texteOpt(120),
+    telephone: texte(40).default(""),
+    dateNaissance: texteOpt(40),
+    produitLibelle: texte(60).default(""),
+    description: texte(120).default(""),
+    tauxPriseEnCharge: z.number().min(0).max(100).default(0),
+    montant: montant.default(0),
+    personnesAssurees: z.array(personneAssureeSanteSchema).max(4).default([]),
+    signature: dataUrlSignature,
+  }),
+});
+
 const securstockSchema = z.object({
   type: z.literal("securstock"),
   souscriptionId: souscriptionIdSchema,
@@ -497,6 +524,7 @@ const bodySchema = z.discriminatedUnion("type", [
   securhomeDommagesSchema,
   securMotoSchema,
   securhomeIncendieSchema,
+  assuranceSanteSchema,
   securstockSchema,
   securecolteSchema,
   coupsdursSchema,
@@ -510,7 +538,8 @@ type TypeAvecVerification =
   | "relaxmoto_relaxauto"
   | "relaxvoyage"
   | "relaxaccidents_generale"
-  | "securhome_incendie";
+  | "securhome_incendie"
+  | "assurance_sante";
 
 // Codes Produit (modèle générique) acceptés pour chaque type de contrat
 // vérifiable — rejette un id qui existe mais correspond à un AUTRE produit
@@ -521,6 +550,7 @@ const CODES_PRODUIT_PAR_TYPE: Partial<Record<TypeAvecVerification, string[]>> = 
   relaxvoyage: ["relaxvoyage"],
   relaxaccidents_generale: ["relaxaccidents"],
   securhome_incendie: ["securhome"],
+  assurance_sante: [...PRODUITS_SANTE],
 };
 
 /**
@@ -682,6 +712,28 @@ async function chargerDonneesVerifieesServeur(
       signature: d.signature,
     };
   }
+  if (type === "assurance_sante") {
+    // CODES_PRODUIT_PAR_TYPE a déjà écarté tout autre produit ; un contrat
+    // Santé sans taux de prise en charge serait un contrat sans garantie.
+    if (!estProduitSante(s.produit.code) || d.tauxPriseEnCharge == null) return null;
+    return {
+      numeroPolice: d.numeroPolice ?? "",
+      partenaire: d.partenaire,
+      dateDebut,
+      dateFin,
+      nom: d.nom,
+      prenom: d.prenom,
+      telephone: d.telephone,
+      dateNaissance,
+      // Nom court : le gabarit écrit déjà « ASSURANCE SANTÉ » devant.
+      produitLibelle: COMPOSITION_SANTE[s.produit.code].libelle,
+      description: COMPOSITION_SANTE[s.produit.code].description,
+      tauxPriseEnCharge: d.tauxPriseEnCharge,
+      montant: d.montant,
+      personnesAssurees: d.personnesAssurees,
+      signature: d.signature,
+    };
+  }
   // securhome_incendie
   return {
     numeroPolice: d.numeroPolice ?? "",
@@ -822,6 +874,9 @@ contratsRouter.post(
         break;
       case "securhome_incendie":
         html = await renderContratSecurhomeIncendie(body.data);
+        break;
+      case "assurance_sante":
+        html = await renderContratAssuranceSante(body.data);
         break;
       case "securstock":
         html = await renderContratSecurstock(body.data);

@@ -434,6 +434,19 @@ export default function AssurancesAccidentsTarifs() {
         <CommissionTauxUniqueCard code="relaxvoyage" libelle="RelaxVoyage" />
         <CommissionTauxUniqueCard code="relaxaccidents" libelle="RelaxAccidents générale" />
 
+        <h3 style={{ margin: "8px 0 16px" }}>Assurances Santé — Solo, Duo, Famille</h3>
+        <p className="muted" style={{ fontSize: 12.5, margin: "0 0 16px" }}>
+          Le libellé d'une formule commence par son <strong>taux de prise en charge</strong> : « 70 », « 80 », puis
+          « 80-2 », « 80-3 » pour d'autres formules au même taux. Il n'y a pas de capital garanti en santé (laisser 0).
+          Le taux de commission est à <strong>0 %</strong> tant que vous ne l'avez pas réglé ci-dessous.
+        </p>
+        <ProduitTarifsTable code="sante_solo" libelle="Santé Solo — 1 personne" />
+        <ProduitTarifsTable code="sante_duo" libelle="Santé Duo — 2 personnes (couple)" />
+        <ProduitTarifsTable code="sante_famille" libelle="Santé Famille — 5 personnes (couple + 3 enfants)" />
+        <CommissionTauxUniqueCard code="sante_solo" libelle="Santé Solo — commission" />
+        <CommissionTauxUniqueCard code="sante_duo" libelle="Santé Duo — commission" />
+        <CommissionTauxUniqueCard code="sante_famille" libelle="Santé Famille — commission" />
+
         <h3 style={{ margin: "8px 0 16px" }}>Commission — produits à devis calculé (Assurances Dommages)</h3>
         <CommissionTauxUniqueCard code="securhome_dommages" libelle="SecurHome+" />
         <CommissionTauxUniqueCard code="securmoto" libelle="SecurMoto" />

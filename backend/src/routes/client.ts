@@ -14,6 +14,7 @@ import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiemen
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
+import { estProduitSante, lirePersonnesAssureesSante, tauxPriseEnChargeDuTarif } from "../services/assurancesSante.js";
 import { analyserSinistreIA } from "../services/fraudeIA.js";
 
 /**
@@ -168,6 +169,10 @@ clientRouter.get(
       // abonnement reconductible (RelaxMoto/Auto), juste une formule à
       // paiement unique dont la durée dépend de cette périodicité.
       periodicite: relaxAccidentsGenerale?.cycle ?? null,
+      // Assurances Santé (Solo, Duo, Famille) — taux de prise en charge figé à
+      // la souscription et personnes couvertes en plus du souscripteur.
+      tauxPriseEnCharge: estProduitSante(s.produit.code) ? tauxPriseEnChargeDuTarif(s.donneesSpecifiques) : null,
+      personnesAssurees: estProduitSante(s.produit.code) ? lirePersonnesAssureesSante(s.donneesSpecifiques) : [],
     });
   })
 );
@@ -523,9 +528,10 @@ clientRouter.get(
     });
     if (!partenaire) return res.status(404).json({ error: "Partenaire introuvable" });
 
-    const [accidentsChooser, dommagesChooser, dejaSouscrits, qr] = await Promise.all([
+    const [accidentsChooser, dommagesChooser, santeChooser, dejaSouscrits, qr] = await Promise.all([
       construireChooserProduits("ASSURANCES_ACCIDENTS", partenaire),
       construireChooserProduits("ASSURANCES_DOMMAGES", partenaire),
+      construireChooserProduits("ASSURANCES_SANTE", partenaire),
       prisma.souscription.findMany({
         where: { telephone, partenaireId, waveStatut: "confirme" },
         select: { produit: { select: { code: true } } },
@@ -534,7 +540,11 @@ clientRouter.get(
     ]);
 
     const codesDejaSouscrits = new Set(dejaSouscrits.map((d) => d.produit.code));
-    const produits = [...accidentsChooser.produits, ...dommagesChooser.produits].filter(
+    // Un ancien QR « sélecteur » figé sur une Assurance ne résout pas les
+    // produits Santé (voir resoudreQrCodeGenerique) : ne les proposer que si le
+    // lien de souscription pourra réellement aboutir.
+    const santeProduits = qr && (qr.sousBranche == null || qr.sousBranche === "ASSURANCES_SANTE") ? santeChooser.produits : [];
+    const produits = [...accidentsChooser.produits, ...dommagesChooser.produits, ...santeProduits].filter(
       (p) => p.disponible && !codesDejaSouscrits.has(p.code) && !PRODUITS_HORS_ESPACE_CLIENT.has(p.code)
     );
 

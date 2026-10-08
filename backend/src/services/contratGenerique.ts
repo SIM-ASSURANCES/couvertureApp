@@ -1,6 +1,7 @@
 import { prisma } from "../db.js";
 import type { Souscription, TarifProduit } from "@prisma/client";
 import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementDetailRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
+import { lirePersonnesAssureesSante, type PersonneAssureeSante } from "./assurancesSante.js";
 
 /**
  * Aplatit une souscription du modèle générique (RelaxMoto/Auto, RelaxAccidents
@@ -71,6 +72,12 @@ export interface DonneesContratGenerique {
   // SecurMoto uniquement.
   valeurMoto: number | null;
   ageMoto: "NEUVE" | "1 AN" | "2 ANS" | null;
+  // Assurances Santé uniquement (Solo, Duo, Famille) — formule choisie, taux
+  // de prise en charge figé à la souscription et personnes couvertes en plus
+  // du souscripteur (voir services/assurancesSante.ts).
+  formule: string | null;
+  tauxPriseEnCharge: number | null;
+  personnesAssurees: PersonneAssureeSante[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultat: any;
 }
@@ -203,6 +210,9 @@ export async function mapperSouscriptionGenerique(
     nombrePieces: num("nombrePieces"),
     valeurMoto: num("valeurMoto"),
     ageMoto: (d?.ageMoto as "NEUVE" | "1 AN" | "2 ANS" | undefined) ?? null,
+    formule: str("formule"),
+    tauxPriseEnCharge: num("tauxPriseEnCharge"),
+    personnesAssurees: lirePersonnesAssureesSante(d),
     resultat: s.resultat ?? null,
   };
 }

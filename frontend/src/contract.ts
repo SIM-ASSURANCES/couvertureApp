@@ -7,6 +7,7 @@
 
 import { API_BASE } from "./api";
 import type { SouscriptionImf } from "./types";
+import { estProduitSante, type PersonneAssureeSante } from "./assurancesSante";
 
 export interface LigneGarantie {
   garantie: string;
@@ -396,6 +397,9 @@ export interface DonneesContrat {
   // SecurMoto uniquement.
   valeurMoto?: number | null;
   ageMoto?: "NEUVE" | "1 AN" | "2 ANS" | null;
+  // Assurances Santé (Solo, Duo, Famille).
+  tauxPriseEnCharge?: number | null;
+  personnesAssurees?: PersonneAssureeSante[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   resultat?: any;
 }
@@ -522,6 +526,10 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       cycle: c.cycle ?? null,
       signature: c.signature ?? null,
     }, c.id);
+    return;
+  }
+  if (estProduitSante(c.type)) {
+    genererContratAssuranceSante(c.numeroPolice, c.id);
     return;
   }
   if (c.type === "securhome") {
@@ -884,6 +892,7 @@ type ContratType =
   | "securhome_dommages"
   | "securmoto"
   | "securhome_incendie"
+  | "assurance_sante"
   | "securstock"
   | "securecolte"
   | "coupsdurs"
@@ -973,6 +982,13 @@ export async function genererContratSecurMoto(c: ContratSecurMoto, souscriptionI
 
 export async function genererContratSecurhomeIncendie(c: ContratSecurhomeIncendie, souscriptionId: string) {
   await telechargerContratPdf("securhome_incendie", c.numeroPolice, c, souscriptionId);
+}
+
+// Assurances Santé (Solo, Duo, Famille) — type né après la relecture serveur
+// systématique : le PDF est bâti entièrement depuis la base, on n'envoie que
+// le numéro de police (qui sert aussi de nom de fichier).
+export async function genererContratAssuranceSante(numeroPolice: string, souscriptionId: string) {
+  await telechargerContratPdf("assurance_sante", numeroPolice, { numeroPolice }, souscriptionId);
 }
 
 export async function genererContratSecurecolte(c: ContratSecurecolte, souscriptionId: string) {

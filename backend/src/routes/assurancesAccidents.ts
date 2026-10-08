@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
+import { PRODUITS_SANTE, estProduitSante, tauxDepuisCleFormuleSante } from "../services/assurancesSante.js";
 
 /**
  * Routes admin pour la sous-branche "Assurances Accidents" (refonte
@@ -36,8 +37,16 @@ async function resolveProduitId(code: string) {
 const PRODUITS_DOMMAGES_TARIF_FIXE = ["securhome"] as const;
 
 function produitAutoriseTarifs(p: { sousBranche: string | null; code: string }) {
-  return p.sousBranche === SOUS_BRANCHE || (PRODUITS_DOMMAGES_TARIF_FIXE as readonly string[]).includes(p.code);
+  return (
+    p.sousBranche === SOUS_BRANCHE ||
+    (PRODUITS_DOMMAGES_TARIF_FIXE as readonly string[]).includes(p.code) ||
+    // Assurances Santé (Solo, Duo, Famille) : tarif fixe par formule, édité ici aussi.
+    estProduitSante(p.code)
+  );
 }
+
+const MESSAGE_CLE_FORMULE_SANTE =
+  "Pour un produit Santé, le libellé de la formule commence par son taux de prise en charge (ex. 70, 80, 80-2).";
 
 async function resolveProduitIdTarifs(code: string) {
   const p = await prisma.produit.findUnique({ where: { code } });
@@ -255,9 +264,17 @@ assurancesAccidentsRouter.patch(
     if (!tarif || !produitAutoriseTarifs(tarif.produit)) {
       return res.status(404).json({ error: "Tarif introuvable" });
     }
+    // Assurances Santé : le taux de prise en charge suit le libellé de la
+    // formule — un libellé sans taux rendrait la formule invendable.
+    let donneesSpecifiques: { tauxPriseEnCharge: number } | undefined;
+    if (estProduitSante(tarif.produit.code) && data.libelleVariante !== undefined) {
+      const taux = tauxDepuisCleFormuleSante(data.libelleVariante);
+      if (taux == null) return res.status(400).json({ error: MESSAGE_CLE_FORMULE_SANTE });
+      donneesSpecifiques = { tauxPriseEnCharge: taux };
+    }
     const updated = await prisma.tarifProduit.update({
       where: { id: tarif.id },
-      data,
+      data: { ...data, ...(donneesSpecifiques ? { donneesSpecifiques } : {}) },
     });
     await logAction({
       adminId: req.user!.sub,
@@ -283,8 +300,14 @@ assurancesAccidentsRouter.post(
       where: { produitId, libelleVariante: data.libelleVariante ?? null },
     });
     if (existante) return res.status(409).json({ error: "Une formule avec ce libellé existe déjà pour ce produit." });
+    let donneesSpecifiques: { tauxPriseEnCharge: number } | undefined;
+    if (estProduitSante(req.params.code)) {
+      const taux = tauxDepuisCleFormuleSante(data.libelleVariante);
+      if (taux == null) return res.status(400).json({ error: MESSAGE_CLE_FORMULE_SANTE });
+      donneesSpecifiques = { tauxPriseEnCharge: taux };
+    }
     const created = await prisma.tarifProduit.create({
-      data: { produitId, ...data },
+      data: { produitId, ...data, ...(donneesSpecifiques ? { donneesSpecifiques } : {}) },
     });
     await logAction({
       adminId: req.user!.sub,
@@ -339,6 +362,8 @@ const PRODUITS_COMMISSION_TAUX_UNIQUE = [
   "relaxaccidents_fraismedicaux_livreurs",
   "relaxvoyage",
   "relaxaccidents",
+  // Assurances Santé : taux à 0 à la création (voir seed.ts), à régler ici.
+  ...PRODUITS_SANTE,
 ] as const;
 type ProduitCommissionTauxUnique = (typeof PRODUITS_COMMISSION_TAUX_UNIQUE)[number];
 function estProduitCommissionTauxUnique(code: string): code is ProduitCommissionTauxUnique {
