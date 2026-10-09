@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Download, FileText, Eye, X, FileSpreadsheet, Trash2, CreditCard } from "lucide-react";
+import { Download, FileText, Eye, X, FileSpreadsheet, Trash2, CreditCard, Pencil } from "lucide-react";
+import CorrectionIdentiteModal from "../../components/CorrectionIdentiteModal";
 import { ASSURANCES, BadgeAssurance, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import { estProduitSante } from "../../assurancesSante";
 import {
@@ -104,6 +105,9 @@ export default function Contrats() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [detail, setDetail] = useState<Contrat | null>(null);
+  // Contrat dont l'admin corrige les informations du client (nom, date de
+  // naissance, téléphone…) — voir components/CorrectionIdentiteModal.tsx.
+  const [correction, setCorrection] = useState<Contrat | null>(null);
   const params = new URLSearchParams();
   if (type) params.set("type", type);
   if (q) params.set("q", q);
@@ -315,6 +319,14 @@ export default function Contrats() {
                           onClick={() => genererContrat(c)}
                         >
                           <Download size={15} /> PDF
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "7px 10px" }}
+                          title="Corriger les informations du client"
+                          onClick={() => setCorrection(c)}
+                        >
+                          <Pencil size={15} />
                         </button>
                         {TYPES_AVEC_CARTE.includes(c.type as (typeof TYPES_AVEC_CARTE)[number]) && (
                           <button
@@ -529,6 +541,9 @@ export default function Contrats() {
               >
                 <Download size={16} /> Télécharger le contrat
               </button>
+              <button className="btn btn-ghost btn-block" style={{ marginTop: 10 }} onClick={() => setCorrection(detail)}>
+                <Pencil size={16} /> Corriger les informations du client
+              </button>
               {TYPES_AVEC_CARTE.includes(detail.type as (typeof TYPES_AVEC_CARTE)[number]) && (
                 <button
                   className="btn btn-ghost btn-block"
@@ -550,6 +565,22 @@ export default function Contrats() {
             </div>
           </div>
         </div>
+      )}
+
+      {correction && (
+        <CorrectionIdentiteModal
+          souscriptionId={correction.id}
+          modele={correction.type === "incendie" ? "incendie" : correction.type === "accident" ? "accident" : "generique"}
+          onClose={() => setCorrection(null)}
+          onSaved={(message) => {
+            // La fiche de détail affichait les anciennes valeurs : on la ferme
+            // et on recharge la liste.
+            setCorrection(null);
+            setDetail(null);
+            reload();
+            alert(message);
+          }}
+        />
       )}
     </>
   );

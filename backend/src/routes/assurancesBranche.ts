@@ -16,6 +16,13 @@ import {
 } from "../services/notify.js";
 import { verifierPaiementEcheance } from "../services/paiementWave.js";
 import { SOUS_BRANCHES_ASSURANCES, estSousBrancheAssurance, type SousBrancheAssurance } from "../services/sousBranches.js";
+import {
+  CorrectionRefusee,
+  MODELES_SOUSCRIPTION,
+  correctionIdentiteSchema,
+  corrigerIdentite,
+  lireIdentiteCorrigeable,
+} from "../services/correctionIdentite.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -576,6 +583,48 @@ assurancesBrancheRouter.post(
       });
     }
     res.json({ statut });
+  })
+);
+
+/**
+ * Correction des informations d'un client qui s'est trompé à la souscription
+ * (nom, date de naissance, téléphone… — voir services/correctionIdentite.ts),
+ * tous produits : `modele` désigne la table (générique, Incendie ou Accident
+ * historiques). GET renvoie les champs corrigeables et leurs valeurs ; PATCH
+ * applique la correction et l'inscrit au journal avec les valeurs avant/après.
+ */
+assurancesBrancheRouter.get(
+  "/souscriptions/:id/identite",
+  asyncHandler(async (req, res) => {
+    const modele = z.enum(MODELES_SOUSCRIPTION).safeParse(req.query.modele ?? "generique");
+    if (!modele.success) return res.status(400).json({ error: "Modèle inconnu." });
+    const fiche = await lireIdentiteCorrigeable(modele.data, req.params.id);
+    if (!fiche) return res.status(404).json({ error: "Souscription introuvable." });
+    res.json(fiche);
+  })
+);
+
+assurancesBrancheRouter.patch(
+  "/souscriptions/:id/identite",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const correction = correctionIdentiteSchema.parse(req.body);
+    try {
+      const resultat = await corrigerIdentite(req.params.id, correction);
+      if (resultat.modifies.length) {
+        await logAction({
+          adminId: req.user!.sub,
+          typeAction: "modification",
+          objetType: `souscription_identite_${correction.modele}`,
+          objetId: req.params.id,
+          valeurAvant: resultat.avant,
+          valeurApres: resultat.apres,
+        });
+      }
+      res.json({ ok: true, modifies: resultat.modifies, avertissements: resultat.avertissements });
+    } catch (e) {
+      if (e instanceof CorrectionRefusee) return res.status(e.statut).json({ error: e.message });
+      throw e;
+    }
   })
 );
 

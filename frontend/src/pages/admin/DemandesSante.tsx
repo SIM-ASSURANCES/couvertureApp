@@ -1,5 +1,6 @@
 import { Fragment, useState } from "react";
-import { Check, X, Send } from "lucide-react";
+import { Check, X, Send, Pencil } from "lucide-react";
+import CorrectionIdentiteModal from "../../components/CorrectionIdentiteModal";
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate } from "../../components/ui";
 import { BadgeAssurance } from "../../components/BadgeAssurance";
 import { useFetch } from "../../useFetch";
@@ -100,6 +101,7 @@ export default function DemandesSante() {
   const { data, loading, error, reload } = useFetch<Reponse>(`/assurances-sante/demandes?etat=${etat}`);
   const [enCours, setEnCours] = useState("");
   const [ficheOuverte, setFicheOuverte] = useState("");
+  const [correctionId, setCorrectionId] = useState("");
   const [toast, setToast] = useState("");
 
   function notify(m: string) {
@@ -209,6 +211,14 @@ export default function DemandesSante() {
                       >
                         {ficheOuverte === d.id ? "Masquer la fiche" : "Voir la fiche"}
                       </button>
+                      {/* Le client s'est trompé (nom, date de naissance, téléphone…) : à corriger avant de valider. */}
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: "4px 10px", fontSize: 12, marginTop: 6, marginLeft: 6 }}
+                        onClick={() => setCorrectionId(d.id)}
+                      >
+                        <Pencil size={12} /> Corriger
+                      </button>
                     </td>
                     <td style={{ fontSize: 12.5 }}>
                       {d.personnesAssurees.length === 0 ? (
@@ -282,6 +292,18 @@ export default function DemandesSante() {
           </div>
         )}
       </Card>
+      {correctionId && (
+        <CorrectionIdentiteModal
+          souscriptionId={correctionId}
+          modele="generique"
+          onClose={() => setCorrectionId("")}
+          onSaved={(message) => {
+            setCorrectionId("");
+            reload();
+            notify(message.split("\n")[0]);
+          }}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </>
   );
