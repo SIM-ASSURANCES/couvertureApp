@@ -759,7 +759,8 @@ async function corrigerEcheanceRelaxVoyage() {
 }
 
 /**
- * Correction ponctuelle : SecurPro (Assurances Dommages) est un contrat annuel
+ * Correction ponctuelle : SecurPro, SecurHome, SecurHome+ et SecurMoto
+ * (Assurances Dommages) sont des contrats annuels
  * (12 mois), mais les souscriptions confirmées avant la correction de
  * services/paiementWave.ts::dureeFormuleMois ont reçu la durée par défaut de
  * 3 mois. Remet leur échéance à dateDebut + 12 mois.
@@ -770,12 +771,16 @@ async function corrigerEcheanceRelaxVoyage() {
  * humain peut trancher ; il est seulement signalé dans les logs.
  */
 async function corrigerEcheanceSecurpro() {
-  const produit = await prisma.produit.findUnique({ where: { code: "securpro_dommages" } });
-  if (!produit) return;
+  // SecurPro, puis SecurHome, SecurHome+ et SecurMoto (même décision, 2026-10-09).
+  const produits = await prisma.produit.findMany({
+    where: { code: { in: ["securpro_dommages", "securhome", "securhome_dommages", "securmoto"] } },
+    select: { id: true },
+  });
+  if (produits.length === 0) return;
 
   const SEUIL_JOURS = 200; // 3 mois ≈ 90 j, 12 mois ≈ 365 j
   const rows = await prisma.souscription.findMany({
-    where: { produitId: produit.id, waveStatut: "confirme", dateDebut: { not: null }, dateFin: { not: null } },
+    where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme", dateDebut: { not: null }, dateFin: { not: null } },
     select: { id: true, dateDebut: true, dateFin: true, nombrePaiements: true, statut: true },
   });
 
@@ -798,10 +803,10 @@ async function corrigerEcheanceSecurpro() {
     corrections++;
   }
   if (corrections > 0) {
-    console.log(`[seed] SecurPro : ${corrections} souscription(s) corrigée(s) (échéance portée à 12 mois).`);
+    console.log(`[seed] Dommages (SecurPro/SecurHome/SecurHome+/SecurMoto) : ${corrections} souscription(s) corrigée(s) (échéance portée à 12 mois).`);
   }
   if (renouveleesIgnorees > 0) {
-    console.log(`[seed] SecurPro : ${renouveleesIgnorees} souscription(s) déjà renouvelée(s) à 3 mois — à examiner manuellement.`);
+    console.log(`[seed] Dommages : ${renouveleesIgnorees} souscription(s) déjà renouvelée(s) à 3 mois — à examiner manuellement.`);
   }
 }
 

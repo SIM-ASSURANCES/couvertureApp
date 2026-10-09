@@ -43,8 +43,9 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
   }
   if (produitCode === "relaxaccidents_fraismedicaux") return 2;
   if (produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
-  // SecurPro (Assurances Dommages) : contrat annuel, renouvellements compris.
-  if (produitCode === "securpro_dommages") return 12;
+  // Produits Assurances Dommages à devis ou tarif fixe (SecurPro, SecurHome,
+  // SecurHome+, SecurMoto) : contrats annuels, renouvellements compris.
+  if (["securpro_dommages", "securhome", "securhome_dommages", "securmoto"].includes(produitCode)) return 12;
   // Assurances Santé (Solo, Duo, Famille) : contrat annuel.
   if (estProduitSante(produitCode)) return DUREE_CONTRAT_SANTE_MOIS;
   return 3;
