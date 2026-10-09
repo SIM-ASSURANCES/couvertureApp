@@ -16,7 +16,7 @@ import {
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
-import { exportExcel } from "../../xlsx";
+import { exporterFormatSim } from "../../exportSim";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
 import AccesClientModal from "../../components/AccesClientModal";
 import PhotosClientModal from "../../components/PhotosClientModal";
@@ -173,46 +173,25 @@ export default function ClientsIncendie() {
     }
   }
 
-  function exportXlsx() {
-    exportExcel(
-      [
-        ...(data ?? []).map((c) => ({
-          "Produit": "Incendie Habitation en Inclusion",
-          "Téléphone": c.telephone,
-          "Prénom": c.prenom ?? "",
-          "Nom": c.nom ?? "",
-          "Partenaire": c.partenaireResponsable || c.partenaireNom,
-          "Prime": c.montantPrime,
-          "Capital garanti": c.capitalGaranti,
-          "Réf. facture": c.refFacture ?? "",
-          "Commune": c.commune ?? "",
-          "Quartier": c.quartier ?? "",
-          "N° de maison": c.numeroMaison ?? "",
-          "Statut": c.statut,
-          "Relances SMS": c.relanceCount ?? 0,
-          "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
-          "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
-        })),
-        ...generiqueSeul.map((r) => ({
-          "Produit": r.produitLibelle,
-          "Téléphone": r.telephone,
-          "Prénom": r.prenom ?? "",
-          "Nom": r.nom ?? "",
-          "Partenaire": r.partenaireResponsable || r.partenaireNom,
-          "Prime": r.montantPrime,
-          "Capital garanti": "",
-          "Réf. facture": "",
-          "Commune": "",
-          "Quartier": "",
-          "N° de maison": "",
-          "Statut": r.statut,
-          "Relances SMS": "",
-          "Date d'échéance": r.dateFin ? fmtDate(r.dateFin) : "",
-          "Date d'effet": r.dateDebut ? fmtDate(r.dateDebut) : "",
-        })),
-      ],
-      "clients_dommages.xlsx"
-    );
+  // Format SIM Assurances (25 colonnes du modèle fourni, « NA » si la donnée
+  // n'existe pas) : Incendie historique + produits Dommages du modèle
+  // générique, tous statuts — comme la liste affichée, avec ses filtres.
+  async function exportXlsx() {
+    try {
+      await exporterFormatSim(
+        {
+          modeles: ["incendie", "generique"],
+          sousBranche: "ASSURANCES_DOMMAGES",
+          partenaireId: part,
+          statut: "tous",
+          statutIncendie: statut,
+          q: recherche.trim(),
+        },
+        "clients_dommages.xlsx"
+      );
+    } catch (e) {
+      notify((e as Error).message);
+    }
   }
 
   const total = dataFiltree.length + generiqueFiltre.length;

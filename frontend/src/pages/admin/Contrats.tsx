@@ -15,7 +15,7 @@ import {
 import { useFetch } from "../../useFetch";
 import { api } from "../../api";
 import { useAuth } from "../../auth";
-import { exportExcel } from "../../xlsx";
+import { exporterFormatSim } from "../../exportSim";
 import { genererContratDepuisDonnees, type DonneesContrat } from "../../contract";
 import { telechargerCarte } from "../../carte";
 import PhotosClientModal from "../../components/PhotosClientModal";
@@ -147,26 +147,15 @@ export default function Contrats() {
     return partenaires[0].replace(/[^a-zA-Z0-9-_ ]+/g, "").trim().replace(/\s+/g, "_") || "contrats";
   }
 
-  function exportXlsx() {
-    exportExcel(
-      (data ?? []).map((c) => ({
-        "Produit": c.produitLibelle ?? (c.type === "accident" ? "Accidents (historique)" : c.type === "incendie" ? "Incendie Habitation en Inclusion" : c.type),
-        "N° police": c.numeroPolice,
-        "Prénom": c.prenom,
-        "Nom": c.nom,
-        "Téléphone": c.telephone,
-        "Partenaire": c.partenaireResponsable || c.partenaire,
-        "Référence Wave": c.referenceWave ?? "",
-        "Prime nette": c.primeHT ?? "",
-        "Accessoires": c.accessoires ?? c.fg ?? "",
-        "Taxes": c.taxes ?? "",
-        "Prime TTC": c.primeTTC ?? c.montant,
-        "Capital garanti": c.capitalGaranti,
-        "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
-        "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
-      })),
-      `${nomFichierExport()}.xlsx`
-    );
+  // Format SIM Assurances (25 colonnes du modèle fourni, « NA » si la donnée
+  // n'existe pas) : mêmes filtres que la liste affichée — produit, recherche,
+  // fenêtre de date d'effet. Voir services/exportFormatSim.ts côté serveur.
+  async function exportXlsx() {
+    try {
+      await exporterFormatSim({ produit: type, q, from, to }, `${nomFichierExport()}.xlsx`);
+    } catch (err) {
+      alert((err as Error).message);
+    }
   }
 
   return (

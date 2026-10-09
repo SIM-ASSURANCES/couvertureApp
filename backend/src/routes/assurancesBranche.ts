@@ -23,6 +23,7 @@ import {
   corrigerIdentite,
   lireIdentiteCorrigeable,
 } from "../services/correctionIdentite.js";
+import { construireExportSim, lireFiltresExportSim } from "../services/exportFormatSim.js";
 
 /**
  * Vue unifiée, tous produits confondus, de la branche "Assurances Accidents
@@ -593,6 +594,18 @@ assurancesBrancheRouter.post(
  * historiques). GET renvoie les champs corrigeables et leurs valeurs ; PATCH
  * applique la correction et l'inscrit au journal avec les valeurs avant/après.
  */
+/**
+ * Export Excel au format SIM Assurances (25 colonnes du modèle fourni) : listes
+ * des clients et des contrats. Renvoie les lignes déjà mises en forme (« NA » là
+ * où la donnée n'existe pas) ; le classeur est bâti côté navigateur. Lecture seule.
+ */
+assurancesBrancheRouter.get(
+  "/export-sim",
+  asyncHandler(async (req, res) => {
+    res.json(await construireExportSim(lireFiltresExportSim(req.query)));
+  })
+);
+
 assurancesBrancheRouter.get(
   "/souscriptions/:id/identite",
   asyncHandler(async (req, res) => {

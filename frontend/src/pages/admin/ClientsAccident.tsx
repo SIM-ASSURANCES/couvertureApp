@@ -15,7 +15,7 @@ import {
 import { useFetch } from "../../useFetch";
 import { api, downloadCsv } from "../../api";
 import { useAuth } from "../../auth";
-import { exportExcel } from "../../xlsx";
+import { exporterFormatSim } from "../../exportSim";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
 import AccesClientModal from "../../components/AccesClientModal";
 import PhotosClientModal from "../../components/PhotosClientModal";
@@ -92,23 +92,15 @@ export default function ClientsAccident() {
     }
   }
 
-  function exportXlsx() {
-    exportExcel(
-      (data ?? []).map((c) => ({
-        "Prénom": c.prenom,
-        "Nom": c.nom,
-        "Téléphone": c.telephone,
-        "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
-        "Partenaire": c.partenaireResponsable || c.partenaireNom,
-        "Prime": c.montantPrime,
-        "Capital garanti": c.capitalGaranti,
-        "Paiement Wave": c.waveStatut,
-        "N° police": c.numeroPolice ?? "",
-        "Dossier": c.statutDossier,
-        "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
-      })),
-      "clients_accident.xlsx"
-    );
+  // Format SIM Assurances (25 colonnes du modèle fourni, « NA » si la donnée
+  // n'existe pas) : souscriptions Accident historiques, tous paiements Wave
+  // confondus — comme la liste affichée, avec son filtre partenaire.
+  async function exportXlsx() {
+    try {
+      await exporterFormatSim({ modeles: ["accident"], partenaireId: part, statut: "tous" }, "clients_accident.xlsx");
+    } catch (e) {
+      notify((e as Error).message);
+    }
   }
 
   return (

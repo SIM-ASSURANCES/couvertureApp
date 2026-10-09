@@ -6,7 +6,7 @@
 // Règle d'or héritée de l'audit sécurité du 2026-10-05 : tout ce qui figure
 // sur la facture est relu EN BASE ici. Aucune donnée venue du navigateur.
 
-import type { Prisma } from "@prisma/client";
+import type { Prisma, TarifProduit } from "@prisma/client";
 import { prisma } from "../db.js";
 import { mapperSouscriptionGenerique } from "./contratGenerique.js";
 import { resoudreOuCreerClient } from "./clients.js";
@@ -120,11 +120,14 @@ export interface DonneesFacture {
  * L'option Décès (Frais Médicaux) s'ajoute au prix de la formule : elle est
  * isolée sur sa propre ligne, le détail portant sur la formule seule.
  */
-async function detailDePrime(
+export async function detailDePrime(
   s: Parameters<typeof mapperSouscriptionGenerique>[0],
-  montant: number
+  montant: number,
+  // Barèmes déjà chargés : évite une requête par souscription quand on traite
+  // une liste entière (export Excel). Absent : comportement d'origine (facture).
+  tarifs?: TarifProduit[]
 ): Promise<DonneesFacture["detailPrime"]> {
-  const g = await mapperSouscriptionGenerique(s);
+  const g = await mapperSouscriptionGenerique(s, tarifs);
   const r = (g.resultat ?? null) as
     | { primeNetteHT?: number; primeNetteHT2?: number; accessoires?: number; taxes?: number }
     | null;
@@ -140,11 +143,17 @@ async function detailDePrime(
   } else if (g.primeHT != null && g.taxes != null) {
     brut = { ht: g.primeHT, accessoires: g.fg ?? 0, taxes: g.taxes };
   } else {
-    const tarif = await prisma.tarifProduit.findFirst({
-      where: s.cycleFacturation
-        ? { produitId: s.produitId, libelleVariante: s.cycleFacturation }
-        : { produitId: s.produitId, prime: base },
-    });
+    const tarif = tarifs
+      ? tarifs.find(
+          (t) =>
+            t.produitId === s.produitId &&
+            (s.cycleFacturation ? t.libelleVariante === s.cycleFacturation : t.prime === base)
+        ) ?? null
+      : await prisma.tarifProduit.findFirst({
+          where: s.cycleFacturation
+            ? { produitId: s.produitId, libelleVariante: s.cycleFacturation }
+            : { produitId: s.produitId, prime: base },
+        });
     if (tarif?.primeHT != null && tarif.taxes != null) {
       const n = s.cycleFacturation ? Math.max(1, s.nombrePeriodes) : 1;
       brut = { ht: tarif.primeHT * n, accessoires: (tarif.fg ?? 0) * n, taxes: tarif.taxes * n };

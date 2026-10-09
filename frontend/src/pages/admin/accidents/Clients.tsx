@@ -3,7 +3,7 @@ import { Download, FileSpreadsheet, Trash2, Send, Camera, Eye, X, Search, Refres
 import { PageHeader, Card, Loader, ErrorBox, Badge, fcfa, fmtDate, fmtDateHeure, waveBadge, EcheanceDate } from "../../../components/ui";
 import { useFetch } from "../../../useFetch";
 import { downloadCsv, api } from "../../../api";
-import { exportExcel } from "../../../xlsx";
+import { exporterFormatSim } from "../../../exportSim";
 import { useAuth } from "../../../auth";
 import PhotoCarteModal from "../../../components/PhotoCarteModal";
 import AccesClientModal from "../../../components/AccesClientModal";
@@ -122,23 +122,17 @@ export default function AssurancesAccidentsClients() {
     }
   }
 
-  function exportXlsx() {
-    exportExcel(
-      (data ?? []).map((c) => ({
-        "Prénom": c.prenom ?? "",
-        "Nom": c.nom ?? "",
-        "Téléphone": c.telephone,
-        "Produit": c.produit.libelle,
-        "Partenaire": c.partenaireResponsable || c.partenaireNom,
-        "Prime": c.montantPrime,
-        "Capital garanti": c.capitalGaranti,
-        "Statut": c.waveStatut ?? "",
-        "N° police": c.numeroPolice ?? "",
-        "Date d'échéance": c.dateFin ? fmtDate(c.dateFin) : "",
-        "Date d'effet": c.dateDebut ? fmtDate(c.dateDebut) : "",
-      })),
-      "clients_assurances_accidents.xlsx"
-    );
+  // Format SIM Assurances (25 colonnes du modèle fourni, « NA » si la donnée
+  // n'existe pas) : produits Accidents du modèle générique, contrats confirmés.
+  async function exportXlsx() {
+    try {
+      await exporterFormatSim(
+        { modeles: ["generique"], sousBranche: "ASSURANCES_ACCIDENTS", statut: "confirme", q: recherche.trim() },
+        "clients_assurances_accidents.xlsx"
+      );
+    } catch (err) {
+      notify((err as Error).message);
+    }
   }
 
   return (
