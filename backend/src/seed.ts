@@ -759,6 +759,53 @@ async function corrigerEcheanceRelaxVoyage() {
 }
 
 /**
+ * Correction ponctuelle : SecurPro (Assurances Dommages) est un contrat annuel
+ * (12 mois), mais les souscriptions confirmées avant la correction de
+ * services/paiementWave.ts::dureeFormuleMois ont reçu la durée par défaut de
+ * 3 mois. Remet leur échéance à dateDebut + 12 mois.
+ *
+ * Idempotent : une fois corrigée, l'écart dépasse le seuil et la ligne n'est
+ * plus reprise. Ne touche que les contrats jamais renouvelés (nombrePaiements
+ * ≤ 1) — un contrat déjà renouvelé à 3 mois a une échéance cumulée que seul un
+ * humain peut trancher ; il est seulement signalé dans les logs.
+ */
+async function corrigerEcheanceSecurpro() {
+  const produit = await prisma.produit.findUnique({ where: { code: "securpro_dommages" } });
+  if (!produit) return;
+
+  const SEUIL_JOURS = 200; // 3 mois ≈ 90 j, 12 mois ≈ 365 j
+  const rows = await prisma.souscription.findMany({
+    where: { produitId: produit.id, waveStatut: "confirme", dateDebut: { not: null }, dateFin: { not: null } },
+    select: { id: true, dateDebut: true, dateFin: true, nombrePaiements: true, statut: true },
+  });
+
+  let corrections = 0;
+  let renouveleesIgnorees = 0;
+  for (const s of rows) {
+    const ecartJours = (s.dateFin!.getTime() - s.dateDebut!.getTime()) / (1000 * 60 * 60 * 24);
+    if (ecartJours >= SEUIL_JOURS) continue;
+    if ((s.nombrePaiements ?? 1) > 1) {
+      renouveleesIgnorees++;
+      continue;
+    }
+    const dateFin = new Date(s.dateDebut!);
+    dateFin.setMonth(dateFin.getMonth() + 12);
+    await prisma.souscription.update({
+      where: { id: s.id },
+      // Un contrat marqué « expiré » à tort (3 mois écoulés) redevient actif s'il court encore.
+      data: { dateFin, ...(s.statut === "expire" && dateFin > new Date() ? { statut: "complet" as const } : {}) },
+    });
+    corrections++;
+  }
+  if (corrections > 0) {
+    console.log(`[seed] SecurPro : ${corrections} souscription(s) corrigée(s) (échéance portée à 12 mois).`);
+  }
+  if (renouveleesIgnorees > 0) {
+    console.log(`[seed] SecurPro : ${renouveleesIgnorees} souscription(s) déjà renouvelée(s) à 3 mois — à examiner manuellement.`);
+  }
+}
+
+/**
  * Rattache ponctuellement toutes les données de l'ancienne branche « Assurances
  * IMF » historique (zones/agences/agents/simulations/souscriptions/sinistres/
  * bordereaux avec `imfId` encore null) à l'institution RCMEC une fois que
@@ -970,6 +1017,7 @@ async function main() {
   await seedTauxCommissionAccidents();
   await corrigerCapitalGarantiIncendie();
   await corrigerEcheanceRelaxVoyage();
+  await corrigerEcheanceSecurpro();
   await corrigerLibelleRafLivreurs();
   await seedPartenaireSouscriptionDirecte();
   await seedTarificationImf();

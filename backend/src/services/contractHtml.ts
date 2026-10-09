@@ -791,9 +791,14 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
-export async function renderContratSecurpro(c: ContratSecurpro): Promise<string> {
+/**
+ * Contrat SECURPRO — partagé entre l'IMF (logo RCMEC-CI, par défaut) et
+ * SecurPro Assurances Dommages (distribué via QR partenaire : aucun lien avec
+ * RCMEC, `avecLogoRcmec = false`).
+ */
+export async function renderContratSecurpro(c: ContratSecurpro, avecLogoRcmec = true): Promise<string> {
   const cp = `
-  ${header(c.numeroPolice, true)}
+  ${header(c.numeroPolice, avecLogoRcmec)}
   <h1>Conditions Particulières — SECURPRO</h1>
   <div class="sub">Assurance Multirisque Professionnelle · Distribué via ${val(c.intermediaire)}</div>
 

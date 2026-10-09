@@ -871,7 +871,8 @@ contratsRouter.post(
         html = await renderContratSecurpro(body.data);
         break;
       case "securpro_dommages":
-        html = await renderContratSecurpro(body.data);
+        // Produit Assurances Dommages : pas de logo RCMEC (réservé aux contrats IMF).
+        html = await renderContratSecurpro(body.data, false);
         break;
       case "securhome_dommages":
         html = await renderContratSecurhome(body.data);

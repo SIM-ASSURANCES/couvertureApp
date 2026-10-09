@@ -102,7 +102,11 @@ async function commissionSouscriptionsGeneriques(where: {
 }): Promise<number> {
   const groups = await prisma.souscription.groupBy({
     by: ["produitId", "montantPrime"],
-    where: { ...where, waveStatut: "confirme" },
+    // Hors produits à devis calculé : ils sont comptés par
+    // commissionSouscriptionsDynamiques, sur leur prime nette HT. Sans cette
+    // exclusion, ils étaient comptés une 2e fois ici, sur le TTC (pas de
+    // TarifProduit → repli sur montantPrime) avec le taux par défaut de 20 %.
+    where: { ...where, waveStatut: "confirme", produit: { code: { notIn: [...PRODUITS_COMMISSION_DYNAMIQUE] } } },
     _count: { _all: true },
     // Pondère par le nombre de paiements confirmés (1er + renouvellements —
     // produits à formule unique, RelaxMoto/Auto restent toujours à 1, voir
@@ -197,7 +201,8 @@ async function commissionSouscriptionsGeneriquesParAgent(where: {
   const result = new Map<string, number>();
   const groups = await prisma.souscription.groupBy({
     by: ["agentDistributionId", "produitId", "montantPrime"],
-    where: { ...where, waveStatut: "confirme" },
+    // Hors produits à devis calculé — voir commissionSouscriptionsGeneriques.
+    where: { ...where, waveStatut: "confirme", produit: { code: { notIn: [...PRODUITS_COMMISSION_DYNAMIQUE] } } },
     _count: { _all: true },
     _sum: { nombrePaiements: true },
   });
