@@ -356,6 +356,9 @@ assurancesAccidentsRouter.delete(
  */
 const PRODUITS_COMMISSION_TAUX_UNIQUE = [
   "securhome_dommages",
+  // SecurMoto : carte affichée sur la page Tarifs, mais absente de cette liste
+  // jusqu'ici → « Produit inconnu ». Son taux est lu par services/commission.ts.
+  "securmoto",
   "relaxmoto",
   "relaxauto",
   "relaxaccidents_fraismedicaux",
