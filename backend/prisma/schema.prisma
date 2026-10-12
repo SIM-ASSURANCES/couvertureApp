@@ -291,6 +291,9 @@ model AgentDistribution {
   qrCodesGeneriques          QrCode[]
   souscriptionsGeneriques    Souscription[]
   cotations                  Cotation[]
+
+  // Audit performance 2026-10-12 : agents d'un partenaire (liste « Mes agents »).
+  @@index([partenaireId])
 }
 
 /**
@@ -394,6 +397,10 @@ model SouscriptionIncendie {
   @@index([statut, createdAt])
   @@index([partenaireId, createdAt])
   @@index([dateFin])
+  // Audit performance 2026-10-12 — voir Souscription.
+  @@index([telephone])
+  @@index([clientId])
+  @@index([agentDistributionId, createdAt])
 }
 
 model SouscriptionAccident {
@@ -473,6 +480,11 @@ model SouscriptionAccident {
   @@index([waveStatut, createdAt])
   @@index([partenaireId, createdAt])
   @@index([dateFin])
+  // Audit performance 2026-10-12 — voir Souscription.
+  @@index([telephone])
+  @@index([clientId])
+  @@index([agentDistributionId, createdAt])
+  @@index([waveTransactionId])
 }
 
 model JournalActivite {
@@ -515,6 +527,10 @@ model DemandeCommission {
   traiteeAt           DateTime?
   motifRejet          String?
   createdAt           DateTime           @default(now())
+
+  // Audit performance 2026-10-12 : demandes d'un partenaire / d'un agent (stats de commission).
+  @@index([partenaireId, statut])
+  @@index([agentDistributionId, statut])
 }
 
 model Notification {
@@ -820,6 +836,14 @@ model Souscription {
   @@index([dateDebut])
   @@index([dateFin])
   @@index([validationStatut, createdAt])
+  // Audit performance 2026-10-12 : recherches fréquentes sans index (balayage
+  // complet de la table) — doublon nom+téléphone à chaque souscription,
+  // espace client par téléphone, listes/commissions par agent, retour de
+  // paiement par identifiant de transaction.
+  @@index([telephone])
+  @@index([clientId])
+  @@index([agentDistributionId, createdAt])
+  @@index([waveTransactionId])
 }
 
 /**
@@ -861,6 +885,10 @@ model Paiement {
   // GET /relax/echeances (page "Paiements en attente") filtre par statut et
   // trie par dateEcheance (audit perf 2026-09-11).
   @@index([statut, dateEcheance])
+  // Audit performance 2026-10-12 : les webhooks Wave/Peya pay retrouvent le
+  // paiement par identifiant de transaction (chemin critique d'un paiement).
+  @@index([waveTransactionId])
+  @@index([djoganaTransactionId])
 }
 
 /**
@@ -895,6 +923,9 @@ model Document {
   motifRejet       String?
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
+
+  // Audit performance 2026-10-12 : documents d'une souscription (clé étrangère sans index).
+  @@index([souscriptionId])
 }
 
 /**
@@ -996,6 +1027,11 @@ model SinistreRelax {
   analyseIAAt            DateTime?
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
+
+  // Audit performance 2026-10-12 : sinistres d'une souscription (clés étrangères sans index).
+  @@index([souscriptionId])
+  @@index([souscriptionIncendieId])
+  @@index([souscriptionAccidentId])
 }
 
 // --- Branche IMF : hiérarchie Zone -> Agence -> Agent (distribution par agent, pas par QR) ---

@@ -11,6 +11,7 @@ import {
 } from "../services/notify.js";
 import { verifierPaiementEcheance } from "../services/paiementWave.js";
 import { renouvelerCarte } from "../services/novelia.js";
+import { SANS_IMAGES_GENERIQUE, SANS_LOURD_GENERIQUE, allegerJsonSouscription, avecDonneesAllegees } from "../services/allegement.js";
 
 /**
  * Routes admin pour la branche RelaxMoto/RelaxAuto, sur le modèle générique
@@ -35,22 +36,29 @@ relaxRouter.get(
   "/overview",
   asyncHandler(async (req, res) => {
     const produits = await prisma.produit.findMany({ where: { branche: "RELAX" } });
-    const counts = await Promise.all(
-      produits.map(async (p) => ({
-        produit: p.code,
-        libelle: p.libelle,
-        confirmes: await prisma.souscription.count({ where: { produitId: p.id, waveStatut: "confirme" } }),
-        enAttente: await prisma.souscription.count({ where: { produitId: p.id, waveStatut: { in: ["en_attente", "echoue"] } } }),
-      }))
-    );
+    // Un seul regroupement SQL au lieu de 2 comptages par produit.
+    const parStatut = await prisma.souscription.groupBy({
+      by: ["produitId", "waveStatut"],
+      where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: { in: ["confirme", "en_attente", "echoue"] } },
+      _count: { _all: true },
+    });
+    const nombre = (produitId: string, statuts: string[]) =>
+      parStatut.filter((g) => g.produitId === produitId && g.waveStatut && statuts.includes(g.waveStatut)).reduce((t, g) => t + g._count._all, 0);
+    const counts = produits.map((p) => ({
+      produit: p.code,
+      libelle: p.libelle,
+      confirmes: nombre(p.id, ["confirme"]),
+      enAttente: nombre(p.id, ["en_attente", "echoue"]),
+    }));
     const partenairesRelax = await prisma.partenaire.count({ where: { branche: "RELAX" } });
     const derniers = await prisma.souscription.findMany({
       where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },
       take: 5,
       orderBy: { createdAt: "desc" },
+      omit: SANS_IMAGES_GENERIQUE,
       include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, produit: { select: { code: true, libelle: true } } },
     });
-    res.json({ partenairesRelax, produits: counts, derniers });
+    res.json({ partenairesRelax, produits: counts, derniers: derniers.map(allegerJsonSouscription) });
   })
 );
 
@@ -115,6 +123,9 @@ relaxRouter.get(
         waveStatut: attente === "1" ? { in: ["en_attente", "echoue"] } : "confirme",
         partenaireId: partenaireId || undefined,
       },
+      // Photo de pièce d'identité et JSON `donneesSpecifiques` (signature)
+      // hors de la requête, relus allégés (voir services/allegement.ts).
+      omit: SANS_LOURD_GENERIQUE,
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
@@ -122,7 +133,7 @@ relaxRouter.get(
       orderBy: { createdAt: "desc" },
     });
     res.json(
-      rows.map((r) => ({
+      (await avecDonneesAllegees(rows)).map(allegerJsonSouscription).map((r) => ({
         ...r,
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
@@ -236,6 +247,7 @@ relaxRouter.get(
 
     const rows = await prisma.souscription.findMany({
       where: { produitId: { in: produitIds } },
+      omit: SANS_IMAGES_GENERIQUE,
       include: { partenaire: { select: { nomCommerce: true } }, produit: { select: { libelle: true } } },
       orderBy: { createdAt: "desc" },
     });

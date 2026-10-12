@@ -157,6 +157,8 @@ export interface ClientIncendie {
   relanceCount?: number;
   signature?: string | null;
   selfieUrl?: string | null;
+  /** Une photo de carte existe (la photo elle-même n'est plus dans la liste — voir MiniaturePhotoCarte). */
+  aSelfie?: boolean;
   createdAt: string;
   dateDebut?: string | null;
   dateFin?: string | null;
@@ -185,6 +187,8 @@ export interface ClientAccident {
   relanceCount?: number;
   signature?: string | null;
   selfieUrl?: string | null;
+  /** Une photo de carte existe (la photo elle-même n'est plus dans la liste — voir MiniaturePhotoCarte). */
+  aSelfie?: boolean;
   createdAt: string;
   dateDebut?: string | null;
   dateFin?: string | null;

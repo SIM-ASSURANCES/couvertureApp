@@ -82,7 +82,10 @@ export interface DonneesContratGenerique {
   resultat: any;
 }
 
-type SouscriptionAvecRelations = Souscription & {
+// `pieceIdentiteUrl` facultatif : le mapper ne l'utilise pas, et les listes
+// l'omettent à la lecture (services/allegement.ts) pour ne pas charger la photo.
+type SouscriptionAvecRelations = Omit<Souscription, "pieceIdentiteUrl"> & {
+  pieceIdentiteUrl?: string | null;
   partenaire: { nomCommerce: string; nomResponsable: string; localisation: string | null };
   produit: { code: string; libelle: string };
 };

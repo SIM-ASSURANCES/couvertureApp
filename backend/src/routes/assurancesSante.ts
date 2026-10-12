@@ -6,6 +6,7 @@ import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { initiateWavePayment, sendSMS, messageDemandeSanteValidee, messageDemandeSanteRefusee } from "../services/notify.js";
 import { confirmerEcheance } from "../services/paiementWave.js";
+import { SANS_IMAGES_GENERIQUE } from "../services/allegement.js";
 import {
   COMPOSITION_SANTE,
   PRODUITS_SANTE,
@@ -43,6 +44,7 @@ assurancesSanteRouter.get(
     const [rows, compteurs] = await Promise.all([
       prisma.souscription.findMany({
         where: { produit: { code: { in: [...PRODUITS_SANTE] } }, ...filtreEtat(etat) },
+        omit: SANS_IMAGES_GENERIQUE,
         include: {
           produit: { select: { code: true, libelle: true } },
           partenaire: { select: { nomCommerce: true, nomResponsable: true } },

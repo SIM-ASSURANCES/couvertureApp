@@ -17,6 +17,7 @@ import { commissionTotaleAgentsDuPartenaire } from "../services/commission.js";
 import { genererCleApi, SCOPES_API, EVENEMENTS_WEBHOOK } from "../apiKey.js";
 import { emettreWebhook, webhookUrlValide } from "../services/partnerWebhook.js";
 import { attribuerIdentifiantPartenaire, categorieValide, CategorieVerrouilleeError } from "../services/identifiantsPartenaires.js";
+import { SANS_IMAGES_HISTORIQUE } from "../services/allegement.js";
 
 export const partenairesRouter = Router();
 partenairesRouter.use(requireAuth("admin"));
@@ -277,10 +278,12 @@ partenairesRouter.get(
       await Promise.all([
         prisma.souscriptionIncendie.findMany({
           where: { partenaireId: id, ...dateWhere },
+          omit: SANS_IMAGES_HISTORIQUE,
           orderBy: { createdAt: "desc" },
         }),
         prisma.souscriptionAccident.findMany({
           where: { partenaireId: id, ...dateWhere, waveStatut: "confirme" },
+          omit: SANS_IMAGES_HISTORIQUE,
           orderBy: { createdAt: "desc" },
         }),
         commissionTotalePartenaire(id),

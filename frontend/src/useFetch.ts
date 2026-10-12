@@ -7,7 +7,12 @@ import { api } from "./api";
 // confirmée, une demande de commission traitée. Appliqué une fois ici plutôt
 // que dans chaque page, puisque `useFetch` est le point de passage commun de
 // (quasi) tout le chargement de données de l'application.
-const AUTO_REFRESH_MS = 30_000;
+//
+// Audit performance 2026-10-12 : 30 s → 60 s. Chaque page ouverte refaisait
+// toutes ses requêtes (jusqu'à des listes de plusieurs Mo) deux fois par
+// minute ; le retour sur l'onglet déclenche désormais un rafraîchissement
+// immédiat (voir plus bas), la fraîcheur perçue ne baisse donc pas.
+const AUTO_REFRESH_MS = 60_000;
 
 export function useFetch<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
@@ -51,7 +56,16 @@ export function useFetch<T>(path: string | null) {
         reload({ silent: true });
       }
     }, AUTO_REFRESH_MS);
-    return () => clearInterval(id);
+    // Au retour sur l'onglet (après une absence), on ne fait pas attendre la
+    // prochaine échéance : les données ont pu changer pendant ce temps.
+    const auRetour = () => {
+      if (document.visibilityState === "visible") reload({ silent: true });
+    };
+    document.addEventListener("visibilitychange", auRetour);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", auRetour);
+    };
   }, [path, reload]);
 
   return { data, loading, error, reload, setData };

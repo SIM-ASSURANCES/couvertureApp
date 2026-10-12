@@ -18,6 +18,7 @@ import { useAuth } from "../../auth";
 import { exporterFormatSim } from "../../exportSim";
 import PhotoCarteModal from "../../components/PhotoCarteModal";
 import AccesClientModal from "../../components/AccesClientModal";
+import MiniaturePhotoCarte from "../../components/MiniaturePhotoCarte";
 import PhotosClientModal from "../../components/PhotosClientModal";
 import ActionsDocumentsClient from "../../components/ActionsDocumentsClient";
 import type { ClientAccident, Partenaire } from "../../types";
@@ -291,15 +292,9 @@ export default function ClientsAccident() {
             </table>
             {isSuper && (
               <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12 }}>
-                {detailFor.selfieUrl && (
-                  <img
-                    src={detailFor.selfieUrl}
-                    alt="Photo carte"
-                    style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: "1.5px solid var(--border, #e5e7eb)" }}
-                  />
-                )}
+                {detailFor.aSelfie && <MiniaturePhotoCarte souscriptionId={detailFor.id} produitType="accident" />}
                 <button className="btn btn-ghost" onClick={() => setPhotoFor(detailFor)}>
-                  <Camera size={15} /> {detailFor.selfieUrl ? "Modifier la photo de la carte" : "Ajouter une photo pour la carte"}
+                  <Camera size={15} /> {detailFor.aSelfie ? "Modifier la photo de la carte" : "Ajouter une photo pour la carte"}
                 </button>
               </div>
             )}

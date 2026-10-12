@@ -9,10 +9,23 @@
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Police chargée sans bloquer l'affichage (audit performance 2026-10-12) :
+         une feuille de style externe en `rel="stylesheet"` empêche tout rendu
+         tant que Google ne l'a pas servie, ce qui se compte en secondes sur un
+         réseau mobile lent. `media="print"` la charge en arrière-plan, puis
+         `onload` l'applique ; `display=swap` affiche le texte aussitôt. -->
     <link
       href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <title>SIM Assurances — Espace de gestion</title>
   </head>
   <body>

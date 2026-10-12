@@ -5,6 +5,7 @@ import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
 import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT, PRODUITS_COMMISSION_DYNAMIQUE } from "../services/commission.js";
 import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
+import { SANS_IMAGES_HISTORIQUE } from "../services/allegement.js";
 
 export const statsRouter = Router();
 statsRouter.use(requireAuth("admin"));
@@ -144,12 +145,15 @@ statsRouter.get(
         take: 5,
         where: { ...dateWhere, waveStatut: "confirme" },
         orderBy: { createdAt: "desc" },
+        // Le tableau de bord se charge à chaque connexion admin : jamais de photos ici.
+        omit: SANS_IMAGES_HISTORIQUE,
         include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       }),
       prisma.souscriptionIncendie.findMany({
         take: 5,
         where: dateWhere,
         orderBy: { createdAt: "desc" },
+        omit: SANS_IMAGES_HISTORIQUE,
         include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       }),
       prisma.souscriptionIncendie.groupBy({

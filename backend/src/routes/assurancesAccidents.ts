@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { requireAuth, requireSuperAdminBranche, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
+import { SANS_IMAGES_GENERIQUE, SANS_LOURD_GENERIQUE, allegerJsonSouscription, avecDonneesAllegees } from "../services/allegement.js";
 import { PRODUITS_SANTE, estProduitSante, tauxDepuisCleFormuleSante } from "../services/assurancesSante.js";
 
 /**
@@ -58,14 +59,20 @@ assurancesAccidentsRouter.get(
   "/overview",
   asyncHandler(async (req, res) => {
     const produits = await produitsSousBranche();
-    const counts = await Promise.all(
-      produits.map(async (p) => ({
-        produit: p.code,
-        libelle: p.libelle,
-        confirmes: await prisma.souscription.count({ where: { produitId: p.id, waveStatut: "confirme" } }),
-        enAttente: await prisma.souscription.count({ where: { produitId: p.id, waveStatut: { in: ["en_attente", "echoue"] } } }),
-      }))
-    );
+    // Un seul regroupement SQL au lieu de 2 comptages par produit (~40 requêtes).
+    const parStatut = await prisma.souscription.groupBy({
+      by: ["produitId", "waveStatut"],
+      where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: { in: ["confirme", "en_attente", "echoue"] } },
+      _count: { _all: true },
+    });
+    const nombre = (produitId: string, statuts: string[]) =>
+      parStatut.filter((g) => g.produitId === produitId && g.waveStatut && statuts.includes(g.waveStatut)).reduce((t, g) => t + g._count._all, 0);
+    const counts = produits.map((p) => ({
+      produit: p.code,
+      libelle: p.libelle,
+      confirmes: nombre(p.id, ["confirme"]),
+      enAttente: nombre(p.id, ["en_attente", "echoue"]),
+    }));
     // Compte les partenaires ayant soit un QR précis pour l'un de ces
     // produits (comportement historique), soit un QR "sélecteur" scopé à
     // cette sous-branche, soit le nouveau QR unique (refonte 2026-08-07 —
@@ -88,9 +95,10 @@ assurancesAccidentsRouter.get(
       where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme" },
       take: 5,
       orderBy: { createdAt: "desc" },
+      omit: SANS_IMAGES_GENERIQUE,
       include: { partenaire: { select: { nomCommerce: true } }, produit: { select: { code: true, libelle: true } } },
     });
-    res.json({ partenaires, produits: counts, derniers });
+    res.json({ partenaires, produits: counts, derniers: derniers.map(allegerJsonSouscription) });
   })
 );
 
@@ -138,6 +146,9 @@ assurancesAccidentsRouter.get(
             }
           : {}),
       },
+      // Photo de pièce d'identité et JSON `donneesSpecifiques` (signature)
+      // hors de la requête, relus allégés (voir services/allegement.ts).
+      omit: SANS_LOURD_GENERIQUE,
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
@@ -146,7 +157,7 @@ assurancesAccidentsRouter.get(
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
     res.json(
-      rows.map((r) => ({
+      (await avecDonneesAllegees(rows)).map(allegerJsonSouscription).map((r) => ({
         ...r,
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
@@ -165,7 +176,18 @@ assurancesAccidentsRouter.get(
     const produits = await produitsSousBranche();
     const rows = await prisma.souscription.findMany({
       where: { produitId: { in: produits.map((p) => p.id) } },
-      include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, produit: { select: { libelle: true } } },
+      select: {
+        id: true,
+        telephone: true,
+        nom: true,
+        prenom: true,
+        montantPrime: true,
+        waveStatut: true,
+        numeroPolice: true,
+        createdAt: true,
+        partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+        produit: { select: { libelle: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
     await logAction({

@@ -19,6 +19,7 @@ import {
 import { genererMotDePasseClient } from "../services/notify.js";
 import { notifyAdmins } from "../services/notifications.js";
 import { registerCotationRoutes } from "./cotationsCommun.js";
+import { SANS_IMAGES_GENERIQUE, SANS_IMAGES_HISTORIQUE } from "../services/allegement.js";
 
 export const meRouter = Router();
 meRouter.use(requireAuth("partenaire"));
@@ -138,12 +139,15 @@ meRouter.get(
   asyncHandler(async (req: AuthedRequest, res) => {
     const id = req.user!.sub;
     const [incendie, accident] = await Promise.all([
+      // Photos et signature (base64) hors de la liste : voir services/allegement.ts.
       prisma.souscriptionIncendie.findMany({
         where: { partenaireId: id },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
       prisma.souscriptionAccident.findMany({
         where: { partenaireId: id },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
     ]);
@@ -549,10 +553,12 @@ meRouter.get(
     const [incendie, accident, generique] = await Promise.all([
       prisma.souscriptionIncendie.findMany({
         where: { agentDistributionId: agent.id },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
       prisma.souscriptionAccident.findMany({
         where: { agentDistributionId: agent.id },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
       // Modèle générique (RelaxMoto/Auto, RelaxAccidents Frais Médicaux
@@ -561,6 +567,7 @@ meRouter.get(
       // que ces produits n'apparaissait pas du tout dans l'espace du partenaire.
       prisma.souscription.findMany({
         where: { agentDistributionId: agent.id, waveStatut: "confirme" },
+        omit: SANS_IMAGES_GENERIQUE,
         include: { produit: { select: { code: true, libelle: true } } },
         orderBy: { createdAt: "desc" },
       }),

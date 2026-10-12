@@ -17,6 +17,7 @@ import { verifierPaiementAccident } from "../services/accident.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
+import { SANS_LOURD_GENERIQUE, SANS_IMAGES_HISTORIQUE, avecDonneesAllegees, idsAvecSelfie } from "../services/allegement.js";
 
 export const souscriptionsRouter = Router();
 souscriptionsRouter.use(requireAuth("admin"));
@@ -139,7 +140,6 @@ souscriptionsRouter.get(
           commune: true,
           quartier: true,
           numeroMaison: true,
-          signature: true,
           createdAt: true,
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
           agentDistribution: { select: { identifiant: true } },
@@ -175,7 +175,6 @@ souscriptionsRouter.get(
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
           identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
-          signature: s.signature,
         });
       }
     }
@@ -197,7 +196,6 @@ souscriptionsRouter.get(
           dateFin: true,
           createdAt: true,
           dateNaissance: true,
-          signature: true,
           waveStatut: true,
           waveTransactionId: true,
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
@@ -229,7 +227,6 @@ souscriptionsRouter.get(
           taxes: t?.taxes ?? null,
           fg: t?.fg ?? null,
           identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
-          signature: s.signature,
         });
       }
     }
@@ -264,12 +261,15 @@ souscriptionsRouter.get(
           if (!tarifParPrime.has(cle)) tarifParPrime.set(cle, t);
         }
 
-        const generiques = await prisma.souscription.findMany({
+        const generiquesBruts = await prisma.souscription.findMany({
           where: {
             produitId: { in: produitsGeneriques.map((p) => p.id) },
             waveStatut: "confirme",
             dateDebut: dateEffetRange,
           },
+          // Photo ET JSON `donneesSpecifiques` (qui porte la signature) lus à
+          // part, images retirées par la base : voir services/allegement.ts.
+          omit: SANS_LOURD_GENERIQUE,
           include: {
             partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, identifiant: true } },
             agentDistribution: { select: { identifiant: true } },
@@ -285,6 +285,7 @@ souscriptionsRouter.get(
           },
           orderBy: { createdAt: "desc" },
         });
+        const generiques = await avecDonneesAllegees(generiquesBruts);
         for (const s of generiques) {
           // `tarifsProduit` déjà chargé plus haut (une seule requête pour tous
           // les produits génériques) — évite un aller-retour DB par ligne.
@@ -356,7 +357,6 @@ souscriptionsRouter.get(
             fg,
             accessoires,
             identifiantIntermediaire: s.agentDistribution?.identifiant ?? s.partenaire.identifiant ?? null,
-            signature: d.signature,
             produitLibelle: d.produitLibelle,
             compagnie: d.compagnie,
             lieuDepart: d.lieuDepart,
@@ -465,15 +465,19 @@ souscriptionsRouter.get(
           ? { dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
           : {}),
       },
+      // Photos et signature (base64) hors de la liste : voir services/allegement.ts.
+      omit: SANS_IMAGES_HISTORIQUE,
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
         client: { select: { identifiant: true } },
       },
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
+    const avecSelfie = await idsAvecSelfie("souscriptionIncendie", rows.map((r) => r.id));
     res.json(
       rows.map((r) => ({
         ...r,
+        aSelfie: avecSelfie.has(r.id),
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
@@ -528,14 +532,18 @@ souscriptionsRouter.get(
             : undefined,
         partenaireId: partenaireId || undefined,
       },
+      // Photos et signature (base64) hors de la liste : voir services/allegement.ts.
+      omit: SANS_IMAGES_HISTORIQUE,
       include: {
         partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
       },
       orderBy: renouvellementProche === "1" ? { dateFin: "asc" } : { createdAt: "desc" },
     });
+    const avecSelfie = await idsAvecSelfie("souscriptionAccident", rows.map((r) => r.id));
     res.json(
       rows.map((r) => ({
         ...r,
+        aSelfie: avecSelfie.has(r.id),
         clientPasswordHash: undefined,
         espaceClientActif: !!r.clientPasswordHash,
         partenaireNom: r.partenaire.nomCommerce,
@@ -782,6 +790,7 @@ souscriptionsRouter.get(
   "/incendie/export.csv",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.souscriptionIncendie.findMany({
+      omit: SANS_IMAGES_HISTORIQUE,
       include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -859,6 +868,7 @@ souscriptionsRouter.get(
   "/accident/export.csv",
   asyncHandler(async (req: AuthedRequest, res) => {
     const rows = await prisma.souscriptionAccident.findMany({
+      omit: SANS_IMAGES_HISTORIQUE,
       include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } } },
       orderBy: { createdAt: "desc" },
     });

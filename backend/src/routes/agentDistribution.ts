@@ -8,6 +8,7 @@ import { qrDataUrl } from "../services/qr.js";
 import { commissionStatsAgent } from "../services/commission.js";
 import { notifyAdmins } from "../services/notifications.js";
 import { registerCotationRoutes } from "./cotationsCommun.js";
+import { SANS_IMAGES_GENERIQUE, SANS_IMAGES_HISTORIQUE } from "../services/allegement.js";
 
 const JOURS_CYCLE = 14;
 
@@ -99,10 +100,12 @@ agentDistributionRouter.get(
     const [incendie, accident, generique] = await Promise.all([
       prisma.souscriptionIncendie.findMany({
         where: { agentDistributionId },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
       prisma.souscriptionAccident.findMany({
         where: { agentDistributionId },
+        omit: SANS_IMAGES_HISTORIQUE,
         orderBy: { createdAt: "desc" },
       }),
       // Modèle générique (RelaxMoto/Auto, RelaxAccidents, RelaxVoyage,
@@ -110,6 +113,7 @@ agentDistributionRouter.get(
       // sont uniquement sur ces produits voyait toujours "0 souscription".
       prisma.souscription.findMany({
         where: { agentDistributionId, waveStatut: "confirme" },
+        omit: SANS_IMAGES_GENERIQUE,
         include: { produit: { select: { code: true } } },
         orderBy: { createdAt: "desc" },
       }),

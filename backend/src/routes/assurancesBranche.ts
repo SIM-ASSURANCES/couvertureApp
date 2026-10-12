@@ -228,7 +228,28 @@ async function fetchGeneriqueParProduitIds(produitIds: string[], f: Filtres, lim
           }
         : {}),
     },
-    include: {
+    // `select` ciblé : sans lui, chaque ligne ramenait aussi ses images
+    // base64 (pièce d'identité, signature, selfie dans donneesSpecifiques) pour
+    // n'en afficher aucune — cette fonction alimente le tableau de bord.
+    select: {
+      id: true,
+      telephone: true,
+      nom: true,
+      prenom: true,
+      montantPrime: true,
+      waveStatut: true,
+      partenaireId: true,
+      createdAt: true,
+      dateDebut: true,
+      dateFin: true,
+      renouvellementEnCoursDepuis: true,
+      renouveleAt: true,
+      cycleFacturation: true,
+      clientPasswordHash: true,
+      canalVente: true,
+      niveauRisqueIA: true,
+      analyseIA: true,
+      analyseIAAt: true,
       partenaire: { select: { nomCommerce: true, nomResponsable: true } },
       produit: { select: { code: true, libelle: true, sousBranche: true } },
       client: { select: { identifiant: true } },
@@ -282,7 +303,24 @@ export async function fetchIncendieHistorique(f: Filtres, limit?: number): Promi
         ? { dateFin: { lte: new Date(Date.now() + RENOUVELLEMENT_FENETRE_MS) } }
         : {}),
     },
-    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, client: { select: { identifiant: true } } },
+    // `select` ciblé : voir fetchGeneriqueParProduitIds (pas d'images base64).
+    select: {
+      id: true,
+      telephone: true,
+      nom: true,
+      prenom: true,
+      montantPrime: true,
+      statut: true,
+      partenaireId: true,
+      createdAt: true,
+      dateDebut: true,
+      dateFin: true,
+      renouvellementEnCoursDepuis: true,
+      renouveleAt: true,
+      clientPasswordHash: true,
+      partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+      client: { select: { identifiant: true } },
+    },
     orderBy: f.renouvellementProche ? { dateFin: "asc" } : { createdAt: "desc" },
     take: limit,
   });
@@ -324,7 +362,20 @@ export async function fetchAccidentHistorique(f: Filtres, limit?: number): Promi
       partenaireId: f.partenaireId,
       createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
     },
-    include: { partenaire: { select: { nomCommerce: true, nomResponsable: true } }, client: { select: { identifiant: true } } },
+    // `select` ciblé : voir fetchGeneriqueParProduitIds (pas d'images base64).
+    select: {
+      id: true,
+      telephone: true,
+      nom: true,
+      prenom: true,
+      montantPrime: true,
+      waveStatut: true,
+      partenaireId: true,
+      createdAt: true,
+      clientPasswordHash: true,
+      partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+      client: { select: { identifiant: true } },
+    },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
