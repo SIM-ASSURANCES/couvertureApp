@@ -50,6 +50,12 @@ export interface ResultatTarifImf {
   depassementPlafond: boolean;
   capitauxTotaux: number;
   limiteApplicable: number;
+  /** SecurPro Dommages (mode `plafonner`) : capital réellement saisi par le client, avant plafonnement. */
+  capitalSaisi?: number;
+  /** SecurPro Dommages (mode `plafonner`) : le capital saisi dépassait la limite assurable, il est assuré À LA LIMITE. */
+  capitalPlafonne?: boolean;
+  /** SecurPro Dommages (mode `plafonner`) : capital maximal de la classe de risque (au-delà : refus). */
+  limiteClasse?: number;
   lignes: LignePrime[];
   primeNetteHT: number;
   accessoires: number;
@@ -63,15 +69,34 @@ function coefficientPrevention(gardien: boolean, extincteur: boolean): number {
   return 1;
 }
 
-export function calculerSecurpro(input: SecurproInput, bareme: BaremeClasseSecurpro): ResultatTarifImf {
+/**
+ * Règles de plafond de capital :
+ * - par défaut (IMF) : au-delà de la limite applicable (plafond « marché » de
+ *   5 M FCFA si le local est dans un marché, sinon capital de la classe), le
+ *   calcul est refusé (`depassementPlafond`) ;
+ * - `plafonner` (SecurPro Assurances Dommages, décision du 2026-10-13) : entre
+ *   la limite applicable et le capital de la classe, le client est assuré À LA
+ *   LIMITE applicable (`capitalPlafonne`, la prime porte sur ce capital) et
+ *   doit contacter SIM Assurances pour être assuré au capital saisi ; au-delà
+ *   du capital de la classe, SIM Assurances ne peut pas l'assurer
+ *   (`depassementPlafond`). Mirroir frontend : frontend/src/offline/tarification.ts.
+ */
+export function calculerSecurpro(
+  input: SecurproInput,
+  bareme: BaremeClasseSecurpro,
+  options: { plafonner?: boolean } = {}
+): ResultatTarifImf {
   const assietteBatiment =
     input.statutOccupation === "proprietaire"
       ? input.valeurBatiment ?? 0
       : (input.loyerMensuel ?? 0) * 12 * 10;
-  const capitauxTotaux = assietteBatiment + input.contenu;
+  const capitalSaisi = assietteBatiment + input.contenu;
 
   const limiteApplicable = input.dansMarche ? Math.min(bareme.limiteCapital, PLAFOND_MARCHE) : bareme.limiteCapital;
-  const depassementPlafond = capitauxTotaux > limiteApplicable;
+  const depassementPlafond = options.plafonner ? capitalSaisi > bareme.limiteCapital : capitalSaisi > limiteApplicable;
+  const capitalPlafonne = !!options.plafonner && !depassementPlafond && capitalSaisi > limiteApplicable;
+  // Capital sur lequel portent la garantie Incendie et son capital affiché.
+  const capitauxTotaux = capitalPlafonne ? limiteApplicable : capitalSaisi;
 
   const lignes: LignePrime[] = [];
 
@@ -116,7 +141,38 @@ export function calculerSecurpro(input: SecurproInput, bareme: BaremeClasseSecur
 
   const primeTTC = round2(primeNetteHT + accessoires + taxes);
 
-  return { depassementPlafond, capitauxTotaux, limiteApplicable, lignes, primeNetteHT, accessoires, taxes, primeTTC };
+  return {
+    depassementPlafond,
+    capitauxTotaux,
+    limiteApplicable,
+    ...(options.plafonner ? { capitalSaisi, capitalPlafonne, limiteClasse: bareme.limiteCapital } : {}),
+    lignes,
+    primeNetteHT,
+    accessoires,
+    taxes,
+    primeTTC,
+  };
+}
+
+/** Message au client quand son capital est assuré à la limite (SecurPro Dommages). */
+export function messageCapitalPlafonne(r: Pick<ResultatTarifImf, "capitalSaisi" | "limiteApplicable">): string {
+  return (
+    `Le capital que vous avez saisi (${fcfaTexte(r.capitalSaisi ?? 0)}) dépasse la limite que SIM Assurances peut garantir ` +
+    `pour votre activité. SIM Assurances vous assure à hauteur de ${fcfaTexte(r.limiteApplicable)}. ` +
+    `Si vous souhaitez être assuré pour le capital que vous avez saisi, contactez SIM Assurances.`
+  );
+}
+
+/** Message au client quand son capital dépasse le capital de la classe (SecurPro Dommages). */
+export function messageCapitalRefuse(r: Pick<ResultatTarifImf, "capitalSaisi" | "limiteClasse">): string {
+  return (
+    `Le capital que vous avez saisi (${fcfaTexte(r.capitalSaisi ?? 0)}) dépasse le capital maximal de votre classe de risque ` +
+    `(${fcfaTexte(r.limiteClasse ?? 0)}) : SIM Assurances ne peut pas vous assurer pour ce capital.`
+  );
+}
+
+function fcfaTexte(n: number): string {
+  return `${Math.round(n).toLocaleString("fr-FR").replace(/[  ]/g, " ")} FCFA`;
 }
 
 // ─── SECURSTOCK ─────────────────────────────────────────────────────────────

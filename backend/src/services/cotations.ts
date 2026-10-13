@@ -26,7 +26,7 @@ import {
 } from "./relaxAccidentsGenerale.js";
 import { calculerSecurhome, type SecurhomeInput } from "./securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "./securMoto.js";
-import { calculerSecurpro, type SecurproInput } from "./tarificationImf.js";
+import { calculerSecurpro, messageCapitalRefuse, type SecurproInput } from "./tarificationImf.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "./capitauxDommages.js";
 
 export const PRODUITS_COTATION = ["relaxaccidents", "securhome", "securhome_dommages", "securpro_dommages", "securmoto"] as const;
@@ -182,15 +182,18 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
     }
     const baremeRow = await prisma.baremeSecurpro.findUnique({ where: { classe: e.classe } });
     if (!baremeRow) throw new ErreurCotation("Barème SECURPRO introuvable pour cette classe.");
-    const resultat = calculerSecurpro(e as SecurproInput, {
-      classe: e.classe,
-      limiteCapital: baremeRow.limiteCapital,
-      tauxIncendie: baremeRow.tauxIncendie,
-    });
+    // Mode `plafonner` : voir services/tarificationImf.ts::calculerSecurpro.
+    const resultat = calculerSecurpro(
+      e as SecurproInput,
+      {
+        classe: e.classe,
+        limiteCapital: baremeRow.limiteCapital,
+        tauxIncendie: baremeRow.tauxIncendie,
+      },
+      { plafonner: true }
+    );
     if (resultat.depassementPlafond) {
-      throw new ErreurCotation(
-        "Les capitaux totaux dépassent le plafond assurable automatiquement pour cette classe de risque."
-      );
+      throw new ErreurCotation(messageCapitalRefuse(resultat));
     }
     return {
       entrees: e,

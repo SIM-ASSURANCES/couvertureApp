@@ -926,7 +926,8 @@ function SecurproDommagesForm({
         deCapital: deCapital ? Number(deCapital) : undefined,
         bdgCapital: bdgCapital ? Number(bdgCapital) : undefined,
       },
-      baremeClasse
+      baremeClasse,
+      { plafonner: true }
     );
   }
 
@@ -1119,12 +1120,30 @@ function SecurproDommagesForm({
           <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Sélectionnez une activité pour voir le montant de votre prime.</div>
         ) : resultat?.depassementPlafond ? (
           <div style={{ fontSize: 12.5, color: "#dc2626" }}>
-            Les capitaux totaux ({fcfa(Math.round(resultat.capitauxTotaux))}) dépassent le plafond assurable
-            automatiquement pour cette classe ({fcfa(resultat.limiteApplicable)}). Contactez SIM Assurances pour une
-            étude particulière.
+            Le capital que vous avez saisi ({fcfa(Math.round(resultat.capitalSaisi ?? resultat.capitauxTotaux))}) dépasse le
+            capital maximal de votre classe de risque ({fcfa(resultat.limiteClasse ?? resultat.limiteApplicable)}) : SIM
+            Assurances ne peut pas vous assurer pour ce capital.
           </div>
         ) : resultat ? (
           <>
+            {resultat.capitalPlafonne && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: "#92400e",
+                  background: "#fef3c7",
+                  border: "1px solid #fcd34d",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  marginBottom: 10,
+                }}
+              >
+                Le capital que vous avez saisi ({fcfa(Math.round(resultat.capitalSaisi ?? 0))}) dépasse la limite que SIM
+                Assurances peut garantir pour votre activité. SIM Assurances vous assure à hauteur de{" "}
+                <strong>{fcfa(resultat.limiteApplicable)}</strong>. Si vous souhaitez être assuré pour le capital que vous
+                avez saisi, contactez SIM Assurances.
+              </div>
+            )}
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "#5b6b80", marginBottom: 4 }}>
               <span>Prime nette HT</span>
               <span>{fcfa(resultat.primeNetteHT)}</span>
@@ -2696,7 +2715,8 @@ export default function Souscription() {
             deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
             bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
           },
-          bar
+          bar,
+          { plafonner: true }
         ).primeTTC;
       }
       if (isSecurhomeDommages(p))
@@ -4960,7 +4980,8 @@ export default function Souscription() {
                             deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
                             bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
                           },
-                          bar
+                          bar,
+                          { plafonner: true }
                         );
                         return r.depassementPlafond;
                       })()

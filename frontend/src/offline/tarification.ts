@@ -45,6 +45,12 @@ export interface ResultatTarifImf {
   depassementPlafond: boolean;
   capitauxTotaux: number;
   limiteApplicable: number;
+  /** SecurPro Dommages (mode `plafonner`) : capital saisi par le client, avant plafonnement. */
+  capitalSaisi?: number;
+  /** SecurPro Dommages (mode `plafonner`) : capital saisi au-dessus de la limite assurable, assuré À LA LIMITE. */
+  capitalPlafonne?: boolean;
+  /** SecurPro Dommages (mode `plafonner`) : capital maximal de la classe (au-delà : refus). */
+  limiteClasse?: number;
   lignes: LignePrime[];
   primeNetteHT: number;
   accessoires: number;
@@ -58,13 +64,26 @@ function coefficientPrevention(gardien: boolean, extincteur: boolean): number {
   return 1;
 }
 
-export function calculerSecurpro(input: SecurproInput, bareme: BaremeClasseSecurpro): ResultatTarifImf {
+/**
+ * `options.plafonner` (SecurPro Assurances Dommages) : entre la limite
+ * assurable et le capital de la classe, le client est assuré À LA LIMITE ;
+ * au-delà du capital de la classe, refus. Par défaut (agent IMF) : refus dès
+ * que la limite assurable est dépassée. Miroir de
+ * backend/src/services/tarificationImf.ts::calculerSecurpro.
+ */
+export function calculerSecurpro(
+  input: SecurproInput,
+  bareme: BaremeClasseSecurpro,
+  options: { plafonner?: boolean } = {}
+): ResultatTarifImf {
   const assietteBatiment =
     input.statutOccupation === "proprietaire" ? input.valeurBatiment ?? 0 : (input.loyerMensuel ?? 0) * 12 * 10;
-  const capitauxTotaux = assietteBatiment + input.contenu;
+  const capitalSaisi = assietteBatiment + input.contenu;
 
   const limiteApplicable = input.dansMarche ? Math.min(bareme.limiteCapital, PLAFOND_MARCHE) : bareme.limiteCapital;
-  const depassementPlafond = capitauxTotaux > limiteApplicable;
+  const depassementPlafond = options.plafonner ? capitalSaisi > bareme.limiteCapital : capitalSaisi > limiteApplicable;
+  const capitalPlafonne = !!options.plafonner && !depassementPlafond && capitalSaisi > limiteApplicable;
+  const capitauxTotaux = capitalPlafonne ? limiteApplicable : capitalSaisi;
 
   const lignes: LignePrime[] = [];
 
@@ -108,7 +127,17 @@ export function calculerSecurpro(input: SecurproInput, bareme: BaremeClasseSecur
 
   const primeTTC = round2(primeNetteHT + accessoires + taxes);
 
-  return { depassementPlafond, capitauxTotaux, limiteApplicable, lignes, primeNetteHT, accessoires, taxes, primeTTC };
+  return {
+    depassementPlafond,
+    capitauxTotaux,
+    limiteApplicable,
+    ...(options.plafonner ? { capitalSaisi, capitalPlafonne, limiteClasse: bareme.limiteCapital } : {}),
+    lignes,
+    primeNetteHT,
+    accessoires,
+    taxes,
+    primeTTC,
+  };
 }
 
 export interface BaremeClasseSecurstock {

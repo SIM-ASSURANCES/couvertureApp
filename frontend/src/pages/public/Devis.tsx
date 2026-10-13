@@ -14,6 +14,9 @@ interface CotationPublique {
   libelleFormule: string;
   primeTTC: number;
   capitalGaranti: number;
+  // SecurPro : renseignés quand le capital saisi dépasse la limite assurable et
+  // est donc assuré à la limite (voir backend services/tarificationImf.ts).
+  resultat?: { capitalPlafonne?: boolean; capitalSaisi?: number; limiteApplicable?: number } | null;
   clientNom: string | null;
   partenaire: string;
   statut: "envoye" | "converti" | "expire";
@@ -217,6 +220,23 @@ export default function Devis() {
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
               <span style={{ fontSize: 13, color: "#5b6b80" }}>Capital garanti</span>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{fcfa(cotation.capitalGaranti)}</span>
+            </div>
+          )}
+          {cotation.resultat?.capitalPlafonne && (
+            <div
+              style={{
+                fontSize: 12.5,
+                color: "#92400e",
+                background: "#fef3c7",
+                border: "1px solid #fcd34d",
+                borderRadius: 8,
+                padding: "8px 10px",
+                marginTop: 10,
+              }}
+            >
+              Le capital saisi ({fcfa(Math.round(cotation.resultat.capitalSaisi ?? 0))}) dépasse la limite que SIM
+              Assurances peut garantir pour cette activité : vous êtes assuré à hauteur de{" "}
+              <strong>{fcfa(cotation.capitalGaranti)}</strong>. Pour être assuré au capital saisi, contactez SIM Assurances.
             </div>
           )}
         </div>

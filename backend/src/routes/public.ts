@@ -35,7 +35,7 @@ import {
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
   surchargeMoyenDeplacementDetailRelaxAccidentsGenerale,
 } from "../services/relaxAccidentsGenerale.js";
-import { calculerSecurpro, type SecurproInput } from "../services/tarificationImf.js";
+import { calculerSecurpro, messageCapitalPlafonne, messageCapitalRefuse, type SecurproInput } from "../services/tarificationImf.js";
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
@@ -1434,17 +1434,21 @@ publicRouter.post(
       deCapital: data.deCapital,
       bdgCapital: data.bdgCapital,
     };
-    const resultat = calculerSecurpro(input, {
-      classe: data.classe,
-      limiteCapital: baremeRow.limiteCapital,
-      tauxIncendie: baremeRow.tauxIncendie,
-    });
+    // Mode `plafonner` : un capital entre la limite assurable et le capital de
+    // la classe est assuré À LA LIMITE (le client en est informé avant de
+    // payer) ; au-delà du capital de la classe, SIM Assurances ne l'assure pas.
+    const resultat = calculerSecurpro(
+      input,
+      {
+        classe: data.classe,
+        limiteCapital: baremeRow.limiteCapital,
+        tauxIncendie: baremeRow.tauxIncendie,
+      },
+      { plafonner: true }
+    );
 
     if (resultat.depassementPlafond) {
-      return res.status(400).json({
-        error:
-          "Les capitaux totaux dépassent le plafond assurable automatiquement pour cette classe de risque. Contactez SIM Assurances pour une étude particulière.",
-      });
+      return res.status(400).json({ error: messageCapitalRefuse(resultat) });
     }
 
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
@@ -1531,6 +1535,8 @@ publicRouter.post(
       echeanceId: echeance.id,
       montant: resultat.primeTTC,
       resultat,
+      // Capital assuré à la limite : le client en est averti sur l'écran de succès.
+      avertissement: resultat.capitalPlafonne ? messageCapitalPlafonne(resultat) : null,
       checkoutUrl,
       successUrl,
       transactionId,
