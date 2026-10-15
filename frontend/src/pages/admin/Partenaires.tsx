@@ -339,7 +339,14 @@ function ProduitsModal({ partenaireId, onClose }: { partenaireId: string; onClos
   const parGroupe = {
     ASSURANCES_ACCIDENTS: (data ?? []).filter((p) => p.sousBranche === "ASSURANCES_ACCIDENTS"),
     ASSURANCES_DOMMAGES: (data ?? []).filter((p) => p.sousBranche === "ASSURANCES_DOMMAGES"),
+    // Assurances Santé (Solo, Duo, Famille) : activables ou désactivables partenaire par partenaire.
+    ASSURANCES_SANTE: (data ?? []).filter((p) => p.sousBranche === "ASSURANCES_SANTE"),
   };
+  const LIBELLES_GROUPES = {
+    ASSURANCES_ACCIDENTS: "Assurances Accidents",
+    ASSURANCES_DOMMAGES: "Assurances Dommages",
+    ASSURANCES_SANTE: "Assurances Santé",
+  } as const;
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}>
@@ -356,11 +363,11 @@ function ProduitsModal({ partenaireId, onClose }: { partenaireId: string; onClos
         {data && data.length === 0 && (
           <div className="empty">Aucun produit géré individuellement pour ce partenaire.</div>
         )}
-        {(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] as const).map((groupe) =>
+        {(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES", "ASSURANCES_SANTE"] as const).map((groupe) =>
           parGroupe[groupe].length > 0 ? (
             <div key={groupe} style={{ marginBottom: 14 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
-                {groupe === "ASSURANCES_ACCIDENTS" ? "Assurances Accidents" : "Assurances Dommages"}
+                {LIBELLES_GROUPES[groupe]}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {parGroupe[groupe].map((p) => (
