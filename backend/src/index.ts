@@ -11,6 +11,7 @@ import { rejouerWebhooksEnAttente } from "./services/partnerWebhook.js";
 import { rejouerCartesNoveliaEnAttente } from "./services/novelia.js";
 
 import { authRouter } from "./routes/auth.js";
+import { santePiecesRouter } from "./routes/santePieces.js";
 import { partenairesRouter } from "./routes/partenaires.js";
 import { souscriptionsRouter } from "./routes/souscriptions.js";
 import { statsRouter } from "./routes/stats.js";
@@ -114,6 +115,9 @@ app.use((req, _res, next) => {
 app.get("/api/health", (_req, res) => res.json({ ok: true, publicUrl: process.env.APP_PUBLIC_URL ?? "(non défini)" }));
 
 app.use("/api/auth", authLimiter, authRouter);
+// Assurances Santé : dépôt des pièces après validation de la demande, puis
+// paiement — voir routes/santePieces.ts. Monté avant /api/public (préfixe plus long).
+app.use("/api/public/sante", publicLimiter, santePiecesRouter);
 app.use("/api/public", publicLimiter, publicRouter);
 // Simulation + souscription IMF publiques, sans compte, rattachées à l'agent
 // dont le lien/QR a été scanné — voir routes/imf.ts::publicImfRouter.

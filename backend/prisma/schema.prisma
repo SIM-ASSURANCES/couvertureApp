@@ -821,6 +821,12 @@ model Souscription {
   validationAt         DateTime?
   validationParAdminId String?
   validationMotif      String?
+  // Assurances Santé (2026-10-15) : jeton secret du lien SMS envoyé à la
+  // validation, qui mène à la page où le souscripteur dépose ses pièces (CNI
+  // recto-verso + photo pour les adultes, extrait de naissance + photo pour
+  // les enfants) avant de payer. `null` hors Santé ou avant validation.
+  tokenPiecesSante     String?            @unique
+  piecesSante          PieceSante[]
 
   // Index ajoutés (2026-09-04) pour le Tableau de bord et la page Contrats
   // admin — ces requêtes filtrent quasi systématiquement par produitId/
@@ -911,6 +917,25 @@ model CompteurFacture {
 model CompteurIdentifiant {
   portee  String @id
   dernier Int    @default(0)
+}
+
+// Pièces déposées par le souscripteur d'une demande d'Assurance Santé validée
+// (2026-10-15) : une ligne par pièce et par personne assurée. `personneIndex` 0
+// = assuré principal, 1 = conjoint, puis les enfants (même ordre que le
+// questionnaire médical). `type` : cni_recto, cni_verso, photo (adultes) ;
+// extrait_naissance, photo (enfants). `url` = data URL de l'image — jamais
+// renvoyée par une liste (voir services/allegement.ts).
+model PieceSante {
+  id             String       @id @default(uuid())
+  souscriptionId String
+  souscription   Souscription @relation(fields: [souscriptionId], references: [id], onDelete: Cascade)
+  personneIndex  Int
+  type           String
+  url            String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([souscriptionId, personneIndex, type])
 }
 
 model Document {

@@ -17,6 +17,8 @@ const Souscription = lazy(() => import("./pages/public/Souscription"));
 const SouscriptionComplement = lazy(() => import("./pages/public/SouscriptionComplement"));
 const SimulationImfPublique = lazy(() => import("./pages/public/SimulationImf"));
 const Devis = lazy(() => import("./pages/public/Devis"));
+// Assurances Santé : dépôt des pièces (lien SMS de validation) puis paiement.
+const SantePieces = lazy(() => import("./pages/public/SantePieces"));
 const ClientLogin = lazy(() => import("./pages/client/Login"));
 const ClientDashboard = lazy(() => import("./pages/client/Dashboard"));
 const AgentDistributionLogin = lazy(() => import("./pages/agent-distribution/Login"));
@@ -192,6 +194,7 @@ export default function App() {
             </Route>
 
             <Route path="/souscription/:token" element={<Souscription />} />
+            <Route path="/sante/pieces/:token" element={<SantePieces />} />
             <Route path="/s/:produit/complement/:token" element={<SouscriptionComplement />} />
             <Route path="/s/:produit/:token" element={<Souscription />} />
             <Route path="/devis/:token/retour" element={<Devis />} />

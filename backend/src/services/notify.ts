@@ -230,6 +230,22 @@ export function messageDemandeSanteValidee(prenom: string, produit: string, mont
   return `SIM Assurances : ${prenom}, votre demande ${produit} est validée. Payez ${montant} FCFA par Wave : ${lienPaiement}`;
 }
 
+/**
+ * Assurances Santé — demande validée (2026-10-15) : le lien ouvre la page où le
+ * souscripteur dépose ses pièces (CNI recto-verso + photo pour les adultes,
+ * extrait de naissance + photo pour les enfants). Le bouton de paiement n'y
+ * apparaît qu'une fois toutes les pièces déposées ; le montant exact est
+ * rappelé ici.
+ */
+export function messageDemandeSantePieces(prenom: string, produit: string, montant: number, lien: string) {
+  // Court à dessein : chaque tranche de 160 caractères est un SMS facturé.
+  return (
+    `SIM Assurances : ${prenom}, demande ${produit} validée. ` +
+    `Envoyez vos documents (adultes : CNI recto-verso + photo ; enfants : extrait de naissance + photo) ` +
+    `puis payez ${montant} FCFA : ${lien}`
+  );
+}
+
 /** Assurances Santé — demande refusée par un admin. */
 export function messageDemandeSanteRefusee(prenom: string, produit: string) {
   return `SIM Assurances : ${prenom}, votre demande ${produit} n'a pas pu être acceptée. Contactez SIM Assurances pour plus d'informations.`;

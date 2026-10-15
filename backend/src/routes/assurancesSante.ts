@@ -1,88 +1,141 @@
 import { Router } from "express";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
 import { type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
-import { initiateWavePayment, sendSMS, messageDemandeSanteValidee, messageDemandeSanteRefusee } from "../services/notify.js";
-import { confirmerEcheance } from "../services/paiementWave.js";
-import { SANS_IMAGES_GENERIQUE } from "../services/allegement.js";
+import { sendSMS, messageDemandeSantePieces, messageDemandeSanteRefusee } from "../services/notify.js";
+import { SANS_LOURD_GENERIQUE, avecDonneesAllegees } from "../services/allegement.js";
+import { htmlToPdf } from "../services/pdf.js";
+import { renderBulletinSanteHtml } from "../services/questionnaireSanteHtml.js";
 import {
   COMPOSITION_SANTE,
+  LIBELLES_PIECES_SANTE,
   PRODUITS_SANTE,
+  QUESTIONNAIRE_SANTE,
   VALIDATION_SANTE,
   estProduitSante,
+  libellesPersonnesSante,
   lireFicheSante,
   lirePersonnesAssureesSante,
+  lireQuestionnaireSante,
+  personnesPiecesSante,
+  piecesCompletes,
   tauxPriseEnChargeDuTarif,
 } from "../services/assurancesSante.js";
 
 /**
  * Demandes d'Assurances Santé (Solo, Duo, Famille) — le client ne paie pas à
- * la souscription : il dépose une demande, qu'un admin valide ou refuse ici.
- * La validation crée le lien de paiement Wave et l'envoie par SMS avec le
- * montant exact ; le contrat s'active au paiement (services/paiementWave.ts),
- * comme pour tout autre produit. Monté sous /api/assurances-sante, réservé aux
- * admins de la branche (voir index.ts).
+ * la souscription : il dépose une demande (fiches des personnes assurées +
+ * questionnaire médical de chacune), qu'un admin valide ou refuse ici.
+ *
+ * Circuit (2026-10-15) : l'admin valide → SMS avec le lien de la page de dépôt
+ * des pièces (CNI recto-verso + photo pour les adultes, extrait de naissance +
+ * photo pour les enfants) → quand tout est déposé, le client voit le bouton
+ * « Payer » (montant exact) → le contrat s'active au paiement
+ * (services/paiementWave.ts), comme pour tout autre produit. Voir
+ * routes/santePieces.ts pour la partie publique. Monté sous
+ * /api/assurances-sante, réservé aux admins de la branche (voir index.ts).
  */
 export const assurancesSanteRouter = Router();
 
-const ETATS = ["a_valider", "a_payer", "refusees"] as const;
+const ETATS = ["a_valider", "pieces", "a_payer", "refusees"] as const;
 type Etat = (typeof ETATS)[number];
 
-function filtreEtat(etat: Etat) {
-  if (etat === "a_payer") return { validationStatut: VALIDATION_SANTE.VALIDEE, waveStatut: { not: "confirme" as const } };
-  if (etat === "refusees") return { validationStatut: VALIDATION_SANTE.REFUSEE };
-  return { validationStatut: VALIDATION_SANTE.EN_ATTENTE };
+const PRODUIT_SANTE = { produit: { code: { in: [...PRODUITS_SANTE] } } };
+
+const INCLUDE_LISTE = {
+  produit: { select: { code: true, libelle: true } },
+  partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+  agentDistribution: { select: { nom: true } },
+  piecesSante: { select: { personneIndex: true, type: true } },
+} as const;
+
+type LigneDemande = Awaited<ReturnType<typeof chargerLignes>>[number];
+
+/** Lignes d'une liste, sans photo ni signature (relues à la demande) — le JSON `donneesSpecifiques` est allégé par la base. */
+async function chargerLignes(where: object, orderBy: "asc" | "desc", take = 300) {
+  const rows = await prisma.souscription.findMany({
+    where: { ...PRODUIT_SANTE, ...where },
+    omit: SANS_LOURD_GENERIQUE,
+    include: INCLUDE_LISTE,
+    orderBy: { createdAt: orderBy },
+    take,
+  });
+  return avecDonneesAllegees(rows);
 }
 
-/** Demandes par état : à valider (défaut), validées en attente de paiement, refusées. Les demandes payées sont des contrats (page Contrats). */
+function piecesDe(s: LigneDemande) {
+  const personnes = personnesPiecesSante(s.nom ?? "", lirePersonnesAssureesSante(s.donneesSpecifiques));
+  const deposees = new Set(s.piecesSante.map((p) => `${p.personneIndex}:${p.type}`));
+  return {
+    complet: piecesCompletes(personnes, s.piecesSante),
+    personnes: personnes.map((p) => ({
+      index: p.index,
+      intitule: p.intitule,
+      nomComplet: p.nomComplet,
+      pieces: p.pieces.map((type) => ({ type, libelle: LIBELLES_PIECES_SANTE[type], deposee: deposees.has(`${p.index}:${type}`) })),
+    })),
+  };
+}
+
+function serialiser(s: LigneDemande) {
+  const personnes = lirePersonnesAssureesSante(s.donneesSpecifiques);
+  return {
+    id: s.id,
+    createdAt: s.createdAt,
+    produitCode: s.produit.code,
+    produitLibelle: s.produit.libelle,
+    description: estProduitSante(s.produit.code) ? COMPOSITION_SANTE[s.produit.code].description : "",
+    tauxPriseEnCharge: tauxPriseEnChargeDuTarif(s.donneesSpecifiques),
+    montant: s.montantPrime,
+    nom: s.nom,
+    prenom: s.prenom,
+    telephone: s.telephone,
+    email: s.email,
+    sexe: s.sexe,
+    dateNaissance: s.dateNaissance,
+    // Fiche de l'assuré principal (dont ses données de santé), personnes
+    // couvertes et questionnaire médical : c'est ce que l'admin examine pour
+    // valider. Route réservée aux admins — jamais renvoyé au public.
+    ficheSante: lireFicheSante(s.donneesSpecifiques),
+    personnesAssurees: personnes,
+    intitulesPersonnes: libellesPersonnesSante(personnes),
+    questionnaire: lireQuestionnaireSante(s.donneesSpecifiques),
+    pieces: piecesDe(s),
+    partenaire: s.partenaire.nomResponsable || s.partenaire.nomCommerce,
+    agent: s.agentDistribution?.nom ?? null,
+    validationStatut: s.validationStatut,
+    validationAt: s.validationAt,
+    validationMotif: s.validationMotif,
+  };
+}
+
+/**
+ * Demandes par état : à valider (défaut), validées en attente de pièces,
+ * pièces reçues en attente de paiement, refusées. Les demandes payées sont des
+ * contrats (page Contrats). `questionnaireSpec` : les questions telles que
+ * posées au souscripteur, pour afficher les réponses sans les dupliquer ici.
+ */
 assurancesSanteRouter.get(
   "/demandes",
   asyncHandler(async (req, res) => {
     const etat: Etat = (ETATS as readonly string[]).includes(String(req.query.etat)) ? (req.query.etat as Etat) : "a_valider";
-    const [rows, compteurs] = await Promise.all([
-      prisma.souscription.findMany({
-        where: { produit: { code: { in: [...PRODUITS_SANTE] } }, ...filtreEtat(etat) },
-        omit: SANS_IMAGES_GENERIQUE,
-        include: {
-          produit: { select: { code: true, libelle: true } },
-          partenaire: { select: { nomCommerce: true, nomResponsable: true } },
-          agentDistribution: { select: { nom: true } },
-        },
-        orderBy: { createdAt: etat === "a_valider" ? "asc" : "desc" },
-        take: 300,
-      }),
-      Promise.all(
-        ETATS.map((e) => prisma.souscription.count({ where: { produit: { code: { in: [...PRODUITS_SANTE] } }, ...filtreEtat(e) } }))
-      ),
+
+    const [aValider, refusees, valideesNonPayees] = await Promise.all([
+      chargerLignes({ validationStatut: VALIDATION_SANTE.EN_ATTENTE }, "asc"),
+      chargerLignes({ validationStatut: VALIDATION_SANTE.REFUSEE }, "desc"),
+      chargerLignes({ validationStatut: VALIDATION_SANTE.VALIDEE, waveStatut: { not: "confirme" } }, "desc"),
     ]);
+    const aPayer = valideesNonPayees.filter((s) => piecesDe(s).complet);
+    const pieces = valideesNonPayees.filter((s) => !piecesDe(s).complet);
+    const parEtat: Record<Etat, LigneDemande[]> = { a_valider: aValider, pieces, a_payer: aPayer, refusees };
+
     res.json({
-      compteurs: Object.fromEntries(ETATS.map((e, i) => [e, compteurs[i]])),
-      demandes: rows.map((s) => ({
-        id: s.id,
-        createdAt: s.createdAt,
-        produitCode: s.produit.code,
-        produitLibelle: s.produit.libelle,
-        description: estProduitSante(s.produit.code) ? COMPOSITION_SANTE[s.produit.code].description : "",
-        tauxPriseEnCharge: tauxPriseEnChargeDuTarif(s.donneesSpecifiques),
-        montant: s.montantPrime,
-        nom: s.nom,
-        prenom: s.prenom,
-        telephone: s.telephone,
-        email: s.email,
-        sexe: s.sexe,
-        dateNaissance: s.dateNaissance,
-        // Fiche de l'assuré principal (dont ses données de santé) : c'est ce
-        // que l'admin examine pour valider. Route réservée aux admins.
-        ficheSante: lireFicheSante(s.donneesSpecifiques),
-        personnesAssurees: lirePersonnesAssureesSante(s.donneesSpecifiques),
-        partenaire: s.partenaire.nomResponsable || s.partenaire.nomCommerce,
-        agent: s.agentDistribution?.nom ?? null,
-        validationStatut: s.validationStatut,
-        validationAt: s.validationAt,
-        validationMotif: s.validationMotif,
-      })),
+      compteurs: Object.fromEntries(ETATS.map((e) => [e, parEtat[e].length])),
+      questionnaireSpec: QUESTIONNAIRE_SANTE,
+      demandes: parEtat[etat].map(serialiser),
     });
   })
 );
@@ -91,6 +144,7 @@ assurancesSanteRouter.get(
 async function chargerDemande(id: string) {
   const s = await prisma.souscription.findUnique({
     where: { id },
+    omit: { pieceIdentiteUrl: true },
     include: { produit: { select: { code: true, libelle: true, sousBranche: true } } },
   });
   if (!s || !estProduitSante(s.produit.code) || !s.validationStatut) return null;
@@ -98,11 +152,11 @@ async function chargerDemande(id: string) {
 }
 
 /**
- * Valide une demande : crée le lien de paiement Wave et l'envoie par SMS avec
- * le montant exact. Rejouable tant que le client n'a pas payé — un lien Wave
- * expire, « renvoyer le lien » en crée un neuf. Sans clé Wave (poste de
- * développement), le paiement est confirmé aussitôt, comme partout ailleurs
- * dans l'application en mode test.
+ * Valide une demande : l'envoi du SMS avec le lien de la page de dépôt des
+ * pièces, et le montant exact à payer ensuite. Aucun paiement n'est créé ici :
+ * le lien Wave naît quand le souscripteur a déposé toutes ses pièces et clique
+ * sur « Payer » (routes/santePieces.ts). Rejouable tant que le client n'a pas
+ * payé — « renvoyer le lien » renvoie le même lien (le jeton ne change pas).
  */
 assurancesSanteRouter.post(
   "/demandes/:id/valider",
@@ -121,55 +175,24 @@ assurancesSanteRouter.post(
     });
     if (!echeance) return res.status(400).json({ error: "Aucun paiement à régler pour cette demande." });
 
-    // Lien de retour après paiement : le QR d'origine, mémorisé à la demande —
-    // à défaut, un QR du partenaire capable de servir ce produit (même
-    // résolution que routes/public.ts::resoudreQrCodeGenerique).
-    const qrToken =
-      (s.donneesSpecifiques as { qrToken?: string } | null)?.qrToken ??
-      (
-        await prisma.qrCode.findFirst({
-          where: {
-            partenaireId: s.partenaireId,
-            OR: [
-              { produitId: s.produitId },
-              ...(s.produit.sousBranche ? [{ produitId: null, sousBranche: s.produit.sousBranche }] : []),
-              { produitId: null, sousBranche: null },
-            ],
-          },
-          select: { token: true },
-        })
-      )?.token;
-    if (!qrToken) return res.status(400).json({ error: "QR introuvable pour ce partenaire/produit." });
+    const token = s.tokenPiecesSante ?? randomBytes(24).toString("hex");
+    await prisma.souscription.update({
+      where: { id: s.id },
+      data: {
+        validationStatut: VALIDATION_SANTE.VALIDEE,
+        validationAt: renvoi ? undefined : new Date(),
+        validationParAdminId: req.user!.sub,
+        validationMotif: null,
+        tokenPiecesSante: token,
+        relanceCount: renvoi ? { increment: 1 } : undefined,
+      },
+    });
 
     const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
-    const successUrl = `${appUrl}/s/${s.produit.code}/${qrToken}?paid=${echeance.id}`;
-    const errorUrl = `${appUrl}/s/${s.produit.code}/${qrToken}?paiement=echec`;
-
-    // Le lien Wave est créé AVANT de marquer la demande validée : si Wave
-    // échoue, la demande reste à valider et l'admin voit l'erreur.
-    const modeTest = !process.env.WAVE_API_KEY;
-    const wave = modeTest ? null : await initiateWavePayment(echeance.montant, echeance.id, successUrl, errorUrl);
-    const transactionId = wave?.transactionId ?? `STUB-${echeance.id.slice(0, 8)}`;
-
-    await prisma.$transaction([
-      prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } }),
-      prisma.souscription.update({
-        where: { id: s.id },
-        data: {
-          validationStatut: VALIDATION_SANTE.VALIDEE,
-          validationAt: new Date(),
-          validationParAdminId: req.user!.sub,
-          validationMotif: null,
-          relanceCount: renvoi ? { increment: 1 } : undefined,
-        },
-      }),
-    ]);
-
     await sendSMS(
       s.telephone,
-      messageDemandeSanteValidee(s.prenom || s.nom || "", s.produit.libelle, echeance.montant, wave?.checkoutUrl ?? successUrl)
+      messageDemandeSantePieces(s.prenom || s.nom || "", s.produit.libelle, echeance.montant, `${appUrl}/sante/pieces/${token}`)
     );
-    if (modeTest) await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
 
     await logAction({
       adminId: req.user!.sub,
@@ -201,6 +224,8 @@ assurancesSanteRouter.post(
         validationAt: new Date(),
         validationParAdminId: req.user!.sub,
         validationMotif: motif || null,
+        // Le lien de dépôt de pièces déjà envoyé cesse de fonctionner.
+        tokenPiecesSante: null,
       },
     });
     await sendSMS(s.telephone, messageDemandeSanteRefusee(s.prenom || s.nom || "", s.produit.libelle));
@@ -212,5 +237,78 @@ assurancesSanteRouter.post(
       valeurApres: { validationStatut: VALIDATION_SANTE.REFUSEE, motif: motif || null },
     });
     res.json({ ok: true });
+  })
+);
+
+/**
+ * Bulletin d'adhésion + questionnaire médical rempli (PDF), fidèle au bulletin
+ * fourni par SIM Assurances : informations du souscripteur, personnes
+ * couvertes, réponses de chacune et signature. Lu en base à chaque appel.
+ */
+assurancesSanteRouter.get(
+  "/demandes/:id/questionnaire.pdf",
+  asyncHandler(async (req, res) => {
+    const s = await prisma.souscription.findUnique({
+      where: { id: req.params.id },
+      omit: { pieceIdentiteUrl: true },
+      include: {
+        produit: { select: { code: true, libelle: true } },
+        partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+      },
+    });
+    if (!s || !estProduitSante(s.produit.code)) return res.status(404).json({ error: "Demande introuvable." });
+
+    const fiche = lireFicheSante(s.donneesSpecifiques);
+    const signature = (s.donneesSpecifiques as { signature?: unknown } | null)?.signature;
+    const html = renderBulletinSanteHtml({
+      numeroDemande: s.id,
+      dateDemande: s.createdAt,
+      produit: s.produit.libelle,
+      description: COMPOSITION_SANTE[s.produit.code].description,
+      tauxPriseEnCharge: tauxPriseEnChargeDuTarif(s.donneesSpecifiques),
+      montant: s.montantPrime,
+      apporteur: s.partenaire.nomResponsable || s.partenaire.nomCommerce,
+      souscripteur: {
+        nomComplet: s.nom ?? "",
+        telephone: s.telephone,
+        email: s.email,
+        sexe: s.sexe,
+        dateNaissance: s.dateNaissance,
+        profession: fiche?.profession ?? null,
+        lieuResidence: fiche?.lieuResidence ?? null,
+        numeroCmu: fiche?.numeroCmu ?? null,
+      },
+      personnes: lirePersonnesAssureesSante(s.donneesSpecifiques),
+      questionnaire: lireQuestionnaireSante(s.donneesSpecifiques),
+      signature: typeof signature === "string" && /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/.test(signature) ? signature : null,
+    });
+    const pdf = await htmlToPdf(html);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="bulletin-sante-${s.id.slice(0, 8)}.pdf"`);
+    res.send(pdf);
+  })
+);
+
+/** Pièces déposées par le souscripteur (images), lues à la demande — jamais dans les listes. */
+assurancesSanteRouter.get(
+  "/demandes/:id/pieces",
+  asyncHandler(async (req, res) => {
+    const s = await chargerDemande(req.params.id);
+    if (!s) return res.status(404).json({ error: "Demande introuvable." });
+    const pieces = await prisma.pieceSante.findMany({
+      where: { souscriptionId: s.id },
+      orderBy: [{ personneIndex: "asc" }, { createdAt: "asc" }],
+    });
+    const personnes = personnesPiecesSante(s.nom ?? "", lirePersonnesAssureesSante(s.donneesSpecifiques));
+    res.json(
+      pieces.map((p) => ({
+        personneIndex: p.personneIndex,
+        intitule: personnes.find((x) => x.index === p.personneIndex)?.intitule ?? `Personne ${p.personneIndex + 1}`,
+        nomComplet: personnes.find((x) => x.index === p.personneIndex)?.nomComplet ?? "",
+        type: p.type,
+        libelle: LIBELLES_PIECES_SANTE[p.type as keyof typeof LIBELLES_PIECES_SANTE] ?? p.type,
+        url: p.url,
+      }))
+    );
   })
 );

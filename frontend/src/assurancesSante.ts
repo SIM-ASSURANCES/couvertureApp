@@ -166,12 +166,21 @@ export function ficheSanteDepuisSaisie(s: SaisieFicheSante): FicheSante | null {
   };
 }
 
+export type SexeSante = "masculin" | "feminin";
+
 export interface PersonneAssureeSante {
   lien: "conjoint" | "enfant";
   nom: string;
   prenom: string;
   /** AAAA-MM-JJ */
   dateNaissance: string;
+  // Fiche complète d'après le bulletin d'adhésion du 2026-10-15 (facultatifs
+  // ici : les demandes antérieures n'en ont pas).
+  sexe?: SexeSante;
+  lieuResidence?: string;
+  profession?: string;
+  numeroCmu?: string;
+  telephone?: string;
 }
 
 /** Saisie en cours d'une personne couverte (formulaire de souscription). */
@@ -179,12 +188,34 @@ export interface SaisiePersonneSante {
   nom: string;
   prenom: string;
   dateNaissance: string;
+  sexe: SexeSante | "";
+  lieuResidence: string;
+  profession: string;
+  numeroCmu: string;
+  telephone: string;
 }
 
-export const SAISIE_PERSONNE_SANTE_VIDE: SaisiePersonneSante = { nom: "", prenom: "", dateNaissance: "" };
+export const SAISIE_PERSONNE_SANTE_VIDE: SaisiePersonneSante = {
+  nom: "",
+  prenom: "",
+  dateNaissance: "",
+  sexe: "",
+  lieuResidence: "",
+  profession: "",
+  numeroCmu: "",
+  telephone: "",
+};
 
-function saisieComplete(p: SaisiePersonneSante): boolean {
-  return !!p.nom.trim() && !!p.prenom.trim() && !!p.dateNaissance;
+/** Sexe, lieu de résidence et date de naissance pour tous ; profession en plus pour le conjoint (facultative pour un enfant). */
+function saisieComplete(p: SaisiePersonneSante, lien: PersonneAssureeSante["lien"]): boolean {
+  return (
+    !!p.nom.trim() &&
+    !!p.prenom.trim() &&
+    !!p.dateNaissance &&
+    !!p.sexe &&
+    p.lieuResidence.trim().length >= 2 &&
+    (lien === "enfant" || p.profession.trim().length >= 2)
+  );
 }
 
 /**
@@ -200,17 +231,86 @@ export function personnesAssureesSante(
   const conjointDeclare = regle.conjoint === "requis";
   const enfants = saisie.enfants.slice(0, regle.enfantsMax);
 
-  if (conjointDeclare && !saisieComplete(saisie.conjoint)) return null;
-  if (enfants.some((e) => !saisieComplete(e))) return null;
+  if (conjointDeclare && !saisieComplete(saisie.conjoint, "conjoint")) return null;
+  if (enfants.some((e) => !saisieComplete(e, "enfant"))) return null;
 
   const nettoyer = (lien: PersonneAssureeSante["lien"], p: SaisiePersonneSante): PersonneAssureeSante => ({
     lien,
     nom: p.nom.trim(),
     prenom: p.prenom.trim(),
     dateNaissance: p.dateNaissance,
+    ...(p.sexe ? { sexe: p.sexe } : {}),
+    lieuResidence: p.lieuResidence.trim(),
+    ...(p.profession.trim() ? { profession: p.profession.trim() } : {}),
+    ...(p.numeroCmu.trim() ? { numeroCmu: p.numeroCmu.trim() } : {}),
+    // Téléphone facultatif : envoyé seulement s'il est complet (+225 et 10 chiffres).
+    ...(p.telephone.replace(/\D/g, "").length >= 13 ? { telephone: p.telephone.trim() } : {}),
   });
   return [
     ...(conjointDeclare ? [nettoyer("conjoint", saisie.conjoint)] : []),
     ...enfants.map((e) => nettoyer("enfant", e)),
   ];
+}
+
+// ── Questionnaire médical (bulletin d'adhésion du 2026-10-15) ────────────────
+// Les questions elles-mêmes viennent du serveur (GET /public/sante/questionnaire,
+// source unique : backend/src/services/assurancesSante.ts) — ce fichier n'en
+// garde que les types et le contrôle de complétude, miroir de
+// verifierQuestionnaireSante côté serveur (qui reste l'arbitre).
+
+export type TypeQuestionSante = "oui_non" | "texte" | "nombre";
+
+export interface QuestionSante {
+  cle: string;
+  libelle: string;
+  type: TypeQuestionSante;
+  /** Question réservée à un sexe : non posée aux autres personnes. */
+  sexe?: SexeSante;
+  /** Demandée seulement si cette question oui/non est « oui » (et alors obligatoire). */
+  siOui?: string;
+}
+
+export interface RubriqueSante {
+  numero: number;
+  titre: string;
+  questions: QuestionSante[];
+}
+
+/** Réponses d'une personne : booléen pour une question oui/non, texte sinon. */
+export type ReponsesSante = Record<string, boolean | string>;
+
+/** Questions à poser à une personne selon son sexe, dans l'ordre du bulletin. */
+export function questionsApplicables(rubriques: RubriqueSante[], sexe: string | null | undefined): QuestionSante[] {
+  return rubriques.flatMap((r) => r.questions).filter((q) => !q.sexe || q.sexe === sexe);
+}
+
+/** Question visible : sans condition, ou dont la question « oui/non » mère a reçu « oui ». */
+export function questionDeclenchee(q: QuestionSante, reponses: ReponsesSante): boolean {
+  return !q.siOui || reponses[q.siOui] === true;
+}
+
+/** Première question obligatoire restée sans réponse valide, ou `null` si la personne a tout renseigné. */
+export function premiereQuestionManquante(
+  rubriques: RubriqueSante[],
+  sexe: string | null | undefined,
+  reponses: ReponsesSante
+): QuestionSante | null {
+  for (const q of questionsApplicables(rubriques, sexe)) {
+    if (!questionDeclenchee(q, reponses)) continue;
+    const v = reponses[q.cle];
+    if (q.type === "oui_non" && typeof v !== "boolean") return q;
+    if (q.type === "nombre") {
+      const n = typeof v === "string" ? Number(v.replace(",", ".")) : NaN;
+      if (!Number.isInteger(n) || n < 1 || n > 9) return q;
+    }
+    // Texte libre : obligatoire seulement quand il précise un « oui ».
+    if (q.type === "texte" && q.siOui && (typeof v !== "string" || v.trim().length < 2)) return q;
+  }
+  return null;
+}
+
+/** Intitulé de chaque personne couverte, assuré principal en tête (même ordre que le serveur). */
+export function libellesPersonnesSante(personnes: { lien: "conjoint" | "enfant" }[]): string[] {
+  let enfant = 0;
+  return ["Assuré principal", ...personnes.map((p) => (p.lien === "conjoint" ? "Conjoint(e)" : `Enfant ${++enfant}`))];
 }

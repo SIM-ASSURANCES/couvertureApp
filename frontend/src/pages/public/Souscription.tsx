@@ -30,13 +30,18 @@ import {
   ficheSanteDepuisSaisie,
   libelleGroupeSanguin,
   libelleSituationMatrimoniale,
+  libellesPersonnesSante,
   personnesAssureesSante,
+  premiereQuestionManquante,
   tensionArterielleValide,
   type PersonneAssureeSante,
   type ProduitSante,
+  type ReponsesSante,
+  type RubriqueSante,
   type SaisieFicheSante,
   type SaisiePersonneSante,
 } from "../../assurancesSante";
+import QuestionnaireSante from "../../components/QuestionnaireSante";
 import { telechargerCarte } from "../../carte";
 import { telechargerFacture } from "../../facture";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
@@ -339,6 +344,9 @@ type Step =
   // Assurances Santé : demande déposée, en attente de validation par un admin
   // (aucun paiement à ce stade — le lien Wave arrivera par SMS).
   | "sante-demande"
+  // Assurances Santé : questionnaire médical de chaque personne assurée, page
+  // qui suit les informations personnelles (2026-10-15).
+  | "sante-questionnaire"
   | "success"
   | "error";
 
@@ -1724,15 +1732,40 @@ function FormuleSanteCard({
 /** Fiche d'une personne couverte en plus du souscripteur (conjoint ou enfant). */
 function PersonneSanteFields({
   titre,
+  conjoint,
+  lieuSouscripteur,
   valeur,
   onChange,
   onRetirer,
 }: {
   titre: string;
+  /** Conjoint : profession obligatoire et téléphone demandé (bulletin d'adhésion) ; enfant : profession facultative. */
+  conjoint?: boolean;
+  /** Lieu de résidence du souscripteur, proposé en un clic. */
+  lieuSouscripteur?: string;
   valeur: SaisiePersonneSante;
   onChange: (v: SaisiePersonneSante) => void;
   onRetirer?: () => void;
 }) {
+  const boutonSexe = (v: "masculin" | "feminin", libelle: string) => (
+    <button
+      type="button"
+      onClick={() => onChange({ ...valeur, sexe: v })}
+      style={{
+        flex: 1,
+        height: 44,
+        borderRadius: 10,
+        border: valeur.sexe === v ? "1.5px solid #004b9c" : "1.5px solid #dde3ec",
+        background: valeur.sexe === v ? "#e6f1fb" : "#fff",
+        color: valeur.sexe === v ? "#004b9c" : "#5b6b80",
+        fontWeight: 700,
+        fontSize: 14,
+        cursor: "pointer",
+      }}
+    >
+      {libelle}
+    </button>
+  );
   return (
     <div
       style={{
@@ -1763,6 +1796,45 @@ function PersonneSanteFields({
       <FieldRow label="Date de naissance *">
         <DateNaissanceInput value={valeur.dateNaissance} onChange={(v) => onChange({ ...valeur, dateNaissance: v })} />
       </FieldRow>
+      <FieldRow label="Sexe *">
+        <div style={{ display: "flex", gap: 8 }}>
+          {boutonSexe("masculin", "♂ Masculin")}
+          {boutonSexe("feminin", "♀ Féminin")}
+        </div>
+      </FieldRow>
+      <FieldRow label="Lieu de résidence *">
+        <input
+          value={valeur.lieuResidence}
+          onChange={(e) => onChange({ ...valeur, lieuResidence: e.target.value })}
+          placeholder="Ex : Cocody Riviera 3, Abidjan"
+          style={inputStyle}
+        />
+        {lieuSouscripteur && lieuSouscripteur.trim().length >= 2 && valeur.lieuResidence !== lieuSouscripteur && (
+          <button
+            type="button"
+            onClick={() => onChange({ ...valeur, lieuResidence: lieuSouscripteur })}
+            style={{ background: "none", border: "none", padding: 0, marginTop: 5, color: "#004b9c", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}
+          >
+            Même lieu de résidence que le souscripteur
+          </button>
+        )}
+      </FieldRow>
+      <FieldRow label={conjoint ? "Profession *" : "Profession (facultatif — ex : élève, étudiant)"}>
+        <input
+          value={valeur.profession}
+          onChange={(e) => onChange({ ...valeur, profession: e.target.value })}
+          placeholder={conjoint ? "Ex : Commerçante, Enseignant…" : "Ex : Élève"}
+          style={inputStyle}
+        />
+      </FieldRow>
+      <FieldRow label="N° CMU (optionnel)">
+        <input value={valeur.numeroCmu} onChange={(e) => onChange({ ...valeur, numeroCmu: e.target.value })} placeholder="Ex : CMU123456789" style={inputStyle} />
+      </FieldRow>
+      {conjoint && (
+        <FieldRow label="Téléphone mobile (optionnel)">
+          <PhoneInput value={valeur.telephone || PHONE_PREFIX} onChange={(v) => onChange({ ...valeur, telephone: v === PHONE_PREFIX ? "" : v })} />
+        </FieldRow>
+      )}
     </div>
   );
 }
@@ -1787,7 +1859,6 @@ function AssuranceSanteForm({
   setConjoint,
   enfants,
   setEnfants,
-  sigRef,
 }: {
   produit: ProduitSante;
   /** « Nom complet » de l'assuré principal, enregistré tel quel. */
@@ -1805,7 +1876,6 @@ function AssuranceSanteForm({
   setConjoint: (v: SaisiePersonneSante) => void;
   enfants: SaisiePersonneSante[];
   setEnfants: (v: SaisiePersonneSante[]) => void;
-  sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
   const regle = COMPOSITION_SANTE[produit];
   const champ = (cle: keyof SaisieFicheSante) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -1913,12 +1983,13 @@ function AssuranceSanteForm({
               : "Vous, votre conjoint(e) et jusqu'à 3 enfants."}
           </div>
 
-          <PersonneSanteFields titre="Conjoint(e)" valeur={conjoint} onChange={setConjoint} />
+          <PersonneSanteFields titre="Conjoint(e)" conjoint lieuSouscripteur={fiche.lieuResidence} valeur={conjoint} onChange={setConjoint} />
 
           {enfants.map((enfant, i) => (
             <PersonneSanteFields
               key={i}
               titre={`Enfant ${i + 1}`}
+              lieuSouscripteur={fiche.lieuResidence}
               valeur={enfant}
               onChange={(v) => setEnfants(enfants.map((e, j) => (j === i ? v : e)))}
               onRetirer={() => setEnfants(enfants.filter((_, j) => j !== i))}
@@ -1946,8 +2017,6 @@ function AssuranceSanteForm({
           )}
         </>
       )}
-
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
   );
 }
@@ -2111,6 +2180,12 @@ export default function Souscription() {
   const [ficheSante, setFicheSante] = useState<SaisieFicheSante>(SAISIE_FICHE_SANTE_VIDE);
   const [conjointSante, setConjointSante] = useState<SaisiePersonneSante>(SAISIE_PERSONNE_SANTE_VIDE);
   const [enfantsSante, setEnfantsSante] = useState<SaisiePersonneSante[]>([]);
+  // Questionnaire médical (page qui suit les informations) : questions servies
+  // par le serveur, réponses de chaque personne assurée (assuré principal
+  // d'abord, puis conjoint, puis enfants) et mention « exact et sincère ».
+  const [rubriquesSante, setRubriquesSante] = useState<RubriqueSante[] | null>(null);
+  const [reponsesSante, setReponsesSante] = useState<ReponsesSante[]>([]);
+  const [declareSante, setDeclareSante] = useState(false);
 
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
@@ -2752,6 +2827,52 @@ export default function Souscription() {
     });
   }
 
+  /** Personnes à interroger sur leur santé : assuré principal, puis conjoint et enfants selon le produit. */
+  function personnesQuestionnaire(): { intitule: string; nom: string; sexe: string | null }[] {
+    if (!qrInfo || !estProduitSante(qrInfo.produit)) return [];
+    const regle = COMPOSITION_SANTE[qrInfo.produit];
+    const autres = [
+      ...(regle.conjoint === "requis" ? [{ lien: "conjoint" as const, s: conjointSante }] : []),
+      ...enfantsSante.slice(0, regle.enfantsMax).map((e) => ({ lien: "enfant" as const, s: e })),
+    ];
+    const intitules = libellesPersonnesSante(autres);
+    return [
+      { intitule: intitules[0], nom: nom.trim(), sexe: sexe || null },
+      ...autres.map((a, i) => ({ intitule: intitules[i + 1], nom: `${a.s.prenom} ${a.s.nom}`.trim(), sexe: a.s.sexe || null })),
+    ];
+  }
+
+  /** Vrai quand chaque personne assurée a répondu à toutes ses questions et que la mention « exact et sincère » est cochée. */
+  function questionnaireSanteComplet(): boolean {
+    if (!rubriquesSante || !declareSante) return false;
+    const personnes = personnesQuestionnaire();
+    return (
+      personnes.length > 0 &&
+      reponsesSante.length === personnes.length &&
+      personnes.every((p, i) => premiereQuestionManquante(rubriquesSante, p.sexe, reponsesSante[i] ?? {}) === null)
+    );
+  }
+
+  /** Page suivante du formulaire Santé : charge les questions (servies par le serveur) puis ouvre le questionnaire médical. */
+  async function ouvrirQuestionnaireSante() {
+    setErrorMsg("");
+    try {
+      let rubriques = rubriquesSante;
+      if (!rubriques) {
+        const res = await fetch(`${BASE}/public/sante/questionnaire`);
+        if (!res.ok) throw new Error("questionnaire indisponible");
+        rubriques = (await res.json()) as RubriqueSante[];
+        setRubriquesSante(rubriques);
+      }
+      const n = personnesQuestionnaire().length;
+      // Conserve les réponses déjà données si le souscripteur revient modifier ses informations.
+      setReponsesSante((precedentes) => Array.from({ length: n }, (_, i) => precedentes[i] ?? {}));
+      setStep("sante-questionnaire");
+    } catch {
+      setErrorMsg("Impossible de charger le questionnaire médical. Vérifiez votre connexion et réessayez.");
+    }
+  }
+
   /** Informations saisies, telles qu'elles seront enregistrées — écran de vérification. */
   function lignesRecapitulatif(): { label: string; valeur: string }[] {
     const p = qrInfo?.produit;
@@ -2812,6 +2933,10 @@ export default function Souscription() {
       l.push({ label: "Tension artérielle", valeur: ficheSante.tensionArterielle });
       l.push({ label: "Groupe sanguin", valeur: libelleGroupeSanguin(ficheSante.groupeSanguin) });
       l.push({ label: "Produit", valeur: `${COMPOSITION_SANTE[p].libelle} — ${COMPOSITION_SANTE[p].description}` });
+      l.push({
+        label: "Questionnaire médical",
+        valeur: `Renseigné pour ${personnesQuestionnaire().length} personne${personnesQuestionnaire().length > 1 ? "s" : ""} — déclaré exact et sincère`,
+      });
       l.push({ label: "Prise en charge", valeur: taux != null ? `${taux} %` : "—" });
       l.push({ label: "Durée du contrat", valeur: `${DUREE_CONTRAT_SANTE_MOIS} mois` });
       let numeroEnfant = 0;
@@ -2996,7 +3121,7 @@ export default function Souscription() {
     if ((isRelaxAccidentsFraisMedicaux(qrInfo.produit) || qrInfo.produit === "relaxvoyage") && !selectedFormule) return;
     if (isRelaxAccidentsGenerale(qrInfo.produit) && (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa)) return;
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
-    if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit) || !ficheSanteDepuisSaisie(ficheSante) || !sexe)) return;
+    if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit) || !ficheSanteDepuisSaisie(ficheSante) || !sexe || !questionnaireSanteComplet())) return;
     if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
@@ -3113,6 +3238,12 @@ export default function Souscription() {
             ficheSante: fiche,
             formule: selectedFormule,
             personnesAssurees,
+            // Questionnaire médical de chaque personne assurée (même ordre que
+            // le serveur : assuré principal, conjoint, enfants).
+            questionnaireSante: {
+              personnes: reponsesSante.map((reponses) => ({ reponses })),
+              declareExactEtSincere: true,
+            },
             signature,
           }),
         });
@@ -4326,7 +4457,6 @@ export default function Souscription() {
                   setConjoint={setConjointSante}
                   enfants={enfantsSante}
                   setEnfants={setEnfantsSante}
-                  sigRef={sigRef}
                 />
               ) : isSecurhomeIncendie(qrInfo?.produit) ? (
                 <SecurhomeIncendieForm
@@ -5040,6 +5170,12 @@ export default function Souscription() {
                     // re-signer (le pavé, remonté vierge, serait sinon lu
                     // comme "vide" et effacerait la signature d'origine).
                     onClick={() => {
+                      // Assurances Santé : la page suivante est le questionnaire
+                      // médical (la signature y est recueillie, après les réponses).
+                      if (estProduitSante(qrInfo?.produit)) {
+                        void ouvrirQuestionnaireSante();
+                        return;
+                      }
                       setErrorMsg("");
                       const nouvelleSignature = sigRef.current?.toDataURL() ?? null;
                       if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
@@ -5060,7 +5196,7 @@ export default function Souscription() {
                       opacity: bloque ? 0.5 : 1,
                     }}
                   >
-                    Vérifier mes informations →
+                    {estProduitSante(qrInfo?.produit) ? "Suivant : questionnaire médical →" : "Vérifier mes informations →"}
                   </button>
                 );
               })()}
@@ -5068,6 +5204,59 @@ export default function Souscription() {
           )}
 
           {/* ── VÉRIFICATION AVANT PAIEMENT ── */}
+          {/* ── ASSURANCES SANTÉ : QUESTIONNAIRE MÉDICAL (page suivante) ── */}
+          {step === "sante-questionnaire" && qrInfo && estProduitSante(qrInfo.produit) && rubriquesSante && (
+            <div>
+              <QuestionnaireSante
+                rubriques={rubriquesSante}
+                personnes={personnesQuestionnaire()}
+                reponses={reponsesSante}
+                setReponses={setReponsesSante}
+                declare={declareSante}
+                setDeclare={setDeclareSante}
+                sigRef={sigRef}
+              />
+              {errorMsg && <div style={{ color: "#dc2626", fontSize: 13, margin: "10px 0" }}>{errorMsg}</div>}
+              <button
+                onClick={() => {
+                  setErrorMsg("");
+                  // Signature capturée ici, tant que le pavé est monté (voir signatureCapturee).
+                  const nouvelleSignature = sigRef.current?.toDataURL() ?? null;
+                  if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
+                  setStep("confirm");
+                }}
+                disabled={!questionnaireSanteComplet()}
+                style={{
+                  marginTop: 8,
+                  width: "100%",
+                  padding: "13px 0",
+                  background: "#004b9c",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 12,
+                  fontWeight: 700,
+                  fontSize: 15,
+                  cursor: "pointer",
+                  opacity: questionnaireSanteComplet() ? 1 : 0.5,
+                }}
+              >
+                Vérifier mes informations →
+              </button>
+              <button
+                onClick={() => {
+                  setErrorMsg("");
+                  setStep("infos");
+                }}
+                style={{
+                  marginTop: 10, width: "100%", padding: "12px 0", background: "#fff", color: "#004b9c",
+                  border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
+                }}
+              >
+                ← Modifier mes informations
+              </button>
+            </div>
+          )}
+
           {step === "confirm" && qrInfo && (
             <div>
               <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Vérifiez vos informations</div>
@@ -5134,7 +5323,9 @@ export default function Souscription() {
                   }}
                 >
                   <strong>Vous ne payez pas maintenant.</strong> Votre demande est d'abord validée par SIM Assurances ;
-                  vous recevrez ensuite par SMS le lien de paiement Wave avec le montant exact.
+                  vous recevrez ensuite par SMS un lien pour télécharger vos documents (CNI recto-verso et photo pour les
+                  adultes, extrait de naissance et photo pour les enfants). Le paiement, au montant exact, se fait une fois
+                  les documents téléchargés.
                 </div>
               )}
 
@@ -5209,7 +5400,8 @@ export default function Souscription() {
               <button
                 onClick={() => {
                   setErrorMsg("");
-                  setStep("infos");
+                  // Santé : on revient au questionnaire (d'où l'on peut encore remonter aux informations).
+                  setStep(estProduitSante(qrInfo.produit) ? "sante-questionnaire" : "infos");
                 }}
                 disabled={submitting}
                 style={{
@@ -5218,7 +5410,7 @@ export default function Souscription() {
                   cursor: "pointer", opacity: submitting ? 0.5 : 1,
                 }}
               >
-                ← Modifier mes informations
+                {estProduitSante(qrInfo.produit) ? "← Modifier mes réponses" : "← Modifier mes informations"}
               </button>
             </div>
           )}
@@ -5405,7 +5597,11 @@ export default function Souscription() {
                 <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
                   <li>SIM Assurances étudie et valide votre demande.</li>
                   <li>
-                    Vous recevez un SMS au {telephone} avec le lien de paiement Wave
+                    Vous recevez un SMS au {telephone} avec un lien pour télécharger vos documents : CNI (recto et verso) et
+                    photo numérique pour les adultes, extrait de naissance et photo numérique pour les enfants.
+                  </li>
+                  <li>
+                    Quand tous les documents sont téléchargés, un bouton vous permet de payer votre prime
                     {result?.montant != null && (
                       <>
                         {" "}

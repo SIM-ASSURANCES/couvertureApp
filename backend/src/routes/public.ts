@@ -52,7 +52,11 @@ import {
   paiementBloqueParValidation,
   VALIDATION_SANTE,
   ficheSanteSchema,
-  ageRevolu,
+  questionnaireSanteSchema,
+  validerFichesPersonnesSante,
+  verifierQuestionnaireSante,
+  type ReponsesSante,
+ageRevolu,
   AGE_MIN_ASSURE_PRINCIPAL,
   AGE_MAX_ASSURE_PRINCIPAL,
   type PersonneAssureeSante,
@@ -1983,6 +1987,9 @@ const formuleSchema = z.object({
   // Assurances Santé uniquement — fiche de l'assuré principal (profession,
   // résidence, poids, taille, tension, groupe sanguin…) et email facultatif.
   ficheSante: ficheSanteSchema.optional(),
+  // Assurances Santé uniquement — questionnaire médical de chaque personne
+  // assurée (obligatoire : voir verifierQuestionnaireSante).
+  questionnaireSante: questionnaireSanteSchema.optional(),
   email: z.preprocess((v) => (v === "" || v == null ? undefined : v), z.string().trim().email().max(160).optional()),
   ...champsNovelia,
   ...moyenPaiementField,
@@ -2046,6 +2053,7 @@ publicRouter.post(
     if (!estProduitSante(code) && !data.prenom.trim()) {
       return res.status(400).json({ error: "Données invalides", details: [{ path: ["prenom"], message: "Required" }] });
     }
+    let questionnaireSanteVerifie: ReponsesSante[] = [];
     if (estProduitSante(code)) {
       if (!data.dateNaissance || data.dateNaissance > new Date()) {
         return res.status(400).json({ error: "Date de naissance du souscripteur manquante ou invalide." });
@@ -2061,6 +2069,19 @@ publicRouter.post(
       }
       const erreurPersonnes = validerPersonnesAssureesSante(code, data.personnesAssurees ?? []);
       if (erreurPersonnes) return res.status(400).json({ error: erreurPersonnes });
+      const erreurFiches = validerFichesPersonnesSante(data.personnesAssurees ?? []);
+      if (erreurFiches) return res.status(400).json({ error: erreurFiches });
+      // Questionnaire médical : une réponse à chaque question pour chaque
+      // personne assurée, sinon la demande n'est pas enregistrée. Les clients
+      // d'avant le 2026-10-15 (onglet resté ouvert, APK < 1.7) ne l'envoient pas.
+      if (!data.questionnaireSante) {
+        return res.status(400).json({
+          error: "Le questionnaire médical est obligatoire : rechargez ou mettez à jour l'application, puis répondez au questionnaire pour chaque personne assurée.",
+        });
+      }
+      const verification = verifierQuestionnaireSante(data.sexe, data.personnesAssurees ?? [], data.questionnaireSante);
+      if ("erreur" in verification) return res.status(400).json({ error: verification.erreur });
+      questionnaireSanteVerifie = verification.reponses;
     }
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
@@ -2190,6 +2211,14 @@ publicRouter.post(
                 // Fiche de l'assuré principal — données de santé, lues
                 // uniquement par l'admin qui valide la demande.
                 ficheSante: data.ficheSante,
+                // Questionnaire médical de chaque personne assurée (même ordre
+                // que `personnesAssurees`, assuré principal en tête), tel que
+                // répondu — relu seulement par l'admin (fiche + PDF).
+                questionnaireSante: {
+                  personnes: questionnaireSanteVerifie.map((reponses) => ({ reponses })),
+                  declareExactEtSincere: true,
+                  signeLe: new Date().toISOString(),
+                },
                 // QR d'origine, pour rebâtir le lien de retour de paiement à
                 // la validation (le client n'est plus devant le formulaire).
                 qrToken: data.qrToken,
