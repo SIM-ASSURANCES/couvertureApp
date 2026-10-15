@@ -266,7 +266,7 @@ partnerApiRouter.post(
         delaiAttente72h: delaiAttente,
         dateEstimee: debut.toISOString(),
         description: delaiAttente
-          ? "Prise d'effet 72h après confirmation du paiement (produits Accidents)."
+          ? "Prise d'effet 24h après confirmation du paiement (produits Accidents)."
           : "Prise d'effet immédiate à la confirmation du paiement.",
       },
       commissionApi: {

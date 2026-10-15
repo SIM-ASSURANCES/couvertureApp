@@ -21,7 +21,9 @@ const DELAI_GRACE_RENOUVELLEMENT_MS = 2 * 24 * 60 * 60 * 1000;
 // RelaxAccidents Frais Médicaux/générale et Accident historique. RelaxVoyage
 // (trajet ponctuel, couverture nécessairement immédiate) et les produits
 // Dommages (Incendie, SecurHome+, SecurPro) n'ont pas ce délai.
-const DELAI_ATTENTE_PRISE_EFFET_MS = 72 * 60 * 60 * 1000;
+// 72 h jusqu'au 2026-10-15, puis 24 h (décision de l'utilisateur : « la
+// souscription prend effet 24 heures après la souscription »).
+const DELAI_ATTENTE_PRISE_EFFET_MS = 24 * 60 * 60 * 1000;
 const PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE = new Set([
   "relaxmoto",
   "relaxauto",
@@ -34,12 +36,24 @@ const PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE = new Set([
 /**
  * Date de prise d'effet d'un contrat Accidents à sa PREMIÈRE activation
  * (jamais au renouvellement, qui prolonge une couverture déjà en cours sans
- * nouvelle attente) — décalée de 72h après la confirmation du paiement pour
+ * nouvelle attente) — décalée de 24h après la confirmation du paiement pour
  * les produits concernés (voir PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE),
  * immédiate sinon. Centralise la règle pour rester cohérente entre le
  * modèle générique (paiementWave.ts) et Accident historique (accident.ts).
+ *
+ * RelaxVoyage : aucun délai d'attente, la couverture suit la DATE DE DÉPART
+ * du voyage (`donneesSpecifiques.dateDepart`) — elle prend effet à cette date
+ * (début de journée), ou aussitôt si le départ est aujourd'hui ou déjà passé.
+ * Sans elle, un voyage acheté plusieurs jours avant le départ aurait sa
+ * couverture de 24h épuisée avant même de partir.
  */
-export function dateDebutPremiereActivation(produitCode: string): Date {
+export function dateDebutPremiereActivation(produitCode: string, donneesSpecifiques?: unknown): Date {
+  if (produitCode === "relaxvoyage") {
+    const depart = (donneesSpecifiques as { dateDepart?: unknown } | null)?.dateDepart;
+    const dateDepart = typeof depart === "string" ? new Date(depart) : null;
+    if (dateDepart && !Number.isNaN(dateDepart.getTime()) && dateDepart.getTime() > Date.now()) return dateDepart;
+    return new Date();
+  }
   if (!PRODUITS_ACCIDENTS_AVEC_DELAI_ATTENTE.has(produitCode)) return new Date();
   return new Date(Date.now() + DELAI_ATTENTE_PRISE_EFFET_MS);
 }

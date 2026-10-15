@@ -24,7 +24,7 @@ import type { SouscriptionAccident } from "@prisma/client";
  * l'admin voie le statut "Renouvelé". Ouvre aussi l'espace client (mot de
  * passe envoyé par SMS) à la toute première confirmation. À la première
  * activation (jamais au renouvellement, qui prolonge une couverture déjà en
- * cours), la prise d'effet est décalée de 72h après la confirmation du
+ * cours), la prise d'effet est décalée de 24h après la confirmation du
  * paiement (délai d'attente, voir dateDebutPremiereActivation).
  */
 export async function confirmerAccident(s: SouscriptionAccident): Promise<void> {

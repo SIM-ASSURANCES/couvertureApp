@@ -153,10 +153,11 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
         : await prisma.tarifProduit.findFirst({
             where: { produitId: s.produitId, prime: s.montantPrime },
           });
-    // Délai d'attente de 72h avant prise d'effet pour les produits Accidents
-    // (voir dateDebutPremiereActivation) — RelaxVoyage et les produits
-    // Dommages (SecurHome+, SecurPro) restent à effet immédiat.
-    const dateDebut = dateDebutPremiereActivation(s.produit.code);
+    // Délai d'attente de 24h avant prise d'effet pour les produits Accidents
+    // (voir dateDebutPremiereActivation) — les produits Dommages (SecurHome+,
+    // SecurPro) restent à effet immédiat, et RelaxVoyage prend effet à sa date
+    // de départ (sans délai d'attente).
+    const dateDebut = dateDebutPremiereActivation(s.produit.code, s.donneesSpecifiques);
 
     if (s.cycleFacturation !== "mensuel" && s.cycleFacturation !== "annuel") {
       const dateFin = new Date(dateDebut);
