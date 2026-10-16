@@ -864,10 +864,6 @@ const MEDAILLES = ["🥇", "🥈", "🥉"];
 export default function Partenaires() {
   const { user } = useAuth();
   const isSuper = user?.role === "SUPER_ADMIN" || (user?.role === "BRANCH_SUPER_ADMIN" && user.branches?.includes("INCENDIE_ACCIDENT"));
-  // Activation/désactivation par produit : réservée au Super Administrateur
-  // global (pas même un BRANCH_SUPER_ADMIN), contrairement aux autres actions
-  // partenaire — voir GET/POST /partenaires/:id/produits (backend).
-  const isSuperAdminGlobal = user?.role === "SUPER_ADMIN";
   const [q, setQ] = useState("");
   const [statut, setStatut] = useState("");
   const params = new URLSearchParams();
@@ -1270,7 +1266,9 @@ export default function Partenaires() {
                               <KeyRound size={15} />
                             </button>
                           )}
-                          {isSuperAdminGlobal && (p.sousBranche || p.qrUnifie) && (
+                          {/* Activation/désactivation par produit : Super Administrateur
+                              (global ou de la branche) — voir GET/POST /partenaires/:id/produits. */}
+                          {isSuper && (p.sousBranche || p.qrUnifie) && (
                             <button
                               className="btn btn-ghost"
                               style={{ padding: 8 }}

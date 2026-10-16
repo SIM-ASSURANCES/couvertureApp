@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireAnySuperAdmin, requireSuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
@@ -735,12 +735,14 @@ partenairesRouter.get(
  * Actif/Inactif global du partenaire. Incendie n'apparaît pas dans cette
  * liste : il n'est pas piloté par le catalogue Produit dans le chooser
  * (branche toujours proposée, cas particulier du parcours public).
- * Réservé au Super Administrateur global (pas même un BRANCH_SUPER_ADMIN) —
- * un levier volontairement plus restreint que les autres actions partenaire.
+ * Réservé au Super Administrateur : le SUPER_ADMIN global ou le
+ * BRANCH_SUPER_ADMIN de la branche INCENDIE_ACCIDENT (à laquelle appartiennent
+ * les partenaires) — élargi le 2026-10-16, comme les autres actions partenaire
+ * (agents, accès API). Un simple admin reste exclu.
  */
 partenairesRouter.get(
   "/:id/produits",
-  requireSuperAdmin,
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
@@ -784,7 +786,7 @@ partenairesRouter.get(
 
 partenairesRouter.post(
   "/:id/produits/:produitId/statut",
-  requireSuperAdmin,
+  requireSuperAdminBranche("INCENDIE_ACCIDENT"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
     if (!p) return res.status(404).json({ error: "Introuvable" });
