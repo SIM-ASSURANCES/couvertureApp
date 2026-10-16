@@ -156,6 +156,35 @@ function libellePrimeTtcResultat(resultat: unknown, cycle: "" | CycleDommages): 
   return c === "mensuel" ? "Prime TTC mensuelle" : c === "annuel" ? "Prime TTC annuelle" : "Prime TTC";
 }
 
+/**
+ * Mention commerciale des Assurances Santé (demande du 2026-10-16) : l'offre est
+ * réservée aux structures partenaires. Affichée sur le choix du produit et sur
+ * le choix de la formule.
+ */
+const MENTION_OFFRE_SANTE =
+  "Offre valable exclusivement pour les associations, les syndicats, les mutuelles et les coopératives dans le cadre d’un partenariat avec SIM ASSURANCES.";
+
+function MentionOffreSante() {
+  return (
+    <div
+      role="note"
+      style={{
+        background: "var(--sim-primary-50, #e6f1fb)",
+        border: "1px solid #bfd9f2",
+        borderRadius: 12,
+        padding: "12px 14px",
+        margin: "0 0 18px",
+        fontSize: 13,
+        lineHeight: 1.45,
+        fontWeight: 600,
+        color: "#0f1b2d",
+      }}
+    >
+      {MENTION_OFFRE_SANTE}
+    </div>
+  );
+}
+
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
   return p === "relaxmoto" || p === "relaxauto";
 }
@@ -4168,9 +4197,10 @@ export default function Souscription() {
                   <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
                     Choisissez votre produit
                   </div>
-                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 20 }}>
+                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 16 }}>
                     Sélectionnez le produit qui vous intéresse pour poursuivre votre souscription.
                   </div>
+                  {chooserInfo.produits.some((p) => estProduitSante(p.code)) && <MentionOffreSante />}
                 </>
               )}
               {/* Assurance sans produit au catalogue (ex. Assurances Santé à son
@@ -4516,6 +4546,7 @@ export default function Souscription() {
                   puis les garanties — identiques pour toutes les formules. */}
               {estProduitSante(qrInfo?.produit) && (
                 <div style={{ marginBottom: 24 }}>
+                  <MentionOffreSante />
                   <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 4 }}>
                     Choisissez votre formule
                   </div>
