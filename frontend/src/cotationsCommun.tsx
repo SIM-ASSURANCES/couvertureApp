@@ -3,6 +3,7 @@
 // pour le parcours "Mes devis" — un seul jeu de champs de tarification par
 // produit, jamais dupliqué entre les deux espaces.
 import { Badge, fcfa } from "./components/ui";
+import { libellePeriodicite } from "./periodiciteDommages";
 
 // Miroir des listes de capitaux autorisés (SecurHome+/SecurPro) — voir
 // backend/src/services/capitauxDommages.ts. Dupliqué ici comme dans
@@ -33,10 +34,12 @@ export function entreesParDefaut(produitCode: ProduitCotation): Record<string, u
   switch (produitCode) {
     case "relaxaccidents":
       return { classe: 1, cnpsDeclare: true, cycle: "annuel", moyenDeplacement: "voiture" };
+    // Produits Dommages : `cycle` vide = pas encore choisi (obligatoire à la saisie, voir ChampPeriodicite).
     case "securhome":
-      return { nombrePieces: 1, statutOccupation: "proprietaire" };
+      return { nombrePieces: 1, statutOccupation: "proprietaire", cycle: "" };
     case "securhome_dommages":
       return {
+        cycle: "",
         statutOccupation: "proprietaire",
         valeurBatiment: "",
         loyerMensuel: "",
@@ -51,6 +54,7 @@ export function entreesParDefaut(produitCode: ProduitCotation): Record<string, u
       };
     case "securpro_dommages":
       return {
+        cycle: "",
         classe: 1,
         statutOccupation: "proprietaire",
         valeurBatiment: "",
@@ -68,12 +72,23 @@ export function entreesParDefaut(produitCode: ProduitCotation): Record<string, u
         bdgCapital: "",
       };
     case "securmoto":
-      return { valeurMoto: "", ageMoto: "NEUVE" };
+      return { valeurMoto: "", ageMoto: "NEUVE", cycle: "" };
   }
 }
 
 /** Nettoie les champs numériques ("" -> absent) avant envoi au serveur — les valeurs vides restent des chaînes côté état local pour que l'input reste contrôlable. */
 export function nettoyerEntrees(produitCode: ProduitCotation, e: Record<string, unknown>): Record<string, unknown> {
+  const nettoyees = nettoyerEntreesProduit(produitCode, e);
+  // Périodicité (produits Dommages) : un choix vide n'est jamais envoyé — le
+  // formulaire l'exige (radios `required`), le serveur rejetterait "".
+  if (nettoyees.cycle === "" || nettoyees.cycle === undefined) {
+    const { cycle: _cycle, ...sansCycle } = nettoyees;
+    return sansCycle;
+  }
+  return nettoyees;
+}
+
+function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, unknown>): Record<string, unknown> {
   const toNum = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
   if (produitCode === "relaxaccidents" || produitCode === "securhome") return e;
   const communs = {
@@ -89,7 +104,7 @@ export function nettoyerEntrees(produitCode: ProduitCotation, e: Record<string, 
     return { ...communs, volCaisseCapital: toNum(e.volCaisseCapital) };
   }
   if (produitCode === "securmoto") {
-    return { valeurMoto: toNum(e.valeurMoto) ?? 0, ageMoto: e.ageMoto };
+    return { valeurMoto: toNum(e.valeurMoto) ?? 0, ageMoto: e.ageMoto, cycle: e.cycle };
   }
   return communs;
 }
@@ -128,6 +143,29 @@ export function statutBadgeCotation(c: Cotation) {
   if (c.statut === "expire" || expire) return <Badge kind="danger">Expiré</Badge>;
   if (c.statut === "envoye") return <Badge kind="info">Partagé</Badge>;
   return <Badge kind="neutral">Brouillon</Badge>;
+}
+
+/**
+ * Périodicité de la prime des produits Dommages (annuelle, ou mensuelle = prime
+ * annuelle ÷ 10) — choix OBLIGATOIRE : aucune option présélectionnée, les radios
+ * sont `required` (le formulaire refuse l'envoi tant qu'aucune n'est cochée).
+ */
+function ChampPeriodicite({ entrees, setChamp }: { entrees: Record<string, unknown>; setChamp: (cle: string, valeur: unknown) => void }) {
+  return (
+    <Field label="Périodicité de la prime (à choisir)">
+      <div style={{ display: "flex", gap: 16 }}>
+        {(["annuel", "mensuel"] as const).map((v) => (
+          <label key={v} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+            <input type="radio" name="cycle-dommages" required checked={entrees.cycle === v} onChange={() => setChamp("cycle", v)} />{" "}
+            {libellePeriodicite(v)}
+          </label>
+        ))}
+      </div>
+      <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+        Prime mensuelle = prime annuelle ÷ 10.
+      </div>
+    </Field>
+  );
 }
 
 /** Champs de tarification spécifiques au produit sélectionné — entrées seulement (jamais l'identité du client, saisie par lui-même au moment de payer). */
@@ -230,6 +268,7 @@ export function ChampsProduitCotation({
             </label>
           </div>
         </Field>
+        <ChampPeriodicite entrees={entrees} setChamp={setChamp} />
       </>
     );
   }
@@ -245,6 +284,7 @@ export function ChampsProduitCotation({
             <option value="2 ANS">2 ans</option>
           </select>
         </Field>
+        <ChampPeriodicite entrees={entrees} setChamp={setChamp} />
       </>
     );
   }
@@ -288,6 +328,7 @@ export function ChampsProduitCotation({
           {produitCode === "securhome_dommages" && bool("camera", "Caméra")}
         </div>
       </Field>
+      <ChampPeriodicite entrees={entrees} setChamp={setChamp} />
       <div style={{ fontWeight: 800, fontSize: 14, margin: "16px 0 8px" }}>Garanties optionnelles</div>
       <Field label="Vol contenu">
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

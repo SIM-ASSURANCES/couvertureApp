@@ -4,6 +4,7 @@ import { getWaveSession, newNumeroPolice, numeroPoliceRenouvellement, genererMot
 import { genererCarte, renouvelerCarte } from "./novelia.js";
 import { emettreFacture } from "./facture.js";
 import { DUREE_CONTRAT_SANTE_MOIS, estProduitSante, paiementBloqueParValidation } from "./assurancesSante.js";
+import { cycleDeSouscription, estProduitDommagesAvecPeriodicite } from "./periodiciteDommages.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -44,8 +45,13 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
   if (produitCode === "relaxaccidents_fraismedicaux") return 2;
   if (produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
   // Produits Assurances Dommages à devis ou tarif fixe (SecurPro, SecurHome,
-  // SecurHome+, SecurMoto) : contrats annuels, renouvellements compris.
-  if (["securpro_dommages", "securhome", "securhome_dommages", "securmoto"].includes(produitCode)) return 12;
+  // SecurHome+, SecurMoto) : contrats annuels, renouvellements compris — sauf
+  // si le souscripteur a choisi la prime MENSUELLE (décision 2026-10-16, voir
+  // services/periodiciteDommages.ts) : la couverture dure alors 1 mois, comme
+  // chaque renouvellement.
+  if (estProduitDommagesAvecPeriodicite(produitCode)) {
+    return cycleDeSouscription(donneesSpecifiques) === "mensuel" ? 1 : 12;
+  }
   // Assurances Santé (Solo, Duo, Famille) : contrat annuel.
   if (estProduitSante(produitCode)) return DUREE_CONTRAT_SANTE_MOIS;
   return 3;

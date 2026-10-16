@@ -239,7 +239,11 @@ function commissionGenerique(s: SouscriptionGenerique, ref: References): number 
     }
     return Math.round((r.primeNetteHT2 ?? r.primeNetteHT ?? 0) * (s.produit.tauxCommission ?? 0) * n);
   }
-  const base = ref.tarifParPrime.get(`${s.produitId}:${s.montantPrime}`)?.primeHT ?? s.montantPrime;
+  // SecurHome mensuel : la prime nette de la période est figée dans `resultat`
+  // (le barème annuel n'a aucune ligne à ce montant) ; annuel : `resultat` absent.
+  const primeNetteMensuelle =
+    code === "securhome" ? (s.resultat as { primeNetteHT?: number } | null)?.primeNetteHT : undefined;
+  const base = primeNetteMensuelle ?? ref.tarifParPrime.get(`${s.produitId}:${s.montantPrime}`)?.primeHT ?? s.montantPrime;
   return Math.round(base * (s.produit.tauxCommission ?? TAUX_COMMISSION_DEFAUT) * n);
 }
 

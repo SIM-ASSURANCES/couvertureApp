@@ -3,7 +3,12 @@ import { prisma } from "../db.js";
 import { requireAuth, type AuthedRequest } from "../auth.js";
 import { asyncHandler, toCsv, sendCsv } from "../util.js";
 import { logAction } from "../journal.js";
-import { budgetMensuelGlobal, TAUX_COMMISSION_AGENT, PRODUITS_COMMISSION_DYNAMIQUE } from "../services/commission.js";
+import {
+  budgetMensuelGlobal,
+  indexerTarifsCommission,
+  TAUX_COMMISSION_AGENT,
+  PRODUITS_COMMISSION_DYNAMIQUE,
+} from "../services/commission.js";
 import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
 import { SANS_IMAGES_HISTORIQUE } from "../services/allegement.js";
 
@@ -79,7 +84,8 @@ export async function statsGeneriques(dateWhere: DateWhereStats & { partenaireId
       : [],
   ]);
 
-  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  // Index tarif (+ prime mensuelle SecurHome, annuelle ÷ 10) — voir commission.ts.
+  const tarifMap = indexerTarifsCommission(tarifs, new Map(produits.map((p) => [p.id, p.code])));
 
   for (const g of groups) {
     const produit = produitParId.get(g.produitId);
@@ -326,7 +332,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
     idsGenCatalogue.length ? prisma.tarifProduit.findMany({ where: { produitId: { in: idsGenCatalogue } } }) : [],
     idsGenDynamique.length ? prisma.baremeSecurpro.findMany() : [],
   ]);
-  const tarifGenMap = new Map(tarifsGeneriques.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  const tarifGenMap = indexerTarifsCommission(tarifsGeneriques, new Map(produitsGeneriques.map((p) => [p.id, p.code])));
   const baremeParClasse = new Map(baremesSecurpro.map((b) => [b.classe, b]));
 
   // Un seul aller-retour par table, groupé par partenaireId EN PLUS des

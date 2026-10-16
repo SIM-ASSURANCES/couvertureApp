@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { detailMensuelTarifFixe } from "./periodiciteDommages.js";
 
 type DateWhere = { createdAt?: { gte?: Date; lte?: Date } };
 type FiltreAgent = string | null | { not: null };
@@ -22,6 +23,33 @@ export const TAUX_COMMISSION_AGENT = 0.75;
  * (routes/assurancesAccidents.ts, GET/PATCH /produits/:code/commission).
  */
 const TAUX_COMMISSION_DEFAUT = 0.2;
+
+/**
+ * Index (`produitId:prime`) des tarifs du modèle générique pour retrouver la
+ * prime nette d'un lot de souscriptions groupé par `montantPrime`. SecurHome
+ * (tarif fixe) se souscrit aussi à la prime MENSUELLE (annuelle ÷ 10, voir
+ * services/periodiciteDommages.ts) : ce montant ne figure dans aucune ligne du
+ * barème, on ajoute donc une entrée « mensuelle » par formule — jamais à la
+ * place d'une entrée exacte, et seulement pour ce produit (les autres
+ * produits ont des montants multiples de leur prime, un faux rapprochement
+ * y serait possible).
+ */
+export function indexerTarifsCommission(
+  tarifs: { produitId: string; prime: number; primeHT: number | null; fg: number | null; taxes: number | null }[],
+  codeParProduit: Map<string, string>
+): Map<string, { primeHT: number | null; fg: number | null; taxes: number | null }> {
+  const map = new Map<string, { primeHT: number | null; fg: number | null; taxes: number | null }>(
+    tarifs.map((t) => [`${t.produitId}:${t.prime}`, t])
+  );
+  for (const t of tarifs) {
+    if (codeParProduit.get(t.produitId) !== "securhome") continue;
+    const mensuel = detailMensuelTarifFixe(t);
+    if (!mensuel) continue;
+    const cle = `${t.produitId}:${mensuel.primeTTC}`;
+    if (!map.has(cle)) map.set(cle, { primeHT: mensuel.primeNetteHT, fg: mensuel.accessoires, taxes: mensuel.taxes });
+  }
+  return map;
+}
 
 /**
  * Commission d'un lot de souscriptions historiques (Incendie ou Accident),
@@ -120,13 +148,13 @@ async function commissionSouscriptionsGeneriques(where: {
   const [tarifs, produits] = await Promise.all([
     prisma.tarifProduit.findMany({
       where: { produitId: { in: produitIds } },
-      select: { produitId: true, prime: true, primeHT: true },
+      select: { produitId: true, prime: true, primeHT: true, fg: true, taxes: true },
     }),
-    prisma.produit.findMany({ where: { id: { in: produitIds } }, select: { id: true, tauxCommission: true } }),
+    prisma.produit.findMany({ where: { id: { in: produitIds } }, select: { id: true, code: true, tauxCommission: true } }),
   ]);
   // Commission = taux du produit (Produit.tauxCommission, 20 % par défaut)
   // × prime NETTE (TarifProduit.primeHT, repli sur le TTC si absente).
-  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  const tarifMap = indexerTarifsCommission(tarifs, new Map(produits.map((p) => [p.id, p.code])));
   const tauxMap = new Map(produits.map((p) => [p.id, p.tauxCommission ?? TAUX_COMMISSION_DEFAUT]));
   return groups.reduce((s, g) => {
     const primeNette = tarifMap.get(`${g.produitId}:${g.montantPrime}`)?.primeHT ?? g.montantPrime;
@@ -212,11 +240,11 @@ async function commissionSouscriptionsGeneriquesParAgent(where: {
   const [tarifs, produits] = await Promise.all([
     prisma.tarifProduit.findMany({
       where: { produitId: { in: produitIds } },
-      select: { produitId: true, prime: true, primeHT: true },
+      select: { produitId: true, prime: true, primeHT: true, fg: true, taxes: true },
     }),
-    prisma.produit.findMany({ where: { id: { in: produitIds } }, select: { id: true, tauxCommission: true } }),
+    prisma.produit.findMany({ where: { id: { in: produitIds } }, select: { id: true, code: true, tauxCommission: true } }),
   ]);
-  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  const tarifMap = indexerTarifsCommission(tarifs, new Map(produits.map((p) => [p.id, p.code])));
   const tauxMap = new Map(produits.map((p) => [p.id, p.tauxCommission ?? TAUX_COMMISSION_DEFAUT]));
   for (const g of groups) {
     const k = g.agentDistributionId ?? "";
@@ -509,7 +537,7 @@ async function caHTGenerique(
       : [],
   ]);
 
-  const tarifMap = new Map(tarifs.map((t) => [`${t.produitId}:${t.prime}`, t]));
+  const tarifMap = indexerTarifsCommission(tarifs, new Map(produits.map((p) => [p.id, p.code])));
   let total = 0;
   for (const g of groups) {
     const primeHT = tarifMap.get(`${g.produitId}:${g.montantPrime}`)?.primeHT ?? g.montantPrime;

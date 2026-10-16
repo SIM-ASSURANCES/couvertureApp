@@ -156,6 +156,8 @@ export interface ContratSecurhome {
   accessoires: number;
   taxes: number;
   primeTTC: number;
+  /** Périodicité de la prime choisie à la souscription ; absent = contrat antérieur au choix. */
+  periodicite?: "annuel" | "mensuel";
   signature?: string | null;
 }
 
@@ -177,6 +179,7 @@ export interface ContratSecurMoto {
   accessoires: number;
   taxes: number;
   primeTTC: number;
+  periodicite?: "annuel" | "mensuel";
   signature?: string | null;
 }
 
@@ -196,6 +199,7 @@ export interface ContratSecurhomeIncendie {
   statutOccupation: "proprietaire" | "locataire";
   montant: number;
   capitalGaranti: number;
+  periodicite?: "annuel" | "mensuel";
   signature?: string | null;
 }
 
@@ -226,6 +230,7 @@ export interface ContratSecurpro {
   accessoires: number;
   taxes: number;
   primeTTC: number;
+  periodicite?: "annuel" | "mensuel";
   signature?: string | null;
 }
 
@@ -360,6 +365,9 @@ function esc(s: string): string {
 }
 
 const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
+/** « Prime TTC mensuelle/annuelle » quand la périodicité a été choisie (produits Dommages), sinon « Prime TTC ». */
+const libellePrimeTtc = (p?: "annuel" | "mensuel") =>
+  p === "mensuel" ? "Prime TTC mensuelle" : p === "annuel" ? "Prime TTC annuelle" : "Prime TTC";
 const dfr = (s?: string | null) => (s ? new Date(s).toLocaleDateString("fr-FR") : "—");
 const val = (s?: string | number | null) =>
   s === null || s === undefined || s === "" ? "—" : esc(String(s));
@@ -829,7 +837,7 @@ export async function renderContratSecurpro(c: ContratSecurpro, avecLogoRcmec = 
 
   <table>
     <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
-    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">${libellePrimeTtc(c.periodicite)}</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
   </table>
 
   <div class="note">
@@ -884,7 +892,7 @@ export async function renderContratSecurhome(c: ContratSecurhome): Promise<strin
 
   <table>
     <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
-    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">${libellePrimeTtc(c.periodicite)}</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
   </table>
 
   <div class="note">
@@ -921,7 +929,7 @@ export async function renderContratSecurMoto(c: ContratSecurMoto): Promise<strin
 
   <table>
     <tr><td class="k">Prime nette</td><td>${fcfa(c.primeNetteHT)}</td><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>
-    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+    <tr><td class="k">Taxes</td><td>${fcfa(c.taxes)}</td><td class="k">${libellePrimeTtc(c.periodicite)}</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
   </table>
 
   <div class="note">
@@ -947,7 +955,7 @@ export async function renderContratSecurhomeIncendie(c: ContratSecurhomeIncendie
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+    <tr><td class="k">${libellePrimeTtc(c.periodicite)}</td><td>${fcfa(c.montant)}</td><td class="k">Capital garanti</td><td>${fcfa(c.capitalGaranti)}</td></tr>
   </table>
 
   <table>

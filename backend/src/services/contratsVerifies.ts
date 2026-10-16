@@ -75,11 +75,17 @@ export async function chargerContratDommagesVerifie(
   const valeurBatimentOuLoyer = statutOccupation === "locataire" ? d.loyerMensuel ?? 0 : d.valeurBatiment ?? 0;
   // La prime TTC est celle réellement payée (montantPrime), jamais recalculée
   // depuis `resultat` — c'est la valeur qui fait foi dans la base.
+  // Périodicité de la prime choisie à la souscription (depuis le 2026-10-16) ;
+  // absente des contrats plus anciens, dont le libellé « Prime TTC » reste tel quel.
+  const cycleChoisi = (s.donneesSpecifiques as { cycle?: unknown } | null)?.cycle;
+  const periodicite: "annuel" | "mensuel" | undefined =
+    cycleChoisi === "mensuel" || cycleChoisi === "annuel" ? cycleChoisi : undefined;
   const montants = {
     primeNetteHT: r.primeNetteHT ?? 0,
     accessoires: r.accessoires ?? 0,
     taxes: r.taxes ?? 0,
     primeTTC: s.montantPrime,
+    ...(periodicite ? { periodicite } : {}),
   };
 
   if (type === "securpro_dommages") {

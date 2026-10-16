@@ -40,6 +40,7 @@ import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDom
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
 import {
@@ -1384,6 +1385,9 @@ const securproDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  // Périodicité de la prime choisie par le souscripteur (annuelle par défaut
+  // pour les anciens clients) — voir services/periodiciteDommages.ts.
+  cycle: cycleDommagesSchema,
   ...moyenPaiementField,
 });
 
@@ -1441,7 +1445,7 @@ publicRouter.post(
     // Mode `plafonner` : un capital entre la limite assurable et le capital de
     // la classe est assuré À LA LIMITE (le client en est informé avant de
     // payer) ; au-delà du capital de la classe, SIM Assurances ne l'assure pas.
-    const resultat = calculerSecurpro(
+    const resultatAnnuel = calculerSecurpro(
       input,
       {
         classe: data.classe,
@@ -1451,9 +1455,12 @@ publicRouter.post(
       { plafonner: true }
     );
 
-    if (resultat.depassementPlafond) {
-      return res.status(400).json({ error: messageCapitalRefuse(resultat) });
+    if (resultatAnnuel.depassementPlafond) {
+      return res.status(400).json({ error: messageCapitalRefuse(resultatAnnuel) });
     }
+    // Barème annuel ; un contrat mensuel paie la prime annuelle ÷ 10 (voir
+    // services/periodiciteDommages.ts). `resultat` est la prime d'UNE période.
+    const resultat = appliquerPeriodicite(resultatAnnuel, data.cycle);
 
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -1492,6 +1499,7 @@ publicRouter.post(
           ddeCapital: data.ddeCapital ?? null,
           deCapital: data.deCapital ?? null,
           bdgCapital: data.bdgCapital ?? null,
+          cycle: data.cycle,
         },
         resultat: JSON.parse(JSON.stringify(resultat)),
         paiements: {
@@ -1578,6 +1586,7 @@ const securhomeDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  cycle: cycleDommagesSchema,
   ...moyenPaiementField,
 });
 
@@ -1619,7 +1628,8 @@ publicRouter.post(
     };
     let resultat;
     try {
-      resultat = calculerSecurhome(input);
+      // Barème annuel ; un contrat mensuel paie la prime annuelle ÷ 10.
+      resultat = appliquerPeriodicite(calculerSecurhome(input), data.cycle);
     } catch (e) {
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
@@ -1657,6 +1667,7 @@ publicRouter.post(
           ddeCapital: data.ddeCapital ?? null,
           deCapital: data.deCapital ?? null,
           bdgCapital: data.bdgCapital ?? null,
+          cycle: data.cycle,
         },
         resultat: JSON.parse(JSON.stringify(resultat)),
         paiements: {
@@ -1727,6 +1738,7 @@ const securMotoSchema = z.object({
   signature: dataUrlImage.optional(),
   valeurMoto: z.number().finite().min(1).max(700_000),
   ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+  cycle: cycleDommagesSchema,
   ...moyenPaiementField,
 });
 
@@ -1752,7 +1764,8 @@ publicRouter.post(
     };
     let resultat;
     try {
-      resultat = calculerSecurMoto(input);
+      // Barème annuel ; un contrat mensuel paie la prime annuelle ÷ 10.
+      resultat = appliquerPeriodicite(calculerSecurMoto(input), data.cycle);
     } catch (e) {
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
@@ -1777,6 +1790,7 @@ publicRouter.post(
           prenom: data.prenom,
           valeurMoto: data.valeurMoto,
           ageMoto: data.ageMoto,
+          cycle: data.cycle,
         },
         resultat: JSON.parse(JSON.stringify(resultat)),
         paiements: {
@@ -1963,6 +1977,9 @@ const formuleSchema = z.object({
   sexe: z.enum(["masculin", "feminin"]).optional(),
   formule: z.string().min(1),
   signature: dataUrlImage.optional(),
+  // SecurHome uniquement — périodicité de la prime (annuelle par défaut), voir
+  // services/periodiciteDommages.ts. Ignorée pour tous les autres produits.
+  cycle: cycleDommagesSchema,
   // RelaxVoyage uniquement — voir isProduitFormule ci-dessus.
   typePiece: z.enum(["CNI", "Permis"]).optional(),
   compagnie: z.string().min(1).max(120).optional(),
@@ -2148,7 +2165,16 @@ publicRouter.post(
     const surchargeDeplacement = relaxAccidentsGenerale
       ? surchargeMoyenDeplacementRelaxAccidentsGenerale(data.moyenDeplacement, relaxAccidentsGenerale.cycle)
       : 0;
-    const montantTotal = tarif.prime + (optionDeces?.prime ?? 0) + surchargeDeplacement;
+    // SecurHome (tarif fixe annuel) : la prime mensuelle est la prime annuelle
+    // ÷ 10, détaillée (HT/accessoires/taxes) pour la facture et la commission.
+    const securhomeMensuel =
+      code === "securhome" && data.cycle === "mensuel" ? detailMensuelTarifFixe(tarif) : null;
+    if (code === "securhome" && data.cycle === "mensuel" && !securhomeMensuel) {
+      return res.status(400).json({ error: "Prime mensuelle indisponible pour cette formule." });
+    }
+    const montantTotal = securhomeMensuel
+      ? securhomeMensuel.primeTTC
+      : tarif.prime + (optionDeces?.prime ?? 0) + surchargeDeplacement;
 
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -2201,6 +2227,7 @@ publicRouter.post(
                 signature: data.signature ?? null,
                 nombrePieces: Number(data.formule),
                 statutOccupation: data.statutOccupation,
+                cycle: data.cycle,
               }
             : sante
             ? {
@@ -2233,6 +2260,9 @@ publicRouter.post(
                   : {}),
               }
             : undefined,
+        // Détail de la prime mensuelle SecurHome (facture, commission) — le
+        // barème annuel ne contient aucune ligne à ce montant.
+        resultat: securhomeMensuel ? { ...securhomeMensuel, periodicite: "mensuel", primeTTCAnnuelle: tarif.prime } : undefined,
         paiements: {
           create: { numeroEcheance: 1, montant: montantTotal, dateEcheance: new Date() },
         },
@@ -2409,6 +2439,7 @@ publicRouter.post(
             signature: data.signature ?? null,
             nombrePieces: entrees.nombrePieces,
             statutOccupation: entrees.statutOccupation,
+            cycle: entrees.cycle ?? "annuel",
           }
         : code === "securhome_dommages"
         ? {
@@ -2438,6 +2469,7 @@ publicRouter.post(
             prenom: data.prenom,
             valeurMoto: entrees.valeurMoto,
             ageMoto: entrees.ageMoto,
+            cycle: entrees.cycle ?? "annuel",
           };
 
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
@@ -2462,7 +2494,12 @@ publicRouter.post(
         waveStatut: "en_attente",
         nombreEcheances: 1,
         donneesSpecifiques: JSON.parse(JSON.stringify(donneesSpecifiques)),
-        resultat: code === "relaxaccidents" || code === "securhome" ? undefined : JSON.parse(JSON.stringify(cotation.resultat)),
+        // SecurHome annuel : détail lu dans le barème (resultat absent). Mensuel :
+        // le devis porte le détail de la prime mensuelle, conservé tel quel.
+        resultat:
+          code === "relaxaccidents" || (code === "securhome" && entrees.cycle !== "mensuel")
+            ? undefined
+            : JSON.parse(JSON.stringify(cotation.resultat)),
         paiements: {
           create: { numeroEcheance: 1, montant: cotation.primeTTC, dateEcheance: new Date() },
         },

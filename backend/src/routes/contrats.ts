@@ -754,6 +754,12 @@ async function chargerDonneesVerifieesServeur(
     statutOccupation: d.statutOccupation,
     montant: d.montant,
     capitalGaranti: d.capitalGaranti,
+    // Périodicité choisie à la souscription (depuis le 2026-10-16) ; absente des
+    // contrats plus anciens.
+    ...((s.donneesSpecifiques as { cycle?: unknown } | null)?.cycle === "mensuel" ||
+    (s.donneesSpecifiques as { cycle?: unknown } | null)?.cycle === "annuel"
+      ? { periodicite: (s.donneesSpecifiques as { cycle: "annuel" | "mensuel" }).cycle }
+      : {}),
     signature: d.signature,
   };
 }

@@ -28,6 +28,7 @@ import { calculerSecurhome, type SecurhomeInput } from "./securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "./securMoto.js";
 import { calculerSecurpro, messageCapitalRefuse, type SecurproInput } from "./tarificationImf.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "./capitauxDommages.js";
+import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, libellePeriodicite } from "./periodiciteDommages.js";
 
 export const PRODUITS_COTATION = ["relaxaccidents", "securhome", "securhome_dommages", "securpro_dommages", "securmoto"] as const;
 export type ProduitCotation = (typeof PRODUITS_COTATION)[number];
@@ -48,6 +49,7 @@ const entreesRelaxAccidentsSchema = z.object({
 const entreesSecurhomeSchema = z.object({
   nombrePieces: z.number().int().min(1).max(5),
   statutOccupation: z.enum(["proprietaire", "locataire"]),
+  cycle: cycleDommagesSchema,
 });
 
 const entreesSecurhomeDommagesSchema = z.object({
@@ -62,6 +64,7 @@ const entreesSecurhomeDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  cycle: cycleDommagesSchema,
 });
 
 const entreesSecurproDommagesSchema = z.object({
@@ -80,11 +83,13 @@ const entreesSecurproDommagesSchema = z.object({
   ddeCapital: z.number().finite().optional(),
   deCapital: z.number().finite().optional(),
   bdgCapital: z.number().finite().optional(),
+  cycle: cycleDommagesSchema,
 });
 
 const entreesSecurMotoSchema = z.object({
   valeurMoto: z.number().finite().min(1).max(700_000),
   ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+  cycle: cycleDommagesSchema,
 });
 
 /** Schéma zod des "entrées" (paramètres de tarification) pour un produit couvert par les devis. */
@@ -145,25 +150,30 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
     if (!produit) throw new ErreurCotation("Produit SecurHome indisponible.");
     const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: String(e.nombrePieces) } });
     if (!tarif) throw new ErreurCotation("Nombre de pièces indisponible pour ce produit.");
+    // Prime mensuelle = prime annuelle ÷ 10 (voir services/periodiciteDommages.ts).
+    const mensuel = e.cycle === "mensuel" ? detailMensuelTarifFixe(tarif) : null;
+    if (e.cycle === "mensuel" && !mensuel) throw new ErreurCotation("Prime mensuelle indisponible pour cette formule.");
     return {
       entrees: e,
-      resultat: { nombrePieces: e.nombrePieces, statutOccupation: e.statutOccupation, tarifBase: tarif.prime },
-      primeTTC: tarif.prime,
+      resultat: mensuel
+        ? { ...mensuel, periodicite: "mensuel", primeTTCAnnuelle: tarif.prime, nombrePieces: e.nombrePieces, statutOccupation: e.statutOccupation }
+        : { nombrePieces: e.nombrePieces, statutOccupation: e.statutOccupation, tarifBase: tarif.prime },
+      primeTTC: mensuel ? mensuel.primeTTC : tarif.prime,
       capitalGaranti: tarif.capitalGaranti,
-      libelleFormule: `${e.nombrePieces} pièce${e.nombrePieces > 1 ? "s" : ""} · ${e.statutOccupation === "proprietaire" ? "propriétaire" : "locataire"}`,
+      libelleFormule: `${e.nombrePieces} pièce${e.nombrePieces > 1 ? "s" : ""} · ${e.statutOccupation === "proprietaire" ? "propriétaire" : "locataire"} · ${libellePeriodicite(e.cycle).toLowerCase()}`,
     };
   }
 
   if (produitCode === "securhome_dommages") {
     const e = entrees as z.infer<typeof entreesSecurhomeDommagesSchema>;
     try {
-      const resultat = calculerSecurhome(e as SecurhomeInput);
+      const resultat = appliquerPeriodicite(calculerSecurhome(e as SecurhomeInput), e.cycle);
       return {
         entrees: e,
         resultat,
         primeTTC: resultat.primeTTC,
         capitalGaranti: Math.round(resultat.capitauxTotaux),
-        libelleFormule: `SecurHome+ · ${e.statutOccupation === "proprietaire" ? "propriétaire" : "locataire"}`,
+        libelleFormule: `SecurHome+ · ${e.statutOccupation === "proprietaire" ? "propriétaire" : "locataire"} · ${libellePeriodicite(e.cycle).toLowerCase()}`,
       };
     } catch (err) {
       throw new ErreurCotation(err instanceof Error ? err.message : "Entrées invalides pour SecurHome+.");
@@ -183,7 +193,7 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
     const baremeRow = await prisma.baremeSecurpro.findUnique({ where: { classe: e.classe } });
     if (!baremeRow) throw new ErreurCotation("Barème SECURPRO introuvable pour cette classe.");
     // Mode `plafonner` : voir services/tarificationImf.ts::calculerSecurpro.
-    const resultat = calculerSecurpro(
+    const resultatAnnuel = calculerSecurpro(
       e as SecurproInput,
       {
         classe: e.classe,
@@ -192,28 +202,29 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
       },
       { plafonner: true }
     );
-    if (resultat.depassementPlafond) {
-      throw new ErreurCotation(messageCapitalRefuse(resultat));
+    if (resultatAnnuel.depassementPlafond) {
+      throw new ErreurCotation(messageCapitalRefuse(resultatAnnuel));
     }
+    const resultat = appliquerPeriodicite(resultatAnnuel, e.cycle);
     return {
       entrees: e,
       resultat,
       primeTTC: resultat.primeTTC,
       capitalGaranti: Math.round(resultat.capitauxTotaux),
-      libelleFormule: `SecurPro · classe ${e.classe}`,
+      libelleFormule: `SecurPro · classe ${e.classe} · ${libellePeriodicite(e.cycle).toLowerCase()}`,
     };
   }
 
   // securmoto
   const e = entrees as z.infer<typeof entreesSecurMotoSchema>;
   try {
-    const resultat = calculerSecurMoto(e as SecurMotoInput);
+    const resultat = appliquerPeriodicite(calculerSecurMoto(e as SecurMotoInput), e.cycle);
     return {
       entrees: e,
       resultat,
       primeTTC: resultat.primeTTC,
       capitalGaranti: resultat.capitalGaranti,
-      libelleFormule: `SecurMoto · ${e.ageMoto as AgeMoto}`,
+      libelleFormule: `SecurMoto · ${e.ageMoto as AgeMoto} · ${libellePeriodicite(e.cycle).toLowerCase()}`,
     };
   } catch (err) {
     throw new ErreurCotation(err instanceof Error ? err.message : "Entrées invalides pour SecurMoto.");

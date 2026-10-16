@@ -5,6 +5,7 @@ import { resoudreOuCreerClient } from "./services/clients.js";
 import { emettreFacture } from "./services/facture.js";
 import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenaires.js";
 import { COMPOSITION_SANTE, FORMULES_SANTE, PRODUITS_SANTE, SOUS_BRANCHE_SANTE } from "./services/assurancesSante.js";
+import { cycleDeSouscription } from "./services/periodiciteDommages.js";
 
 const prisma = new PrismaClient();
 
@@ -781,12 +782,15 @@ async function corrigerEcheanceSecurpro() {
   const SEUIL_JOURS = 200; // 3 mois ≈ 90 j, 12 mois ≈ 365 j
   const rows = await prisma.souscription.findMany({
     where: { produitId: { in: produits.map((p) => p.id) }, waveStatut: "confirme", dateDebut: { not: null }, dateFin: { not: null } },
-    select: { id: true, dateDebut: true, dateFin: true, nombrePaiements: true, statut: true },
+    select: { id: true, dateDebut: true, dateFin: true, nombrePaiements: true, statut: true, donneesSpecifiques: true },
   });
 
   let corrections = 0;
   let renouveleesIgnorees = 0;
   for (const s of rows) {
+    // Prime mensuelle (choix du souscripteur depuis le 2026-10-16) : le contrat
+    // dure 1 mois PAR CONSTRUCTION — jamais un contrat annuel mal daté.
+    if (cycleDeSouscription(s.donneesSpecifiques) === "mensuel") continue;
     const ecartJours = (s.dateFin!.getTime() - s.dateDebut!.getTime()) / (1000 * 60 * 60 * 24);
     if (ecartJours >= SEUIL_JOURS) continue;
     if ((s.nombrePaiements ?? 1) > 1) {

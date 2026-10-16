@@ -62,7 +62,99 @@ import { calculerSecurhome, type ResultatSecurhome } from "../../securhomeDommag
 import { calculerSecurMoto, type ResultatSecurMoto, type AgeMoto } from "../../securMoto";
 import { DateNaissanceInput } from "../../components/ui";
 import { GARANTIES_RELAX_MOTO_AUTO } from "../../garantiesRelaxMotoAuto";
+import {
+  estProduitDommagesAvecPeriodicite,
+  primeMensuelle,
+  primeSelonPeriodicite,
+  libellePeriodicite,
+  type CycleDommages,
+} from "../../periodiciteDommages";
 const BASE = API_BASE;
+
+/**
+ * Choix OBLIGATOIRE de la périodicité de la prime — produits Assurances
+ * Dommages (SecurHome, SecurHome+, SecurPro, SecurMoto), décision du
+ * 2026-10-16. Les barèmes donnent la prime annuelle ; la prime mensuelle est la
+ * prime annuelle ÷ 10. Aucune option n'est présélectionnée : le bouton de
+ * souscription reste inactif tant que le client n'a pas choisi.
+ */
+function ChoixPeriodiciteDommages({
+  primeAnnuelle,
+  cycle,
+  setCycle,
+}: {
+  primeAnnuelle: number | null;
+  cycle: "" | CycleDommages;
+  setCycle: (v: CycleDommages) => void;
+}) {
+  const options: { valeur: CycleDommages; montant: number | null; unite: string; precision: string }[] = [
+    {
+      valeur: "annuel",
+      montant: primeAnnuelle,
+      unite: "/ an",
+      precision: "Une seule échéance, couverture de 12 mois.",
+    },
+    {
+      valeur: "mensuel",
+      montant: primeAnnuelle == null ? null : primeMensuelle(primeAnnuelle),
+      unite: "/ mois",
+      precision: "Couverture d'un mois, à renouveler chaque mois.",
+    },
+  ];
+  return (
+    <FieldRow label="Périodicité de la prime * (à choisir)">
+      <div role="radiogroup" aria-label="Périodicité de la prime" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {options.map((o) => {
+          const choisi = cycle === o.valeur;
+          return (
+            <button
+              key={o.valeur}
+              type="button"
+              role="radio"
+              aria-checked={choisi}
+              onClick={() => setCycle(o.valeur)}
+              style={{
+                textAlign: "left",
+                padding: "12px 14px",
+                borderRadius: 12,
+                cursor: "pointer",
+                border: `2px solid ${choisi ? "var(--sim-primary)" : "var(--border-strong)"}`,
+                background: choisi ? "var(--sim-primary-50)" : "#fff",
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+              }}
+            >
+              <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                <strong style={{ fontSize: 14 }}>{libellePeriodicite(o.valeur)}</strong>
+                <span style={{ fontSize: 17, fontWeight: 800, color: "#004b9c" }}>
+                  {o.montant == null ? "—" : fcfa(o.montant)}
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#5b6b80" }}> {o.unite}</span>
+                </span>
+              </span>
+              <span style={{ fontSize: 12, color: "#5b6b80" }}>{o.precision}</span>
+            </button>
+          );
+        })}
+      </div>
+      {primeAnnuelle == null && (
+        <div style={{ fontSize: 12, color: "#5b6b80", marginTop: 6 }}>
+          Renseignez les champs ci-dessus pour voir les montants.
+        </div>
+      )}
+      {!cycle && (
+        <div style={{ fontSize: 12, color: "#b45309", marginTop: 6 }}>Choisissez annuelle ou mensuelle pour continuer.</div>
+      )}
+    </FieldRow>
+  );
+}
+
+/** « Prime TTC mensuelle/annuelle » pour l'écran de succès (le choix vient du devis serveur, sinon de l'état local). */
+function libellePrimeTtcResultat(resultat: unknown, cycle: "" | CycleDommages): string {
+  const serveur = (resultat as { periodicite?: string } | null | undefined)?.periodicite;
+  const c = serveur === "mensuel" ? "mensuel" : cycle;
+  return c === "mensuel" ? "Prime TTC mensuelle" : c === "annuel" ? "Prime TTC annuelle" : "Prime TTC";
+}
 
 function isRelax(p?: string): p is "relaxmoto" | "relaxauto" {
   return p === "relaxmoto" || p === "relaxauto";
@@ -865,6 +957,7 @@ function SecurproDommagesForm({
   setBdgCapital,
   bareme,
   sigRef,
+  choixPeriodicite,
 }: {
   nom: string;
   setNom: (v: string) => void;
@@ -912,6 +1005,8 @@ function SecurproDommagesForm({
   setBdgCapital: (v: string) => void;
   bareme: BaremeClasseSecurpro[] | null;
   sigRef: React.RefObject<SignaturePadHandle | null>;
+  /** Choix de périodicité de la prime (annuelle/mensuelle), rendu juste avant la signature. */
+  choixPeriodicite?: React.ReactNode;
 }) {
   const baremeClasse = classe ? bareme?.find((b) => b.classe === classe) : undefined;
   let resultat: ResultatTarifImf | null = null;
@@ -1165,7 +1260,7 @@ function SecurproDommagesForm({
               <span>{fcfa(resultat.taxes)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
-              <span>PRIME TTC</span>
+              <span>PRIME TTC ANNUELLE</span>
               <span>{fcfa(resultat.primeTTC)}</span>
             </div>
           </>
@@ -1173,6 +1268,8 @@ function SecurproDommagesForm({
           <div style={{ fontSize: 12.5, color: "#5b6b80" }}>Chargement du barème…</div>
         )}
       </div>
+
+      {choixPeriodicite}
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -1220,6 +1317,7 @@ function SecurhomeDommagesForm({
   bdgCapital,
   setBdgCapital,
   sigRef,
+  choixPeriodicite,
 }: {
   nom: string;
   setNom: (v: string) => void;
@@ -1258,6 +1356,8 @@ function SecurhomeDommagesForm({
   bdgCapital: string;
   setBdgCapital: (v: string) => void;
   sigRef: React.RefObject<SignaturePadHandle | null>;
+  /** Choix de périodicité de la prime (annuelle/mensuelle), rendu juste avant la signature. */
+  choixPeriodicite?: React.ReactNode;
 }) {
   let resultat: ResultatSecurhome | null = null;
   let erreur = "";
@@ -1435,7 +1535,7 @@ function SecurhomeDommagesForm({
               <span>{fcfa(resultat.taxes)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
-              <span>PRIME TTC</span>
+              <span>PRIME TTC ANNUELLE</span>
               <span>{fcfa(resultat.primeTTC)}</span>
             </div>
           </>
@@ -1445,6 +1545,8 @@ function SecurhomeDommagesForm({
           </div>
         )}
       </div>
+
+      {choixPeriodicite}
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -1466,6 +1568,7 @@ function SecurMotoForm({
   ageMoto,
   setAgeMoto,
   sigRef,
+  choixPeriodicite,
 }: {
   nom: string;
   setNom: (v: string) => void;
@@ -1478,6 +1581,8 @@ function SecurMotoForm({
   ageMoto: AgeMoto;
   setAgeMoto: (v: AgeMoto) => void;
   sigRef: React.RefObject<SignaturePadHandle | null>;
+  /** Choix de périodicité de la prime (annuelle/mensuelle), rendu juste avant la signature. */
+  choixPeriodicite?: React.ReactNode;
 }) {
   let resultat: ResultatSecurMoto | null = null;
   let erreur = "";
@@ -1548,7 +1653,7 @@ function SecurMotoForm({
               <span>{fcfa(resultat.taxes)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 800, color: "#004b9c" }}>
-              <span>PRIME TTC</span>
+              <span>PRIME TTC ANNUELLE</span>
               <span>{fcfa(resultat.primeTTC)}</span>
             </div>
           </>
@@ -1558,6 +1663,8 @@ function SecurMotoForm({
           </div>
         )}
       </div>
+
+      {choixPeriodicite}
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -1582,6 +1689,7 @@ function SecurhomeIncendieForm({
   setStatutOccupation,
   tarifsFormule,
   sigRef,
+  choixPeriodicite,
 }: {
   nom: string;
   setNom: (v: string) => void;
@@ -1595,6 +1703,8 @@ function SecurhomeIncendieForm({
   setStatutOccupation: (v: "proprietaire" | "locataire") => void;
   tarifsFormule: TarifFormule[];
   sigRef: React.RefObject<SignaturePadHandle | null>;
+  /** Choix de périodicité de la prime (annuelle/mensuelle), rendu juste avant la signature. */
+  choixPeriodicite?: React.ReactNode;
 }) {
   const tarif = nombrePieces ? tarifsFormule.find((t) => t.libelleVariante === nombrePieces) ?? null : null;
 
@@ -1641,7 +1751,7 @@ function SecurhomeIncendieForm({
             <strong style={{ color: "#0f1b2d" }}>{fcfa(tarif.capitalGaranti)}</strong>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC</span>
+            <span style={{ fontSize: 13, color: "#5b6b80" }}>Prime TTC annuelle</span>
             <strong style={{ fontSize: 18, color: "#004b9c" }}>{fcfa(tarif.prime)}</strong>
           </div>
         </div>
@@ -1659,6 +1769,8 @@ function SecurhomeIncendieForm({
           </label>
         </div>
       </FieldRow>
+
+      {choixPeriodicite}
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -2190,6 +2302,9 @@ export default function Souscription() {
   // Champs RelaxMoto/RelaxAuto
   const [tarifsRelax, setTarifsRelax] = useState<TarifRelax[]>([]);
   const [cycle, setCycle] = useState<"annuel" | "mensuel">("annuel");
+  // Périodicité de la prime des produits Assurances Dommages : aucun choix par
+  // défaut, le client doit choisir (voir ChoixPeriodiciteDommages).
+  const [cycleDommages, setCycleDommages] = useState<"" | CycleDommages>("");
   // Nombre de cycles payés d'avance (curseur) — 1 par défaut, comme avant.
   const [nombrePeriodes, setNombrePeriodes] = useState(1);
   const [nomRx, setNomRx] = useState("");
@@ -2736,6 +2851,7 @@ export default function Souscription() {
   function retourListeProduits() {
     if (!chooserInfo) return;
     setQrInfo(null);
+    setCycleDommages("");
     setStep("choose-produit");
   }
 
@@ -2748,6 +2864,21 @@ export default function Souscription() {
   function montantAPayer(): number | null {
     const p = qrInfo?.produit;
     if (!p) return null;
+    // Produits Dommages : le barème est annuel, la prime mensuelle en est le
+    // dixième (voir periodiciteDommages.ts) — nul tant que rien n'est choisi.
+    if (estProduitDommagesAvecPeriodicite(p)) return primeSelonPeriodicite(primeAnnuelleDommages(), cycleDommages);
+    return montantHorsPeriodicite();
+  }
+
+  /** Prime ANNUELLE d'un produit Dommages (barème), `null` tant que la saisie est incomplète. */
+  function primeAnnuelleDommages(): number | null {
+    return montantHorsPeriodicite(true);
+  }
+
+  function montantHorsPeriodicite(annuelDommages = false): number | null {
+    const p = qrInfo?.produit;
+    if (!p) return null;
+    if (!annuelDommages && estProduitDommagesAvecPeriodicite(p)) return null;
     try {
       if (p === "accident") return tarifsAcc.find((t) => t.id === selectedTarifId)?.prime ?? null;
       if (isRelaxAccidentsFraisMedicaux(p)) {
@@ -2913,6 +3044,7 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Nombre de pièces", valeur: nombrePiecesSecurhome || "—" });
       l.push({ label: "Statut d'occupation", valeur: statutOccupationSecurhome === "proprietaire" ? "Propriétaire" : statutOccupationSecurhome === "locataire" ? "Locataire" : "—" });
+      l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
       return l;
     }
 
@@ -2965,6 +3097,7 @@ export default function Souscription() {
       });
       l.push({ label: "Contenu", valeur: fcfa(Number((pro ? contenuSp : contenuSh) || 0)) });
       l.push({ label: "Vol du contenu", valeur: oui(pro ? volContenuSp : volContenuSh) });
+      l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
       return l;
     }
 
@@ -2974,6 +3107,7 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Valeur de la moto à neuf", valeur: fcfa(Number(valeurMotoSm || 0)) });
       l.push({ label: "Âge de la moto", valeur: ageMotoSm });
+      l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
       return l;
     }
 
@@ -3123,6 +3257,8 @@ export default function Souscription() {
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
     if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit) || !ficheSanteDepuisSaisie(ficheSante) || !sexe || !questionnaireSanteComplet())) return;
     if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
+    // Produits Dommages : la périodicité (annuelle/mensuelle) doit avoir été choisie.
+    if (estProduitDommagesAvecPeriodicite(qrInfo.produit) && !cycleDommages) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
     // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
@@ -3207,6 +3343,7 @@ export default function Souscription() {
             formule: nombrePiecesSecurhome,
             statutOccupation: statutOccupationSecurhome,
             signature,
+            cycle: cycleDommages,
             moyenPaiement,
           }),
         });
@@ -3283,6 +3420,7 @@ export default function Souscription() {
             ddeCapital: ddeCapitalSp ? Number(ddeCapitalSp) : undefined,
             deCapital: deCapitalSp ? Number(deCapitalSp) : undefined,
             bdgCapital: bdgCapitalSp ? Number(bdgCapitalSp) : undefined,
+            cycle: cycleDommages,
             moyenPaiement,
           }),
         });
@@ -3321,6 +3459,7 @@ export default function Souscription() {
             ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
             deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
             bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
+            cycle: cycleDommages,
             moyenPaiement,
           }),
         });
@@ -3346,6 +3485,7 @@ export default function Souscription() {
             signature,
             valeurMoto: Number(valeurMotoSm || 0),
             ageMoto: ageMotoSm,
+            cycle: cycleDommages,
             moyenPaiement,
           }),
         });
@@ -3829,6 +3969,12 @@ export default function Souscription() {
       setCarteBusy(false);
     }
   }
+
+  // Choix annuel/mensuel des produits Dommages, passé à leur formulaire (rendu
+  // entre l'aperçu du devis et la signature).
+  const choixPeriodicite = estProduitDommagesAvecPeriodicite(qrInfo?.produit) ? (
+    <ChoixPeriodiciteDommages primeAnnuelle={primeAnnuelleDommages()} cycle={cycleDommages} setCycle={setCycleDommages} />
+  ) : undefined;
 
   return (
     <div
@@ -4472,6 +4618,7 @@ export default function Souscription() {
                   setStatutOccupation={setStatutOccupationSecurhome}
                   tarifsFormule={tarifsFormule}
                   sigRef={sigRef}
+                  choixPeriodicite={choixPeriodicite}
                 />
               ) : isSecurhomeDommages(qrInfo?.produit) ? (
                 <SecurhomeDommagesForm
@@ -4512,6 +4659,7 @@ export default function Souscription() {
                   bdgCapital={bdgCapitalSh}
                   setBdgCapital={setBdgCapitalSh}
                   sigRef={sigRef}
+                  choixPeriodicite={choixPeriodicite}
                 />
               ) : isSecurMoto(qrInfo?.produit) ? (
                 <SecurMotoForm
@@ -4526,6 +4674,7 @@ export default function Souscription() {
                   ageMoto={ageMotoSm}
                   setAgeMoto={setAgeMotoSm}
                   sigRef={sigRef}
+                  choixPeriodicite={choixPeriodicite}
                 />
               ) : isSecurproDommages(qrInfo?.produit) ? (
                 <SecurproDommagesForm
@@ -4575,6 +4724,7 @@ export default function Souscription() {
                   setBdgCapital={setBdgCapitalSp}
                   bareme={baremeSecurpro}
                   sigRef={sigRef}
+                  choixPeriodicite={choixPeriodicite}
                 />
               ) : isRelaxAccidentsGenerale(qrInfo?.produit) ? (
                 <RelaxAccidentsGeneraleForm
@@ -5031,6 +5181,8 @@ export default function Souscription() {
                 }
                 const bloque =
                   submitting ||
+                  // Produits Dommages : annuelle ou mensuelle doit être choisie.
+                  (estProduitDommagesAvecPeriodicite(qrInfo?.produit) && !cycleDommages) ||
                   (estProduitSante(qrInfo?.produit)
                     ? nom.trim().length < 3 ||
                       phoneInvalid(telephone) ||
@@ -5783,7 +5935,7 @@ export default function Souscription() {
                       </div>
                       {result.resultat && (
                         <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
-                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                          {libellePrimeTtcResultat(result.resultat, cycleDommages)} : {fcfa(result.resultat.primeTTC)}
                         </div>
                       )}
                       {result.dateFin && (
@@ -5836,7 +5988,7 @@ export default function Souscription() {
                       </div>
                       {result.resultat && (
                         <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
-                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                          {libellePrimeTtcResultat(result.resultat, cycleDommages)} : {fcfa(result.resultat.primeTTC)}
                         </div>
                       )}
                       {result.dateFin && (
@@ -5889,7 +6041,7 @@ export default function Souscription() {
                       </div>
                       {result.resultat && (
                         <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
-                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                          {libellePrimeTtcResultat(result.resultat, cycleDommages)} : {fcfa(result.resultat.primeTTC)}
                         </div>
                       )}
                       {result.dateFin && (
@@ -5942,7 +6094,7 @@ export default function Souscription() {
                       </div>
                       {result.resultat && (
                         <div style={{ fontSize: 12, color: "#15803d", marginTop: 8 }}>
-                          Prime TTC : {fcfa(result.resultat.primeTTC)}
+                          {libellePrimeTtcResultat(result.resultat, cycleDommages)} : {fcfa(result.resultat.primeTTC)}
                         </div>
                       )}
                       {result.dateFin && (
