@@ -44,6 +44,65 @@ const OFFRE_PAR_PRODUIT: Record<string, string> = {
   relaxaccidents: "RELAXACCIDENTSGP",
 };
 
+/**
+ * Code `offre` par FORMULE (2026-10-19, liste fournie par NOVELIA) : le code
+ * envoyé à chaque souscription désigne le FMP imprimé sur la carte de prise en
+ * charge, qui dépend de la formule choisie et pas seulement du produit.
+ *
+ *   RelaxMoto            mensuel 2 500  → RELAXMOTO      annuel 25 000 → RELAXMOTO25000
+ *   RelaxAuto            mensuel 2 500  → RELAXAUTO      annuel 25 000 → RELAXAUTO25000
+ *   RelaxAccidents FM    1 000 → RELAXACCIDENTSGP        500 → RELAXACCIDENTSGP500
+ *   RAF Livreurs/MotoTaxis 1 000 → RELAXACCIDENTLT       500 → RELAXACCIDENTLT500
+ *
+ * Clé de formule : le cycle (`mensuel`/`annuel`) pour RelaxMoto/RelaxAuto, la
+ * prime de la formule en FCFA (`"1000"`/`"500"`, hors option Décès) pour les
+ * RelaxAccidents Frais Médicaux. RelaxVoyage n'est pas concerné (code unique) ;
+ * RelaxAccidents générale non plus (elle garde son code par défaut ci-dessus).
+ */
+const OFFRE_PAR_FORMULE: Record<string, Record<string, string>> = {
+  relaxmoto: { mensuel: "RELAXMOTO", annuel: "RELAXMOTO25000" },
+  relaxauto: { mensuel: "RELAXAUTO", annuel: "RELAXAUTO25000" },
+  relaxaccidents_fraismedicaux: { "1000": "RELAXACCIDENTSGP", "500": "RELAXACCIDENTSGP500" },
+  relaxaccidents_fraismedicaux_livreurs: { "1000": "RELAXACCIDENTLT", "500": "RELAXACCIDENTLT500" },
+};
+
+/** Clé de formule d'une souscription (voir OFFRE_PAR_FORMULE), ou `null` si le produit n'en a pas. */
+function cleFormuleNovelia(
+  produitCode: string,
+  s: Pick<Souscription, "cycleFacturation" | "montantPrime" | "donneesSpecifiques">
+): string | null {
+  if (!OFFRE_PAR_FORMULE[produitCode]) return null;
+  if (produitCode === "relaxmoto" || produitCode === "relaxauto") return s.cycleFacturation;
+  // RelaxAccidents FM : le montant payé inclut l'option Décès éventuelle, qui
+  // n'appartient pas à la formule (voir OPTIONS_DECES_FRAIS_MEDICAUX).
+  const option = (s.donneesSpecifiques as { optionDeces?: { prime?: unknown } } | null)?.optionDeces?.prime;
+  const primeOption = typeof option === "number" ? option : 0;
+  return String(s.montantPrime - primeOption);
+}
+
+/**
+ * Code `offre` à envoyer à NOVELIA pour cette souscription : celui de sa
+ * formule, sinon (formule inconnue — tarif modifié par un admin, par exemple)
+ * le code par défaut du produit, avec un avertissement dans les journaux car la
+ * carte portera alors peut-être un FMP qui n'est pas le bon. `undefined` si le
+ * produit n'est pas couvert par NOVELIA.
+ */
+export function offreNovelia(
+  produitCode: string,
+  s: Pick<Souscription, "cycleFacturation" | "montantPrime" | "donneesSpecifiques">
+): string | undefined {
+  const parDefaut = OFFRE_PAR_PRODUIT[produitCode];
+  if (!parDefaut) return undefined;
+  const cle = cleFormuleNovelia(produitCode, s);
+  if (cle == null) return parDefaut;
+  const offre = OFFRE_PAR_FORMULE[produitCode]?.[cle];
+  if (!offre) {
+    console.warn(`[novelia] formule « ${cle} » inconnue pour ${produitCode} : code par défaut ${parDefaut} utilisé.`);
+    return parDefaut;
+  }
+  return offre;
+}
+
 /** Délais (minutes) avant la n-ième nouvelle tentative. Au-delà → abandon. */
 const BACKOFF_MINUTES = [2, 10, 30, 120, 360];
 const DELAI_ABANDON_MS = 24 * 60 * 60 * 1000;
@@ -349,7 +408,8 @@ async function synchroniserNovelia(carte: Carte): Promise<void> {
     include: { documents: true, produit: { select: { code: true } } },
   });
   if (!s) return;
-  const offre = OFFRE_PAR_PRODUIT[s.produit.code];
+  // Code propre à la formule de cette souscription (FMP de la carte) — voir offreNovelia.
+  const offre = offreNovelia(s.produit.code, s);
   if (!offre) return;
 
   const construction = construireDonneesCarte(s, offre);
