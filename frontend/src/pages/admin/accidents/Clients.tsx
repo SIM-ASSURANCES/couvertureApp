@@ -23,6 +23,8 @@ interface SouscriptionAssurancesAccidents {
   capitalGaranti: number;
   waveStatut: string | null;
   numeroPolice?: string | null;
+  // N° de police attribué par NOVELIA à la synchronisation de la carte de prise en charge.
+  numeroPoliceNovelia?: string | null;
   partenaireNom: string;
   partenaireResponsable?: string | null;
   produit: { code: string; libelle: string };
@@ -67,7 +69,7 @@ export default function AssurancesAccidentsClients() {
     const q = recherche.trim().toLowerCase();
     if (!q) return data ?? [];
     return (data ?? []).filter((c) =>
-      [c.nom, c.prenom, c.telephone, c.clientIdentifiant, c.numeroPolice, c.partenaireNom, c.produit.libelle]
+      [c.nom, c.prenom, c.telephone, c.clientIdentifiant, c.numeroPolice, c.numeroPoliceNovelia, c.partenaireNom, c.produit.libelle]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     );
@@ -183,6 +185,7 @@ export default function AssurancesAccidentsClients() {
                   <th>Prime</th>
                   <th>Statut</th>
                   <th>N° police</th>
+                  <th>N° police Novelia</th>
                   <th>Date d'échéance</th>
                   <th>Renouvellement</th>
                   <th>Date d'effet</th>
@@ -202,6 +205,7 @@ export default function AssurancesAccidentsClients() {
                     <td><strong>{fcfa(c.montantPrime)}</strong></td>
                     <td>{waveBadge(c.waveStatut ?? "en_attente")}</td>
                     <td className="muted">{c.numeroPolice ?? "—"}</td>
+                    <td className="muted" title="N° de police attribué par Novelia pour la carte de prise en charge">{c.numeroPoliceNovelia ?? "—"}</td>
                     <td className="muted"><EcheanceDate date={c.dateFin} /></td>
                     <td>{statutRenouvellement(c)}</td>
                     <td className="muted">{c.dateDebut ? fmtDate(c.dateDebut) : "—"}</td>
@@ -245,7 +249,7 @@ export default function AssurancesAccidentsClients() {
                   </tr>
                 ))}
                 {donneesFiltrees.length === 0 && (
-                  <tr><td colSpan={11}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
+                  <tr><td colSpan={12}><div className="empty">{recherche ? "Aucun résultat pour cette recherche." : "Aucun client pour l'instant."}</div></td></tr>
                 )}
               </tbody>
             </table>
@@ -273,6 +277,7 @@ export default function AssurancesAccidentsClients() {
                 <tr><td className="muted">Capital garanti</td><td>{fcfa(detailFor.capitalGaranti)}</td></tr>
                 <tr><td className="muted">Statut</td><td>{waveBadge(detailFor.waveStatut ?? "en_attente")}</td></tr>
                 <tr><td className="muted">N° police</td><td>{detailFor.numeroPolice ?? "—"}</td></tr>
+                <tr><td className="muted">N° police Novelia</td><td>{detailFor.numeroPoliceNovelia ?? "—"}</td></tr>
                 <tr><td className="muted">Date d'effet</td><td>{detailFor.dateDebut ? fmtDate(detailFor.dateDebut) : "—"}</td></tr>
                 <tr><td className="muted">Date d'échéance</td><td><EcheanceDate date={detailFor.dateFin} /></td></tr>
                 <tr>

@@ -153,6 +153,9 @@ assurancesAccidentsRouter.get(
         partenaire: { select: { nomCommerce: true, nomResponsable: true } },
         produit: { select: { code: true, libelle: true } },
         client: { select: { identifiant: true } },
+        // N° de police attribué par NOVELIA à la synchronisation de la carte de
+        // prise en charge (distinct du n° de police SIM `numeroPolice`).
+        carte: { select: { numeroPoliceNovelia: true } },
       },
       orderBy: procheDeLecheance ? { dateFin: "asc" } : { createdAt: "desc" },
     });
@@ -165,6 +168,8 @@ assurancesAccidentsRouter.get(
         partenaireResponsable: r.partenaire.nomResponsable,
         clientIdentifiant: r.client?.identifiant ?? null,
         client: undefined,
+        numeroPoliceNovelia: r.carte?.numeroPoliceNovelia ?? null,
+        carte: undefined,
       }))
     );
   })
