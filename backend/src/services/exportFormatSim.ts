@@ -1,6 +1,7 @@
 // Export Excel « format SIM Assurances » : les 25 colonnes de la feuille
 // « PROPOSITION SIM ASSURANCES » du modèle fourni (TEMPLATE PLATEFORME QR
-// CODE.xlsx), pour la liste des clients et la liste des contrats.
+// CODE.xlsx), suivies d'une 26e « Référence Wave » (2026-10-20), pour la liste
+// des clients et la liste des contrats.
 //
 // Une ligne par police (état courant), tous modèles confondus : générique
 // (dont les Assurances Santé), Incendie et Accident historiques. Toute donnée
@@ -47,6 +48,10 @@ export const COLONNES_SIM = [
   "Commission due",
   "Commission payée",
   "Année d'émission",
+  // 26e colonne, ajoutée après le modèle fourni (2026-10-20) pour ne pas en
+  // décaler les 25 premières : la référence du paiement Wave, comme la colonne
+  // « Référence Wave » de la page Contrats.
+  "Référence Wave",
 ] as const;
 export type Colonne = (typeof COLONNES_SIM)[number];
 
@@ -215,7 +220,7 @@ type SouscriptionGenerique = Prisma.SouscriptionGetPayload<{
     partenaire: { select: { nomCommerce: true; nomResponsable: true; localisation: true } };
     agentDistribution: { select: { nom: true } };
     client: { select: { identifiant: true } };
-    paiements: { select: { statut: true; montant: true; datePaiement: true; dateEcheance: true; periodeDebut: true; periodeFin: true } };
+    paiements: { select: { statut: true; montant: true; datePaiement: true; dateEcheance: true; periodeDebut: true; periodeFin: true; waveTransactionId: true } };
   };
 }>;
 
@@ -314,6 +319,9 @@ async function ligneGenerique(s: SouscriptionGenerique, ref: References): Promis
     // commission validées), pas par police : donnée inexistante à ce niveau.
     "Commission payée": NA,
     "Année d'émission": dateEmission.getUTCFullYear(),
+    // Même règle que la colonne de la page Contrats : référence de la souscription,
+    // sinon celle du dernier paiement réglé ; rien tant que ce n'est pas confirmé.
+    "Référence Wave": confirmee ? texteOuNA(s.waveTransactionId ?? dernierPaye?.waveTransactionId) : NA,
   };
   return { ligne, tri: s.createdAt.getTime() };
 }
@@ -367,6 +375,7 @@ function ligneAccident(
     "Commission due": confirmee ? Math.round(primeNette * ref.tauxAccident * nb) : NA,
     "Commission payée": NA,
     "Année d'émission": dateEmission.getUTCFullYear(),
+    "Référence Wave": confirmee ? texteOuNA(s.waveTransactionId) : NA,
   };
   return { ligne, tri: s.createdAt.getTime() };
 }
@@ -418,6 +427,8 @@ function ligneIncendie(
     "Commission due": complet ? Math.round(primeNette * ref.tauxIncendie * nb) : NA,
     "Commission payée": NA,
     "Année d'émission": dateEmission.getUTCFullYear(),
+    // Réglé en boutique : pas de paiement Wave.
+    "Référence Wave": NA,
   };
   return { ligne, tri: s.createdAt.getTime() };
 }
@@ -487,7 +498,7 @@ export async function construireExportSim(
           partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
           agentDistribution: { select: { nom: true } },
           client: { select: { identifiant: true } },
-          paiements: { select: { statut: true, montant: true, datePaiement: true, dateEcheance: true, periodeDebut: true, periodeFin: true } },
+          paiements: { select: { statut: true, montant: true, datePaiement: true, dateEcheance: true, periodeDebut: true, periodeFin: true, waveTransactionId: true } },
         },
         orderBy: { id: "asc" },
         take: TAILLE_LOT,
