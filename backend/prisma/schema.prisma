@@ -192,6 +192,13 @@ model Partenaire {
   // (validation faite côté formulaire admin).
   localisation        String?
   typeCommerce        TypeCommerce?
+  // Taux de commission PROPRE à ce partenaire, fixé par l'admin (fraction de la
+  // prime nette HT, ex. 0.25 = 25 %). null = rien de saisi : le taux par défaut
+  // s'applique d'office (celui du produit — 20 % pour les produits Accidents/
+  // Dommages — ou du barème de SecurPro, et les taux Incendie/Accident de
+  // Parametre). Renseigné, il remplace ce taux par défaut pour TOUTES les
+  // ventes du partenaire (voir services/commission.ts).
+  tauxCommission      Float?
   // Catégorie d'intermédiaire (1 à N, voir services/identifiantsPartenaires.ts)
   // et identifiant dérivé "<catégorie>.<n° d'ordre dans la catégorie>" (ex.
   // 1.0001). Les deux sont figés dès l'attribution de l'identifiant : changer

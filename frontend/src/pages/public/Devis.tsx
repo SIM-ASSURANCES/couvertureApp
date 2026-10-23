@@ -14,6 +14,8 @@ interface CotationPublique {
   libelleFormule: string;
   primeTTC: number;
   capitalGaranti: number;
+  // Garanties couvertes par ce devis (capital, et prime quand chaque garantie est tarifée).
+  garanties?: { libelle: string; capital?: number; prime?: number; detail?: string }[];
   // SecurPro : renseignés quand le capital saisi dépasse la limite assurable et
   // est donc assuré à la limite (voir backend services/tarificationImf.ts).
   resultat?: { capitalPlafonne?: boolean; capitalSaisi?: number; limiteApplicable?: number } | null;
@@ -220,6 +222,29 @@ export default function Devis() {
             <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
               <span style={{ fontSize: 13, color: "#5b6b80" }}>Capital garanti</span>
               <span style={{ fontSize: 13, fontWeight: 700 }}>{fcfa(cotation.capitalGaranti)}</span>
+            </div>
+          )}
+          {cotation.garanties && cotation.garanties.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: "1px solid #eef1f5", paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#5b6b80", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8 }}>
+                Garanties incluses
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {cotation.garanties.map((g, i) => (
+                  <div key={`${g.libelle}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+                    <span style={{ color: "#0f1b2d" }}>
+                      {g.libelle}
+                      {g.detail && <span style={{ color: "#5b6b80" }}> — {g.detail}</span>}
+                    </span>
+                    <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>
+                      {!g.detail && g.capital ? fcfa(g.capital) : ""}
+                      {g.prime != null && (
+                        <span style={{ color: "#5b6b80", fontWeight: 500 }}>{!g.detail && g.capital ? " · " : ""}prime {fcfa(g.prime)}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           {cotation.resultat?.capitalPlafonne && (

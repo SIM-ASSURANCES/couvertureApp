@@ -20,6 +20,8 @@ import { z } from "zod";
 import { prisma } from "../db.js";
 import {
   formuleRelaxAccidentsGenerale,
+  garantiesRelaxAccidentsGenerale,
+  INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE,
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
   type Classe,
   type CycleRelaxAccidentsGenerale,
@@ -229,6 +231,72 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
   } catch (err) {
     throw new ErreurCotation(err instanceof Error ? err.message : "Entrées invalides pour SecurMoto.");
   }
+}
+
+/** Une garantie d'un devis, telle qu'affichée au partenaire/agent et au client. */
+export interface GarantieCotation {
+  libelle: string;
+  /** Capital ou plafond garanti, quand il existe. */
+  capital?: number;
+  /** Prime de la garantie (par période : annuelle ou mensuelle selon le devis), pour les devis à garanties tarifées une à une. */
+  prime?: number;
+  /** Précision libre (ex. « 3 500 FCFA / jour, 30 jours max »). */
+  detail?: string;
+}
+
+/**
+ * Garanties couvertes par un devis (2026-10-23), relues À LA DEMANDE depuis
+ * ce qui est déjà stocké sur la cotation — jamais enregistrées à part, donc
+ * toujours cohérentes avec le prix : SecurPro et SecurHome+ listent les lignes
+ * réellement facturées (une garantie non choisie n'y figure pas, comme elle
+ * n'est pas facturée) ; les autres produits reprennent leurs garanties fixes
+ * (mêmes valeurs que leur contrat).
+ */
+export function garantiesCotation(
+  produitCode: string,
+  entrees: unknown,
+  resultat: unknown,
+  capitalGaranti: number
+): GarantieCotation[] {
+  const e = (entrees ?? {}) as Record<string, unknown>;
+  const r = (resultat ?? {}) as { lignes?: { garantie: string; capital?: number; prime: number }[] };
+
+  if (produitCode === "securpro_dommages" || produitCode === "securhome_dommages") {
+    return (r.lignes ?? []).map((l) => ({
+      libelle: l.garantie,
+      ...(l.capital ? { capital: l.capital } : {}),
+      prime: l.prime,
+    }));
+  }
+  if (produitCode === "securmoto") {
+    return [{ libelle: "Dommages accidentels à la moto", capital: capitalGaranti }];
+  }
+  if (produitCode === "securhome") {
+    return [{ libelle: "Incendie / Explosion de l'habitation (montant forfaitaire)", capital: capitalGaranti }];
+  }
+  if (produitCode === "relaxaccidents") {
+    const classe = Number(e.classe) as Classe;
+    if (![1, 2, 3, 4].includes(classe)) return [];
+    const g = garantiesRelaxAccidentsGenerale(classe);
+    const ij = INDEMNITE_JOURNALIERE_RELAXACCIDENTS_GENERALE;
+    return [
+      // L'indemnité journalière ne concerne que les travailleurs NON déclarés CNPS.
+      ...(e.cnpsDeclare === false
+        ? [
+            {
+              libelle: "Indemnité journalière",
+              capital: ij.montant,
+              detail: `${ij.montant.toLocaleString("fr-FR")} FCFA / jour, ${ij.dureeMaxJours} jours max (${ij.carenceJours} jours de franchise)`,
+            },
+          ]
+        : []),
+      { libelle: "Frais médicaux et pharmaceutiques", capital: g.fraisMedicaux },
+      { libelle: "Invalidité permanente partielle/totale", capital: g.invaliditePermanenteTotale },
+      { libelle: "Décès non accidentel", capital: g.decesNonAccidentel },
+      { libelle: "Décès accidentel", capital: g.decesAccidentel },
+    ];
+  }
+  return [];
 }
 
 export const LIBELLES_PRODUIT_COTATION: Record<ProduitCotation, string> = {

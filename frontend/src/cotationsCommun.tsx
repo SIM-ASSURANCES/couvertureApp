@@ -109,6 +109,14 @@ function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, 
   return communs;
 }
 
+/** Une garantie couverte par un devis (voir backend services/cotations.ts::garantiesCotation). */
+export interface GarantieDevis {
+  libelle: string;
+  capital?: number;
+  prime?: number;
+  detail?: string;
+}
+
 export interface Cotation {
   id: string;
   token: string;
@@ -118,6 +126,8 @@ export interface Cotation {
   resultat: unknown;
   primeTTC: number;
   capitalGaranti: number;
+  /** Garanties couvertes par ce devis. */
+  garanties?: GarantieDevis[];
   libelleFormule: string;
   clientNom: string | null;
   clientTelephone: string | null;
@@ -133,6 +143,37 @@ export function Field({ label, children }: { label: string; children: React.Reac
     <div className="field">
       <label className="label">{label}</label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Garanties couvertes par un devis (2026-10-23) : libellé, capital garanti et,
+ * pour SecurPro/SecurHome+ dont chaque garantie est tarifée, sa prime. Les
+ * garanties non choisies ne figurent pas dans un devis — elles ne sont pas
+ * facturées non plus.
+ */
+export function GarantiesDevis({ garanties }: { garanties?: GarantieDevis[] }) {
+  if (!garanties || garanties.length === 0) return null;
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px solid #e3e9f1", paddingTop: 8 }}>
+      <div style={{ fontSize: 11.5, fontWeight: 700, color: "#5b6b80", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 4 }}>
+        Garanties du devis
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+        {garanties.map((g, i) => (
+          <div key={`${g.libelle}-${i}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
+            <span>
+              {g.libelle}
+              {g.detail && <span style={{ color: "#5b6b80" }}> — {g.detail}</span>}
+            </span>
+            <span style={{ whiteSpace: "nowrap", color: "#0f1b2d", fontWeight: 600 }}>
+              {g.detail ? "" : g.capital ? fcfa(g.capital) : ""}
+              {g.prime != null && <span style={{ color: "#5b6b80", fontWeight: 500 }}>{g.capital && !g.detail ? " · " : ""}prime {fcfa(g.prime)}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

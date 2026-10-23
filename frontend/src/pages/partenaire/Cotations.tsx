@@ -12,6 +12,7 @@ import {
   Field,
   statutBadgeCotation,
   ChampsProduitCotation,
+  GarantiesDevis,
 } from "../../cotationsCommun";
 
 export default function PartenaireCotations() {
@@ -190,6 +191,7 @@ export default function PartenaireCotations() {
                     <div style={{ fontSize: 16, fontWeight: 800 }}>{fcfa(c.primeTTC)}</div>
                     <div className="muted" style={{ fontSize: 11.5 }}>{fmtDate(c.createdAt)}</div>
                   </div>
+                  <GarantiesDevis garanties={c.garanties} />
                   {(c.clientNom || c.clientTelephone) && (
                     <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
                       {c.clientNom} {c.clientTelephone ? `· ${c.clientTelephone}` : ""}

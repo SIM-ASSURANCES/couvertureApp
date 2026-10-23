@@ -430,6 +430,10 @@ function EditModal({
     categorie: partenaire.categorie != null ? String(partenaire.categorie) : "",
     email: partenaire.email ?? "",
   });
+  // Taux de commission propre en % (texte libre pour accepter 12,5) ; vide = taux par défaut.
+  const [tauxPct, setTauxPct] = useState(
+    partenaire.tauxCommission != null ? String(Math.round(partenaire.tauxCommission * 10000) / 100).replace(".", ",") : ""
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -439,9 +443,16 @@ function EditModal({
     setError("");
     try {
       // Pas de catégorie choisie (partenaire existant) : champ omis, jamais envoyé vide.
+      const taux = tauxPct.trim() === "" ? null : Number(tauxPct.trim().replace(",", "."));
+      if (taux !== null && (!Number.isFinite(taux) || taux < 0 || taux > 100)) {
+        setError("Le taux de commission doit être un nombre entre 0 et 100.");
+        return;
+      }
       await api.patch(`/partenaires/${partenaire.id}`, {
         ...form,
         categorie: form.categorie === "" ? undefined : Number(form.categorie),
+        // null = champ vidé : le partenaire repasse au taux par défaut.
+        tauxCommissionPct: taux,
       });
       onSaved("Partenaire modifié ✓");
       onClose();
@@ -497,6 +508,20 @@ function EditModal({
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
+          </div>
+          <div className="field">
+            <label className="label">Taux de commission du partenaire (%)</label>
+            <input
+              className="input"
+              inputMode="decimal"
+              placeholder="Taux par défaut"
+              value={tauxPct}
+              onChange={(e) => setTauxPct(e.target.value.replace(/[^0-9.,]/g, ""))}
+            />
+            <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+              Pourcentage de la prime nette versé à ce partenaire, tous produits confondus. Laissez vide pour appliquer
+              d'office le taux par défaut (celui de chaque produit, 20 % en général).
+            </div>
           </div>
           {error && <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 10 }}>{error}</div>}
           <div style={{ display: "flex", gap: 10, marginTop: 4 }}>

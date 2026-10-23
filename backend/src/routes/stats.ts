@@ -429,6 +429,10 @@ async function buildPerformance(opts: PerfOpts = {}) {
   const genDynRowsParPartenaire = grouperPar(genDynRowsAll);
 
   const rows = allPartenaires.map((p) => {
+    // Taux de commission propre au partenaire (Partenaire.tauxCommission) : remplace
+    // les taux par défaut ; null = rien de saisi, le taux par défaut s'applique d'office.
+    const tauxIncP = p.tauxCommission ?? tauxInc;
+    const tauxAccP = p.tauxCommission ?? tauxAcc;
     const incGroups = incGroupsParPartenaire.get(p.id) ?? [];
     const accGroups = accGroupsParPartenaire.get(p.id) ?? [];
     const incGroupsViaAgents = incGroupsViaAgentsParPartenaire.get(p.id) ?? [];
@@ -452,12 +456,12 @@ async function buildPerformance(opts: PerfOpts = {}) {
       primesIncendie += g.montantPrime * n;
       primesIncendieHT += primeNette * n;
       caIncendie += (g.montantPrime - (t?.taxes ?? 0)) * n;
-      commissionIncendie += primeNette * tauxInc * n;
+      commissionIncendie += primeNette * tauxIncP * n;
     }
     let commissionIncendieViaAgents = 0;
     for (const g of incGroupsViaAgents) {
       const n = g._sum.nombrePaiements ?? g._count._all;
-      commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxInc * n;
+      commissionIncendieViaAgents += (incMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxIncP * n;
     }
     commissionIncendie -= commissionIncendieViaAgents * TAUX_COMMISSION_AGENT;
 
@@ -474,12 +478,12 @@ async function buildPerformance(opts: PerfOpts = {}) {
       primesAccident += g.montantPrime * n;
       primesAccidentHT += primeNette * n;
       caAccident += (g.montantPrime - (t?.taxes ?? 0)) * n;
-      commissionAccident += primeNette * tauxAcc * n;
+      commissionAccident += primeNette * tauxAccP * n;
     }
     let commissionAccidentViaAgents = 0;
     for (const g of accGroupsViaAgents) {
       const n = g._sum.nombrePaiements ?? g._count._all;
-      commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxAcc * n;
+      commissionAccidentViaAgents += (accMap.get(g.montantPrime)?.primeHT ?? g.montantPrime) * tauxAccP * n;
     }
     commissionAccident -= commissionAccidentViaAgents * TAUX_COMMISSION_AGENT;
 
@@ -493,7 +497,7 @@ async function buildPerformance(opts: PerfOpts = {}) {
       const primeHT = t?.primeHT ?? g.montantPrime;
       const taxes = t?.taxes ?? 0;
       // Taux du produit (Produit.tauxCommission, 20 % par défaut) × prime nette.
-      const commissionBrute = primeHT * (prod.tauxCommission ?? 0.2) * nPaiements;
+      const commissionBrute = primeHT * (p.tauxCommission ?? prod.tauxCommission ?? 0.2) * nPaiements;
       const commissionPart = g.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;
       if (prod.sousBranche === "ASSURANCES_DOMMAGES") {
         primesIncendie += g.montantPrime * nPaiements;
@@ -520,9 +524,9 @@ async function buildPerformance(opts: PerfOpts = {}) {
       if (prod.code === "securpro_dommages") {
         const specs = s.donneesSpecifiques as { classe?: number } | null;
         const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
-        commissionUnitaire = (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0);
+        commissionUnitaire = (resultat.primeNetteHT ?? 0) * (p.tauxCommission ?? bareme?.tauxCommission ?? 0);
       } else {
-        commissionUnitaire = primeHT * (prod.tauxCommission ?? 0);
+        commissionUnitaire = primeHT * (p.tauxCommission ?? prod.tauxCommission ?? 0);
       }
       const commissionBrute = commissionUnitaire * nPaiements;
       const commissionPart = s.agentDistributionId ? commissionBrute * (1 - TAUX_COMMISSION_AGENT) : commissionBrute;

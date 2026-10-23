@@ -85,7 +85,17 @@ const baseSchema = z.object({
     .optional(),
   sousBranche: z.enum(["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"]).optional(),
   email: z.string().min(1, "Email requis").email("Email invalide"),
+  // Taux de commission propre au partenaire, en % (0-100) de la prime nette.
+  // Absent ou null = rien de saisi : le taux par défaut s'applique d'office
+  // (voir Partenaire.tauxCommission). Stocké en fraction (25 → 0,25).
+  tauxCommissionPct: z.number().min(0).max(100).nullable().optional(),
 });
+
+/** % saisi par l'admin → fraction stockée ; `undefined` = ne pas toucher, `null` = revenir au taux par défaut. */
+function fractionDepuisPct(pct: number | null | undefined): number | null | undefined {
+  if (pct === undefined) return undefined;
+  return pct === null ? null : Math.round(pct * 100) / 10000;
+}
 
 const PRODUITS_RELAX = ["relaxmoto", "relaxauto"] as const;
 type ProduitRelax = (typeof PRODUITS_RELAX)[number];
@@ -342,6 +352,7 @@ partenairesRouter.post(
         telephone: data.telephone,
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
+        tauxCommission: fractionDepuisPct(data.tauxCommissionPct) ?? null,
         branche: relax ? "RELAX" : "INCENDIE_ACCIDENT",
         produitIncendie: data.produit === "incendie",
         produitAccident: isAccident,
@@ -462,6 +473,8 @@ partenairesRouter.patch(
         telephone: data.telephone,
         localisation: data.localisation,
         typeCommerce: data.typeCommerce,
+        // undefined = inchangé ; null = l'admin a vidé le champ (taux par défaut).
+        tauxCommission: fractionDepuisPct(data.tauxCommissionPct),
         branche: data.produit != null ? (relax ? "RELAX" : "INCENDIE_ACCIDENT") : undefined,
         produitIncendie: data.produit != null ? isIncendie : undefined,
         produitAccident: data.produit != null ? isAccident : undefined,

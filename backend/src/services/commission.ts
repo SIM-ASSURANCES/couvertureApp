@@ -83,7 +83,10 @@ function commissionParTaux(
 async function commissionBrute(
   partenaireId: string | undefined,
   agentDistributionId: FiltreAgent,
-  dateWhere: DateWhere
+  dateWhere: DateWhere,
+  // Taux propre au partenaire (Partenaire.tauxCommission) : remplace les taux par
+  // défaut ci-dessous pour toutes ses ventes ; null = rien de saisi, défaut d'office.
+  tauxPartenaire: number | null = null
 ): Promise<number> {
   const [incGroups, accGroups, tarifsInc, tarifsAcc, params, generique, dynamique] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
@@ -101,12 +104,12 @@ async function commissionBrute(
     prisma.tarifIncendie.findMany({ select: { prime: true, primeHT: true } }),
     prisma.tarifAccident.findMany({ select: { prime: true, primeHT: true } }),
     prisma.parametre.findUnique({ where: { id: 1 } }),
-    commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId, ...dateWhere }),
-    commissionSouscriptionsDynamiques({ partenaireId, agentDistributionId, ...dateWhere }),
+    commissionSouscriptionsGeneriques({ partenaireId, agentDistributionId, ...dateWhere }, tauxPartenaire),
+    commissionSouscriptionsDynamiques({ partenaireId, agentDistributionId, ...dateWhere }, tauxPartenaire),
   ]);
 
-  const tauxInc = params?.tauxCommissionIncendie ?? TAUX_COMMISSION_DEFAUT;
-  const tauxAcc = params?.tauxCommissionAccident ?? TAUX_COMMISSION_DEFAUT;
+  const tauxInc = tauxPartenaire ?? params?.tauxCommissionIncendie ?? TAUX_COMMISSION_DEFAUT;
+  const tauxAcc = tauxPartenaire ?? params?.tauxCommissionAccident ?? TAUX_COMMISSION_DEFAUT;
 
   return (
     commissionParTaux(incGroups, tarifsInc, tauxInc) +
@@ -123,11 +126,14 @@ async function commissionBrute(
  * est jointe par (produitId, prime), pas seulement par prime, puisque
  * plusieurs produits différents peuvent partager un même montant.
  */
-async function commissionSouscriptionsGeneriques(where: {
-  partenaireId?: string;
-  agentDistributionId?: FiltreAgent;
-  createdAt?: { gte?: Date; lte?: Date };
-}): Promise<number> {
+async function commissionSouscriptionsGeneriques(
+  where: {
+    partenaireId?: string;
+    agentDistributionId?: FiltreAgent;
+    createdAt?: { gte?: Date; lte?: Date };
+  },
+  tauxPartenaire: number | null = null
+): Promise<number> {
   const groups = await prisma.souscription.groupBy({
     by: ["produitId", "montantPrime"],
     // Hors produits à devis calculé : ils sont comptés par
@@ -158,7 +164,7 @@ async function commissionSouscriptionsGeneriques(where: {
   const tauxMap = new Map(produits.map((p) => [p.id, p.tauxCommission ?? TAUX_COMMISSION_DEFAUT]));
   return groups.reduce((s, g) => {
     const primeNette = tarifMap.get(`${g.produitId}:${g.montantPrime}`)?.primeHT ?? g.montantPrime;
-    const taux = tauxMap.get(g.produitId) ?? TAUX_COMMISSION_DEFAUT;
+    const taux = tauxPartenaire ?? tauxMap.get(g.produitId) ?? TAUX_COMMISSION_DEFAUT;
     return s + primeNette * taux * (g._sum.nombrePaiements ?? g._count._all);
   }, 0);
 }
@@ -177,11 +183,14 @@ async function commissionSouscriptionsGeneriques(where: {
  */
 export const PRODUITS_COMMISSION_DYNAMIQUE = ["securhome_dommages", "securpro_dommages", "securmoto"] as const;
 
-async function commissionSouscriptionsDynamiques(where: {
-  partenaireId?: string;
-  agentDistributionId?: FiltreAgent;
-  createdAt?: { gte?: Date; lte?: Date };
-}): Promise<number> {
+async function commissionSouscriptionsDynamiques(
+  where: {
+    partenaireId?: string;
+    agentDistributionId?: FiltreAgent;
+    createdAt?: { gte?: Date; lte?: Date };
+  },
+  tauxPartenaire: number | null = null
+): Promise<number> {
   const produits = await prisma.produit.findMany({
     where: { code: { in: [...PRODUITS_COMMISSION_DYNAMIQUE] } },
   });
@@ -208,11 +217,11 @@ async function commissionSouscriptionsDynamiques(where: {
     if (produit.code === "securpro_dommages") {
       const specs = s.donneesSpecifiques as { classe?: number } | null;
       const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
-      return total + (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0) * poids;
+      return total + (resultat.primeNetteHT ?? 0) * (tauxPartenaire ?? bareme?.tauxCommission ?? 0) * poids;
     }
 
     const primeBase = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
-    return total + primeBase * (produit.tauxCommission ?? 0) * poids;
+    return total + primeBase * (tauxPartenaire ?? produit.tauxCommission ?? 0) * poids;
   }, 0);
 }
 
@@ -222,10 +231,13 @@ async function commissionSouscriptionsDynamiques(where: {
  * directes du partenaire) au lieu d'un appel séparé par agent — voir
  * commissionBruteParAgent (audit perf 2026-09-11, N+1 critique #1).
  */
-async function commissionSouscriptionsGeneriquesParAgent(where: {
-  partenaireId?: string;
-  createdAt?: { gte?: Date; lte?: Date };
-}): Promise<Map<string, number>> {
+async function commissionSouscriptionsGeneriquesParAgent(
+  where: {
+    partenaireId?: string;
+    createdAt?: { gte?: Date; lte?: Date };
+  },
+  tauxPartenaire: number | null = null
+): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const groups = await prisma.souscription.groupBy({
     by: ["agentDistributionId", "produitId", "montantPrime"],
@@ -249,7 +261,7 @@ async function commissionSouscriptionsGeneriquesParAgent(where: {
   for (const g of groups) {
     const k = g.agentDistributionId ?? "";
     const primeNette = tarifMap.get(`${g.produitId}:${g.montantPrime}`)?.primeHT ?? g.montantPrime;
-    const taux = tauxMap.get(g.produitId) ?? TAUX_COMMISSION_DEFAUT;
+    const taux = tauxPartenaire ?? tauxMap.get(g.produitId) ?? TAUX_COMMISSION_DEFAUT;
     const montant = primeNette * taux * (g._sum.nombrePaiements ?? g._count._all);
     result.set(k, (result.get(k) ?? 0) + montant);
   }
@@ -260,10 +272,13 @@ async function commissionSouscriptionsGeneriquesParAgent(where: {
  * Variante par-agent de commissionSouscriptionsDynamiques ci-dessus (voir
  * commissionSouscriptionsGeneriquesParAgent pour le principe).
  */
-async function commissionSouscriptionsDynamiquesParAgent(where: {
-  partenaireId?: string;
-  createdAt?: { gte?: Date; lte?: Date };
-}): Promise<Map<string, number>> {
+async function commissionSouscriptionsDynamiquesParAgent(
+  where: {
+    partenaireId?: string;
+    createdAt?: { gte?: Date; lte?: Date };
+  },
+  tauxPartenaire: number | null = null
+): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   const produits = await prisma.produit.findMany({
     where: { code: { in: [...PRODUITS_COMMISSION_DYNAMIQUE] } },
@@ -290,10 +305,10 @@ async function commissionSouscriptionsDynamiquesParAgent(where: {
     if (produit.code === "securpro_dommages") {
       const specs = s.donneesSpecifiques as { classe?: number } | null;
       const bareme = specs?.classe != null ? baremeParClasse.get(specs.classe) : undefined;
-      montant = (resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0) * poids;
+      montant = (resultat.primeNetteHT ?? 0) * (tauxPartenaire ?? bareme?.tauxCommission ?? 0) * poids;
     } else {
       const primeBase = resultat.primeNetteHT2 ?? resultat.primeNetteHT ?? 0;
-      montant = primeBase * (produit.tauxCommission ?? 0) * poids;
+      montant = primeBase * (tauxPartenaire ?? produit.tauxCommission ?? 0) * poids;
     }
     result.set(k, (result.get(k) ?? 0) + montant);
   }
@@ -315,6 +330,9 @@ async function commissionBruteParAgent(
   partenaireId: string,
   dateWhere: DateWhere
 ): Promise<Map<string, number>> {
+  // Taux propre au partenaire (null = taux par défaut d'office) — voir Partenaire.tauxCommission.
+  const tauxPartenaire =
+    (await prisma.partenaire.findUnique({ where: { id: partenaireId }, select: { tauxCommission: true } }))?.tauxCommission ?? null;
   const [incGroups, accGroups, tarifsInc, tarifsAcc, params, generiqueMap, dynamiqueMap] = await Promise.all([
     prisma.souscriptionIncendie.groupBy({
       by: ["agentDistributionId", "montantPrime"],
@@ -331,12 +349,12 @@ async function commissionBruteParAgent(
     prisma.tarifIncendie.findMany({ select: { prime: true, primeHT: true } }),
     prisma.tarifAccident.findMany({ select: { prime: true, primeHT: true } }),
     prisma.parametre.findUnique({ where: { id: 1 } }),
-    commissionSouscriptionsGeneriquesParAgent({ partenaireId, ...dateWhere }),
-    commissionSouscriptionsDynamiquesParAgent({ partenaireId, ...dateWhere }),
+    commissionSouscriptionsGeneriquesParAgent({ partenaireId, ...dateWhere }, tauxPartenaire),
+    commissionSouscriptionsDynamiquesParAgent({ partenaireId, ...dateWhere }, tauxPartenaire),
   ]);
 
-  const tauxInc = params?.tauxCommissionIncendie ?? TAUX_COMMISSION_DEFAUT;
-  const tauxAcc = params?.tauxCommissionAccident ?? TAUX_COMMISSION_DEFAUT;
+  const tauxInc = tauxPartenaire ?? params?.tauxCommissionIncendie ?? TAUX_COMMISSION_DEFAUT;
+  const tauxAcc = tauxPartenaire ?? params?.tauxCommissionAccident ?? TAUX_COMMISSION_DEFAUT;
   const tarifIncMap = new Map(tarifsInc.map((t) => [t.prime, t]));
   const tarifAccMap = new Map(tarifsAcc.map((t) => [t.prime, t]));
 
@@ -407,13 +425,12 @@ export async function commissionTotaleAgentsDuPartenaire(
  * commissionTotalePartenaire).
  */
 export async function commissionTotaleAgent(agentDistributionId: string): Promise<number> {
-  const [brute, agent] = await Promise.all([
-    commissionBrute(undefined, agentDistributionId, {}),
-    prisma.agentDistribution.findUnique({
-      where: { id: agentDistributionId },
-      select: { tauxCommissionAgent: true },
-    }),
-  ]);
+  const agent = await prisma.agentDistribution.findUnique({
+    where: { id: agentDistributionId },
+    select: { tauxCommissionAgent: true, partenaire: { select: { tauxCommission: true } } },
+  });
+  // La commission brute d'une vente d'agent suit le taux du PARTENAIRE dont il dépend.
+  const brute = await commissionBrute(undefined, agentDistributionId, {}, agent?.partenaire.tauxCommission ?? null);
   return brute * (agent?.tauxCommissionAgent ?? TAUX_COMMISSION_AGENT);
 }
 

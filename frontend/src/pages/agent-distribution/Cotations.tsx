@@ -12,6 +12,7 @@ import {
   Field,
   statutBadgeCotation,
   ChampsProduitCotation,
+  GarantiesDevis,
 } from "../../cotationsCommun";
 
 const card: React.CSSProperties = {
@@ -179,6 +180,7 @@ export default function AgentDistributionCotations({ notify }: { notify: (m: str
                   <div style={{ fontSize: 15, fontWeight: 800 }}>{fcfa(c.primeTTC)}</div>
                   <div style={{ fontSize: 11, color: "#5b6b80" }}>{fmtDate(c.createdAt)}</div>
                 </div>
+                <GarantiesDevis garanties={c.garanties} />
                 {(c.clientNom || c.clientTelephone) && (
                   <div style={{ fontSize: 12, color: "#5b6b80", marginTop: 4 }}>
                     {c.clientNom} {c.clientTelephone ? `· ${c.clientTelephone}` : ""}

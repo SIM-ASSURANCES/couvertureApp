@@ -566,7 +566,7 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   const depassement = !!(resultat && "depassementPlafond" in resultat && resultat.depassementPlafond);
   const devisValide = !!resultat && !depassement;
   const peutSouscrire = devisValide && !souscription && !souscriptionHorsLigne;
-  const primeVolLigne = resultat && "lignes" in resultat ? resultat.lignes.find((l) => l.garantie === "Vol") : undefined;
+  const primeVolLigne = resultat && "lignes" in resultat ? resultat.lignes.find((l) => l.garantie === "Vol" || l.garantie.startsWith("Vol (")) : undefined;
 
   return (
     <>

@@ -2929,6 +2929,24 @@ export default function Souscription() {
         return tarifsFormule.find((t) => t.libelleVariante === nombrePiecesSecurhome)?.prime ?? null;
       if (estProduitSante(p))
         return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
+      if (isSecurproDommages(p) || isSecurhomeDommages(p) || isSecurMoto(p)) return resultatDommagesAnnuel()?.primeTTC ?? null;
+    } catch {
+      // Saisie encore incomplète : on n'affiche simplement pas de montant.
+    }
+    return null;
+  }
+
+  /**
+   * Devis ANNUEL complet (garanties facturées, prime nette, accessoires, taxes,
+   * TTC) de SecurPro, SecurHome+ ou SecurMoto d'après la saisie en cours, ou
+   * `null` tant qu'elle est incomplète. Source unique du montant affiché ET du
+   * détail des garanties de l'écran de vérification : le client voit ainsi
+   * exactement ce qui lui est facturé (sinon une garantie — ex. « Vol caisse »,
+   * choisie dans une liste — pouvait être facturée sans apparaître nulle part).
+   */
+  function resultatDommagesAnnuel(): { lignes?: { garantie: string; capital?: number; prime: number }[]; primeTTC: number } | null {
+    const p = qrInfo?.produit;
+    try {
       if (isSecurproDommages(p)) {
         const bar = baremeSecurpro?.find((b) => b.classe === classeSp);
         if (!bar) return null;
@@ -2952,7 +2970,7 @@ export default function Souscription() {
           },
           bar,
           { plafonner: true }
-        ).primeTTC;
+        );
       }
       if (isSecurhomeDommages(p))
         return calculerSecurhome({
@@ -2967,14 +2985,14 @@ export default function Souscription() {
           ddeCapital: ddeCapitalSh ? Number(ddeCapitalSh) : undefined,
           deCapital: deCapitalSh ? Number(deCapitalSh) : undefined,
           bdgCapital: bdgCapitalSh ? Number(bdgCapitalSh) : undefined,
-        }).primeTTC;
+        });
       if (isSecurMoto(p))
         return calculerSecurMoto({
           valeurMoto: Number(valeurMotoSm || 0),
           ageMoto: ageMotoSm,
-        }).primeTTC;
+        });
     } catch {
-      // Saisie encore incomplète : on n'affiche simplement pas de montant.
+      // Saisie encore incomplète.
     }
     return null;
   }
@@ -3125,8 +3143,20 @@ export default function Souscription() {
         valeur: fcfa(Number((statut === "proprietaire" ? (pro ? valeurBatimentSp : valeurBatimentSh) : pro ? loyerMensuelSp : loyerMensuelSh) || 0)),
       });
       l.push({ label: "Contenu", valeur: fcfa(Number((pro ? contenuSp : contenuSh) || 0)) });
-      l.push({ label: "Vol du contenu", valeur: oui(pro ? volContenuSp : volContenuSh) });
+      // Chaque garantie optionnelle est listée, souscrite ou non : « Non souscrit »
+      // est une information, un silence laisse croire qu'elle est absente de la facture.
+      const capitalOuNon = (v: string) => (v ? fcfa(Number(v)) : "Non souscrit");
+      l.push({ label: "Vol du contenu", valeur: (pro ? volContenuSp : volContenuSh) ? "Souscrit" : "Non souscrit" });
+      if (pro) l.push({ label: "Vol caisse", valeur: capitalOuNon(volCaisseCapitalSp) });
+      l.push({ label: "Dégât des eaux", valeur: capitalOuNon(pro ? ddeCapitalSp : ddeCapitalSh) });
+      l.push({ label: "Dommages électriques", valeur: capitalOuNon(pro ? deCapitalSp : deCapitalSh) });
+      l.push({ label: "Bris de glace", valeur: capitalOuNon(pro ? bdgCapitalSp : bdgCapitalSh) });
       l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
+      // Garanties réellement facturées, avec leur prime annuelle (le Vol contenu et le
+      // Vol caisse sont regroupés dans la ligne « Vol »).
+      for (const g of resultatDommagesAnnuel()?.lignes ?? []) {
+        l.push({ label: `Prime annuelle — ${g.garantie}`, valeur: fcfa(g.prime) });
+      }
       return l;
     }
 

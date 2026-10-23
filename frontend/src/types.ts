@@ -16,6 +16,9 @@ export interface Partenaire {
   // choisi la catégorie ; figés ensemble une fois attribués.
   categorie?: number | null;
   identifiant?: string | null;
+  // Taux de commission propre au partenaire (fraction, ex. 0,25 = 25 %) ; null/absent =
+  // rien de saisi, le taux par défaut s'applique d'office.
+  tauxCommission?: number | null;
   produitIncendie: boolean;
   produitAccident: boolean;
   branche?: "INCENDIE_ACCIDENT" | "RELAX" | null;

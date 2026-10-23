@@ -217,7 +217,7 @@ async function chargerReferences(): Promise<References> {
 type SouscriptionGenerique = Prisma.SouscriptionGetPayload<{
   include: {
     produit: { select: { code: true; libelle: true; sousBranche: true; tauxCommission: true } };
-    partenaire: { select: { nomCommerce: true; nomResponsable: true; localisation: true } };
+    partenaire: { select: { nomCommerce: true; nomResponsable: true; localisation: true; tauxCommission: true } };
     agentDistribution: { select: { nom: true } };
     client: { select: { identifiant: true } };
     paiements: { select: { statut: true; montant: true; datePaiement: true; dateEcheance: true; periodeDebut: true; periodeFin: true; waveTransactionId: true } };
@@ -234,22 +234,24 @@ function commissionGenerique(s: SouscriptionGenerique, ref: References): number 
   if (s.waveStatut !== "confirme") return NA;
   const n = s.nombrePaiements ?? 1;
   const code = s.produit.code;
+  // Taux propre au partenaire (Partenaire.tauxCommission) ; null = taux par défaut d'office.
+  const tauxPartenaire = s.partenaire.tauxCommission;
   if ((PRODUITS_COMMISSION_DYNAMIQUE as readonly string[]).includes(code)) {
     const r = s.resultat as { primeNetteHT?: number; primeNetteHT2?: number } | null;
     if (!r) return NA;
     if (code === "securpro_dommages") {
       const classe = (s.donneesSpecifiques as { classe?: number } | null)?.classe;
       const taux = classe != null ? ref.baremeSecurpro.get(classe) ?? 0 : 0;
-      return Math.round((r.primeNetteHT ?? 0) * taux * n);
+      return Math.round((r.primeNetteHT ?? 0) * (tauxPartenaire ?? taux) * n);
     }
-    return Math.round((r.primeNetteHT2 ?? r.primeNetteHT ?? 0) * (s.produit.tauxCommission ?? 0) * n);
+    return Math.round((r.primeNetteHT2 ?? r.primeNetteHT ?? 0) * (tauxPartenaire ?? s.produit.tauxCommission ?? 0) * n);
   }
   // SecurHome mensuel : la prime nette de la période est figée dans `resultat`
   // (le barème annuel n'a aucune ligne à ce montant) ; annuel : `resultat` absent.
   const primeNetteMensuelle =
     code === "securhome" ? (s.resultat as { primeNetteHT?: number } | null)?.primeNetteHT : undefined;
   const base = primeNetteMensuelle ?? ref.tarifParPrime.get(`${s.produitId}:${s.montantPrime}`)?.primeHT ?? s.montantPrime;
-  return Math.round(base * (s.produit.tauxCommission ?? TAUX_COMMISSION_DEFAUT) * n);
+  return Math.round(base * (tauxPartenaire ?? s.produit.tauxCommission ?? TAUX_COMMISSION_DEFAUT) * n);
 }
 
 async function ligneGenerique(s: SouscriptionGenerique, ref: References): Promise<{ ligne: LigneSim; tri: number }> {
@@ -331,7 +333,7 @@ async function ligneGenerique(s: SouscriptionGenerique, ref: References): Promis
 function ligneAccident(
   s: Prisma.SouscriptionAccidentGetPayload<{
     include: {
-      partenaire: { select: { nomCommerce: true; nomResponsable: true } };
+      partenaire: { select: { nomCommerce: true; nomResponsable: true; tauxCommission: true } };
       agentDistribution: { select: { nom: true } };
       client: { select: { identifiant: true } };
     };
@@ -372,7 +374,7 @@ function ligneAccident(
     "Prime ttc": s.montantPrime,
     "Règlement": confirmee ? s.montantPrime * nb : 0,
     "Restant dû (Arriérés)": !confirmee || renouvellementEnCours ? s.montantPrime : 0,
-    "Commission due": confirmee ? Math.round(primeNette * ref.tauxAccident * nb) : NA,
+    "Commission due": confirmee ? Math.round(primeNette * (s.partenaire.tauxCommission ?? ref.tauxAccident) * nb) : NA,
     "Commission payée": NA,
     "Année d'émission": dateEmission.getUTCFullYear(),
     "Référence Wave": confirmee ? texteOuNA(s.waveTransactionId) : NA,
@@ -383,7 +385,7 @@ function ligneAccident(
 function ligneIncendie(
   s: Prisma.SouscriptionIncendieGetPayload<{
     include: {
-      partenaire: { select: { nomCommerce: true; nomResponsable: true } };
+      partenaire: { select: { nomCommerce: true; nomResponsable: true; tauxCommission: true } };
       agentDistribution: { select: { nom: true } };
       client: { select: { identifiant: true } };
     };
@@ -424,7 +426,7 @@ function ligneIncendie(
     // Réglé en boutique à l'achat (réf. facture) : encaissé dès que le dossier est complet.
     "Règlement": complet ? s.montantPrime * nb : NA,
     "Restant dû (Arriérés)": complet ? 0 : NA,
-    "Commission due": complet ? Math.round(primeNette * ref.tauxIncendie * nb) : NA,
+    "Commission due": complet ? Math.round(primeNette * (s.partenaire.tauxCommission ?? ref.tauxIncendie) * nb) : NA,
     "Commission payée": NA,
     "Année d'émission": dateEmission.getUTCFullYear(),
     // Réglé en boutique : pas de paiement Wave.
@@ -495,7 +497,7 @@ export async function construireExportSim(
         where,
         include: {
           produit: { select: { code: true, libelle: true, sousBranche: true, tauxCommission: true } },
-          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true } },
+          partenaire: { select: { nomCommerce: true, nomResponsable: true, localisation: true, tauxCommission: true } },
           agentDistribution: { select: { nom: true } },
           client: { select: { identifiant: true } },
           paiements: { select: { statut: true, montant: true, datePaiement: true, dateEcheance: true, periodeDebut: true, periodeFin: true, waveTransactionId: true } },
@@ -512,7 +514,7 @@ export async function construireExportSim(
   }
 
   const inclusHistoriques = {
-    partenaire: { select: { nomCommerce: true, nomResponsable: true } },
+    partenaire: { select: { nomCommerce: true, nomResponsable: true, tauxCommission: true } },
     agentDistribution: { select: { nom: true } },
     client: { select: { identifiant: true } },
   } as const;

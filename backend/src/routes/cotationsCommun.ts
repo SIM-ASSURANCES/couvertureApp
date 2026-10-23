@@ -20,6 +20,7 @@ import {
   ErreurCotation,
   LIBELLES_PRODUIT_COTATION,
   DUREE_VALIDITE_JOURS,
+  garantiesCotation,
   type ProduitCotation,
 } from "../services/cotations.js";
 
@@ -76,6 +77,8 @@ function formatCotation(c: {
     resultat: c.resultat,
     primeTTC: c.primeTTC,
     capitalGaranti: c.capitalGaranti,
+    // Garanties couvertes par ce devis, relues à l'affichage (voir garantiesCotation).
+    garanties: garantiesCotation(c.produitCode, c.entrees, c.resultat, c.capitalGaranti),
     libelleFormule: c.libelleFormule,
     clientNom: c.clientNom,
     clientTelephone: c.clientTelephone,

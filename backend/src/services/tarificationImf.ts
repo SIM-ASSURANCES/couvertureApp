@@ -117,7 +117,14 @@ export function calculerSecurpro(
     volSouscrit = true;
     primeVol += Math.max(input.volCaisseCapital * 0.025, 2500) * (input.majorationVolCaisse ? 1.25 : 1);
   }
-  if (volSouscrit) lignes.push({ garantie: "Vol", prime: round2(primeVol) });
+  // Le libellé dit CE qui est facturé (contenu, caisse ou les deux) : une ligne
+  // « Vol » seule laissait croire à un Vol facturé sans avoir été coché quand le
+  // client n'avait choisi que le capital « Vol caisse », liste déroulante distincte
+  // de la case « Vol contenu ».
+  if (volSouscrit) {
+    const libelleVol = input.volContenu && input.volCaisseCapital ? "Vol (contenu + caisse)" : input.volContenu ? "Vol (contenu)" : "Vol (caisse)";
+    lignes.push({ garantie: libelleVol, prime: round2(primeVol) });
+  }
 
   if (input.ddeCapital) {
     lignes.push({ garantie: "Dégât des eaux", capital: input.ddeCapital, prime: round2(input.ddeCapital * 0.006) });

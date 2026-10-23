@@ -39,7 +39,7 @@ import { calculerSecurpro, messageCapitalPlafonne, messageCapitalRefuse, type Se
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
-import { estProduitCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { estProduitCotation, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
@@ -2357,6 +2357,8 @@ publicRouter.get(
       libelleFormule: cotation.libelleFormule,
       primeTTC: cotation.primeTTC,
       capitalGaranti: cotation.capitalGaranti,
+      // Garanties couvertes par ce devis, relues à l'affichage (voir garantiesCotation).
+      garanties: garantiesCotation(cotation.produitCode, cotation.entrees, cotation.resultat, cotation.capitalGaranti),
       resultat: cotation.resultat,
       clientNom: cotation.clientNom,
       partenaire: cotation.partenaire.nomCommerce,
