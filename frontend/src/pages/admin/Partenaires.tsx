@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, SlidersHorizontal, KeyRound, RefreshCw, Send } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, SlidersHorizontal, KeyRound, RefreshCw, Send, LockKeyhole } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import { useFetch } from "../../useFetch";
@@ -906,6 +906,8 @@ export default function Partenaires() {
     nomCommerce: string;
     email: string;
     motDePasse: string;
+    // Vrai quand la fenêtre suit une réinitialisation (et non la création du partenaire).
+    reinitialise?: boolean;
   } | null>(null);
   const [copied, setCopied] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
@@ -991,6 +993,24 @@ export default function Partenaires() {
       notify((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /** Remplace le mot de passe du partenaire par un provisoire, affiché une seule fois dans la fenêtre d'identifiants. */
+  async function reinitialiserMotDePasse(p: Partenaire) {
+    if (!p.email) {
+      notify("Ce partenaire n'a pas d'e-mail : ajoutez-en un (bouton Modifier) avant de lui donner un accès.");
+      return;
+    }
+    if (!window.confirm(`Réinitialiser le mot de passe de ${p.nomCommerce} ?\n\nL'ancien mot de passe ne fonctionnera plus.`)) return;
+    try {
+      const r = await api.post<{ nomCommerce: string; email: string; motDePasseProvisoire: string }>(
+        `/partenaires/${p.id}/reinitialiser-mot-de-passe`,
+        {}
+      );
+      setCredentials({ nomCommerce: r.nomCommerce, email: r.email, motDePasse: r.motDePasseProvisoire, reinitialise: true });
+    } catch (err) {
+      notify((err as Error).message);
     }
   }
 
@@ -1281,6 +1301,14 @@ export default function Partenaires() {
                           >
                             <Pencil size={15} />
                           </button>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: 8 }}
+                            title="Réinitialiser le mot de passe"
+                            onClick={() => reinitialiserMotDePasse(p)}
+                          >
+                            <LockKeyhole size={15} color="#b45309" />
+                          </button>
                           {isSuper && (
                             <button
                               className="btn btn-ghost"
@@ -1509,13 +1537,17 @@ export default function Partenaires() {
             style={{ padding: 28, width: 380, maxWidth: "calc(100vw - 32px)" }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <strong style={{ fontSize: 16 }}>Accès créé — {credentials.nomCommerce}</strong>
+              <strong style={{ fontSize: 16 }}>
+                {credentials.reinitialise ? "Mot de passe réinitialisé" : "Accès créé"} — {credentials.nomCommerce}
+              </strong>
               <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setCredentials(null)}>
                 <X size={16} />
               </button>
             </div>
             <p className="muted" style={{ fontSize: 13, marginBottom: 18 }}>
-              Transmettez ce lien et ces identifiants au partenaire. Le mot de passe ne sera plus affiché après fermeture.
+              {credentials.reinitialise
+                ? "L'ancien mot de passe ne fonctionne plus. Transmettez ce nouveau mot de passe au partenaire : il ne sera plus affiché après fermeture."
+                : "Transmettez ce lien et ces identifiants au partenaire. Le mot de passe ne sera plus affiché après fermeture."}
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>

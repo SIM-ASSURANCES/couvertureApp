@@ -578,6 +578,43 @@ partenairesRouter.post(
   })
 );
 
+/**
+ * Réinitialisation du mot de passe d'un partenaire par un admin (mot de passe perdu/oublié, aucun
+ * parcours « mot de passe oublié » côté partenaire) : un nouveau mot de passe provisoire remplace
+ * l'ancien, renvoyé UNE seule fois à l'admin pour qu'il le transmette — jamais stocké en clair ni
+ * écrit au journal (seul le fait de la réinitialisation l'est). Même contrôle de branche que la
+ * modification d'un partenaire. Un partenaire sans e-mail n'a pas d'accès (la connexion se fait par
+ * e-mail) : refus explicite plutôt qu'un mot de passe inutilisable.
+ */
+partenairesRouter.post(
+  "/:id/reinitialiser-mot-de-passe",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (!hasBranche(req.user, p.branche ?? "INCENDIE_ACCIDENT")) {
+      return res.status(403).json({ error: "Accès refusé pour cette branche" });
+    }
+    if (!p.email) {
+      return res.status(400).json({
+        error: "Ce partenaire n'a pas d'adresse e-mail : ajoutez-en une (bouton Modifier) avant de lui donner un accès.",
+      });
+    }
+    const motDePasseProvisoire = genMotDePasseProvisoire();
+    await prisma.partenaire.update({
+      where: { id: p.id },
+      data: { passwordHash: await bcrypt.hash(motDePasseProvisoire, 10) },
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "partenaire",
+      objetId: p.id,
+      valeurApres: { motDePasseReinitialise: true },
+    });
+    res.json({ nomCommerce: p.nomCommerce, email: p.email, motDePasseProvisoire });
+  })
+);
+
 partenairesRouter.delete(
   "/:id",
   requireAnySuperAdmin,
