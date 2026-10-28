@@ -700,15 +700,22 @@ table.tbl {
 .muted {
   color: var(--text-2);
 }
+/* minmax(0, …) et min-width: 0 : sans eux, une colonne ne descend jamais sous la largeur minimale de
+   son contenu — un tableau large élargissait la 1re colonne, repoussait la 2e hors de l'écran et
+   faisait défiler TOUTE la page horizontalement. Ainsi la colonne garde sa part de l'espace et c'est
+   le tableau (.table-wrap, overflow-x: auto) qui défile dans sa carte. */
 .grid-2 {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
+.grid-2 > * {
+  min-width: 0;
+}
 @media (max-width: 1024px) {
   .grid-2 {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 .bar-track {
