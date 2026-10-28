@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent, type ClipboardEvent, type ChangeEvent } from "react";
 import { Calendar } from "lucide-react";
 
 export function PageHeader({
@@ -211,6 +211,28 @@ export function PhoneInput({
 }
 
 /**
+ * Saisie d'un segment JJ ou MM : un premier chiffre trop grand pour être celui des dizaines est
+ * complété par un 0 (« 5 » → « 05 », le champ suivant prend la main), et un second chiffre qui
+ * ferait dépasser `max` (jour > 31, mois > 12) ou donnerait « 00 » est ignoré — évite « 53 » quand
+ * on tape « 5/3/1990 » et les faux jours/mois qui en découlaient.
+ */
+function brutSegment(e: ChangeEvent<HTMLInputElement>, longueur: number): string {
+  const brut = e.target.value;
+  if (onlyDigits(brut, 99).length <= longueur) return brut;
+  // Champ déjà plein : la nouvelle frappe REMPLACE le contenu au lieu d'être perdue (ou d'être
+  // collée en fin de segment, ce qui donnait « 053 » puis un faux jour).
+  const insere = (e.nativeEvent as InputEvent).data;
+  return onlyDigits(insere ?? brut.slice(-1), longueur);
+}
+
+function saisirSegment(brut: string, max: number): string {
+  const v = onlyDigits(brut, 2);
+  if (v.length === 1 && Number(v) > Math.floor(max / 10)) return "0" + v;
+  if (v.length === 2 && (Number(v) > max || Number(v) === 0)) return v.slice(0, 1);
+  return v;
+}
+
+/**
  * Champ date (naissance, départ, etc.) : trois champs JJ / MM / AAAA
  * saisissables au clavier (en plus du calendrier natif) — utile sur mobile
  * où le calendrier seul est lent pour une date ancienne (naviguer des
@@ -239,21 +261,21 @@ export function DateNaissanceInput({
   const [jour, setJour] = useState("");
   const [mois, setMois] = useState("");
   const [annee, setAnnee] = useState("");
-  const [erreur, setErreur] = useState<"future" | "passee" | null>(null);
+  const [erreur, setErreur] = useState<"future" | "passee" | "invalide" | null>(null);
+  const jourRef = useRef<HTMLInputElement>(null);
   const moisRef = useRef<HTMLInputElement>(null);
   const anneeRef = useRef<HTMLInputElement>(null);
+  // Dernière valeur transmise au parent par la saisie locale ("" tant que la date est incomplète
+  // ou refusée). Sert à distinguer l'écho de notre propre saisie (à ignorer) d'un changement venu
+  // de l'extérieur (calendrier natif, pré-remplissage, réinitialisation) : une date complète mais
+  // refusée (future, 31/02…) ne doit PAS vider les champs sous les doigts de l'utilisateur.
+  const emis = useRef("");
 
-  // Resynchronise depuis l'extérieur (calendrier natif, réinitialisation du
-  // formulaire, pré-remplissage) — mais jamais quand `value` ne fait que
-  // refléter en écho ce que la saisie locale vient elle-même de produire
-  // (voir commit ci-dessous), sans quoi une édition partielle en cours (ex.
-  // jour effacé pour le corriger, mois/année encore remplis) serait effacée
-  // à chaque frappe dès que le parent renvoie la chaîne vide correspondante.
   useEffect(() => {
-    const localComplete = jour.length === 2 && mois.length === 2 && annee.length === 4;
-    const localIso = localComplete ? `${annee}-${mois}-${jour}` : "";
-    if (value === localIso) return;
-    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (value === emis.current) return;
+    emis.current = value;
+    setErreur(null);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const [a, m, j] = value.split("-");
       setAnnee(a);
       setMois(m);
@@ -263,42 +285,112 @@ export function DateNaissanceInput({
       setMois("");
       setAnnee("");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  // Toujours propager l'état courant au parent — y compris "incomplet" —
-  // pour qu'une édition partielle (ex. jour effacé pour le corriger) ne
-  // laisse jamais une ancienne date complète silencieusement active tant que
-  // les trois segments ne sont pas de nouveau tous remplis. Sans ce cas
-  // général (avant : seul le cas jour+mois+année TOUS vides remettait la
-  // valeur à zéro), modifier un seul segment d'une date déjà complète ne
-  // notifiait jamais le formulaire englobant du changement.
+  // Toujours propager l'état courant au parent — y compris "incomplet" ou "refusé" (chaîne vide) —
+  // pour qu'une édition partielle ne laisse jamais une ancienne date silencieusement active.
   function commit(j: string, m: string, a: string) {
+    const emettre = (v: string) => {
+      emis.current = v;
+      onChange(v);
+    };
     if (j.length !== 2 || m.length !== 2 || a.length !== 4) {
       setErreur(null);
-      onChange("");
+      emettre("");
+      return;
+    }
+    const jn = Number(j);
+    const mn = Number(m);
+    const an = Number(a);
+    // Date qui n'existe pas (31/02, 29/02 d'une année non bissextile, année < 1900) : refusée,
+    // jamais envoyée au serveur, où elle aurait été « corrigée » en une autre date.
+    if (an < 1900 || mn < 1 || mn > 12 || jn < 1 || jn > new Date(an, mn, 0).getDate()) {
+      setErreur("invalide");
+      emettre("");
       return;
     }
     const iso = `${a}-${m}-${j}`;
     const aujourdhui = new Date().toISOString().slice(0, 10);
-    // Saisie manuelle (JJ/MM/AAAA) : le calendrier natif applique déjà
-    // `max`/`min`, mais taper directement dans les champs les contourne —
-    // sans ce contrôle, une date invalide y passait sans erreur (concerne
-    // tous les produits : `maxToday` est vrai par défaut pour une naissance,
-    // `minToday` sert aux dates futures comme un départ de voyage, qui ne
-    // peut pas être déjà passé).
+    // Saisie manuelle (JJ/MM/AAAA) : le calendrier natif applique déjà `max`/`min`, mais taper
+    // directement dans les champs les contourne — `maxToday` pour une naissance, `minToday` pour
+    // une date future comme un départ de voyage, qui ne peut pas être déjà passé.
     if (maxToday && iso > aujourdhui) {
       setErreur("future");
-      onChange("");
+      emettre("");
       return;
     }
     if (minToday && iso < aujourdhui) {
       setErreur("passee");
-      onChange("");
+      emettre("");
       return;
     }
     setErreur(null);
-    onChange(iso);
+    emettre(iso);
+  }
+
+  /**
+   * Touches communes aux trois segments : « / », « . », « - », espace ou virgule terminent le segment
+   * (un jour « 5 » devient « 05 ») et passent au suivant ; Retour arrière sur un segment vide revient
+   * au précédent ; les autres caractères non numériques sont bloqués.
+   */
+  function gererTouche(
+    e: KeyboardEvent<HTMLInputElement>,
+    valeur: string,
+    completer: (v: string) => void,
+    suivant: HTMLInputElement | null,
+    precedent: HTMLInputElement | null
+  ) {
+    if (["/", ".", "-", " ", ","].includes(e.key)) {
+      e.preventDefault();
+      // Contenu entièrement sélectionné (champ pré-rempli, pas encore touché) : le séparateur ne
+      // vaut rien, sans quoi il sauterait un segment que l'utilisateur n'a pas encore saisi.
+      const intact = e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === valeur.length;
+      if (intact) return;
+      if (valeur.length === 1 && valeur !== "0") completer("0" + valeur);
+      if (valeur.length > 0) suivant?.focus();
+      return;
+    }
+    if (e.key === "Backspace" && valeur === "" && precedent) {
+      e.preventDefault();
+      precedent.focus();
+      return;
+    }
+    blockNonDigitKey(e);
+  }
+
+  /** Collage d'une date entière (« 25/03/1990 », « 25031990 », « 1990-03-25 ») dans n'importe quel segment. */
+  function collerDate(e: ClipboardEvent<HTMLInputElement>) {
+    const texte = e.clipboardData.getData("text").trim();
+    const jma = texte.match(/^(\d{1,2})\D+(\d{1,2})\D+(\d{4})$/) ?? texte.match(/^(\d{2})(\d{2})(\d{4})$/);
+    const aaaammjj = texte.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const trio = jma ? [jma[1], jma[2], jma[3]] : aaaammjj ? [aaaammjj[3], aaaammjj[2], aaaammjj[1]] : null;
+    if (!trio) return; // collage ordinaire : les chiffres seuls sont retenus par onChange
+    e.preventDefault();
+    const j = trio[0].padStart(2, "0");
+    const m = trio[1].padStart(2, "0");
+    setJour(j);
+    setMois(m);
+    setAnnee(trio[2]);
+    commit(j, m, trio[2]);
+    anneeRef.current?.focus();
+  }
+
+  /**
+   * Quitte le jour ou le mois resté à un chiffre : « 5 » → « 05 » (« 0 » seul est vidé) et la date en est
+   * de nouveau transmise. La valeur est lue dans le champ lui-même, pas dans l'état : quand la frappe d'un
+   * 2e chiffre fait passer le focus au segment suivant, l'événement blur part AVANT que l'état soit à jour
+   * et voyait encore « 1 » au lieu de « 15 » — d'où « 15 » devenu « 01 » et un mois effacé.
+   */
+  function finDeSegment(ref: { current: HTMLInputElement | null }, setValeur: (v: string) => void) {
+    const brut = ref.current?.value ?? "";
+    if (brut.length !== 1) return;
+    const v = brut === "0" ? "" : "0" + brut;
+    setValeur(v);
+    commit(
+      ref === jourRef ? v : jourRef.current?.value ?? "",
+      ref === moisRef ? v : moisRef.current?.value ?? "",
+      anneeRef.current?.value ?? ""
+    );
   }
 
   const segStyle: CSSProperties = {
@@ -316,18 +408,21 @@ export function DateNaissanceInput({
     <div>
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       <input
+        ref={jourRef}
         value={jour}
         onChange={(e) => {
-          const v = onlyDigits(e.target.value, 2);
+          const v = saisirSegment(brutSegment(e, 2), 31);
           setJour(v);
           commit(v, mois, annee);
           if (v.length === 2) moisRef.current?.focus();
         }}
-        onKeyDown={blockNonDigitKey}
-        onBlur={() => jour && setJour(String(Math.min(31, Math.max(1, Number(jour)))).padStart(2, "0"))}
+        onKeyDown={(e) => gererTouche(e, jour, (v) => { setJour(v); commit(v, mois, annee); }, moisRef.current, null)}
+        onPaste={collerDate}
+        onFocus={(e) => e.target.select()}
+        onMouseUp={(e) => e.preventDefault()}
+        onBlur={() => finDeSegment(jourRef, setJour)}
         placeholder="JJ"
         inputMode="numeric"
-        maxLength={2}
         style={segStyle}
         aria-label={`Jour ${label}`}
       />
@@ -336,16 +431,18 @@ export function DateNaissanceInput({
         ref={moisRef}
         value={mois}
         onChange={(e) => {
-          const v = onlyDigits(e.target.value, 2);
+          const v = saisirSegment(brutSegment(e, 2), 12);
           setMois(v);
           commit(jour, v, annee);
           if (v.length === 2) anneeRef.current?.focus();
         }}
-        onKeyDown={blockNonDigitKey}
-        onBlur={() => mois && setMois(String(Math.min(12, Math.max(1, Number(mois)))).padStart(2, "0"))}
+        onKeyDown={(e) => gererTouche(e, mois, (v) => { setMois(v); commit(jour, v, annee); }, anneeRef.current, jourRef.current)}
+        onPaste={collerDate}
+        onFocus={(e) => e.target.select()}
+        onMouseUp={(e) => e.preventDefault()}
+        onBlur={() => finDeSegment(moisRef, setMois)}
         placeholder="MM"
         inputMode="numeric"
-        maxLength={2}
         style={segStyle}
         aria-label={`Mois ${label}`}
       />
@@ -354,14 +451,16 @@ export function DateNaissanceInput({
         ref={anneeRef}
         value={annee}
         onChange={(e) => {
-          const v = onlyDigits(e.target.value, 4);
+          const v = onlyDigits(brutSegment(e, 4), 4);
           setAnnee(v);
           commit(jour, mois, v);
         }}
-        onKeyDown={blockNonDigitKey}
+        onKeyDown={(e) => gererTouche(e, annee, () => {}, null, moisRef.current)}
+        onPaste={collerDate}
+        onFocus={(e) => e.target.select()}
+        onMouseUp={(e) => e.preventDefault()}
         placeholder="AAAA"
         inputMode="numeric"
-        maxLength={4}
         style={{ ...segStyle, width: 68 }}
         aria-label={`Année ${label}`}
       />
@@ -409,7 +508,9 @@ export function DateNaissanceInput({
       <div style={{ color: "var(--danger, #dc2626)", fontSize: 12, marginTop: 4 }}>
         {erreur === "future"
           ? `La date ${label} ne peut pas être dans le futur.`
-          : `La date ${label} ne peut pas être déjà passée.`}
+          : erreur === "passee"
+          ? `La date ${label} ne peut pas être déjà passée.`
+          : `La date ${label} n'existe pas : vérifiez le jour, le mois et l'année.`}
       </div>
     )}
     </div>

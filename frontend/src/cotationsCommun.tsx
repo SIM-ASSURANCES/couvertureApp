@@ -129,7 +129,8 @@ function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, 
   if (produitCode === "relaxaccidents" || produitCode === "securhome") return e;
   // Produits à tarif fixe : formule choisie dans le barème, option Décès vide = absente.
   if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
-    return { cycle: e.cycle, nombrePeriodes: Number(e.nombrePeriodes) || 1 };
+    // Annuel : toujours une seule période, quelle que soit la valeur gardée d'une saisie mensuelle.
+    return { cycle: e.cycle, nombrePeriodes: e.cycle === "annuel" ? 1 : Number(e.nombrePeriodes) || 1 };
   }
   if (
     produitCode === "relaxaccidents_fraismedicaux" ||
@@ -361,18 +362,30 @@ export function ChampsProduitCotation({
               <input type="radio" name="cycle-relax" checked={entrees.cycle === "mensuel"} onChange={() => setChamp("cycle", "mensuel")} /> Mensuelle
             </label>
             <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
-              <input type="radio" name="cycle-relax" checked={entrees.cycle === "annuel"} onChange={() => setChamp("cycle", "annuel")} /> Annuelle
+              <input
+                type="radio"
+                name="cycle-relax"
+                checked={entrees.cycle === "annuel"}
+                onChange={() => {
+                  setChamp("cycle", "annuel");
+                  // Annuelle : une seule période (un an) — pas de nombre de mois payés d'avance.
+                  setChamp("nombrePeriodes", 1);
+                }}
+              />{" "}
+              Annuelle
             </label>
           </div>
         </Field>
-        <Field label={entrees.cycle === "annuel" ? "Nombre d'années payées d'avance (1 à 12)" : "Nombre de mois payés d'avance (1 à 12)"}>
-          <input
-            className="input"
-            inputMode="numeric"
-            value={String(entrees.nombrePeriodes ?? 1)}
-            onChange={(e) => setChamp("nombrePeriodes", Math.min(12, Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1)))}
-          />
-        </Field>
+        {entrees.cycle !== "annuel" && (
+          <Field label="Nombre de mois payés d'avance (1 à 12)">
+            <input
+              className="input"
+              inputMode="numeric"
+              value={String(entrees.nombrePeriodes ?? 1)}
+              onChange={(e) => setChamp("nombrePeriodes", Math.min(12, Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1)))}
+            />
+          </Field>
+        )}
       </>
     );
   }
