@@ -319,6 +319,12 @@ export const openapiPartnerV1: Record<string, unknown> = {
                   signature: { type: "string", description: "Data URL image, optionnel." },
                   declarePasLivreur: { type: "boolean", description: "RelaxAccidents Frais Médicaux : requis pour l'option Décès." },
                   optionDeces: { type: "string", enum: ["200000", "100000"] },
+                  beneficiaire: {
+                    type: "object",
+                    description: "Bénéficiaire de la garantie Décès (RelaxMoto, RelaxAuto, ou RelaxAccidents Frais Médicaux avec option Décès). Facultatif ici, imprimé sur le contrat.",
+                    required: ["nom", "telephone"],
+                    properties: { nom: { type: "string" }, telephone: { type: "string" } },
+                  },
                 },
               },
             },

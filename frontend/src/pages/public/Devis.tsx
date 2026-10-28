@@ -17,6 +17,8 @@ interface CotationPublique {
   // Assurances Santé : le devis ne se paie pas ici (demande à valider d'abord) — lien du parcours de demande.
   paiementDirect?: boolean;
   lienSouscription?: string | null;
+  // Le devis comporte une garantie Décès : nom + téléphone du bénéficiaire à saisir avant de payer.
+  beneficiaireRequis?: boolean;
   // Garanties couvertes par ce devis (capital, et prime quand chaque garantie est tarifée).
   garanties?: { libelle: string; capital?: number; prime?: number; detail?: string }[];
   // SecurPro : renseignés quand le capital saisi dépasse la limite assurable et
@@ -108,6 +110,9 @@ export default function Devis() {
   const [numeroTicket, setNumeroTicket] = useState("");
   const [dateDepart, setDateDepart] = useState("");
   const [numeroPersonneContact, setNumeroPersonneContact] = useState("");
+  // Bénéficiaire de la garantie Décès.
+  const [beneficiaireNom, setBeneficiaireNom] = useState("");
+  const [beneficiaireTelephone, setBeneficiaireTelephone] = useState("");
   const [piecePhoto, setPiecePhoto] = useState<string | null>(null);
   const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null);
   const sigRef = useRef<SignaturePadHandle>(null);
@@ -155,6 +160,10 @@ export default function Devis() {
       setErreurForm("Merci de renseigner le voyage : compagnie, trajet, numéro de ticket, date de départ et contact.");
       return;
     }
+    if (cotation.beneficiaireRequis && (beneficiaireNom.trim().length < 2 || beneficiaireTelephone.replace(/\D/g, "").length < 6)) {
+      setErreurForm("Merci d'indiquer le nom et le numéro de téléphone du bénéficiaire en cas de décès.");
+      return;
+    }
     setEnvoi(true);
     try {
       const res = await fetch(`${BASE}/public/cotations/${token}/souscrire`, {
@@ -178,6 +187,7 @@ export default function Devis() {
           ...(cotation.produitCode === "relaxvoyage"
             ? { compagnie, lieuDepart, lieuArrivee, numeroTicket, dateDepart, numeroPersonneContact }
             : {}),
+          ...(cotation.beneficiaireRequis ? { beneficiaireNom: beneficiaireNom.trim(), beneficiaireTelephone: beneficiaireTelephone.trim() } : {}),
           signature: sigRef.current?.isEmpty() ? undefined : sigRef.current?.toDataURL() ?? undefined,
           moyenPaiement: "wave",
         }),
@@ -430,6 +440,18 @@ export default function Devis() {
                 </FieldRow>
                 <FieldRow label="Numéro d'une personne à contacter *">
                   <input value={numeroPersonneContact} onChange={(e) => setNumeroPersonneContact(e.target.value)} style={inputStyle} inputMode="numeric" />
+                </FieldRow>
+              </>
+            )}
+
+            {cotation.beneficiaireRequis && (
+              <>
+                <div style={{ fontWeight: 700, fontSize: 14, margin: "16px 0 10px" }}>Bénéficiaire en cas de décès</div>
+                <FieldRow label="Nom du bénéficiaire *">
+                  <input value={beneficiaireNom} onChange={(e) => setBeneficiaireNom(e.target.value)} style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Téléphone du bénéficiaire *">
+                  <input type="tel" value={beneficiaireTelephone} onChange={(e) => setBeneficiaireTelephone(e.target.value)} style={inputStyle} inputMode="tel" />
                 </FieldRow>
               </>
             )}

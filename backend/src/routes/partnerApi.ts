@@ -29,6 +29,7 @@ import { emettreWebhook } from "../services/partnerWebhook.js";
 import { analyserSouscriptionApiIA } from "../services/fraudeIA.js";
 import { openapiPartnerV1 } from "../openapi/partnerV1.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
+import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker } from "../services/beneficiaireDeces.js";
 
 // =====================================================================
 // API partenaire — routeur `/api/partner/v1`.
@@ -305,6 +306,9 @@ const souscriptionSchema = z.object({
   // non-livreurs.
   declarePasLivreur: z.boolean().optional(),
   optionDeces: z.enum(["200000", "100000"]).optional(),
+  // Bénéficiaire de la garantie Décès — facultatif côté API (les intégrations existantes ne
+  // l'envoient pas), imprimé sur le contrat quand il est fourni.
+  beneficiaire: z.object({ nom: z.string().trim().min(2).max(120), telephone: z.string().trim().min(6).max(40) }).optional(),
 });
 
 partnerApiRouter.post(
@@ -392,14 +396,19 @@ partnerApiRouter.post(
     const commissionApi = await calculerCommissionApi(produit, primeHT);
     const montantAReverser = prime - commissionApi;
 
-    const donneesSpecifiques =
+    const donneesSpecifiques = avecBeneficiaire(
       data.signature || optionDeces
         ? {
             signature: data.signature ?? null,
             // `declarePasLivreur` n'a de sens que pour la version grand public.
             ...(optionDeces ? { ...(rafGrandPublic ? { declarePasLivreur: true } : {}), optionDeces } : {}),
           }
-        : undefined;
+        : undefined,
+      beneficiaireAStocker(
+        { beneficiaireNom: data.beneficiaire?.nom, beneficiaireTelephone: data.beneficiaire?.telephone },
+        !!data.beneficiaire && aGarantieDeces(produit.code, !!optionDeces)
+      )
+    );
 
     const client = await resoudreOuCreerClient(data.prospect.telephone, data.prospect.nom, data.prospect.prenom);
     const s = await prisma.souscription.create({

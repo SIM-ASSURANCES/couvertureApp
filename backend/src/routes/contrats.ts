@@ -652,6 +652,7 @@ async function chargerDonneesVerifieesServeur(
       capitalGaranti: d.capitalGaranti,
       signature: d.signature,
       optionDeces: d.optionDeces,
+      beneficiaire: d.beneficiaire,
     };
   }
   if (type === "relaxmoto_relaxauto") {
@@ -669,6 +670,7 @@ async function chargerDonneesVerifieesServeur(
       produitLibelle: d.produitLibelle,
       cycleFacturation: s.cycleFacturation,
       signature: d.signature,
+      beneficiaire: d.beneficiaire,
     };
   }
   if (type === "relaxvoyage") {
@@ -692,6 +694,7 @@ async function chargerDonneesVerifieesServeur(
       fraisSante: d.fraisSante,
       bagages: d.bagages,
       signature: d.signature,
+      beneficiaire: d.beneficiaire,
     };
   }
   if (type === "relaxaccidents_generale") {
@@ -712,6 +715,7 @@ async function chargerDonneesVerifieesServeur(
       cnpsDeclare: d.cnpsDeclare,
       cycle: d.cycle,
       signature: d.signature,
+      beneficiaire: d.beneficiaire,
     };
   }
   if (type === "assurance_sante") {

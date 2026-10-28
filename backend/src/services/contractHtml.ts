@@ -51,6 +51,8 @@ export interface ContratAccident {
   // garantie pour une durée propre (2 mois), distincte de la durée du
   // contrat principal (3 mois).
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
+  // Bénéficiaire de la garantie Décès (nom + téléphone), saisi à la souscription.
+  beneficiaire?: { nom: string; telephone: string } | null;
 }
 
 /**
@@ -73,6 +75,8 @@ export interface ContratRelaxMotoAuto {
   produitLibelle: string;
   cycleFacturation?: "mensuel" | "annuel" | null;
   signature?: string | null;
+  // Bénéficiaire de la garantie Décès (nom + téléphone), saisi à la souscription.
+  beneficiaire?: { nom: string; telephone: string } | null;
 }
 
 export interface ContratRelaxVoyage {
@@ -95,6 +99,8 @@ export interface ContratRelaxVoyage {
   fraisSante?: number | null;
   bagages?: string | null;
   signature?: string | null;
+  // Bénéficiaire de la garantie Décès (nom + téléphone), saisi à la souscription.
+  beneficiaire?: { nom: string; telephone: string } | null;
 }
 
 export interface ContratRelaxAccidentsGenerale {
@@ -114,6 +120,8 @@ export interface ContratRelaxAccidentsGenerale {
   cnpsDeclare: boolean;
   cycle?: "annuel" | "mensuel" | null;
   signature?: string | null;
+  // Bénéficiaire de la garantie Décès (nom + téléphone), saisi à la souscription.
+  beneficiaire?: { nom: string; telephone: string } | null;
 }
 
 /** Assurances Santé (Solo, Duo, Famille) — voir services/assurancesSante.ts. */
@@ -373,6 +381,16 @@ const val = (s?: string | number | null) =>
   s === null || s === undefined || s === "" ? "—" : esc(String(s));
 export const sansParentheses = (s: string) => s.replace(/\s*\([^)]*\)/g, "").trim();
 
+/**
+ * Cellules « Bénéficiaire » des Conditions Particulières : la personne désignée à la
+ * souscription (nom + téléphone) quand elle existe, « L'Assuré » pour les contrats
+ * d'avant le 2026-10-29 ou sans garantie Décès.
+ */
+function celluleBeneficiaire(b?: { nom: string; telephone: string } | null): string {
+  if (!b) return `<td class="k">Bénéficiaire</td><td>L'Assuré</td>`;
+  return `<td class="k">Bénéficiaire (décès)</td><td>${esc(b.nom)}${b.telephone ? ` — ${esc(b.telephone)}` : ""}</td>`;
+}
+
 function pieceLabel(t?: string | null) {
   if (t === "cni") return "CNI";
   if (t === "passeport") return "Passeport";
@@ -579,7 +597,7 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td>${celluleBeneficiaire(c.beneficiaire)}</tr>
   </table>
 
   <table>
@@ -656,7 +674,7 @@ export async function renderContratRelaxMotoAuto(c: ContratRelaxMotoAuto): Promi
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC ${periodicite}</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+    <tr><td class="k">Prime TTC ${periodicite}</td><td>${fcfa(c.montant)}</td>${celluleBeneficiaire(c.beneficiaire)}</tr>
   </table>
 
   <table>
@@ -704,7 +722,7 @@ export async function renderContratRelaxVoyage(c: ContratRelaxVoyage): Promise<s
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+    <tr><td class="k">Prime TTC</td><td>${fcfa(c.montant)}</td>${celluleBeneficiaire(c.beneficiaire)}</tr>
   </table>
 
   <table>
@@ -752,7 +770,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
   <table>
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
-    <tr><td class="k">Prime TTC${periodicite ? ` ${periodicite}` : ""}</td><td>${fcfa(c.montant)}</td><td class="k">Bénéficiaire</td><td>L'Assuré</td></tr>
+    <tr><td class="k">Prime TTC${periodicite ? ` ${periodicite}` : ""}</td><td>${fcfa(c.montant)}</td>${celluleBeneficiaire(c.beneficiaire)}</tr>
   </table>
 
   <table>

@@ -23,9 +23,11 @@ android {
         // 5 = 2026-10-08 produits Santé Solo/Duo/Famille,
         // 6 = 2026-10-08 demande Santé validée par un admin avant paiement,
         // 7 = 2026-10-08 fiche « Assuré principal » du formulaire Santé,
-        // 8 = 2026-10-15 questionnaire médical + dépôt des pièces Santé).
-        versionCode 8
-        versionName "1.7"
+        // 8 = 2026-10-15 questionnaire médical + dépôt des pièces Santé,
+        // 9 = 2026-10-29 choix annuelle/mensuelle Dommages, mention offre Santé,
+        //     bénéficiaire de la garantie Décès).
+        versionCode 9
+        versionName "1.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

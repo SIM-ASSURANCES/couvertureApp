@@ -612,6 +612,31 @@ function NoveliaIdentiteFields({
   );
 }
 
+/** Bénéficiaire de la garantie Décès — nom et téléphone, exigés pour tout produit qui comporte cette garantie. */
+function BeneficiaireDecesFields({
+  nom,
+  setNom,
+  telephone,
+  setTelephone,
+}: {
+  nom: string;
+  setNom: (v: string) => void;
+  telephone: string;
+  setTelephone: (v: string) => void;
+}) {
+  return (
+    <>
+      <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", margin: "16px 0 10px" }}>Bénéficiaire en cas de décès</div>
+      <FieldRow label="Nom du bénéficiaire *">
+        <input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Nom et prénom du bénéficiaire" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Téléphone du bénéficiaire *">
+        <PhoneInput value={telephone} onChange={setTelephone} />
+      </FieldRow>
+    </>
+  );
+}
+
 function TarifCard({
   prime,
   capitalGaranti,
@@ -731,6 +756,7 @@ function RelaxAccidentsGeneraleForm({
   numeroPieceIdentite,
   setNumeroPieceIdentite,
   tarifsFormule,
+  blocBeneficiaire,
   sigRef,
 }: {
   nom: string;
@@ -768,6 +794,8 @@ function RelaxAccidentsGeneraleForm({
   numeroPieceIdentite: string;
   setNumeroPieceIdentite: (v: string) => void;
   tarifsFormule: TarifFormule[];
+  /** Saisie du bénéficiaire de la garantie Décès, fournie par le parent (états partagés avec les autres produits). */
+  blocBeneficiaire: React.ReactNode;
   sigRef: React.RefObject<SignaturePadHandle | null>;
 }) {
   const garanties = classe ? garantiesRelaxAccidentsGenerale(classe) : null;
@@ -930,6 +958,8 @@ function RelaxAccidentsGeneraleForm({
         capture="user"
         required
       />
+
+      {blocBeneficiaire}
 
       <SignaturePad ref={sigRef} label="Signature (facultative)" />
     </>
@@ -2354,6 +2384,10 @@ export default function Souscription() {
   // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
   // proposée seulement si non-livreur est déclaré. "" = aucune option.
   const [optionDeces, setOptionDeces] = useState<"" | "200000" | "100000">("");
+  // Bénéficiaire de la garantie Décès (nom + téléphone) — RelaxMoto/RelaxAuto, RelaxVoyage,
+  // RelaxAccidents générale, et RelaxAccidents Frais Médicaux quand l'option Décès est choisie.
+  const [beneficiaireNom, setBeneficiaireNom] = useState("");
+  const [beneficiaireTel, setBeneficiaireTel] = useState(PHONE_PREFIX);
 
   // Moyen de paiement choisi à l'écran de vérification — Wave (redirection,
   // historique) ou Djogana/Peya Pay (OTP, sans redirection).
@@ -3068,6 +3102,7 @@ export default function Souscription() {
       l.push({ label: "Formule", valeur: cycle === "annuel" ? "Annuelle" : "Mensuelle" });
       l.push({ label: "Durée souscrite", valeur: `${nombrePeriodes} ${libellePeriode(cycle, nombrePeriodes)}` });
       l.push({ label: "Pièce d'identité", valeur: typePieceRx === "CNI" ? "CNI" : "Permis de conduire" });
+      l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
       return l;
     }
 
@@ -3082,6 +3117,7 @@ export default function Souscription() {
       l.push({ label: "Moyen de déplacement", valeur: MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.find((m) => m.valeur === moyenDeplacementRa)?.libelle ?? "—" });
       l.push({ label: "Périodicité de la prime", valeur: cycle === "annuel" ? "Annuelle" : "Mensuelle" });
       l.push({ label: "Travailleur déclaré CNPS ou autre", valeur: cnpsDeclare === null ? "—" : oui(cnpsDeclare) });
+      l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
       return l;
     }
 
@@ -3200,6 +3236,7 @@ export default function Souscription() {
           ? `${fcfa(OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].capital)} pendant ${dureeOptionDecesMois(p)} mois`
           : "Aucune",
       });
+      if (optionDeces) l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
     }
     if (isRelaxVoyage(p)) {
       l.push({ label: "Pièce d'identité", valeur: typePieceVoyage === "CNI" ? "CNI" : "Passeport" });
@@ -3208,6 +3245,7 @@ export default function Souscription() {
       l.push({ label: "N° de ticket", valeur: numeroTicket });
       l.push({ label: "Date de départ", valeur: dfr(dateDepart) });
       l.push({ label: "Personne à contacter", valeur: numeroPersonneContact });
+      l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
     }
     return l;
   }
@@ -3358,6 +3396,8 @@ export default function Souscription() {
             commune: communeRa,
             adresse: adresseRa,
             numeroPieceIdentite: numeroPieceRa,
+            beneficiaireNom: beneficiaireNom.trim(),
+            beneficiaireTelephone: beneficiaireTel,
             moyenPaiement,
           }),
         });
@@ -3577,6 +3617,8 @@ export default function Souscription() {
             numeroTicket,
             dateDepart,
             numeroPersonneContact,
+            beneficiaireNom: beneficiaireNom.trim(),
+            beneficiaireTelephone: beneficiaireTel,
             civilite: civilite || undefined,
             ville,
             commune,
@@ -3649,6 +3691,9 @@ export default function Souscription() {
             // justement ce public) — l'option Décès y est ouverte d'emblée.
             declarePasLivreur: isRafLivreurs(qrInfo.produit) ? undefined : declarePasLivreur,
             optionDeces: optionDeces || undefined,
+            // Bénéficiaire de la garantie Décès : seulement avec l'option Décès.
+            beneficiaireNom: optionDeces ? beneficiaireNom.trim() : undefined,
+            beneficiaireTelephone: optionDeces ? beneficiaireTel : undefined,
             civilite: civilite || undefined,
             ville,
             commune,
@@ -3699,6 +3744,8 @@ export default function Souscription() {
             cycle,
             nombrePeriodes,
             signature,
+            beneficiaireNom: beneficiaireNom.trim(),
+            beneficiaireTelephone: beneficiaireTel,
             civilite: civiliteRx || undefined,
             ville: villeRx,
             commune: communeRx,
@@ -4824,6 +4871,9 @@ export default function Souscription() {
                   numeroPieceIdentite={numeroPieceRa}
                   setNumeroPieceIdentite={setNumeroPieceRa}
                   tarifsFormule={tarifsFormule}
+                  blocBeneficiaire={
+                    <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
+                  }
                   sigRef={sigRef}
                 />
               ) : isRelaxVoyage(qrInfo?.produit) ? (
@@ -4890,6 +4940,7 @@ export default function Souscription() {
                   <FieldRow label="Numéro de la personne à contacter *">
                     <PhoneInput value={numeroPersonneContact} onChange={setNumeroPersonneContact} />
                   </FieldRow>
+                  <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : qrInfo?.produit === "accident" ? (
@@ -5061,6 +5112,10 @@ export default function Souscription() {
                     </div>
                   )}
 
+                  {optionDeces && (
+                    <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
+                  )}
+
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
@@ -5126,6 +5181,7 @@ export default function Souscription() {
                     capture="user"
                     required
                   />
+                  <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
               ) : chooserInfo && !montantAchatIncConfirme ? (
@@ -5263,7 +5319,9 @@ export default function Souscription() {
                       !selfiePhotoRa ||
                       !classeRelaxAccidents ||
                       !moyenDeplacementRa ||
-                      cnpsDeclare === null
+                      cnpsDeclare === null ||
+                      !beneficiaireNom.trim() ||
+                      phoneInvalid(beneficiaireTel)
                     : isRelaxVoyage(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
@@ -5277,7 +5335,9 @@ export default function Souscription() {
                       !lieuArrivee ||
                       !numeroTicket ||
                       !dateDepart ||
-                      phoneInvalid(numeroPersonneContact)
+                      phoneInvalid(numeroPersonneContact) ||
+                      !beneficiaireNom.trim() ||
+                      phoneInvalid(beneficiaireTel)
                     : isAccidentLike(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
@@ -5289,9 +5349,10 @@ export default function Souscription() {
                           !sexe ||
                           !piecePhotoRx ||
                           !selfiePhotoRx ||
-                          (!isRafLivreurs(qrInfo?.produit) && !declarePasLivreur))
+                          (!isRafLivreurs(qrInfo?.produit) && !declarePasLivreur)) ||
+                      (qrInfo?.produit !== "accident" && !!optionDeces && (!beneficiaireNom.trim() || phoneInvalid(beneficiaireTel)))
                     : qrInfo && isRelax(qrInfo.produit)
-                    ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx
+                    ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx || !beneficiaireNom.trim() || phoneInvalid(beneficiaireTel)
                     : isSecurproDommages(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||

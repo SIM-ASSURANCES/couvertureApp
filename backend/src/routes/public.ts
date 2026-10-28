@@ -41,6 +41,7 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../service
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois } from "../services/optionDecesFraisMedicaux.js";
+import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
@@ -1340,6 +1341,8 @@ const relaxSchema = z.object({
   // ici : la prime et la durée de couverture en découlent directement, on ne
   // fait donc jamais confiance à une valeur arbitraire venue du client.
   nombrePeriodes: z.number().int().min(1).max(MAX_PERIODES_RELAX).optional(),
+  // Bénéficiaire de la garantie Décès — exigé (voir services/beneficiaireDeces.ts).
+  ...champsBeneficiaire,
   // Signée avant le paiement Wave — stockée dans `donneesSpecifiques` comme
   // pour RelaxAccidents Frais Médicaux/RelaxVoyage (le modèle générique n'a
   // pas de colonne `signature` dédiée), lue par mapperSouscriptionGenerique.
@@ -1853,6 +1856,8 @@ publicRouter.post(
     const code = req.params.produit;
     if (!isProduitRelax(code)) return res.status(404).json({ error: "Produit inconnu" });
     const data = relaxSchema.parse(req.body);
+    const erreurBeneficiaire = verifierBeneficiaire(data, true);
+    if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
 
     const resolu = await resoudreQrCodeGenerique(code, data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -1905,7 +1910,10 @@ publicRouter.post(
         cycleFacturation: data.cycle,
         nombreEcheances: 1,
         nombrePeriodes,
-        donneesSpecifiques: data.signature ? { signature: data.signature } : undefined,
+        donneesSpecifiques: {
+          ...(data.signature ? { signature: data.signature } : {}),
+          ...beneficiaireAStocker(data, true),
+        },
         paiements: {
           create: { numeroEcheance: 1, montant: montantTotal, dateEcheance: new Date() },
         },
@@ -1995,6 +2003,9 @@ const formuleSchema = z.object({
   // garanti choisi.
   declarePasLivreur: z.boolean().optional(),
   optionDeces: z.enum(["200000", "100000"]).optional(),
+  // Bénéficiaire de la garantie Décès — exigé pour RelaxVoyage, RelaxAccidents générale
+  // et RelaxAccidents Frais Médicaux avec l'option Décès (voir services/beneficiaireDeces.ts).
+  ...champsBeneficiaire,
   // RelaxAccidents générale uniquement — voir MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
   // SecurHome uniquement — locataire ou propriétaire de la maison assurée.
@@ -2048,6 +2059,9 @@ publicRouter.post(
     if (code === "relaxaccidents" && !data.moyenDeplacement) {
       return res.status(400).json({ error: "Moyen de déplacement manquant." });
     }
+    const exigeBeneficiaire = aGarantieDeces(code, !!data.optionDeces);
+    const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
+    if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
     if (code === "securhome" && !data.statutOccupation) {
       return res.status(400).json({ error: "Statut d'occupation manquant (locataire ou propriétaire)." });
     }
@@ -2189,7 +2203,7 @@ publicRouter.post(
         // paiement immédiat (voir routes/assurancesSante.ts).
         validationStatut: sante ? VALIDATION_SANTE.EN_ATTENTE : null,
         nombreEcheances: 1,
-        donneesSpecifiques:
+        donneesSpecifiques: avecBeneficiaire(
           code === "relaxvoyage"
             ? {
                 signature: data.signature ?? null,
@@ -2247,6 +2261,8 @@ publicRouter.post(
                   : {}),
               }
             : undefined,
+          beneficiaireAStocker(data, exigeBeneficiaire)
+        ),
         // Détail de la prime mensuelle SecurHome (facture, commission) — le
         // barème annuel ne contient aucune ligne à ce montant.
         resultat: securhomeMensuel ? { ...securhomeMensuel, periodicite: "mensuel", primeTTCAnnuelle: tarif.prime } : undefined,
@@ -2369,6 +2385,8 @@ publicRouter.get(
       dateExpiration: cotation.dateExpiration,
       paiementDirect: !estCotationSansPaiementDirect(cotation.produitCode),
       lienSouscription,
+      // La page publique demande nom + téléphone du bénéficiaire quand le devis comporte une garantie Décès.
+      beneficiaireRequis: aGarantieDeces(cotation.produitCode, !!(cotation.resultat as { optionDeces?: unknown } | null)?.optionDeces),
     });
   })
 );
@@ -2401,6 +2419,8 @@ const cotationSouscrireSchema = z.object({
   numeroTicket: z.string().min(1).max(60).optional(),
   dateDepart: optionalDate,
   numeroPersonneContact: z.string().min(6).max(40).optional(),
+  // Bénéficiaire de la garantie Décès (voir services/beneficiaireDeces.ts).
+  ...champsBeneficiaire,
   signature: dataUrlImage.optional(),
   ...moyenPaiementField,
 });
@@ -2455,6 +2475,9 @@ publicRouter.post(
 
     const entrees = cotation.entrees as Record<string, unknown>;
     const resultatDevis = (cotation.resultat ?? {}) as { optionDeces?: { prime: number; capital: number; dureeMois: number } | null };
+    const exigeBeneficiaire = aGarantieDeces(code, !!resultatDevis.optionDeces);
+    const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
+    if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
     const donneesSpecifiques =
       code === "relaxmoto" || code === "relaxauto"
         ? { signature: data.signature ?? null }
@@ -2553,7 +2576,7 @@ publicRouter.post(
               nombrePeriodes: Number(entrees.nombrePeriodes ?? 1),
             }
           : {}),
-        donneesSpecifiques: JSON.parse(JSON.stringify(donneesSpecifiques)),
+        donneesSpecifiques: JSON.parse(JSON.stringify({ ...donneesSpecifiques, ...beneficiaireAStocker(data, exigeBeneficiaire) })),
         // Produits à tarif lu en base : aucun détail de devis à conserver (la prime se retrouve par
         // la formule). SecurHome annuel : détail lu dans le barème (resultat absent). Mensuel :
         // le devis porte le détail de la prime mensuelle, conservé tel quel.

@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import type { Souscription, TarifProduit } from "@prisma/client";
 import { formuleRelaxAccidentsGenerale, surchargeMoyenDeplacementDetailRelaxAccidentsGenerale, type Classe, type CycleRelaxAccidentsGenerale } from "./relaxAccidentsGenerale.js";
 import { lirePersonnesAssureesSante, type PersonneAssureeSante } from "./assurancesSante.js";
+import { lireBeneficiaire, type BeneficiaireDeces } from "./beneficiaireDeces.js";
 
 /**
  * Aplatit une souscription du modèle générique (RelaxMoto/Auto, RelaxAccidents
@@ -47,6 +48,9 @@ export interface DonneesContratGenerique {
   fraisSante: number | null;
   bagages: string | null;
   optionDeces: OptionDecesFraisMedicaux | null;
+  // Bénéficiaire de la garantie Décès (nom + téléphone) — voir services/beneficiaireDeces.ts ;
+  // null pour les souscriptions d'avant le 2026-10-29 et les produits sans garantie Décès.
+  beneficiaire: BeneficiaireDeces | null;
   classe: number | null;
   cnpsDeclare: boolean | null;
   cycle: "annuel" | "mensuel" | null;
@@ -190,6 +194,7 @@ export async function mapperSouscriptionGenerique(
     fraisSante,
     bagages,
     optionDeces,
+    beneficiaire: lireBeneficiaire(d),
     classe: num("classe"),
     cnpsDeclare: bool("cnpsDeclare"),
     cycle: raCycle,
