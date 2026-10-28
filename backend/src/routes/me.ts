@@ -507,7 +507,9 @@ meRouter.post(
     const motDePasse = genererMotDePasseClient();
     await prisma.agentDistribution.update({
       where: { id: agent.id },
-      data: { passwordHash: await bcrypt.hash(motDePasse, 10) },
+      // Le mot de passe réinitialisé est connu du partenaire : l'agent doit en choisir un
+      // à lui dès sa prochaine connexion (sans ressaisir l'ancien, voir PATCH /mot-de-passe).
+      data: { passwordHash: await bcrypt.hash(motDePasse, 10), forcerChangementMotDePasse: true },
     });
     res.json({ motDePasseProvisoire: motDePasse });
   })
