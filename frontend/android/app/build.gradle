@@ -26,9 +26,10 @@ android {
         // 8 = 2026-10-15 questionnaire médical + dépôt des pièces Santé,
         // 9 = 2026-10-29 choix annuelle/mensuelle Dommages, mention offre Santé,
         //     bénéficiaire de la garantie Décès,
-        // 10 = 2026-10-29 saisie des dates JJ/MM/AAAA corrigée).
-        versionCode 10
-        versionName "1.9"
+        // 10 = 2026-10-29 saisie des dates JJ/MM/AAAA corrigée,
+        // 11 = 2026-10-29 APK 1.10, reconstruite à la demande de l'utilisateur).
+        versionCode 11
+        versionName "1.10"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
