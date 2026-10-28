@@ -2,7 +2,9 @@
 // et l'espace agent de distribution (pages/agent-distribution/Cotations.tsx)
 // pour le parcours "Mes devis" — un seul jeu de champs de tarification par
 // produit, jamais dupliqué entre les deux espaces.
+import { useEffect, useState } from "react";
 import { Badge, fcfa } from "./components/ui";
+import { API_BASE } from "./api";
 import { libellePeriodicite } from "./periodiciteDommages";
 
 // Miroir des listes de capitaux autorisés (SecurHome+/SecurPro) — voir
@@ -20,10 +22,33 @@ export const ACTIVITES_RELAXACCIDENTS: { classe: 1 | 2 | 3 | 4; libelle: string 
   { classe: 4, libelle: "Classe 4 — Chantier et métiers à haut risque" },
 ];
 
-export type ProduitCotation = "relaxaccidents" | "securhome" | "securhome_dommages" | "securpro_dommages" | "securmoto";
+export type ProduitCotation =
+  | "relaxaccidents"
+  | "relaxmoto"
+  | "relaxauto"
+  | "relaxaccidents_fraismedicaux"
+  | "relaxaccidents_fraismedicaux_livreurs"
+  | "relaxvoyage"
+  | "sante_solo"
+  | "sante_duo"
+  | "sante_famille"
+  | "securhome"
+  | "securhome_dommages"
+  | "securpro_dommages"
+  | "securmoto";
 
+// Depuis le 2026-10-28, tous les produits ont un devis (prime et garanties connues d'avance
+// comprises). Miroir de backend/src/services/cotations.ts::PRODUITS_COTATION.
 export const PRODUITS_COTATION: { code: ProduitCotation; libelle: string }[] = [
   { code: "relaxaccidents", libelle: "RelaxAccidents (générale)" },
+  { code: "relaxmoto", libelle: "RelaxMoto" },
+  { code: "relaxauto", libelle: "RelaxAuto" },
+  { code: "relaxaccidents_fraismedicaux", libelle: "RelaxAccidents Frais Médicaux" },
+  { code: "relaxaccidents_fraismedicaux_livreurs", libelle: "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis" },
+  { code: "relaxvoyage", libelle: "RelaxVoyage" },
+  { code: "sante_solo", libelle: "Assurance Santé Solo" },
+  { code: "sante_duo", libelle: "Assurance Santé Duo" },
+  { code: "sante_famille", libelle: "Assurance Santé Famille" },
   { code: "securhome", libelle: "SecurHome" },
   { code: "securhome_dommages", libelle: "SecurHome+" },
   { code: "securpro_dommages", libelle: "SecurPro" },
@@ -35,6 +60,17 @@ export function entreesParDefaut(produitCode: ProduitCotation): Record<string, u
     case "relaxaccidents":
       return { classe: 1, cnpsDeclare: true, cycle: "annuel", moyenDeplacement: "voiture" };
     // Produits Dommages : `cycle` vide = pas encore choisi (obligatoire à la saisie, voir ChampPeriodicite).
+    case "relaxmoto":
+    case "relaxauto":
+      return { cycle: "mensuel", nombrePeriodes: 1 };
+    case "relaxaccidents_fraismedicaux":
+    case "relaxaccidents_fraismedicaux_livreurs":
+      return { formule: "", optionDeces: "" };
+    case "relaxvoyage":
+    case "sante_solo":
+    case "sante_duo":
+    case "sante_famille":
+      return { formule: "" };
     case "securhome":
       return { nombrePieces: 1, statutOccupation: "proprietaire", cycle: "" };
     case "securhome_dommages":
@@ -91,6 +127,20 @@ export function nettoyerEntrees(produitCode: ProduitCotation, e: Record<string, 
 function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, unknown>): Record<string, unknown> {
   const toNum = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
   if (produitCode === "relaxaccidents" || produitCode === "securhome") return e;
+  // Produits à tarif fixe : formule choisie dans le barème, option Décès vide = absente.
+  if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
+    return { cycle: e.cycle, nombrePeriodes: Number(e.nombrePeriodes) || 1 };
+  }
+  if (
+    produitCode === "relaxaccidents_fraismedicaux" ||
+    produitCode === "relaxaccidents_fraismedicaux_livreurs" ||
+    produitCode === "relaxvoyage" ||
+    produitCode === "sante_solo" ||
+    produitCode === "sante_duo" ||
+    produitCode === "sante_famille"
+  ) {
+    return { formule: e.formule, ...(e.optionDeces ? { optionDeces: e.optionDeces } : {}) };
+  }
   const communs = {
     ...e,
     contenu: toNum(e.contenu) ?? 0,
@@ -209,6 +259,64 @@ function ChampPeriodicite({ entrees, setChamp }: { entrees: Record<string, unkno
   );
 }
 
+interface LigneBareme {
+  id: string;
+  libelleVariante: string | null;
+  prime: number;
+  capitalGaranti: number;
+  donneesSpecifiques?: { tauxPriseEnCharge?: number } | null;
+}
+
+/** Barème public d'un produit (formules et primes), pour proposer le choix de la formule. */
+function useBaremeProduit(code: string): { lignes: LigneBareme[]; chargement: boolean } {
+  const [lignes, setLignes] = useState<LigneBareme[]>([]);
+  const [chargement, setChargement] = useState(true);
+  useEffect(() => {
+    let annule = false;
+    setChargement(true);
+    fetch(`${API_BASE}/public/tarifs/${code}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: LigneBareme[]) => !annule && setLignes(Array.isArray(d) ? d : []))
+      .catch(() => !annule && setLignes([]))
+      .finally(() => !annule && setChargement(false));
+    return () => {
+      annule = true;
+    };
+  }, [code]);
+  return { lignes, chargement };
+}
+
+/** Choix de la formule (ligne de barème) d'un produit à tarif fixe : RelaxAccidents FM, RelaxVoyage, Santé. */
+function ChampFormule({
+  produitCode,
+  entrees,
+  setChamp,
+}: {
+  produitCode: ProduitCotation;
+  entrees: Record<string, unknown>;
+  setChamp: (cle: string, valeur: unknown) => void;
+}) {
+  const { lignes, chargement } = useBaremeProduit(produitCode);
+  const libelle = (l: LigneBareme) => {
+    const taux = l.donneesSpecifiques?.tauxPriseEnCharge;
+    if (produitCode.startsWith("relaxaccidents_fraismedicaux")) return `${fcfa(l.prime)} — frais médicaux jusqu'à ${fcfa(l.capitalGaranti)}`;
+    if (taux != null) return `${l.libelleVariante} — ${fcfa(l.prime)} (prise en charge ${taux} %)`;
+    return `${l.libelleVariante ?? ""} — ${fcfa(l.prime)}`;
+  };
+  return (
+    <Field label="Formule">
+      <select className="select" required value={String(entrees.formule ?? "")} onChange={(e) => setChamp("formule", e.target.value)}>
+        <option value="">{chargement ? "Chargement…" : "Choisir une formule"}</option>
+        {lignes.map((l) => (
+          <option key={l.id} value={l.libelleVariante ?? ""}>
+            {libelle(l)}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
 /** Champs de tarification spécifiques au produit sélectionné — entrées seulement (jamais l'identité du client, saisie par lui-même au moment de payer). */
 export function ChampsProduitCotation({
   produitCode,
@@ -243,6 +351,50 @@ export function ChampsProduitCotation({
       ))}
     </select>
   );
+
+  if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
+    return (
+      <>
+        <Field label="Formule">
+          <div style={{ display: "flex", gap: 16 }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+              <input type="radio" name="cycle-relax" checked={entrees.cycle === "mensuel"} onChange={() => setChamp("cycle", "mensuel")} /> Mensuelle
+            </label>
+            <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+              <input type="radio" name="cycle-relax" checked={entrees.cycle === "annuel"} onChange={() => setChamp("cycle", "annuel")} /> Annuelle
+            </label>
+          </div>
+        </Field>
+        <Field label={entrees.cycle === "annuel" ? "Nombre d'années payées d'avance (1 à 12)" : "Nombre de mois payés d'avance (1 à 12)"}>
+          <input
+            className="input"
+            inputMode="numeric"
+            value={String(entrees.nombrePeriodes ?? 1)}
+            onChange={(e) => setChamp("nombrePeriodes", Math.min(12, Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1)))}
+          />
+        </Field>
+      </>
+    );
+  }
+
+  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") {
+    return (
+      <>
+        <ChampFormule produitCode={produitCode} entrees={entrees} setChamp={setChamp} />
+        <Field label="Option Décès (facultative)">
+          <select className="select" value={String(entrees.optionDeces ?? "")} onChange={(e) => setChamp("optionDeces", e.target.value)}>
+            <option value="">Aucune</option>
+            <option value="200000">Capital 200 000 FCFA (+500 FCFA)</option>
+            <option value="100000">Capital 100 000 FCFA (+300 FCFA)</option>
+          </select>
+        </Field>
+      </>
+    );
+  }
+
+  if (produitCode === "relaxvoyage" || produitCode === "sante_solo" || produitCode === "sante_duo" || produitCode === "sante_famille") {
+    return <ChampFormule produitCode={produitCode} entrees={entrees} setChamp={setChamp} />;
+  }
 
   if (produitCode === "relaxaccidents") {
     return (

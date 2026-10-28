@@ -39,7 +39,8 @@ import { calculerSecurpro, messageCapitalPlafonne, messageCapitalRefuse, type Se
 import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDommages.js";
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
-import { estProduitCotation, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois } from "../services/optionDecesFraisMedicaux.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
@@ -2012,22 +2013,8 @@ const formuleSchema = z.object({
   ...moyenPaiementField,
 });
 
-/**
- * Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
- * prix de la formule choisie, garantie pour une durée propre (distincte de
- * la durée du contrat principal) : 2 mois pour le grand public, 1 mois pour
- * la version Livreurs/MotoTaxis (2026-09-17, alignée sur la durée de son
- * propre contrat — voir paiementWave.ts::dureeFormuleMois).
- */
-const OPTIONS_DECES_FRAIS_MEDICAUX: Record<"200000" | "100000", { prime: number; capital: number; dureeMois: number }> = {
-  "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
-  "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
-};
-
-/** Durée (mois) de l'option Décès pour un produit donné — voir OPTIONS_DECES_FRAIS_MEDICAUX. */
-function dureeOptionDecesMois(produitCode: string): number {
-  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
-}
+// L'option Décès (OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois) vit désormais dans
+// services/optionDecesFraisMedicaux.ts, partagée avec les devis.
 
 const RELAXVOYAGE_CHAMPS_REQUIS = [
   "compagnie",
@@ -2348,6 +2335,21 @@ publicRouter.get(
     if (!cotation || cotation.statut === "brouillon") {
       return res.status(404).json({ error: "Devis introuvable." });
     }
+    // Assurances Santé : le devis ne se paie pas ici — la demande passe par le parcours
+    // normal (fiche, questionnaire médical, validation admin, puis paiement). On renvoie le
+    // lien du QR d'origine (celui de l'agent s'il a créé le devis, sinon celui du partenaire).
+    let lienSouscription: string | null = null;
+    if (estCotationSansPaiementDirect(cotation.produitCode)) {
+      const qrs = await prisma.qrCode.findMany({
+        where: {
+          partenaireId: cotation.partenaireId,
+          OR: [{ produitId: null, sousBranche: null }, { produitId: null, sousBranche: "ASSURANCES_SANTE" }],
+        },
+        select: { token: true, agentDistributionId: true },
+      });
+      const qr = qrs.find((q) => q.agentDistributionId === cotation.agentDistributionId) ?? qrs.find((q) => q.agentDistributionId === null) ?? qrs[0];
+      if (qr) lienSouscription = `${process.env.APP_PUBLIC_URL || "http://localhost:5173"}/s/${cotation.produitCode}/${qr.token}`;
+    }
     const expireLazy =
       cotation.statut === "envoye" && cotation.dateExpiration != null && cotation.dateExpiration < new Date();
     res.json({
@@ -2365,6 +2367,8 @@ publicRouter.get(
       statut: expireLazy ? "expire" : cotation.statut,
       souscriptionId: cotation.souscriptionId,
       dateExpiration: cotation.dateExpiration,
+      paiementDirect: !estCotationSansPaiementDirect(cotation.produitCode),
+      lienSouscription,
     });
   })
 );
@@ -2389,6 +2393,14 @@ const cotationSouscrireSchema = z.object({
   nomCommercial: z.string().max(200).optional(),
   communeQuartier: z.string().max(120).optional(),
   refFacture: z.string().max(120).optional(),
+  // RelaxVoyage uniquement — trajet déclaré par le client (jamais par l'auteur du devis).
+  typePiece: z.enum(["CNI", "Permis", "Passeport"]).optional(),
+  compagnie: z.string().min(1).max(120).optional(),
+  lieuDepart: z.string().min(1).max(120).optional(),
+  lieuArrivee: z.string().min(1).max(120).optional(),
+  numeroTicket: z.string().min(1).max(60).optional(),
+  dateDepart: optionalDate,
+  numeroPersonneContact: z.string().min(6).max(40).optional(),
   signature: dataUrlImage.optional(),
   ...moyenPaiementField,
 });
@@ -2416,6 +2428,21 @@ publicRouter.post(
     }
     if (!estProduitCotation(cotation.produitCode)) return res.status(400).json({ error: "Produit inconnu." });
     const code = cotation.produitCode as ProduitCotation;
+    // Assurances Santé : une demande doit être VALIDÉE par un admin avant tout paiement —
+    // jamais de paiement direct depuis un devis (voir lienSouscription ci-dessus).
+    if (estCotationSansPaiementDirect(code)) {
+      return res.status(400).json({
+        error: "Ce devis Santé ne se paie pas directement : déposez votre demande de souscription avec le lien fourni, elle sera validée avant le paiement.",
+      });
+    }
+    if (code === "relaxvoyage") {
+      if (!data.compagnie || !data.lieuDepart || !data.lieuArrivee || !data.numeroTicket || !data.dateDepart || !data.numeroPersonneContact) {
+        return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
+      }
+      const aujourdhui = new Date();
+      aujourdhui.setUTCHours(0, 0, 0, 0);
+      if (data.dateDepart < aujourdhui) return res.status(400).json({ error: "La date de départ ne peut pas être passée." });
+    }
 
     const prod = await prisma.produit.findUnique({ where: { code } });
     if (!prod) return res.status(404).json({ error: "Produit inconnu." });
@@ -2427,8 +2454,31 @@ publicRouter.post(
     }
 
     const entrees = cotation.entrees as Record<string, unknown>;
+    const resultatDevis = (cotation.resultat ?? {}) as { optionDeces?: { prime: number; capital: number; dureeMois: number } | null };
     const donneesSpecifiques =
-      code === "relaxaccidents"
+      code === "relaxmoto" || code === "relaxauto"
+        ? { signature: data.signature ?? null }
+        : code === "relaxaccidents_fraismedicaux" || code === "relaxaccidents_fraismedicaux_livreurs"
+        ? {
+            signature: data.signature ?? null,
+            // L'option Décès choisie dans le devis ; `declarePasLivreur` n'a de sens que pour la
+            // version grand public (la version Livreurs/MotoTaxis assure justement ce public).
+            ...(resultatDevis.optionDeces
+              ? { ...(code === "relaxaccidents_fraismedicaux" ? { declarePasLivreur: true } : {}), optionDeces: resultatDevis.optionDeces }
+              : {}),
+          }
+        : code === "relaxvoyage"
+        ? {
+            signature: data.signature ?? null,
+            typePiece: data.typePiece ?? null,
+            compagnie: data.compagnie,
+            lieuDepart: data.lieuDepart,
+            lieuArrivee: data.lieuArrivee,
+            numeroTicket: data.numeroTicket,
+            dateDepart: data.dateDepart,
+            numeroPersonneContact: data.numeroPersonneContact,
+          }
+        : code === "relaxaccidents"
         ? {
             signature: data.signature ?? null,
             classe: entrees.classe,
@@ -2495,11 +2545,21 @@ publicRouter.post(
         capitalGaranti: cotation.capitalGaranti,
         waveStatut: "en_attente",
         nombreEcheances: 1,
+        // RelaxMoto/RelaxAuto : abonnement à cycle — le montant du devis inclut déjà le nombre de
+        // périodes ; cycle et périodes pilotent la durée de couverture et les renouvellements.
+        ...(code === "relaxmoto" || code === "relaxauto"
+          ? {
+              cycleFacturation: (entrees.cycle === "mensuel" ? "mensuel" : "annuel") as "mensuel" | "annuel",
+              nombrePeriodes: Number(entrees.nombrePeriodes ?? 1),
+            }
+          : {}),
         donneesSpecifiques: JSON.parse(JSON.stringify(donneesSpecifiques)),
-        // SecurHome annuel : détail lu dans le barème (resultat absent). Mensuel :
+        // Produits à tarif lu en base : aucun détail de devis à conserver (la prime se retrouve par
+        // la formule). SecurHome annuel : détail lu dans le barème (resultat absent). Mensuel :
         // le devis porte le détail de la prime mensuelle, conservé tel quel.
         resultat:
-          code === "relaxaccidents" || (code === "securhome" && entrees.cycle !== "mensuel")
+          ["relaxaccidents", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs", "relaxvoyage"].includes(code) ||
+          (code === "securhome" && entrees.cycle !== "mensuel")
             ? undefined
             : JSON.parse(JSON.stringify(cotation.resultat)),
         paiements: {

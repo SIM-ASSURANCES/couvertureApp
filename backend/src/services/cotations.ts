@@ -31,11 +31,35 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "./securMot
 import { calculerSecurpro, messageCapitalRefuse, type SecurproInput } from "./tarificationImf.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "./capitauxDommages.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, libellePeriodicite } from "./periodiciteDommages.js";
+import { OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois } from "./optionDecesFraisMedicaux.js";
+import { GARANTIES_RELAX_MOTO_AUTO } from "./contractHtml.js";
+import { COMPOSITION_SANTE, GARANTIES_SANTE, PRODUITS_SANTE, tauxPriseEnChargeDuTarif } from "./assurancesSante.js";
 
-export const PRODUITS_COTATION = ["relaxaccidents", "securhome", "securhome_dommages", "securpro_dommages", "securmoto"] as const;
+// Depuis le 2026-10-28, TOUS les produits ont un devis, y compris ceux dont la prime et
+// les garanties sont déjà connues (tarif fixe). Les trois produits Santé font exception à
+// la conversion en paiement : leur souscription passe par une demande validée par un admin
+// (voir ensuite « lienSouscription » de GET /public/cotations/:token).
+export const PRODUITS_COTATION = [
+  "relaxaccidents",
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+  "relaxvoyage",
+  ...PRODUITS_SANTE,
+  "securhome",
+  "securhome_dommages",
+  "securpro_dommages",
+  "securmoto",
+] as const;
 export type ProduitCotation = (typeof PRODUITS_COTATION)[number];
 export function estProduitCotation(p: string): p is ProduitCotation {
   return (PRODUITS_COTATION as readonly string[]).includes(p);
+}
+
+/** Produits dont le devis ne se paie pas directement : la demande doit d'abord être validée (Assurances Santé). */
+export function estCotationSansPaiementDirect(p: string): boolean {
+  return (PRODUITS_SANTE as readonly string[]).includes(p);
 }
 
 /** Erreur métier (message affichable tel quel au partenaire/agent) — distincte d'une erreur de validation zod. */
@@ -46,6 +70,25 @@ const entreesRelaxAccidentsSchema = z.object({
   cnpsDeclare: z.boolean(),
   cycle: z.enum(["annuel", "mensuel"]),
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]),
+});
+
+// RelaxMoto / RelaxAuto : un cycle (annuel ou mensuel) et le nombre de périodes payées d'avance
+// (même plafond que la souscription directe, MAX_PERIODES_RELAX dans routes/public.ts).
+const entreesRelaxCycleSchema = z.object({
+  cycle: z.enum(["annuel", "mensuel"]),
+  nombrePeriodes: z.number().int().min(1).max(12).default(1),
+});
+
+// RelaxAccidents Frais Médicaux (grand public et Livreurs/MotoTaxis) : la formule est la
+// ligne de barème (TarifProduit.libelleVariante), l'option Décès est facultative.
+const entreesRafSchema = z.object({
+  formule: z.string().min(1),
+  optionDeces: z.enum(["200000", "100000"]).optional(),
+});
+
+// RelaxVoyage et Assurances Santé : une formule du barème, rien d'autre à saisir.
+const entreesFormuleSchema = z.object({
+  formule: z.string().min(1),
 });
 
 const entreesSecurhomeSchema = z.object({
@@ -99,6 +142,17 @@ export function schemaEntreesCotation(produitCode: ProduitCotation) {
   switch (produitCode) {
     case "relaxaccidents":
       return entreesRelaxAccidentsSchema;
+    case "relaxmoto":
+    case "relaxauto":
+      return entreesRelaxCycleSchema;
+    case "relaxaccidents_fraismedicaux":
+    case "relaxaccidents_fraismedicaux_livreurs":
+      return entreesRafSchema;
+    case "relaxvoyage":
+    case "sante_solo":
+    case "sante_duo":
+    case "sante_famille":
+      return entreesFormuleSchema;
     case "securhome":
       return entreesSecurhomeSchema;
     case "securhome_dommages":
@@ -127,6 +181,75 @@ export interface ResultatCotation {
 export async function calculerCotation(produitCode: ProduitCotation, entreesBrutes: unknown): Promise<ResultatCotation> {
   const schema = schemaEntreesCotation(produitCode);
   const entrees = schema.parse(entreesBrutes) as Record<string, unknown>;
+
+  // ── Produits à tarif fixe lu en base (prime et garanties connues d'avance) ──
+  if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
+    const e = entrees as z.infer<typeof entreesRelaxCycleSchema>;
+    const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
+    if (!produit) throw new ErreurCotation(`Produit ${LIBELLES_PRODUIT_COTATION[produitCode]} indisponible.`);
+    const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: e.cycle } });
+    if (!tarif) throw new ErreurCotation("Tarif indisponible pour cette formule.");
+    const unite = e.cycle === "annuel" ? (e.nombrePeriodes > 1 ? "ans" : "an") : "mois";
+    return {
+      entrees: e,
+      resultat: { cycle: e.cycle, nombrePeriodes: e.nombrePeriodes, primeUnitaire: tarif.prime },
+      primeTTC: tarif.prime * e.nombrePeriodes,
+      capitalGaranti: tarif.capitalGaranti,
+      libelleFormule: `Formule ${e.cycle === "annuel" ? "annuelle" : "mensuelle"} · ${e.nombrePeriodes} ${unite}`,
+    };
+  }
+
+  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") {
+    const e = entrees as z.infer<typeof entreesRafSchema>;
+    const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
+    if (!produit) throw new ErreurCotation(`Produit ${LIBELLES_PRODUIT_COTATION[produitCode]} indisponible.`);
+    const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: e.formule } });
+    if (!tarif) throw new ErreurCotation("Formule indisponible pour ce produit.");
+    const option = e.optionDeces
+      ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[e.optionDeces], dureeMois: dureeOptionDecesMois(produitCode) }
+      : null;
+    return {
+      entrees: e,
+      resultat: { formule: e.formule, tarifBase: tarif.prime, optionDeces: option },
+      primeTTC: tarif.prime + (option?.prime ?? 0),
+      capitalGaranti: tarif.capitalGaranti,
+      libelleFormule: `Formule ${tarif.prime.toLocaleString("fr-FR")} FCFA${option ? ` + option Décès ${option.capital.toLocaleString("fr-FR")} FCFA` : ""}`,
+    };
+  }
+
+  if (produitCode === "relaxvoyage") {
+    const e = entrees as z.infer<typeof entreesFormuleSchema>;
+    const produit = await prisma.produit.findUnique({ where: { code: "relaxvoyage" } });
+    if (!produit) throw new ErreurCotation("Produit RelaxVoyage indisponible.");
+    const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: e.formule } });
+    if (!tarif) throw new ErreurCotation("Formule indisponible pour ce produit.");
+    const infos = tarif.donneesSpecifiques as { fraisSante?: number; bagages?: string } | null;
+    return {
+      entrees: e,
+      resultat: { formule: e.formule, deces: tarif.capitalGaranti, fraisSante: infos?.fraisSante ?? null, bagages: infos?.bagages ?? null },
+      primeTTC: tarif.prime,
+      capitalGaranti: tarif.capitalGaranti,
+      libelleFormule: `Formule ${tarif.libelleVariante ?? tarif.prime} · trajet de 24 h`,
+    };
+  }
+
+  if ((PRODUITS_SANTE as readonly string[]).includes(produitCode)) {
+    const e = entrees as z.infer<typeof entreesFormuleSchema>;
+    const produit = await prisma.produit.findUnique({ where: { code: produitCode } });
+    if (!produit) throw new ErreurCotation("Produit Santé indisponible.");
+    const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: e.formule } });
+    if (!tarif) throw new ErreurCotation("Formule indisponible pour ce produit.");
+    const taux = tauxPriseEnChargeDuTarif(tarif.donneesSpecifiques);
+    if (taux == null) throw new ErreurCotation("Formule indisponible pour ce produit.");
+    const composition = COMPOSITION_SANTE[produitCode as (typeof PRODUITS_SANTE)[number]];
+    return {
+      entrees: e,
+      resultat: { formule: e.formule, tauxPriseEnCharge: taux },
+      primeTTC: tarif.prime,
+      capitalGaranti: tarif.capitalGaranti,
+      libelleFormule: `${composition.description} · prise en charge ${taux} %`,
+    };
+  }
 
   if (produitCode === "relaxaccidents") {
     const e = entrees as z.infer<typeof entreesRelaxAccidentsSchema>;
@@ -259,7 +382,50 @@ export function garantiesCotation(
   capitalGaranti: number
 ): GarantieCotation[] {
   const e = (entrees ?? {}) as Record<string, unknown>;
-  const r = (resultat ?? {}) as { lignes?: { garantie: string; capital?: number; prime: number }[] };
+  const r = (resultat ?? {}) as {
+    lignes?: { garantie: string; capital?: number; prime: number }[];
+    optionDeces?: { prime: number; capital: number; dureeMois: number } | null;
+    deces?: number;
+    fraisSante?: number | null;
+    bagages?: string | null;
+    tauxPriseEnCharge?: number;
+  };
+
+  if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
+    const g = GARANTIES_RELAX_MOTO_AUTO[produitCode];
+    return [
+      {
+        libelle: "Indemnité journalière",
+        capital: g.indemniteJournaliere,
+        detail: `${g.indemniteJournaliere.toLocaleString("fr-FR")} FCFA / jour, ${g.dureeMaxJours} jours max (${g.carenceJours} jours de franchise)`,
+      },
+      { libelle: "Frais médicaux et pharmaceutiques", capital: g.fraisMedicaux },
+      { libelle: "Invalidité permanente totale", capital: g.invaliditePermanenteTotale },
+      { libelle: "Décès", capital: g.deces },
+    ];
+  }
+  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") {
+    return [
+      // Le capital garanti de la formule EST son plafond de frais médicaux (500 → 100 000, 1 000 → 250 000).
+      { libelle: "Frais médicaux et pharmaceutiques", capital: capitalGaranti },
+      ...(r.optionDeces
+        ? [{ libelle: `Option Décès (${r.optionDeces.dureeMois} mois)`, capital: r.optionDeces.capital, prime: r.optionDeces.prime }]
+        : []),
+    ];
+  }
+  if (produitCode === "relaxvoyage") {
+    return [
+      { libelle: "Décès / Invalidité permanente totale", capital: r.deces ?? capitalGaranti },
+      ...(r.fraisSante ? [{ libelle: "Frais de santé", capital: r.fraisSante }] : []),
+      ...(r.bagages ? [{ libelle: "Bagages", detail: r.bagages }] : []),
+    ];
+  }
+  if ((PRODUITS_SANTE as readonly string[]).includes(produitCode)) {
+    return [
+      ...(r.tauxPriseEnCharge != null ? [{ libelle: "Taux de prise en charge", detail: `${r.tauxPriseEnCharge} %` }] : []),
+      ...GARANTIES_SANTE.map((g) => ({ libelle: g.rubrique, detail: g.actes.join(" · ") })),
+    ];
+  }
 
   if (produitCode === "securpro_dommages" || produitCode === "securhome_dommages") {
     return (r.lignes ?? []).map((l) => ({
@@ -301,6 +467,14 @@ export function garantiesCotation(
 
 export const LIBELLES_PRODUIT_COTATION: Record<ProduitCotation, string> = {
   relaxaccidents: "RelaxAccidents",
+  relaxmoto: "RelaxMoto",
+  relaxauto: "RelaxAuto",
+  relaxaccidents_fraismedicaux: "RelaxAccidents Frais Médicaux",
+  relaxaccidents_fraismedicaux_livreurs: "RelaxAccidents Frais Médicaux Livreurs/MotoTaxis",
+  relaxvoyage: "RelaxVoyage",
+  sante_solo: "Assurance Santé Solo",
+  sante_duo: "Assurance Santé Duo",
+  sante_famille: "Assurance Santé Famille",
   securhome: "SecurHome",
   securhome_dommages: "SecurHome+",
   securpro_dommages: "SecurPro",

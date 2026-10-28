@@ -154,7 +154,10 @@ agentDistributionRouter.get(
 );
 
 const motDePasseSchema = z.object({
-  ancienMotDePasse: z.string().min(1),
+  // Facultatif : au premier changement (forcerChangementMotDePasse), l'agent vient
+  // de se connecter AVEC le mot de passe provisoire — le lui redemander était une
+  // seconde saisie inutile, et une faute de frappe le déconnectait (voir ci-dessous).
+  ancienMotDePasse: z.string().optional(),
   nouveauMotDePasse: z.string().min(6),
 });
 
@@ -163,8 +166,16 @@ agentDistributionRouter.patch(
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = motDePasseSchema.parse(req.body);
     const a = await prisma.agentDistribution.findUnique({ where: { id: req.user!.sub } });
-    if (!a || !a.passwordHash || !(await bcrypt.compare(data.ancienMotDePasse, a.passwordHash))) {
-      return res.status(401).json({ error: "Ancien mot de passe incorrect" });
+    if (!a || !a.passwordHash) return res.status(404).json({ error: "Introuvable" });
+    // Premier changement : la session prouve déjà la connaissance du mot de passe
+    // provisoire. Changement volontaire ensuite : l'ancien mot de passe est exigé.
+    if (!a.forcerChangementMotDePasse) {
+      if (!data.ancienMotDePasse || !(await bcrypt.compare(data.ancienMotDePasse, a.passwordHash))) {
+        // 400 et surtout pas 401 : le client traite tout 401 comme une session expirée
+        // (déconnexion + retour à la page de connexion), ce qui renvoyait l'agent
+        // devant le même formulaire à chaque faute de frappe.
+        return res.status(400).json({ error: "Ancien mot de passe incorrect" });
+      }
     }
     await prisma.agentDistribution.update({
       where: { id: a.id },

@@ -14,6 +14,9 @@ interface CotationPublique {
   libelleFormule: string;
   primeTTC: number;
   capitalGaranti: number;
+  // Assurances Santé : le devis ne se paie pas ici (demande à valider d'abord) — lien du parcours de demande.
+  paiementDirect?: boolean;
+  lienSouscription?: string | null;
   // Garanties couvertes par ce devis (capital, et prime quand chaque garantie est tarifée).
   garanties?: { libelle: string; capital?: number; prime?: number; detail?: string }[];
   // SecurPro : renseignés quand le capital saisi dépasse la limite assurable et
@@ -48,7 +51,19 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-const NECESSITE_PIECE_IDENTITE = new Set(["relaxaccidents"]);
+// Produits qui demandent l'identité complète et la photo de la pièce (carte de prise en charge NOVELIA
+// ou trajet de voyage). Depuis le 2026-10-28 : tous les produits Accidents ont un devis.
+const NECESSITE_PIECE_IDENTITE = new Set([
+  "relaxaccidents",
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+  "relaxvoyage",
+]);
+// Ceux dont la carte NOVELIA exige TOUTES les informations d'identité et un selfie — comme la
+// souscription directe de ces produits.
+const EXIGE_IDENTITE_COMPLETE = new Set(["relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"]);
 const CHAMPS_COMMERCE = new Set(["securhome_dommages", "securpro_dommages"]);
 
 /**
@@ -85,7 +100,14 @@ export default function Devis() {
   const [nomCommercial, setNomCommercial] = useState("");
   const [communeQuartier, setCommuneQuartier] = useState("");
   const [refFacture, setRefFacture] = useState("");
-  const [typePiece, setTypePiece] = useState<"CNI" | "Passeport">("CNI");
+  const [typePiece, setTypePiece] = useState<"CNI" | "Permis" | "Passeport">("CNI");
+  // RelaxVoyage : trajet déclaré par le client.
+  const [compagnie, setCompagnie] = useState("");
+  const [lieuDepart, setLieuDepart] = useState("");
+  const [lieuArrivee, setLieuArrivee] = useState("");
+  const [numeroTicket, setNumeroTicket] = useState("");
+  const [dateDepart, setDateDepart] = useState("");
+  const [numeroPersonneContact, setNumeroPersonneContact] = useState("");
   const [piecePhoto, setPiecePhoto] = useState<string | null>(null);
   const [selfiePhoto, setSelfiePhoto] = useState<string | null>(null);
   const sigRef = useRef<SignaturePadHandle>(null);
@@ -113,6 +135,26 @@ export default function Devis() {
       setErreurForm("Merci d'ajouter une photo de votre pièce d'identité.");
       return;
     }
+    if (EXIGE_IDENTITE_COMPLETE.has(cotation.produitCode)) {
+      const manquants = [
+        !dateNaissance && "date de naissance",
+        !sexe && "sexe",
+        !civilite && "civilité",
+        !ville.trim() && "ville",
+        !commune.trim() && "commune",
+        !adresse.trim() && "adresse",
+        !numeroPieceIdentite.trim() && "numéro de pièce d'identité",
+        !selfiePhoto && "selfie",
+      ].filter(Boolean);
+      if (manquants.length > 0) {
+        setErreurForm(`Merci de renseigner : ${manquants.join(", ")}.`);
+        return;
+      }
+    }
+    if (cotation.produitCode === "relaxvoyage" && (!compagnie.trim() || !lieuDepart.trim() || !lieuArrivee.trim() || !numeroTicket.trim() || !dateDepart || !numeroPersonneContact.trim())) {
+      setErreurForm("Merci de renseigner le voyage : compagnie, trajet, numéro de ticket, date de départ et contact.");
+      return;
+    }
     setEnvoi(true);
     try {
       const res = await fetch(`${BASE}/public/cotations/${token}/souscrire`, {
@@ -132,6 +174,10 @@ export default function Devis() {
           nomCommercial: nomCommercial || undefined,
           communeQuartier: communeQuartier || undefined,
           refFacture: refFacture || undefined,
+          typePiece: NECESSITE_PIECE_IDENTITE.has(cotation.produitCode) ? typePiece : undefined,
+          ...(cotation.produitCode === "relaxvoyage"
+            ? { compagnie, lieuDepart, lieuArrivee, numeroTicket, dateDepart, numeroPersonneContact }
+            : {}),
           signature: sigRef.current?.isEmpty() ? undefined : sigRef.current?.toDataURL() ?? undefined,
           moyenPaiement: "wave",
         }),
@@ -266,7 +312,25 @@ export default function Devis() {
           )}
         </div>
 
-        {etape === "recap" && (
+        {etape === "recap" && cotation.paiementDirect === false && (
+          <div>
+            <div style={{ fontSize: 13, color: "#5b6b80", marginBottom: 12, lineHeight: 1.5 }}>
+              La souscription à une assurance Santé passe par une demande (fiche et questionnaire médical) validée par SIM
+              Assurances ; vous recevrez ensuite votre lien de paiement par SMS.
+            </div>
+            {cotation.lienSouscription ? (
+              <a
+                href={cotation.lienSouscription}
+                style={{ display: "block", textAlign: "center", textDecoration: "none", width: "100%", padding: "14px 0", background: "#004b9c", color: "#fff", borderRadius: 12, fontWeight: 700, fontSize: 15 }}
+              >
+                Remplir ma demande de souscription
+              </a>
+            ) : (
+              <div style={{ fontSize: 13, color: "#b45309" }}>Contactez {cotation.partenaire} pour déposer votre demande.</div>
+            )}
+          </div>
+        )}
+        {etape === "recap" && cotation.paiementDirect !== false && (
           <button
             onClick={() => setEtape("formulaire")}
             style={{ width: "100%", padding: "14px 0", background: "#004b9c", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer" }}
@@ -288,7 +352,7 @@ export default function Devis() {
               <input required value={telephone} onChange={(e) => setTelephone(e.target.value)} style={inputStyle} inputMode="numeric" maxLength={10} />
             </FieldRow>
 
-            {cotation.produitCode === "relaxaccidents" && (
+            {NECESSITE_PIECE_IDENTITE.has(cotation.produitCode) && (
               <>
                 <FieldRow label="Date de naissance">
                   <input type="date" value={dateNaissance} onChange={(e) => setDateNaissance(e.target.value)} style={inputStyle} max={new Date().toISOString().slice(0, 10)} />
@@ -325,13 +389,48 @@ export default function Devis() {
                     <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
                       <input type="radio" checked={typePiece === "CNI"} onChange={() => setTypePiece("CNI")} /> CNI
                     </label>
+                    {cotation.produitCode !== "relaxaccidents" && (
+                      <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                        <input type="radio" checked={typePiece === "Permis"} onChange={() => setTypePiece("Permis")} /> Permis
+                      </label>
+                    )}
                     <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
                       <input type="radio" checked={typePiece === "Passeport"} onChange={() => setTypePiece("Passeport")} /> Passeport
                     </label>
                   </div>
                 </FieldRow>
-                <PhotoCapture label="Photo de la pièce d'identité *" value={piecePhoto} onChange={setPiecePhoto} capture="environment" required />
-                <PhotoCapture label="Selfie" value={selfiePhoto} onChange={setSelfiePhoto} capture="user" />
+                <PhotoCapture label="Photo de la pièce d'identité" value={piecePhoto} onChange={setPiecePhoto} capture="environment" required />
+                <PhotoCapture
+                  label="Selfie"
+                  value={selfiePhoto}
+                  onChange={setSelfiePhoto}
+                  capture="user"
+                  required={EXIGE_IDENTITE_COMPLETE.has(cotation.produitCode)}
+                />
+              </>
+            )}
+
+            {cotation.produitCode === "relaxvoyage" && (
+              <>
+                <div style={{ fontWeight: 700, fontSize: 14, margin: "16px 0 10px" }}>Votre voyage</div>
+                <FieldRow label="Compagnie de transport *">
+                  <input value={compagnie} onChange={(e) => setCompagnie(e.target.value)} style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Lieu de départ *">
+                  <input value={lieuDepart} onChange={(e) => setLieuDepart(e.target.value)} style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Lieu d'arrivée *">
+                  <input value={lieuArrivee} onChange={(e) => setLieuArrivee(e.target.value)} style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Numéro de ticket *">
+                  <input value={numeroTicket} onChange={(e) => setNumeroTicket(e.target.value)} style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Date de départ *">
+                  <input type="date" value={dateDepart} onChange={(e) => setDateDepart(e.target.value)} style={inputStyle} min={new Date().toISOString().slice(0, 10)} />
+                </FieldRow>
+                <FieldRow label="Numéro d'une personne à contacter *">
+                  <input value={numeroPersonneContact} onChange={(e) => setNumeroPersonneContact(e.target.value)} style={inputStyle} inputMode="numeric" />
+                </FieldRow>
               </>
             )}
 

@@ -120,8 +120,11 @@ export default function AgentDistributionDashboard() {
   const [erreur, setErreur] = useState("");
   const [toast, setToast] = useState("");
 
-  const [ancienMotDePasse, setAncienMotDePasse] = useState("");
+  // Premier changement de mot de passe : l'agent vient de se connecter avec le mot de
+  // passe provisoire, on ne le lui redemande pas — seul le nouveau est saisi, deux fois.
   const [nouveauMotDePasse, setNouveauMotDePasse] = useState("");
+  const [confirmationMotDePasse, setConfirmationMotDePasse] = useState("");
+  const [erreurMotDePasse, setErreurMotDePasse] = useState("");
   const [changement, setChangement] = useState(false);
 
   function notify(m: string) {
@@ -169,11 +172,16 @@ export default function AgentDistributionDashboard() {
 
   async function changerMotDePasse(e: React.FormEvent) {
     e.preventDefault();
+    setErreurMotDePasse("");
+    if (nouveauMotDePasse !== confirmationMotDePasse) {
+      setErreurMotDePasse("Les deux mots de passe ne sont pas identiques.");
+      return;
+    }
     setChangement(true);
     try {
-      await agentDistApi.patch("/mot-de-passe", { ancienMotDePasse, nouveauMotDePasse });
-      setAncienMotDePasse("");
+      await agentDistApi.patch("/mot-de-passe", { nouveauMotDePasse });
       setNouveauMotDePasse("");
+      setConfirmationMotDePasse("");
       if (moi?.forcerChangementMotDePasse) {
         setLoading(true);
         setMoi({ ...moi, forcerChangementMotDePasse: false });
@@ -197,7 +205,7 @@ export default function AgentDistributionDashboard() {
         notify("Mot de passe modifié ✓");
       }
     } catch (err) {
-      notify(err instanceof Error ? err.message : "Erreur");
+      setErreurMotDePasse(err instanceof Error ? err.message : "Erreur");
     } finally {
       setChangement(false);
     }
@@ -254,22 +262,25 @@ export default function AgentDistributionDashboard() {
             <form onSubmit={changerMotDePasse}>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-                  Mot de passe provisoire reçu
+                  Nouveau mot de passe (6 caractères minimum)
                 </label>
-                <input type="password" value={ancienMotDePasse} onChange={(e) => setAncienMotDePasse(e.target.value)} style={inputStyle} />
+                <input type="password" autoComplete="new-password" value={nouveauMotDePasse} onChange={(e) => setNouveauMotDePasse(e.target.value)} style={inputStyle} />
               </div>
               <div style={{ marginBottom: 12 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#5b6b80", marginBottom: 6 }}>
-                  Nouveau mot de passe (6 caractères minimum)
+                  Confirmez le nouveau mot de passe
                 </label>
-                <input type="password" value={nouveauMotDePasse} onChange={(e) => setNouveauMotDePasse(e.target.value)} style={inputStyle} />
+                <input type="password" autoComplete="new-password" value={confirmationMotDePasse} onChange={(e) => setConfirmationMotDePasse(e.target.value)} style={inputStyle} />
               </div>
+              {erreurMotDePasse && (
+                <div role="alert" style={{ color: "#dc2626", fontSize: 13, marginBottom: 12 }}>{erreurMotDePasse}</div>
+              )}
               <button
-                disabled={changement || !ancienMotDePasse || nouveauMotDePasse.length < 6}
+                disabled={changement || nouveauMotDePasse.length < 6 || !confirmationMotDePasse}
                 style={{
                   width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
                   border: "none", borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: "pointer",
-                  opacity: changement || !ancienMotDePasse || nouveauMotDePasse.length < 6 ? 0.5 : 1,
+                  opacity: changement || nouveauMotDePasse.length < 6 || !confirmationMotDePasse ? 0.5 : 1,
                 }}
               >
                 {changement ? "Validation…" : "Valider mon mot de passe"}
