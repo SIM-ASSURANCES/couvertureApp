@@ -9,7 +9,6 @@ import { LocalityCard } from "@/components/explorer/LocalityCard";
 import { MapControls } from "@/components/explorer/MapControls";
 import { Panel } from "@/components/explorer/Panel";
 import { ReseauCard } from "@/components/explorer/ReseauCard";
-import { SearchBar } from "@/components/explorer/SearchBar";
 import { isTypingTarget } from "@/lib/hooks";
 
 // MapLibre (~800 Ko) est chargé à part, uniquement côté client : le panneau s'affiche immédiatement.
@@ -35,9 +34,8 @@ export function ExplorerShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="relative h-dvh w-full overflow-hidden">
       <MapView />
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-30 flex p-3 md:p-4">
-        <SearchBar />
-      </header>
+      {/* Barre du haut (bandeau SIM Assurances + recherche de ville) retirée à la demande — le composant
+          SearchBar reste dans components/explorer/SearchBar.tsx pour la remettre si besoin. */}
       <MapControls />
       <LocalityCard />
       <ReseauCard />

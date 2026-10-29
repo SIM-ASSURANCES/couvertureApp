@@ -78,7 +78,7 @@ export function MapControls() {
   };
 
   return (
-    <div className="pointer-events-none absolute right-3 top-[7.5rem] z-10 flex flex-col items-end gap-2 md:right-4 md:top-4">
+    <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-2 md:right-4 md:top-4">
       <div className="surface pointer-events-auto flex flex-col divide-y divide-zinc-100 overflow-hidden rounded-2xl dark:divide-zinc-800">
         <ControlButton label="Zoom avant" onClick={() => mapApi?.zoomIn()}>
           <Plus className="size-[18px]" />

@@ -36,7 +36,7 @@ export function HomePanel() {
     <div className="px-5 pb-10 pt-1 md:pt-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-accent-700 dark:text-accent-400">Carte interactive</p>
       <h1 className="mt-1 text-2xl font-semibold tracking-tight">Explorer la Côte d&apos;Ivoire</h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Touchez une ville sur la carte ou recherchez-la pour ouvrir sa fiche.</p>
+      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Touchez une ville sur la carte pour ouvrir sa fiche.</p>
 
       <ReseauPanel />
 

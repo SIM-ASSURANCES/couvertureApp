@@ -67,10 +67,10 @@ export function Panel({ children }: { children: React.ReactNode }) {
         aria-label="Panneau d'information"
         style={{ "--sheet-y": y } as React.CSSProperties}
         className={cn(
-          "surface fixed inset-x-0 bottom-0 z-20 flex h-[calc(100dvh-7.75rem)] flex-col overflow-hidden rounded-t-3xl",
+          "surface fixed inset-x-0 bottom-0 z-20 flex h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-t-3xl",
           "translate-y-(--sheet-y) will-change-transform",
           dragDy == null && "transition-[translate] duration-300 ease-out-soft",
-          "md:absolute md:inset-x-auto md:bottom-4 md:left-4 md:top-[8.25rem] md:h-auto md:w-[400px] md:translate-y-0 md:rounded-2xl",
+          "md:absolute md:inset-x-auto md:bottom-4 md:left-4 md:top-4 md:h-auto md:w-[400px] md:translate-y-0 md:rounded-2xl",
           panelCollapsed && "md:pointer-events-none md:-translate-x-[calc(100%+2rem)]",
         )}
       >
@@ -99,7 +99,7 @@ export function Panel({ children }: { children: React.ReactNode }) {
         aria-expanded={!panelCollapsed}
         aria-controls="panneau"
         className={cn(
-          "surface absolute top-40 z-20 hidden h-10 w-6 items-center justify-center rounded-r-lg text-zinc-500 transition-[left] duration-300 ease-out-soft hover:text-zinc-900 md:flex dark:hover:text-white",
+          "surface absolute top-11 z-20 hidden h-10 w-6 items-center justify-center rounded-r-lg text-zinc-500 transition-[left] duration-300 ease-out-soft hover:text-zinc-900 md:flex dark:hover:text-white",
           panelCollapsed ? "left-0" : "left-[416px]",
         )}
       >
