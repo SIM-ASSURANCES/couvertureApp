@@ -196,7 +196,9 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
           ...(motDePasse ? { clientPasswordHash: await bcrypt.hash(motDePasse, 10) } : {}),
         },
       });
-      await genererCarte(s.id);
+      // SMS d'abord, carte ensuite : la synchronisation NOVELIA (genererCarte) est lente et peut
+      // échouer ; placée avant le SMS, elle retardait — voire empêchait — l'envoi des accès au client
+      // qui venait de payer. La carte ne doit jamais pouvoir bloquer le SMS.
       if (motDePasse) {
         // Santé : le SMS annonce aussi la carte physique, remise sous 7 jours.
         const message = estProduitSante(s.produit.code) ? messageClientSante : messageClientRelax;
@@ -204,6 +206,7 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
       } else {
         await sendSMS(s.telephone, messageRelaxVoyageActive(s.prenom ?? "", numeroPolice));
       }
+      await genererCarte(s.id).catch((err) => console.error("[carte] génération échouée pour", s.id, err));
       return;
     }
 
@@ -229,9 +232,9 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
       },
     });
 
-    await genererCarte(s.id);
-
+    // SMS d'abord, carte ensuite (voir le commentaire du cas « formule unique » plus haut).
     await sendSMS(s.telephone, messageClientRelax(numeroPolice, motDePasse, lienClientRelax()));
+    await genererCarte(s.id).catch((err) => console.error("[carte] génération échouée pour", s.id, err));
   }
 }
 

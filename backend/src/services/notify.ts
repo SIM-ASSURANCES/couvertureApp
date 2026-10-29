@@ -1,4 +1,5 @@
 import { randomUUID, randomBytes } from "crypto";
+import { logAction } from "../journal.js";
 
 const BASE = process.env.APP_PUBLIC_URL || "http://localhost:5173";
 
@@ -156,33 +157,54 @@ export async function sendSMS(to: string, message: string) {
   };
   if (senderId) payload.senderId = senderId;
 
-  try {
-    // Timeout explicite (audit perf 2026-09-11) : sans lui, une dégradation
-    // du fournisseur SMS bloquait indéfiniment la requête admin appelante
-    // (relance, réinitialisation de mot de passe...) jusqu'au timeout par
-    // défaut du client HTTP, potentiellement très long.
-    const resp = await fetch(apiUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(8000),
-    });
-    const text = (await resp.text().catch(() => "")).trim();
-    if (resp.ok) {
-      console.log(`[SMS OK -> ${recipient}] ${text.slice(0, 200)}`);
-    } else {
-      console.error(
-        `[SMS ECHEC ${resp.status} -> ${recipient}] ${text.slice(0, 300)}`
-      );
+  type Tentative = { ok: boolean; status?: number; texte: string; transitoire: boolean };
+  const tenter = async (): Promise<Tentative> => {
+    try {
+      // Timeout explicite (audit perf 2026-09-11) : sans lui, une dégradation du fournisseur SMS
+      // bloquait indéfiniment la requête appelante (relance, réinitialisation de mot de passe...).
+      // Porté à 20 s le 2026-10-29 : l'API met déjà ~4 s à répondre à vide, 8 s coupait les envois
+      // dès que le fournisseur ralentissait — le SMS était alors perdu sans autre trace.
+      const resp = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const texte = (await resp.text().catch(() => "")).trim();
+      return { ok: resp.ok, status: resp.status, texte, transitoire: resp.status >= 500 || resp.status === 429 };
+    } catch (e) {
+      // Réseau coupé, délai dépassé : panne passagère.
+      return { ok: false, texte: e instanceof Error ? e.message : String(e), transitoire: true };
     }
-    return { ok: resp.ok };
-  } catch (e) {
-    console.error("[SMS] erreur réseau", e);
-    return { ok: false };
+  };
+
+  let r = await tenter();
+  // Un seul nouvel essai, et seulement pour une panne passagère (réseau, délai, 5xx, 429) — jamais pour
+  // un refus définitif du fournisseur (clé invalide, crédit épuisé, numéro refusé) qu'il ne corrigerait pas.
+  if (!r.ok && r.transitoire) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    r = await tenter();
   }
+
+  if (r.ok) {
+    console.log(`[SMS OK -> ${recipient}] ${r.texte.slice(0, 200)}`);
+    return { ok: true };
+  }
+
+  console.error(`[SMS ECHEC ${r.status ?? "réseau"} -> ${recipient}] ${r.texte.slice(0, 300)}`);
+  // Trace visible dans le Journal d'activité (page admin) : sans elle, un SMS refusé par le fournisseur
+  // (crédit épuisé, clé révoquée, expéditeur non validé…) n'apparaissait que dans les journaux du serveur.
+  // Le texte du message n'est JAMAIS enregistré (il peut contenir un mot de passe provisoire).
+  await logAction({
+    typeAction: "relance",
+    objetType: "sms_echec",
+    objetId: `${recipient} · ${r.status ? `HTTP ${r.status}` : "réseau"} · ${r.texte.slice(0, 150)}`,
+    valeurApres: { telephone: recipient, codeHttp: r.status ?? null, reponse: r.texte.slice(0, 300) },
+  });
+  return { ok: false };
 }
 
 // Messages courts (≤ 160 caractères) pour tenir dans un seul SMS.
