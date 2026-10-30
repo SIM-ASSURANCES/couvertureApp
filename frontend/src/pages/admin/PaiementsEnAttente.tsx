@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet } from "lucide-react";
+import { RefreshCw, Send, Trash2, Eye, X, FileSpreadsheet, CreditCard } from "lucide-react";
 import { BadgeAssurance } from "../../components/BadgeAssurance";
 import {
   PageHeader,
@@ -44,6 +44,39 @@ export default function PaiementsEnAttente() {
   const [detailGenerique, setDetailGenerique] = useState<SouscriptionBranche | null>(null);
   const [verifId, setVerifId] = useState("");
   const [relanceId, setRelanceId] = useState("");
+  // Paiement manuel (Super Administrateur) : la souscription visée, le moyen et la référence saisie.
+  const [payerPour, setPayerPour] = useState<SouscriptionBranche | null>(null);
+  const [moyenManuel, setMoyenManuel] = useState<"wave" | "djogana">("wave");
+  const [referenceManuelle, setReferenceManuelle] = useState("");
+  const [payerEnCours, setPayerEnCours] = useState(false);
+  const [erreurPaiement, setErreurPaiement] = useState("");
+
+  function ouvrirPaiementManuel(r: SouscriptionBranche) {
+    setPayerPour(r);
+    setMoyenManuel("wave");
+    setReferenceManuelle("");
+    setErreurPaiement("");
+  }
+
+  /** Valide le paiement saisi à la main : la souscription passe en « confirmée » (contrat, carte et facture disponibles). */
+  async function validerPaiementManuel() {
+    if (!payerPour) return;
+    setPayerEnCours(true);
+    setErreurPaiement("");
+    try {
+      await api.post(`/assurances-branche/souscriptions/${payerPour.id}/paiement-manuel`, {
+        moyen: moyenManuel,
+        reference: referenceManuelle.trim(),
+      });
+      setPayerPour(null);
+      notify("Paiement validé : souscription confirmée ✓ (contrat, carte et facture disponibles)");
+      genReload();
+    } catch (e) {
+      setErreurPaiement((e as Error).message);
+    } finally {
+      setPayerEnCours(false);
+    }
+  }
 
   function notify(m: string) {
     setToast(m);
@@ -273,7 +306,7 @@ export default function PaiementsEnAttente() {
                   <th>Prime</th>
                   <th>Paiement Wave</th>
                   <th>Date</th>
-                  <th style={{ width: 80 }}></th>
+                  <th style={{ width: 170 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -302,6 +335,16 @@ export default function PaiementsEnAttente() {
                         </button>
                         {isSuper && (
                           <button
+                            className="btn btn-primary"
+                            style={{ padding: "7px 10px", display: "flex", alignItems: "center", gap: 6 }}
+                            title="Enregistrer un paiement manuel (référence Wave ou Djogana)"
+                            onClick={() => ouvrirPaiementManuel(r)}
+                          >
+                            <CreditCard size={15} /> Payer
+                          </button>
+                        )}
+                        {isSuper && (
+                          <button
                             className="btn btn-ghost"
                             style={{ padding: "7px 10px" }}
                             title="Supprimer"
@@ -322,6 +365,67 @@ export default function PaiementsEnAttente() {
           </div>
         )}
       </Card>
+
+      {payerPour && (
+        <div
+          onClick={() => !payerEnCours && setPayerPour(null)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <form
+            className="card"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              validerPaiementManuel();
+            }}
+            style={{ width: 440, maxWidth: "100%", padding: 24 }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <strong style={{ fontSize: 17 }}>Paiement manuel</strong>
+              <button type="button" className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setPayerPour(null)} disabled={payerEnCours}>
+                <X size={18} />
+              </button>
+            </div>
+            <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>
+              {payerPour.produitLibelle} — {[payerPour.prenom, payerPour.nom].filter(Boolean).join(" ") || payerPour.telephone} —{" "}
+              <strong>{fcfa(payerPour.montantPrime)}</strong>
+            </p>
+            <div style={{ display: "flex", gap: 18, margin: "14px 0" }}>
+              {(["wave", "djogana"] as const).map((m) => (
+                <label key={m} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 14, cursor: "pointer" }}>
+                  <input type="radio" name="moyen-manuel" checked={moyenManuel === m} onChange={() => setMoyenManuel(m)} />
+                  {m === "wave" ? "Wave" : "Djogana"}
+                </label>
+              ))}
+            </div>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>
+              Référence {moyenManuel === "wave" ? "Wave" : "Djogana"} *
+              <input
+                className="input"
+                style={{ width: "100%", marginTop: 6 }}
+                value={referenceManuelle}
+                onChange={(e) => setReferenceManuelle(e.target.value)}
+                placeholder="Référence de la transaction"
+                autoFocus
+                required
+                minLength={4}
+              />
+            </label>
+            <p className="muted" style={{ fontSize: 12, margin: "10px 0 0" }}>
+              En validant, la souscription est confirmée : police, accès client par SMS, carte de prise en charge et facture sont générés.
+            </p>
+            {erreurPaiement && <div style={{ marginTop: 12 }}><ErrorBox message={erreurPaiement} /></div>}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 18 }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setPayerPour(null)} disabled={payerEnCours}>
+                Annuler
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={payerEnCours || referenceManuelle.trim().length < 4}>
+                {payerEnCours ? "Validation…" : "Valider le paiement"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {detailGenerique && (
         <div

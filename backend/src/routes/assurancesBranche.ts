@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
-import { requireAuth, requireAnySuperAdmin, type AuthedRequest } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdmin, type AuthedRequest } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import {
@@ -14,7 +14,8 @@ import {
   messageReinitialisationMotDePasse,
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
-import { verifierPaiementEcheance } from "../services/paiementWave.js";
+import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
+import { paiementBloqueParValidation } from "../services/assurancesSante.js";
 import { SOUS_BRANCHES_ASSURANCES, estSousBrancheAssurance, type SousBrancheAssurance } from "../services/sousBranches.js";
 import {
   CorrectionRefusee,
@@ -680,6 +681,82 @@ assurancesBrancheRouter.post(
       });
     }
     res.json({ statut });
+  })
+);
+
+const paiementManuelSchema = z.object({
+  moyen: z.enum(["wave", "djogana"]),
+  reference: z.string().trim().min(4, "Référence trop courte.").max(120),
+});
+
+/**
+ * Paiement MANUEL (Super Administrateur) : le client a payé hors du parcours automatique (Wave
+ * ou Djogana/Peya pay) — l'admin saisit la référence de la transaction et valide. La
+ * souscription en attente passe alors en « confirmée » par le point d'entrée UNIQUE de toute
+ * confirmation (paiementWave.ts::confirmerEcheance) : police, dates, accès client + SMS, carte de
+ * prise en charge, commission et facture, exactement comme après un paiement en ligne.
+ *
+ * La référence est conservée sur l'échéance (préfixe MANUEL-, pour la distinguer d'une
+ * transaction retrouvée par l'API) et refusée si une autre échéance la porte déjà.
+ */
+assurancesBrancheRouter.post(
+  "/souscriptions/:id/paiement-manuel",
+  requireSuperAdmin,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const data = paiementManuelSchema.parse(req.body);
+    const s = await prisma.souscription.findUnique({
+      where: { id: req.params.id },
+      include: { paiements: true },
+    });
+    if (!s) return res.status(404).json({ error: "Souscription introuvable." });
+    if (s.waveStatut === "confirme") {
+      return res.status(409).json({ error: "Cette souscription est déjà confirmée." });
+    }
+    // Demande Santé : jamais de paiement avant la validation de la demande (même verrou que le paiement en ligne).
+    if (paiementBloqueParValidation(s.validationStatut)) {
+      return res.status(400).json({ error: "Cette demande doit d'abord être validée avant tout paiement." });
+    }
+    const echeance = s.paiements.find((p) => p.numeroEcheance === 1 && !p.estRenouvellement);
+    if (!echeance) return res.status(404).json({ error: "Aucune échéance à payer pour cette souscription." });
+    if (echeance.statut === "paye") {
+      return res.status(409).json({ error: "L'échéance est déjà payée." });
+    }
+
+    const marque = data.moyen === "wave" ? `MANUEL-WAVE-${data.reference}` : `MANUEL-DJOGANA-${data.reference}`;
+    const dejaUtilisee = await prisma.paiement.findFirst({
+      where: { id: { not: echeance.id }, OR: [{ waveTransactionId: marque }, { djoganaTransactionId: marque }] },
+      select: { id: true },
+    });
+    if (dejaUtilisee) {
+      return res.status(409).json({ error: "Cette référence a déjà été utilisée pour un autre paiement." });
+    }
+
+    const identifiants =
+      data.moyen === "wave" ? { waveTransactionId: marque } : { djoganaTransactionId: marque };
+    await prisma.paiement.update({ where: { id: echeance.id }, data: identifiants });
+    try {
+      await confirmerEcheance({ ...echeance, ...identifiants });
+    } catch (e) {
+      // Le verrou n'a pas été franchi : on retire la référence posée pour ne pas bloquer une nouvelle tentative.
+      await prisma.paiement.update({
+        where: { id: echeance.id },
+        data: { waveTransactionId: echeance.waveTransactionId, djoganaTransactionId: echeance.djoganaTransactionId },
+      });
+      return res.status(400).json({ error: e instanceof Error ? e.message : "Confirmation impossible." });
+    }
+
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "paiement_echeance",
+      objetId: echeance.id,
+      valeurApres: { statut: "paye", source: "paiement_manuel", moyen: data.moyen, reference: data.reference },
+    });
+    const apres = await prisma.souscription.findUniqueOrThrow({
+      where: { id: s.id },
+      select: { waveStatut: true, numeroPolice: true, dateDebut: true, dateFin: true },
+    });
+    res.json({ ok: true, ...apres });
   })
 );
 
