@@ -27,9 +27,10 @@ android {
         // 9 = 2026-10-29 choix annuelle/mensuelle Dommages, mention offre Santé,
         //     bénéficiaire de la garantie Décès,
         // 10 = 2026-10-29 saisie des dates JJ/MM/AAAA corrigée,
-        // 11 = 2026-10-29 APK 1.10, reconstruite à la demande de l'utilisateur).
-        versionCode 11
-        versionName "1.10"
+        // 11 = 2026-10-29 APK 1.10, reconstruite à la demande de l'utilisateur,
+        // 12 = 2026-10-30 APK 1.11, reconstruite à la demande de l'utilisateur).
+        versionCode 12
+        versionName "1.11"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
