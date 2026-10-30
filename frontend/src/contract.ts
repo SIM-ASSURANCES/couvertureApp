@@ -45,7 +45,9 @@ export interface ContratAccident {
   montant: number;
   capitalGaranti: number;
   signature?: string | null;
-  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative.
+  // RelaxAccidents Frais Médicaux uniquement — capital Décès inclus dans la formule
+  // (depuis le 2026-10-30) et, pour les anciennes souscriptions, l'option Décès facultative.
+  capitalDeces?: number | null;
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
 }
 
@@ -377,6 +379,7 @@ export interface DonneesContrat {
   numeroPersonneContact?: string | null;
   fraisSante?: number | null;
   bagages?: string | null;
+  capitalDeces?: number | null;
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
   classe?: number | null;
   cnpsDeclare?: boolean | null;
@@ -479,6 +482,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
       montant: c.montant,
       capitalGaranti: c.capitalGaranti,
       signature: c.signature ?? null,
+      capitalDeces: c.capitalDeces ?? null,
       optionDeces: c.optionDeces ?? null,
     }, c.id);
     return;

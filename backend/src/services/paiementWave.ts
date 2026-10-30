@@ -28,13 +28,12 @@ function avancerDateCycle(date: Date, cycle: "mensuel" | "annuel", nombrePeriode
  * `donneesSpecifiques.cycle`, voir routes/public.ts), qui fixe la durée du
  * contrat ET celle de chaque renouvellement (le cycle initial ne change
  * jamais, comme pour un abonnement RelaxMoto/Auto). RelaxAccidents Frais
- * Médicaux (grand public) : 2 mois (demande explicite, 2026-10-01 —
- * auparavant retombait sur le défaut 3 mois, jamais fixé explicitement).
- * Sa version Livreurs/MotoTaxis reste à 1 mois (inchangé, demande distincte
- * du 2026-09-17). Ne retouche jamais les contrats déjà confirmés : les deux
- * mois ne s'appliquent qu'aux nouvelles souscriptions et à leurs
- * renouvellements futurs, comme pour tous les ajustements de durée de ce
- * fichier.
+ * Médicaux, grand public ET Livreurs/MotoTaxis : 1 mois (demande explicite,
+ * 2026-10-30 ; le grand public était à 2 mois depuis le 2026-10-01, les
+ * livreurs à 1 mois depuis le 2026-09-17). Ne retouche jamais les contrats
+ * déjà confirmés : la durée ne s'applique qu'aux nouvelles souscriptions et
+ * à leurs renouvellements futurs, comme pour tous les ajustements de durée de
+ * ce fichier.
  */
 function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): number {
   if (produitCode === "relaxaccidents") {
@@ -42,8 +41,7 @@ function dureeFormuleMois(produitCode: string, donneesSpecifiques: unknown): num
     if (cycle === "mensuel") return 1;
     if (cycle === "annuel") return 12;
   }
-  if (produitCode === "relaxaccidents_fraismedicaux") return 2;
-  if (produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
+  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") return 1;
   // Produits Assurances Dommages à devis ou tarif fixe (SecurPro, SecurHome,
   // SecurHome+, SecurMoto) : contrats annuels, renouvellements compris — sauf
   // si le souscripteur a choisi la prime MENSUELLE (décision 2026-10-16, voir

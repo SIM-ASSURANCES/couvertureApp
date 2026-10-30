@@ -31,7 +31,7 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "./securMot
 import { calculerSecurpro, messageCapitalRefuse, type SecurproInput } from "./tarificationImf.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "./capitauxDommages.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, libellePeriodicite } from "./periodiciteDommages.js";
-import { OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois } from "./optionDecesFraisMedicaux.js";
+import { capitalDecesDuTarif } from "./garantieDecesFraisMedicaux.js";
 import { GARANTIES_RELAX_MOTO_AUTO } from "./contractHtml.js";
 import { COMPOSITION_SANTE, GARANTIES_SANTE, PRODUITS_SANTE, tauxPriseEnChargeDuTarif } from "./assurancesSante.js";
 
@@ -80,10 +80,10 @@ const entreesRelaxCycleSchema = z.object({
 });
 
 // RelaxAccidents Frais Médicaux (grand public et Livreurs/MotoTaxis) : la formule est la
-// ligne de barème (TarifProduit.libelleVariante), l'option Décès est facultative.
+// ligne de barème (TarifProduit.libelleVariante). Plus d'option Décès depuis le 2026-10-30 :
+// le Décès est inclus dans la formule (un ancien client qui l'enverrait encore est ignoré).
 const entreesRafSchema = z.object({
   formule: z.string().min(1),
-  optionDeces: z.enum(["200000", "100000"]).optional(),
 });
 
 // RelaxVoyage et Assurances Santé : une formule du barème, rien d'autre à saisir.
@@ -205,15 +205,14 @@ export async function calculerCotation(produitCode: ProduitCotation, entreesBrut
     if (!produit) throw new ErreurCotation(`Produit ${LIBELLES_PRODUIT_COTATION[produitCode]} indisponible.`);
     const tarif = await prisma.tarifProduit.findFirst({ where: { produitId: produit.id, libelleVariante: e.formule } });
     if (!tarif) throw new ErreurCotation("Formule indisponible pour ce produit.");
-    const option = e.optionDeces
-      ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[e.optionDeces], dureeMois: dureeOptionDecesMois(produitCode) }
-      : null;
+    // Le capital Décès est inclus dans la formule (lu sur la ligne de barème) : aucun supplément.
+    const capitalDeces = capitalDecesDuTarif(tarif);
     return {
       entrees: e,
-      resultat: { formule: e.formule, tarifBase: tarif.prime, optionDeces: option },
-      primeTTC: tarif.prime + (option?.prime ?? 0),
+      resultat: { formule: e.formule, tarifBase: tarif.prime, capitalDeces },
+      primeTTC: tarif.prime,
       capitalGaranti: tarif.capitalGaranti,
-      libelleFormule: `Formule ${tarif.prime.toLocaleString("fr-FR")} FCFA${option ? ` + option Décès ${option.capital.toLocaleString("fr-FR")} FCFA` : ""}`,
+      libelleFormule: `Formule ${tarif.prime.toLocaleString("fr-FR")} FCFA`,
     };
   }
 
@@ -384,6 +383,9 @@ export function garantiesCotation(
   const e = (entrees ?? {}) as Record<string, unknown>;
   const r = (resultat ?? {}) as {
     lignes?: { garantie: string; capital?: number; prime: number }[];
+    // RelaxAccidents Frais Médicaux : capital Décès inclus dans la formule (depuis le 2026-10-30),
+    // ou, pour un devis plus ancien, l'option Décès facultative qu'il avait chiffrée.
+    capitalDeces?: number | null;
     optionDeces?: { prime: number; capital: number; dureeMois: number } | null;
     deces?: number;
     fraisSante?: number | null;
@@ -406,8 +408,9 @@ export function garantiesCotation(
   }
   if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") {
     return [
-      // Le capital garanti de la formule EST son plafond de frais médicaux (500 → 100 000, 1 000 → 250 000).
+      // Le capital garanti de la formule EST son plafond de frais médicaux (500 → 75 000, 1 000 → 200 000).
       { libelle: "Frais médicaux et pharmaceutiques", capital: capitalGaranti },
+      ...(r.capitalDeces ? [{ libelle: "Décès", capital: r.capitalDeces }] : []),
       ...(r.optionDeces
         ? [{ libelle: `Option Décès (${r.optionDeces.dureeMois} mois)`, capital: r.optionDeces.capital, prime: r.optionDeces.prime }]
         : []),

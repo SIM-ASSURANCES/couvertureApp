@@ -47,9 +47,11 @@ export interface ContratAccident {
   montant: number;
   capitalGaranti: number;
   signature?: string | null;
-  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
-  // garantie pour une durée propre (2 mois), distincte de la durée du
-  // contrat principal (3 mois).
+  // RelaxAccidents Frais Médicaux uniquement — capital Décès inclus dans la formule
+  // (50 000 pour 1 000 F, 25 000 pour 500 F, depuis le 2026-10-30).
+  capitalDeces?: number | null;
+  // Ancienne option Décès facultative des souscriptions d'avant le 2026-10-30, garantie pour
+  // une durée propre ; affichée telle qu'elle a été vendue.
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
   // Bénéficiaire de la garantie Décès (nom + téléphone), saisi à la souscription.
   beneficiaire?: { nom: string; telephone: string } | null;
@@ -603,6 +605,7 @@ export async function renderContratAccident(c: ContratAccident): Promise<string>
   <table>
     <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Date de naissance</td><td>${dfr(c.dateNaissance)}</td><td class="k">Frais médicaux &amp; pharmaceutiques</td><td>${fcfa(c.capitalGaranti)}</td></tr>
+    ${c.capitalDeces ? `<tr><td class="k">Décès</td><td>${fcfa(c.capitalDeces)}</td><td class="k"></td><td></td></tr>` : ""}
   </table>
 
   ${

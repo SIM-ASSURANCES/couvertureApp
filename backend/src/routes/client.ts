@@ -125,8 +125,13 @@ clientRouter.get(
       bagages = infos?.bagages ?? null;
     }
 
-    // RelaxAccidents Frais Médicaux : option Décès facultative, choisie à la
-    // souscription (voir formuleSchema, routes/public.ts) — stockée
+    // RelaxAccidents Frais Médicaux : capital Décès inclus dans la formule (depuis le
+    // 2026-10-30), figé sur la souscription sous `garantieDeces`.
+    const capitalDeces =
+      s.produit.code === "relaxaccidents_fraismedicaux" || s.produit.code === "relaxaccidents_fraismedicaux_livreurs"
+        ? ((s.donneesSpecifiques as { garantieDeces?: { capital?: number } } | null)?.garantieDeces?.capital ?? null)
+        : null;
+    // Ancienne option Décès facultative (souscriptions d'avant le 2026-10-30), stockée
     // directement sur la souscription, contrairement à RelaxVoyage ci-dessus.
     const optionDeces =
       s.produit.code === "relaxaccidents_fraismedicaux" || s.produit.code === "relaxaccidents_fraismedicaux_livreurs"
@@ -161,6 +166,7 @@ clientRouter.get(
       fraisSante,
       bagages,
       optionDeces,
+      capitalDeces,
       classe: relaxAccidentsGenerale?.classe ?? null,
       cnpsDeclare: relaxAccidentsGenerale?.cnpsDeclare ?? null,
       // RelaxAccidents générale uniquement — périodicité choisie à la
@@ -293,6 +299,7 @@ clientRouter.get(
       fraisSante: d.fraisSante,
       bagages: d.bagages,
       optionDeces: d.optionDeces,
+      capitalDeces: d.capitalDeces,
       classe: d.classe,
       cnpsDeclare: d.cnpsDeclare,
       cycle: d.cycle,

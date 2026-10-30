@@ -6,6 +6,7 @@ import { emettreFacture } from "./services/facture.js";
 import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenaires.js";
 import { COMPOSITION_SANTE, FORMULES_SANTE, PRODUITS_SANTE, SOUS_BRANCHE_SANTE } from "./services/assurancesSante.js";
 import { cycleDeSouscription } from "./services/periodiciteDommages.js";
+import { GARANTIES_RAF_PAR_FORMULE } from "./services/garantieDecesFraisMedicaux.js";
 
 const prisma = new PrismaClient();
 
@@ -893,6 +894,41 @@ async function corrigerLibelleRafLivreurs() {
 }
 
 /**
+ * Migration ponctuelle (2026-10-30) : garanties des deux produits RelaxAccidents Frais Médicaux
+ * (grand public et Livreurs/MotoTaxis) par formule — voir services/garantieDecesFraisMedicaux.ts.
+ *   1 000 FCFA : frais médicaux 200 000 · Décès 50 000
+ *     500 FCFA : frais médicaux  75 000 · Décès 25 000
+ * Pose `capitalGaranti` (plafond de frais médicaux) et `donneesSpecifiques.capitalDeces`.
+ *
+ * Une seule fois par ligne : seules sont reprises les lignes dont `donneesSpecifiques` est encore
+ * vide (c'est le marqueur de la migration). Ensuite un admin peut modifier `capitalGaranti` dans
+ * l'écran des tarifs sans que le prochain démarrage ne l'écrase. Ne touche jamais les
+ * souscriptions déjà enregistrées : leur capital est figé sur la souscription.
+ */
+async function appliquerGarantiesRafParFormule() {
+  const produits = await prisma.produit.findMany({
+    where: { code: { in: ["relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"] } },
+    select: { id: true, code: true },
+  });
+  let lignes = 0;
+  for (const produit of produits) {
+    const tarifs = await prisma.tarifProduit.findMany({ where: { produitId: produit.id } });
+    for (const t of tarifs) {
+      const garanties = GARANTIES_RAF_PAR_FORMULE[t.libelleVariante ?? ""];
+      if (!garanties || t.donneesSpecifiques != null) continue;
+      await prisma.tarifProduit.update({
+        where: { id: t.id },
+        data: { capitalGaranti: garanties.fraisMedicaux, donneesSpecifiques: { capitalDeces: garanties.deces } },
+      });
+      lignes++;
+    }
+  }
+  if (lignes > 0) {
+    console.log(`[seed] RelaxAccidents Frais Médicaux : garanties Décès/frais médicaux posées sur ${lignes} formule(s).`);
+  }
+}
+
+/**
  * Partenaire virtuel "Souscription directe" + son QR unique — point d'entrée
  * public de l'app mobile permettant de souscrire à un produit Assurances
  * Accidents/Dommages sans intermédiaire humain (voir AppMobile.tsx côté
@@ -1028,6 +1064,7 @@ async function main() {
   await corrigerEcheanceRelaxVoyage();
   await corrigerEcheanceSecurpro();
   await corrigerLibelleRafLivreurs();
+  await appliquerGarantiesRafParFormule();
   await seedPartenaireSouscriptionDirecte();
   await seedTarificationImf();
   await corrigerCommissionsImf();

@@ -65,7 +65,7 @@ export function entreesParDefaut(produitCode: ProduitCotation): Record<string, u
       return { cycle: "mensuel", nombrePeriodes: 1 };
     case "relaxaccidents_fraismedicaux":
     case "relaxaccidents_fraismedicaux_livreurs":
-      return { formule: "", optionDeces: "" };
+      return { formule: "" };
     case "relaxvoyage":
     case "sante_solo":
     case "sante_duo":
@@ -127,7 +127,7 @@ export function nettoyerEntrees(produitCode: ProduitCotation, e: Record<string, 
 function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, unknown>): Record<string, unknown> {
   const toNum = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
   if (produitCode === "relaxaccidents" || produitCode === "securhome") return e;
-  // Produits à tarif fixe : formule choisie dans le barème, option Décès vide = absente.
+  // Produits à tarif fixe : formule choisie dans le barème (le Décès des RelaxAccidents Frais Médicaux est inclus).
   if (produitCode === "relaxmoto" || produitCode === "relaxauto") {
     // Annuel : toujours une seule période, quelle que soit la valeur gardée d'une saisie mensuelle.
     return { cycle: e.cycle, nombrePeriodes: e.cycle === "annuel" ? 1 : Number(e.nombrePeriodes) || 1 };
@@ -140,7 +140,7 @@ function nettoyerEntreesProduit(produitCode: ProduitCotation, e: Record<string, 
     produitCode === "sante_duo" ||
     produitCode === "sante_famille"
   ) {
-    return { formule: e.formule, ...(e.optionDeces ? { optionDeces: e.optionDeces } : {}) };
+    return { formule: e.formule };
   }
   const communs = {
     ...e,
@@ -265,7 +265,7 @@ interface LigneBareme {
   libelleVariante: string | null;
   prime: number;
   capitalGaranti: number;
-  donneesSpecifiques?: { tauxPriseEnCharge?: number } | null;
+  donneesSpecifiques?: { tauxPriseEnCharge?: number; capitalDeces?: number } | null;
 }
 
 /** Barème public d'un produit (formules et primes), pour proposer le choix de la formule. */
@@ -300,7 +300,10 @@ function ChampFormule({
   const { lignes, chargement } = useBaremeProduit(produitCode);
   const libelle = (l: LigneBareme) => {
     const taux = l.donneesSpecifiques?.tauxPriseEnCharge;
-    if (produitCode.startsWith("relaxaccidents_fraismedicaux")) return `${fcfa(l.prime)} — frais médicaux jusqu'à ${fcfa(l.capitalGaranti)}`;
+    if (produitCode.startsWith("relaxaccidents_fraismedicaux")) {
+      const deces = l.donneesSpecifiques?.capitalDeces;
+      return `${fcfa(l.prime)} — frais médicaux ${fcfa(l.capitalGaranti)}${deces ? ` · décès ${fcfa(deces)}` : ""}`;
+    }
     if (taux != null) return `${l.libelleVariante} — ${fcfa(l.prime)} (prise en charge ${taux} %)`;
     return `${l.libelleVariante ?? ""} — ${fcfa(l.prime)}`;
   };
@@ -390,22 +393,15 @@ export function ChampsProduitCotation({
     );
   }
 
-  if (produitCode === "relaxaccidents_fraismedicaux" || produitCode === "relaxaccidents_fraismedicaux_livreurs") {
-    return (
-      <>
-        <ChampFormule produitCode={produitCode} entrees={entrees} setChamp={setChamp} />
-        <Field label="Option Décès (facultative)">
-          <select className="select" value={String(entrees.optionDeces ?? "")} onChange={(e) => setChamp("optionDeces", e.target.value)}>
-            <option value="">Aucune</option>
-            <option value="200000">Capital 200 000 FCFA (+500 FCFA)</option>
-            <option value="100000">Capital 100 000 FCFA (+300 FCFA)</option>
-          </select>
-        </Field>
-      </>
-    );
-  }
-
-  if (produitCode === "relaxvoyage" || produitCode === "sante_solo" || produitCode === "sante_duo" || produitCode === "sante_famille") {
+  // RelaxAccidents Frais Médicaux : la formule porte aussi le Décès (plus d'option depuis le 2026-10-30).
+  if (
+    produitCode === "relaxaccidents_fraismedicaux" ||
+    produitCode === "relaxaccidents_fraismedicaux_livreurs" ||
+    produitCode === "relaxvoyage" ||
+    produitCode === "sante_solo" ||
+    produitCode === "sante_duo" ||
+    produitCode === "sante_famille"
+  ) {
     return <ChampFormule produitCode={produitCode} entrees={entrees} setChamp={setChamp} />;
   }
 

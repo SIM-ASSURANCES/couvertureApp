@@ -80,6 +80,7 @@ souscriptionsRouter.get(
       fraisSante?: number | null;
       bagages?: string | null;
       optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
+      capitalDeces?: number | null;
       classe?: number | null;
       cnpsDeclare?: boolean | null;
       cycle?: "annuel" | "mensuel" | null;
@@ -367,6 +368,7 @@ souscriptionsRouter.get(
             fraisSante: d.fraisSante,
             bagages: d.bagages,
             optionDeces: d.optionDeces,
+            capitalDeces: d.capitalDeces,
             classe: d.classe,
             cnpsDeclare: d.cnpsDeclare,
             cycle: d.cycle,

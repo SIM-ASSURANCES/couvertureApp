@@ -31,8 +31,8 @@ function classeValide(v: unknown): Classe | null {
  * et RelaxAuto affichaient jusqu'ici à tort leur capital décès (500 000/1 000 000)
  * sous l'étiquette générique "CAPITAL GARANTI". RelaxAccidents Frais Médicaux
  * (et sa variante Livreurs/Taxis) n'ont pas besoin de ce traitement : leur
- * `capitalGaranti` stocké EST déjà le plafond FMP (500 frs → 100 000, 1000 frs
- * → 250 000).
+ * `capitalGaranti` stocké EST déjà le plafond FMP (depuis le 2026-10-30 :
+ * 500 frs → 75 000, 1000 frs → 200 000 ; avant : 100 000 et 250 000).
  */
 export function garantieAffichee(
   produitCode: string,

@@ -40,8 +40,8 @@ import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDom
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
-import { OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois } from "../services/optionDecesFraisMedicaux.js";
-import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
+import { capitalDecesDuTarif, estProduitRaf, MESSAGE_OPTION_DECES_SUPPRIMEE } from "../services/garantieDecesFraisMedicaux.js";
+import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, beneficiaireRequisPourDevis, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { retourPaiementRecent, MESSAGE_LIEN_RETOUR_EXPIRE } from "../services/retourPaiement.js";
@@ -123,13 +123,9 @@ function isProduitFormule(p: string): p is (typeof PRODUITS_FORMULE)[number] {
 }
 
 // RelaxAccidents Frais Médicaux existe en deux produits distincts partageant
-// tarifs, formulaire et option Décès : la version « grand public » (exclut les
+// tarifs, formulaire et garanties : la version « grand public » (exclut les
 // livreurs, d'où la case à cocher) et la version « Livreurs/Taxis » (les
-// couvre justement — aucune déclaration, option Décès ouverte d'emblée).
-const PRODUITS_RAF = ["relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"] as const;
-function estRaf(p: string): boolean {
-  return (PRODUITS_RAF as readonly string[]).includes(p);
-}
+// couvre justement — aucune déclaration). Voir services/garantieDecesFraisMedicaux.ts.
 function estRafLivreurs(p: string): boolean {
   return p === "relaxaccidents_fraismedicaux_livreurs";
 }
@@ -1997,14 +1993,14 @@ const formuleSchema = z.object({
   numeroTicket: z.string().min(1).max(60).optional(),
   dateDepart: optionalDate,
   numeroPersonneContact: z.string().min(6).max(40).optional(),
-  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
-  // proposée seulement si le souscripteur déclare ne pas être livreur (voir
-  // OPTIONS_DECES_FRAIS_MEDICAUX ci-dessous). La clé identifie le capital
-  // garanti choisi.
+  // RelaxAccidents Frais Médicaux uniquement — case « je ne suis pas livreur » du produit
+  // grand public (les livreurs ont leur propre produit).
   declarePasLivreur: z.boolean().optional(),
-  optionDeces: z.enum(["200000", "100000"]).optional(),
+  // Ancienne option Décès, supprimée le 2026-10-30 (le Décès est inclus dans la formule) :
+  // acceptée au parsing pour répondre par une erreur claire aux clients restés sur l'ancienne version.
+  optionDeces: z.string().optional(),
   // Bénéficiaire de la garantie Décès — exigé pour RelaxVoyage, RelaxAccidents générale
-  // et RelaxAccidents Frais Médicaux avec l'option Décès (voir services/beneficiaireDeces.ts).
+  // et RelaxAccidents Frais Médicaux (voir services/beneficiaireDeces.ts).
   ...champsBeneficiaire,
   // RelaxAccidents générale uniquement — voir MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE.
   moyenDeplacement: z.enum(["voiture", "moto_tricycle", "autres"]).optional(),
@@ -2023,9 +2019,6 @@ const formuleSchema = z.object({
   ...champsNovelia,
   ...moyenPaiementField,
 });
-
-// L'option Décès (OPTIONS_DECES_FRAIS_MEDICAUX, dureeOptionDecesMois) vit désormais dans
-// services/optionDecesFraisMedicaux.ts, partagée avec les devis.
 
 const RELAXVOYAGE_CHAMPS_REQUIS = [
   "compagnie",
@@ -2046,20 +2039,14 @@ publicRouter.post(
     if (code === "relaxvoyage" && RELAXVOYAGE_CHAMPS_REQUIS.some((champ) => !data[champ])) {
       return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
     }
-    // Option Décès : réservée aux produits RelaxAccidents Frais Médicaux.
-    // Version grand public : seulement si le souscripteur a déclaré ne pas
-    // être livreur. Version Livreurs/Taxis : ouverte d'emblée (le produit les
-    // couvre). Jamais de confiance dans le seul fait que le client l'ait envoyée.
-    if (data.optionDeces && !estRaf(code)) {
-      return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
-    }
-    if (data.optionDeces && code === "relaxaccidents_fraismedicaux" && !data.declarePasLivreur) {
-      return res.status(400).json({ error: "Option Décès indisponible pour cette souscription." });
-    }
+    // L'option Décès n'existe plus (2026-10-30) : le Décès est inclus dans la formule
+    // des RelaxAccidents Frais Médicaux. Un client resté sur l'ancienne version reçoit
+    // une erreur claire plutôt qu'un prix différent de celui qu'il a vu.
+    if (data.optionDeces) return res.status(400).json({ error: MESSAGE_OPTION_DECES_SUPPRIMEE });
     if (code === "relaxaccidents" && !data.moyenDeplacement) {
       return res.status(400).json({ error: "Moyen de déplacement manquant." });
     }
-    const exigeBeneficiaire = aGarantieDeces(code, !!data.optionDeces);
+    const exigeBeneficiaire = aGarantieDeces(code);
     const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
     if (code === "securhome" && !data.statutOccupation) {
@@ -2158,11 +2145,10 @@ publicRouter.post(
     }
 
     // Le total payé recalculé ici, jamais confié au client : prime de la
-    // formule + prime de l'option Décès si choisie + supplément moto/tricycle
-    // pour RelaxAccidents générale.
-    const optionDeces = data.optionDeces
-      ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces], dureeMois: dureeOptionDecesMois(code) }
-      : null;
+    // formule + supplément moto/tricycle pour RelaxAccidents générale.
+    // RelaxAccidents Frais Médicaux : le capital Décès est inclus dans la formule (lu sur la
+    // ligne de barème) et figé sur la souscription, sans aucun supplément.
+    const capitalDeces = estProduitRaf(code) ? capitalDecesDuTarif(tarif) : null;
     const surchargeDeplacement = relaxAccidentsGenerale
       ? surchargeMoyenDeplacementRelaxAccidentsGenerale(data.moyenDeplacement, relaxAccidentsGenerale.cycle)
       : 0;
@@ -2175,7 +2161,7 @@ publicRouter.post(
     }
     const montantTotal = securhomeMensuel
       ? securhomeMensuel.primeTTC
-      : tarif.prime + (optionDeces?.prime ?? 0) + surchargeDeplacement;
+      : tarif.prime + surchargeDeplacement;
 
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -2251,14 +2237,10 @@ publicRouter.post(
                 // la validation (le client n'est plus devant le formulaire).
                 qrToken: data.qrToken,
               }
-            : data.signature || optionDeces
+            : data.signature || capitalDeces
             ? {
                 signature: data.signature ?? null,
-                // `declarePasLivreur` n'a de sens que pour la version grand
-                // public — la version Livreurs/Taxis assure justement ce public.
-                ...(optionDeces
-                  ? { ...(code === "relaxaccidents_fraismedicaux" ? { declarePasLivreur: true } : {}), optionDeces }
-                  : {}),
+                ...(capitalDeces ? { garantieDeces: { capital: capitalDeces } } : {}),
               }
             : undefined,
           beneficiaireAStocker(data, exigeBeneficiaire)
@@ -2386,7 +2368,7 @@ publicRouter.get(
       paiementDirect: !estCotationSansPaiementDirect(cotation.produitCode),
       lienSouscription,
       // La page publique demande nom + téléphone du bénéficiaire quand le devis comporte une garantie Décès.
-      beneficiaireRequis: aGarantieDeces(cotation.produitCode, !!(cotation.resultat as { optionDeces?: unknown } | null)?.optionDeces),
+      beneficiaireRequis: beneficiaireRequisPourDevis(cotation.produitCode, cotation.resultat),
     });
   })
 );
@@ -2474,8 +2456,12 @@ publicRouter.post(
     }
 
     const entrees = cotation.entrees as Record<string, unknown>;
-    const resultatDevis = (cotation.resultat ?? {}) as { optionDeces?: { prime: number; capital: number; dureeMois: number } | null };
-    const exigeBeneficiaire = aGarantieDeces(code, !!resultatDevis.optionDeces);
+    const resultatDevis = (cotation.resultat ?? {}) as {
+      capitalDeces?: number | null;
+      // Devis d'avant le 2026-10-30 : option Décès facultative, honorée telle que chiffrée.
+      optionDeces?: { prime: number; capital: number; dureeMois: number } | null;
+    };
+    const exigeBeneficiaire = beneficiaireRequisPourDevis(code, cotation.resultat);
     const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
     const donneesSpecifiques =
@@ -2484,8 +2470,9 @@ publicRouter.post(
         : code === "relaxaccidents_fraismedicaux" || code === "relaxaccidents_fraismedicaux_livreurs"
         ? {
             signature: data.signature ?? null,
-            // L'option Décès choisie dans le devis ; `declarePasLivreur` n'a de sens que pour la
-            // version grand public (la version Livreurs/MotoTaxis assure justement ce public).
+            // Garantie Décès incluse dans la formule chiffrée par le devis (2026-10-30), ou, pour un
+            // devis plus ancien, l'option Décès facultative qu'il avait chiffrée.
+            ...(resultatDevis.capitalDeces ? { garantieDeces: { capital: resultatDevis.capitalDeces } } : {}),
             ...(resultatDevis.optionDeces
               ? { ...(code === "relaxaccidents_fraismedicaux" ? { declarePasLivreur: true } : {}), optionDeces: resultatDevis.optionDeces }
               : {}),
@@ -2769,7 +2756,9 @@ publicRouter.get(
       bdgCapital?: number | null;
       nombrePieces?: number | null;
       moyenDeplacement?: string | null;
-      // Option Décès facultative des produits RelaxAccidents Frais Médicaux.
+      // Garantie Décès incluse dans la formule des produits RelaxAccidents Frais Médicaux (depuis le 2026-10-30).
+      garantieDeces?: { capital: number } | null;
+      // Ancienne option Décès facultative (souscriptions d'avant le 2026-10-30).
       optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
       // SecurMoto (Assurances Dommages).
       valeurMoto?: number | null;
@@ -2860,6 +2849,7 @@ publicRouter.get(
       // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis) — affichée
       // sur le contrat PDF (voir renderContratAccident).
       optionDeces: donneesSpecifiques?.optionDeces ?? null,
+      capitalDeces: donneesSpecifiques?.garantieDeces?.capital ?? null,
       // SecurMoto (Assurances Dommages).
       valeurMoto: donneesSpecifiques?.valeurMoto ?? null,
       ageMoto: donneesSpecifiques?.ageMoto ?? null,

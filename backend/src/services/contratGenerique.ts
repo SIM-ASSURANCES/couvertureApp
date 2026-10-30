@@ -48,6 +48,9 @@ export interface DonneesContratGenerique {
   fraisSante: number | null;
   bagages: string | null;
   optionDeces: OptionDecesFraisMedicaux | null;
+  // Capital Décès inclus dans la formule de RelaxAccidents Frais Médicaux (depuis le 2026-10-30) ;
+  // null pour les autres produits et pour les souscriptions d'avant cette date.
+  capitalDeces: number | null;
   // Bénéficiaire de la garantie Décès (nom + téléphone) — voir services/beneficiaireDeces.ts ;
   // null pour les souscriptions d'avant le 2026-10-29 et les produits sans garantie Décès.
   beneficiaire: BeneficiaireDeces | null;
@@ -166,6 +169,11 @@ export async function mapperSouscriptionGenerique(
         }
       : null;
 
+  // Garantie Décès incluse dans la formule de RelaxAccidents Frais Médicaux (routes/public.ts la fige
+  // sous `garantieDeces.capital` ; absente des souscriptions d'avant le 2026-10-30).
+  const capitalDecesRaw = (d?.garantieDeces as { capital?: unknown } | null | undefined)?.capital;
+  const capitalDeces = typeof capitalDecesRaw === "number" && capitalDecesRaw > 0 ? capitalDecesRaw : null;
+
   return {
     id: s.id,
     produit: s.produit.code,
@@ -194,6 +202,7 @@ export async function mapperSouscriptionGenerique(
     fraisSante,
     bagages,
     optionDeces,
+    capitalDeces,
     beneficiaire: lireBeneficiaire(d),
     classe: num("classe"),
     cnpsDeclare: bool("cnpsDeclare"),

@@ -30,6 +30,7 @@ import { analyserSouscriptionApiIA } from "../services/fraudeIA.js";
 import { openapiPartnerV1 } from "../openapi/partnerV1.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker } from "../services/beneficiaireDeces.js";
+import { capitalDecesDuTarif, estProduitRaf } from "../services/garantieDecesFraisMedicaux.js";
 
 // =====================================================================
 // API partenaire — routeur `/api/partner/v1`.
@@ -91,23 +92,6 @@ const PRODUITS_SOUSCRIPTION_API = new Set([
   "relaxaccidents_fraismedicaux",
   "relaxaccidents_fraismedicaux_livreurs",
 ]);
-
-/**
- * Option Décès en supplément de RelaxAccidents Frais Médicaux — doit rester
- * alignée sur OPTIONS_DECES_FRAIS_MEDICAUX + dureeOptionDecesMois de
- * routes/public.ts. Durée : 2 mois grand public, 1 mois Livreurs/MotoTaxis.
- */
-const OPTIONS_DECES_FRAIS_MEDICAUX: Record<
-  "200000" | "100000",
-  { prime: number; capital: number; dureeMois: number }
-> = {
-  "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
-  "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
-};
-
-function dureeOptionDecesMois(produitCode: string): number {
-  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
-}
 
 // Data URL image bornée + regex stricte — même régime que routes/public.ts
 // (aucun caractère de sortie d'attribut HTML jusqu'au rendu PDF/carte).
@@ -302,10 +286,11 @@ const souscriptionSchema = z.object({
   pieceIdentiteUrl: dataUrlImage,
   selfieUrl: dataUrlImage,
   signature: dataUrlImage.optional(),
-  // RelaxAccidents Frais Médicaux : option Décès facultative, réservée aux
-  // non-livreurs.
+  // RelaxAccidents Frais Médicaux : case « je ne suis pas livreur » (produit grand public).
   declarePasLivreur: z.boolean().optional(),
-  optionDeces: z.enum(["200000", "100000"]).optional(),
+  // Ancienne option Décès, supprimée le 2026-10-30 (Décès inclus dans la formule) : acceptée au
+  // parsing pour répondre par une erreur explicite aux intégrations qui l'envoient encore.
+  optionDeces: z.string().optional(),
   // Bénéficiaire de la garantie Décès — facultatif côté API (les intégrations existantes ne
   // l'envoient pas), imprimé sur le contrat quand il est fourni.
   beneficiaire: z.object({ nom: z.string().trim().min(2).max(120), telephone: z.string().trim().min(6).max(40) }).optional(),
@@ -372,41 +357,36 @@ partnerApiRouter.post(
     }
     const nombrePeriodes = estCycle ? data.nombrePeriodes ?? 1 : 1;
 
-    // Option Décès : uniquement les produits RelaxAccidents Frais Médicaux.
-    // Version grand public : non-livreur déclaré exigé. Version Livreurs/Taxis :
-    // ouverte d'emblée. Jamais sur la seule foi du champ transmis.
-    const rafGrandPublic = produit.code === "relaxaccidents_fraismedicaux";
-    const rafLivreurs = produit.code === "relaxaccidents_fraismedicaux_livreurs";
-    const optionDeces =
-      data.optionDeces && (rafLivreurs || (rafGrandPublic && data.declarePasLivreur))
-        ? { ...OPTIONS_DECES_FRAIS_MEDICAUX[data.optionDeces], dureeMois: dureeOptionDecesMois(produit.code) }
-        : null;
-    if (data.optionDeces && !optionDeces) {
+    // L'option Décès n'existe plus (2026-10-30) : le Décès est inclus dans la formule des
+    // RelaxAccidents Frais Médicaux. Une intégration qui l'envoie encore reçoit une erreur
+    // explicite plutôt qu'un montant différent de celui qu'elle attendait.
+    if (data.optionDeces) {
       return apiError(
         res,
         400,
-        "option_deces_indisponible",
-        "L'option Décès n'est disponible que pour RelaxAccidents Frais Médicaux (souscripteur non-livreur pour la version grand public)."
+        "option_deces_supprimee",
+        "L'option Décès n'existe plus : la garantie Décès est incluse dans la formule de RelaxAccidents Frais Médicaux. Retirez le champ « optionDeces »."
       );
     }
+    // Capital Décès de la formule, lu sur la ligne de barème et figé sur la souscription.
+    const capitalDeces = estProduitRaf(produit.code) ? capitalDecesDuTarif(tarif) : null;
 
     // Le montant est recalculé ici depuis le tarif en base, jamais transmis.
-    const prime = tarif.prime * nombrePeriodes + (optionDeces?.prime ?? 0);
+    const prime = tarif.prime * nombrePeriodes;
     const primeHT = Math.round((tarif.primeHT ?? tarif.prime) * nombrePeriodes);
     const commissionApi = await calculerCommissionApi(produit, primeHT);
     const montantAReverser = prime - commissionApi;
 
     const donneesSpecifiques = avecBeneficiaire(
-      data.signature || optionDeces
+      data.signature || capitalDeces
         ? {
             signature: data.signature ?? null,
-            // `declarePasLivreur` n'a de sens que pour la version grand public.
-            ...(optionDeces ? { ...(rafGrandPublic ? { declarePasLivreur: true } : {}), optionDeces } : {}),
+            ...(capitalDeces ? { garantieDeces: { capital: capitalDeces } } : {}),
           }
         : undefined,
       beneficiaireAStocker(
         { beneficiaireNom: data.beneficiaire?.nom, beneficiaireTelephone: data.beneficiaire?.telephone },
-        !!data.beneficiaire && aGarantieDeces(produit.code, !!optionDeces)
+        !!data.beneficiaire && aGarantieDeces(produit.code)
       )
     );
 

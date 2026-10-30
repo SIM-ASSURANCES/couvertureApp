@@ -233,28 +233,14 @@ const TAGLINES_PRODUITS: Record<string, string> = {
   securmoto: "Propriétaire de moto, protégez-la contre les dommages accidentels.",
 };
 
-// Option Décès en supplément de RelaxAccidents Frais Médicaux — s'ajoute au
-// prix de la formule choisie, garantie pour une durée propre : 2 mois pour
-// le grand public, 1 mois pour la version Livreurs/MotoTaxis (voir
-// dureeOptionDecesMois ci-dessous). À garder synchronisé avec
-// OPTIONS_DECES_FRAIS_MEDICAUX + dureeOptionDecesMois côté serveur
-// (routes/public.ts), qui recalcule toujours le montant réel côté serveur.
-const OPTIONS_DECES_FRAIS_MEDICAUX = {
-  "200000": { prime: 500, capital: 200_000, dureeMois: 2 },
-  "100000": { prime: 300, capital: 100_000, dureeMois: 2 },
-} as const;
-
-function dureeOptionDecesMois(produitCode?: string): number {
-  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
-}
-
-// Périodicité (durée) du CONTRAT RelaxAccidents Frais Médicaux — 2 mois pour le
-// grand public, 1 mois pour la version Livreurs/MotoTaxis. Distincte de la
-// durée de l'option Décès ci-dessus, même si les valeurs coïncident. Miroir de
-// dureeFormuleMois() côté serveur (backend/src/services/paiementWave.ts), qui
-// fait foi pour la date de fin réelle : à garder synchronisés.
-function dureeContratRafMois(produitCode?: string): number {
-  return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
+// Périodicité (durée) du CONTRAT RelaxAccidents Frais Médicaux — 1 mois pour le
+// grand public comme pour la version Livreurs/MotoTaxis (depuis le 2026-10-30).
+// Miroir de dureeFormuleMois() côté serveur (backend/src/services/paiementWave.ts),
+// qui fait foi pour la date de fin réelle : à garder synchronisés.
+// Plus d'option Décès : le capital Décès est inclus dans chaque formule (50 000 pour
+// 1 000 F, 25 000 pour 500 F), lu sur la ligne de barème (`donneesSpecifiques.capitalDeces`).
+function dureeContratRafMois(_produitCode?: string): number {
+  return 1;
 }
 
 function isRelaxVoyage(p?: string): p is "relaxvoyage" {
@@ -451,7 +437,8 @@ interface TarifFormule {
   taxes?: number | null;
   // RelaxVoyage — { fraisSante?: number; bagages?: string } ; Assurances Santé
   // — { tauxPriseEnCharge: number } (70 ou 80 %).
-  donneesSpecifiques?: { fraisSante?: number; bagages?: string; tauxPriseEnCharge?: number } | null;
+  // RelaxAccidents Frais Médicaux — { capitalDeces: number } (Décès inclus dans la formule).
+  donneesSpecifiques?: { fraisSante?: number; bagages?: string; tauxPriseEnCharge?: number; capitalDeces?: number } | null;
 }
 
 type Step =
@@ -644,14 +631,18 @@ function TarifCard({
   onSelect,
   masquerCapitalGaranti,
   periodicite,
+  decesGaranti,
 }: {
   prime: number;
   capitalGaranti: number;
   selected: boolean;
   onSelect: () => void;
-  // Périodicité du contrat affichée sous le prix (ex. « 2 mois ») — renseignée
+  // Périodicité du contrat affichée sous le prix (ex. « 1 mois ») — renseignée
   // pour RelaxAccidents Frais Médicaux, absente pour les autres produits.
   periodicite?: string;
+  // RelaxAccidents Frais Médicaux : capital Décès inclus dans la formule. Quand il est
+  // fourni, le capital garanti est présenté comme le plafond des frais médicaux.
+  decesGaranti?: number | null;
   // RelaxVoyage : le détail des garanties (Décès/IPT/Frais de Santé/Bagages)
   // est déjà affiché juste en dessous du sélecteur — cette ligne y ferait
   // doublon.
@@ -681,10 +672,16 @@ function TarifCard({
         </div>
         {!masquerCapitalGaranti && (
           <div style={{ marginTop: 6, color: "var(--text-2)", fontSize: 13 }}>
-            Capital garanti :{" "}
+            {decesGaranti ? "Frais médicaux" : "Capital garanti"} :{" "}
             <strong style={{ color: "var(--text)" }}>{fcfa(capitalGaranti)}</strong>
           </div>
         )}
+        {decesGaranti ? (
+          <div style={{ marginTop: 4, color: "var(--text-2)", fontSize: 13 }}>
+            Décès :{" "}
+            <strong style={{ color: "var(--text)" }}>{fcfa(decesGaranti)}</strong>
+          </div>
+        ) : null}
         {periodicite && (
           <div style={{ marginTop: 4, color: "var(--text-2)", fontSize: 13 }}>
             Périodicité du contrat :{" "}
@@ -2381,11 +2378,8 @@ export default function Souscription() {
   // RelaxAccidents Frais Médicaux : le produit exclut les livreurs, le
   // souscripteur doit le déclarer explicitement avant de pouvoir payer.
   const [declarePasLivreur, setDeclarePasLivreur] = useState(false);
-  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
-  // proposée seulement si non-livreur est déclaré. "" = aucune option.
-  const [optionDeces, setOptionDeces] = useState<"" | "200000" | "100000">("");
   // Bénéficiaire de la garantie Décès (nom + téléphone) — RelaxMoto/RelaxAuto, RelaxVoyage,
-  // RelaxAccidents générale, et RelaxAccidents Frais Médicaux quand l'option Décès est choisie.
+  // RelaxAccidents générale, et RelaxAccidents Frais Médicaux (Décès inclus dans la formule).
   const [beneficiaireNom, setBeneficiaireNom] = useState("");
   const [beneficiaireTel, setBeneficiaireTel] = useState(PHONE_PREFIX);
 
@@ -2470,7 +2464,9 @@ export default function Souscription() {
     contenu?: number | null;
     dansMarche?: boolean | null;
     nombrePieces?: number | null;
-    // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis).
+    // RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis) : capital Décès inclus dans la
+    // formule, et — souscriptions d'avant le 2026-10-30 — l'ancienne option Décès facultative.
+    capitalDeces?: number | null;
     optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
     // SecurMoto (Assurances Dommages).
     valeurMoto?: number | null;
@@ -2593,6 +2589,7 @@ export default function Souscription() {
             dansMarche: data.dansMarche ?? null,
             nombrePieces: data.nombrePieces ?? null,
             optionDeces: data.optionDeces ?? null,
+            capitalDeces: data.capitalDeces ?? null,
             valeurMoto: data.valeurMoto ?? null,
             ageMoto: data.ageMoto ?? null,
             tauxPriseEnCharge: data.tauxPriseEnCharge ?? null,
@@ -2945,9 +2942,8 @@ export default function Souscription() {
     try {
       if (p === "accident") return tarifsAcc.find((t) => t.id === selectedTarifId)?.prime ?? null;
       if (isRelaxAccidentsFraisMedicaux(p)) {
-        const base = tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
-        if (base == null) return null;
-        return base + (optionDeces ? OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].prime : 0);
+        // Décès inclus dans la formule : le prix est celui de la formule, sans supplément.
+        return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
       }
       if (isRelaxVoyage(p))
         return tarifsFormule.find((t) => t.libelleVariante === selectedFormule)?.prime ?? null;
@@ -3230,13 +3226,12 @@ export default function Souscription() {
         l.push({ label: "Non livreur", valeur: oui(declarePasLivreur) });
       }
       l.push({ label: "Périodicité du contrat", valeur: `${dureeContratRafMois(p)} mois` });
-      l.push({
-        label: "Option Décès",
-        valeur: optionDeces
-          ? `${fcfa(OPTIONS_DECES_FRAIS_MEDICAUX[optionDeces].capital)} pendant ${dureeOptionDecesMois(p)} mois`
-          : "Aucune",
-      });
-      if (optionDeces) l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
+      const formuleRaf = tarifsFormule.find((t) => t.libelleVariante === selectedFormule);
+      if (formuleRaf) l.push({ label: "Frais médicaux", valeur: fcfa(formuleRaf.capitalGaranti) });
+      if (formuleRaf?.donneesSpecifiques?.capitalDeces) {
+        l.push({ label: "Décès", valeur: fcfa(formuleRaf.donneesSpecifiques.capitalDeces) });
+      }
+      l.push({ label: "Bénéficiaire en cas de décès", valeur: `${beneficiaireNom.trim()} — ${beneficiaireTel}` });
     }
     if (isRelaxVoyage(p)) {
       l.push({ label: "Pièce d'identité", valeur: typePieceVoyage === "CNI" ? "CNI" : "Passeport" });
@@ -3688,12 +3683,11 @@ export default function Souscription() {
             formule: selectedFormule,
             signature,
             // Version Livreurs/Taxis : pas de déclaration (le produit couvre
-            // justement ce public) — l'option Décès y est ouverte d'emblée.
+            // justement ce public).
             declarePasLivreur: isRafLivreurs(qrInfo.produit) ? undefined : declarePasLivreur,
-            optionDeces: optionDeces || undefined,
-            // Bénéficiaire de la garantie Décès : seulement avec l'option Décès.
-            beneficiaireNom: optionDeces ? beneficiaireNom.trim() : undefined,
-            beneficiaireTelephone: optionDeces ? beneficiaireTel : undefined,
+            // Bénéficiaire de la garantie Décès, incluse dans toutes les formules.
+            beneficiaireNom: beneficiaireNom.trim(),
+            beneficiaireTelephone: beneficiaireTel,
             civilite: civilite || undefined,
             ville,
             commune,
@@ -3980,7 +3974,10 @@ export default function Souscription() {
         bagages: result.bagages ?? null,
       }, result.souscriptionId);
     } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
-      genererContratRelaxAccidentsFraisMedicaux({ ...contrat, optionDeces: result.optionDeces ?? null }, result.souscriptionId);
+      genererContratRelaxAccidentsFraisMedicaux(
+        { ...contrat, capitalDeces: result.capitalDeces ?? null, optionDeces: result.optionDeces ?? null },
+        result.souscriptionId
+      );
     } else {
       genererContratAccident(contrat, result.souscriptionId);
     }
@@ -4448,6 +4445,9 @@ export default function Souscription() {
                           isRelaxAccidentsFraisMedicaux(qrInfo?.produit)
                             ? `${dureeContratRafMois(qrInfo?.produit)} mois`
                             : undefined
+                        }
+                        decesGaranti={
+                          isRelaxAccidentsFraisMedicaux(qrInfo?.produit) ? t.donneesSpecifiques?.capitalDeces ?? null : null
                         }
                       />
                     ))}
@@ -5062,10 +5062,7 @@ export default function Souscription() {
                         <input
                           type="checkbox"
                           checked={declarePasLivreur}
-                          onChange={(e) => {
-                            setDeclarePasLivreur(e.target.checked);
-                            if (!e.target.checked) setOptionDeces("");
-                          }}
+                          onChange={(e) => setDeclarePasLivreur(e.target.checked)}
                           style={{ marginTop: 2, width: 18, height: 18, flex: "none" }}
                         />
                         <span>Je déclare ne pas exercer d'activité de livreur. *</span>
@@ -5073,48 +5070,9 @@ export default function Souscription() {
                     </div>
                   )}
 
-                  {/* Option Décès — version grand public : seulement une fois
-                      non-livreur déclaré (2 mois). Version Livreurs/MotoTaxis :
-                      d'emblée (1 mois, voir dureeOptionDecesMois). */}
-                  {(declarePasLivreur || isRafLivreurs(qrInfo?.produit)) && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: "#5b6b80", marginBottom: 10 }}>
-                        Option Décès (facultative)
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                        <label
-                          style={{
-                            display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-                            border: `2px solid ${optionDeces === "" ? "var(--sim-primary)" : "var(--border-strong)"}`,
-                            borderRadius: 12, cursor: "pointer", fontSize: 13,
-                          }}
-                        >
-                          <input type="radio" checked={optionDeces === ""} onChange={() => setOptionDeces("")} />
-                          Aucune option
-                        </label>
-                        {(Object.entries(OPTIONS_DECES_FRAIS_MEDICAUX) as [keyof typeof OPTIONS_DECES_FRAIS_MEDICAUX, typeof OPTIONS_DECES_FRAIS_MEDICAUX[keyof typeof OPTIONS_DECES_FRAIS_MEDICAUX]][]).map(([cle, opt]) => (
-                          <label
-                            key={cle}
-                            style={{
-                              display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-                              border: `2px solid ${optionDeces === cle ? "var(--sim-primary)" : "var(--border-strong)"}`,
-                              borderRadius: 12, cursor: "pointer", fontSize: 13,
-                            }}
-                          >
-                            <input type="radio" checked={optionDeces === cle} onChange={() => setOptionDeces(cle)} />
-                            <span>
-                              <strong>{fcfa(opt.prime)}</strong> — Décès garanti {fcfa(opt.capital)} pendant{" "}
-                              {dureeOptionDecesMois(qrInfo?.produit)} mois
-                            </span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {optionDeces && (
-                    <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
-                  )}
+                  {/* Plus d'option Décès (2026-10-30) : le Décès est inclus dans la formule choisie
+                      et affiché sur sa carte ; il faut donc toujours désigner un bénéficiaire. */}
+                  <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
 
                   <SignaturePad ref={sigRef} label="Signature (facultative)" />
                 </>
@@ -5350,7 +5308,7 @@ export default function Souscription() {
                           !piecePhotoRx ||
                           !selfiePhotoRx ||
                           (!isRafLivreurs(qrInfo?.produit) && !declarePasLivreur)) ||
-                      (qrInfo?.produit !== "accident" && !!optionDeces && (!beneficiaireNom.trim() || phoneInvalid(beneficiaireTel)))
+                      (qrInfo?.produit !== "accident" && (!beneficiaireNom.trim() || phoneInvalid(beneficiaireTel)))
                     : qrInfo && isRelax(qrInfo.produit)
                     ? !nomRx || !prenomRx || phoneInvalid(telephoneRx) || !dateNaissance || !sexe || !piecePhotoRx || !selfiePhotoRx || !beneficiaireNom.trim() || phoneInvalid(beneficiaireTel)
                     : isSecurproDommages(qrInfo?.produit)

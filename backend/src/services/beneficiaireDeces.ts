@@ -1,10 +1,11 @@
 import { z } from "zod";
+import { estProduitRaf } from "./garantieDecesFraisMedicaux.js";
 
 /**
  * Bénéficiaire de la garantie Décès (2026-10-29) — un nom et un numéro de téléphone,
  * demandés à la souscription de tout produit qui comporte cette garantie : RelaxMoto,
  * RelaxAuto, RelaxVoyage, RelaxAccidents générale, et RelaxAccidents Frais Médicaux
- * (grand public ou Livreurs/MotoTaxis) quand l'option Décès est choisie.
+ * (grand public ou Livreurs/MotoTaxis, Décès inclus dans la formule depuis le 2026-10-30).
  * Stocké dans `Souscription.donneesSpecifiques.beneficiaire`, imprimé sur le contrat PDF.
  *
  * Les produits IMF (Décès, Coups durs) ont leur propre répartition en pourcentages
@@ -23,12 +24,26 @@ export const champsBeneficiaire = {
 };
 
 const PRODUITS_AVEC_DECES = ["relaxmoto", "relaxauto", "relaxvoyage", "relaxaccidents"] as const;
-const PRODUITS_RAF = ["relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"] as const;
 
-/** La souscription comporte-t-elle une garantie Décès ? (RAF : seulement avec l'option Décès.) */
-export function aGarantieDeces(produitCode: string, optionDecesChoisie: boolean): boolean {
-  if ((PRODUITS_AVEC_DECES as readonly string[]).includes(produitCode)) return true;
-  return (PRODUITS_RAF as readonly string[]).includes(produitCode) && optionDecesChoisie;
+/**
+ * La souscription comporte-t-elle une garantie Décès ? Oui pour tous ces produits, y compris
+ * RelaxAccidents Frais Médicaux (grand public et Livreurs/MotoTaxis) depuis le 2026-10-30 :
+ * le Décès y est inclus dans la formule, plus une option.
+ */
+export function aGarantieDeces(produitCode: string): boolean {
+  return (PRODUITS_AVEC_DECES as readonly string[]).includes(produitCode) || estProduitRaf(produitCode);
+}
+
+/**
+ * Un devis exige-t-il le bénéficiaire ? Pour RelaxAccidents Frais Médicaux, seulement si le devis
+ * chiffre une garantie Décès : `resultat.capitalDeces` (depuis le 2026-10-30) ou, pour un devis
+ * plus ancien, l'option Décès facultative qu'il avait chiffrée (`resultat.optionDeces`).
+ */
+export function beneficiaireRequisPourDevis(produitCode: string, resultat: unknown): boolean {
+  if (!aGarantieDeces(produitCode)) return false;
+  if (!estProduitRaf(produitCode)) return true;
+  const r = resultat as { capitalDeces?: unknown; optionDeces?: unknown } | null;
+  return !!(r?.capitalDeces || r?.optionDeces);
 }
 
 /**

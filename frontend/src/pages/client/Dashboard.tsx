@@ -35,8 +35,9 @@ interface Moi {
   // formule choisie (250/400/600/1000 FCFA).
   fraisSante?: number | null;
   bagages?: string | null;
-  // RelaxAccidents Frais Médicaux uniquement — option Décès facultative,
-  // choisie à la souscription.
+  // RelaxAccidents Frais Médicaux uniquement — capital Décès inclus dans la formule
+  // (depuis le 2026-10-30), et pour les anciennes souscriptions l'option Décès facultative.
+  capitalDeces?: number | null;
   optionDeces?: { capital: number; prime: number; dureeMois: number } | null;
   // RelaxAccidents générale uniquement — classe de risque + statut CNPS,
   // dont dépendent les garanties affichées.
@@ -477,6 +478,16 @@ export default function ClientDashboard() {
                   </div>
                 </>
               )}
+
+              {moi.capitalDeces ? (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
+                  <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>Garantie Décès</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12.5 }}>
+                    <span style={{ color: "#5b6b80" }}>Capital garanti</span>
+                    <strong style={{ textAlign: "right", color: "#0f1b2d" }}>{fcfa(moi.capitalDeces)}</strong>
+                  </div>
+                </div>
+              ) : null}
 
               {moi.optionDeces && (
                 <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #eef1f5" }}>
