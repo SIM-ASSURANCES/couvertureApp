@@ -484,6 +484,51 @@ assurancesBrancheRouter.get(
   })
 );
 
+/**
+ * Classement des produits par nombre de souscriptions CONFIRMÉES (puis par chiffre d'affaires en cas
+ * d'égalité) — mêmes filtres de période/partenaire/sous-branche que l'agrégat ci-dessus. Sert la carte
+ * « Produit le plus vendu » de « Production par produit » (tableau de bord admin) : un `groupBy` en
+ * base plutôt que le rapatriement des lignes. Les produits sans vente n'apparaissent pas ; Incendie
+ * Habitation en Inclusion reste exclu, comme du catalogue filtrable (masqué à la demande, 2026-09-18).
+ */
+assurancesBrancheRouter.get(
+  "/souscriptions/classement-produits",
+  asyncHandler(async (req, res) => {
+    const f = parseFiltres({ ...(req.query as Record<string, string | undefined>), statut: "confirme", produit: undefined });
+    const produits = await prisma.produit.findMany({
+      where: { sousBranche: f.sousBranche ? f.sousBranche : { in: [...SOUS_BRANCHES_ASSURANCES] } },
+      select: { id: true, code: true, libelle: true },
+    });
+    const [groupes, accident] = await Promise.all([
+      produits.length === 0
+        ? Promise.resolve([])
+        : prisma.souscription.groupBy({
+            by: ["produitId"],
+            where: {
+              produitId: { in: produits.map((p) => p.id) },
+              partenaireId: f.partenaireId,
+              createdAt: f.from || f.to ? { gte: f.from, lte: f.to } : undefined,
+              waveStatut: "confirme",
+            },
+            _count: true,
+            _sum: { montantPrime: true },
+          }),
+      agregatAccidentHistorique(f),
+    ]);
+    const parId = new Map(produits.map((p) => [p.id, p]));
+    const lignes: { code: string; libelle: string; nombre: number; montant: number }[] = [];
+    for (const g of groupes) {
+      const p = parId.get(g.produitId);
+      if (p) lignes.push({ code: p.code, libelle: p.libelle, nombre: g._count, montant: g._sum.montantPrime ?? 0 });
+    }
+    if (accident.nombre > 0) {
+      lignes.push({ code: CODE_ACCIDENT_HISTORIQUE, libelle: "Accidents (historique)", nombre: accident.nombre, montant: accident.montant });
+    }
+    lignes.sort((a, b) => b.nombre - a.nombre || b.montant - a.montant);
+    res.json(lignes);
+  })
+);
+
 /** Liste unifiée, filtrable par sous-branche / produit / partenaire / période. */
 assurancesBrancheRouter.get(
   "/souscriptions",

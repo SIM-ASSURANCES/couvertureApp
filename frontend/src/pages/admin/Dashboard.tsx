@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, HeartPulse, Coins } from "lucide-react";
+import { Store, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, HeartPulse, Coins, Trophy } from "lucide-react";
 import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import {
   PageHeader,
@@ -101,6 +101,17 @@ export default function AdminDashboard() {
   );
   const productionNombre = production?.nombre ?? 0;
   const productionCa = production?.montant ?? 0;
+  // Produit le plus vendu : classement (nombre de souscriptions confirmées, puis chiffre d'affaires)
+  // sur la même période, TOUS produits confondus — indépendant du sélecteur de produit ci-dessus,
+  // qui ne filtre que les deux autres cartes.
+  const classementParams = new URLSearchParams();
+  if (from) classementParams.set("from", from);
+  if (to) classementParams.set("to", to);
+  const classementQs = classementParams.toString();
+  const { data: classement } = useFetch<{ code: string; libelle: string; nombre: number; montant: number }[]>(
+    `/assurances-branche/souscriptions/classement-produits${classementQs ? `?${classementQs}` : ""}`
+  );
+  const produitLePlusVendu = classement?.[0] ?? null;
   const produitProductionLabel =
     (catalogue ?? []).find((p) => p.code === produitProduction)?.libelle || "Tous produits";
 
@@ -187,7 +198,7 @@ export default function AdminDashboard() {
         {productionLoading ? (
           <Loader />
         ) : (
-          <div className="stat-grid stat-grid-compact">
+          <div className="stat-grid stat-grid-compact" style={{ "--stat-cols": 3 } as React.CSSProperties}>
             <StatCard
               icon={<HeartPulse size={20} />}
               label={`Souscriptions confirmées — ${produitProductionLabel}`}
@@ -199,6 +210,18 @@ export default function AdminDashboard() {
               icon={<TrendingUp size={20} />}
               label={`Chiffre d'affaires — ${produitProductionLabel}`}
               value={fcfa(productionCa)}
+            />
+            <StatCard
+              icon={<Trophy size={20} />}
+              label="Produit le plus vendu"
+              value={produitLePlusVendu ? produitLePlusVendu.libelle : "—"}
+              trend={
+                produitLePlusVendu
+                  ? `${nb(produitLePlusVendu.nombre)} souscription${produitLePlusVendu.nombre > 1 ? "s" : ""} · ${fcfa(produitLePlusVendu.montant)}`
+                  : "Aucune souscription confirmée sur la période"
+              }
+              color="#b45309"
+              bg="#fdf3e3"
             />
           </div>
         )}
