@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Store, Flame, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, PiggyBank, HeartPulse, Coins } from "lucide-react";
+import { Store, ShieldCheck, Wallet, ArrowUpRight, TrendingUp, Receipt, FileText, HeartPulse, Coins } from "lucide-react";
 import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import {
   PageHeader,
@@ -208,7 +208,7 @@ export default function AdminDashboard() {
       {error && <ErrorBox message={error} />}
       {data && (
         <>
-          <div className="stat-grid stat-grid-7" style={{ marginTop: 24 }}>
+          <div className="stat-grid stat-grid-7" style={{ marginTop: 24, "--stat-cols": 6 } as React.CSSProperties}>
             <StatCard
               icon={<TrendingUp size={20} />}
               label="Chiffre d'affaires"
@@ -241,13 +241,6 @@ export default function AdminDashboard() {
               value={`${nb(data.partenairesActifs)}/${nb(data.partenairesTotal)}`}
             />
             <StatCard
-              icon={<Flame size={20} />}
-              label="Souscr. Dommages"
-              value={nb(data.incendieTotal)}
-              color="#b45309"
-              bg="#fdf3e3"
-            />
-            <StatCard
               icon={<ShieldCheck size={20} />}
               label="Souscr. Accidents"
               value={nb(data.accidentTotal)}
@@ -256,14 +249,7 @@ export default function AdminDashboard() {
             />
           </div>
 
-          <div className="stat-grid stat-grid-compact" style={{ marginTop: 16 }}>
-            {accidents && (
-              <StatCard
-                icon={<Store size={20} />}
-                label="Partenaires Assurances Accidents & Dommages"
-                value={nb(accidents.partenaires)}
-              />
-            )}
+          <div className="stat-grid stat-grid-compact" style={{ marginTop: 16, "--stat-cols": 2 } as React.CSSProperties}>
             <StatCard
               icon={<HeartPulse size={20} />}
               label="Souscriptions Assurances Accidents, Dommages et Santé"
@@ -278,22 +264,6 @@ export default function AdminDashboard() {
               value={fcfa(data.fgTotal)}
               color="#7c3aed"
               bg="#f3eefe"
-            />
-            <StatCard
-              icon={<PiggyBank size={20} />}
-              label="Budget Dommages (mensuel)"
-              value={fcfa(data.budgetIncendie)}
-              trend="5% du CA prime HT sur 31 jours glissants"
-              color="#b45309"
-              bg="#fdf3e3"
-            />
-            <StatCard
-              icon={<PiggyBank size={20} />}
-              label="Budget Accidents (mensuel)"
-              value={fcfa(data.budgetAccident)}
-              trend="5% du CA prime HT sur 31 jours glissants"
-              color="#15803d"
-              bg="#e8f6ec"
             />
           </div>
           {accidents && (

@@ -482,7 +482,9 @@ button {
 /* Variante compacte : 7 cartes alignées sur une seule ligne (dashboard admin) */
 @media (min-width: 1000px) {
   .stat-grid.stat-grid-7 {
-    grid-template-columns: repeat(7, 1fr);
+    /* 7 colonnes par défaut ; une page qui affiche moins de cartes pose --stat-cols pour ne pas
+       laisser de colonne vide (ex. tableau de bord admin : 6 cartes). */
+    grid-template-columns: repeat(var(--stat-cols, 7), 1fr);
     gap: 10px;
   }
   .stat-grid-7 .stat {
@@ -538,7 +540,7 @@ button {
 }
 @media (min-width: 1000px) {
   .stat-grid.stat-grid-compact {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(var(--stat-cols, 5), 1fr);
   }
 }
 
