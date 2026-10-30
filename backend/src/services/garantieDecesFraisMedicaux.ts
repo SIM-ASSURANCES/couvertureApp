@@ -1,7 +1,8 @@
 // Garantie Décès incluse dans RelaxAccidents Frais Médicaux (grand public et
 // Livreurs/MotoTaxis) — décision du 2026-10-30. Elle REMPLACE l'ancienne option Décès
 // facultative (500 F → 200 000, 300 F → 100 000) : plus aucun supplément, le Décès fait
-// partie de la formule et le contrat dure 1 mois (voir paiementWave.ts::dureeFormuleMois).
+// partie de la formule. Durée du contrat : voir paiementWave.ts::dureeFormuleMois
+// (grand public 2 mois, Livreurs/MotoTaxis 1 mois).
 //
 //   Formule 1 000 FCFA : frais médicaux 200 000 · Décès 50 000
 //   Formule   500 FCFA : frais médicaux  75 000 · Décès 25 000
