@@ -14,6 +14,7 @@ import {
   messageRelanceRenouvellementIncendie,
 } from "../services/notify.js";
 import { verifierPaiementAccident } from "../services/accident.js";
+import { DELAI_EXPIRATION_ATTENTE_MS } from "../services/paiementWave.js";
 import { refFactureDisponible, MAX_USAGES_REF_FACTURE } from "../services/incendie.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 import { SOUS_BRANCHES_ASSURANCES } from "../services/sousBranches.js";
@@ -513,14 +514,14 @@ souscriptionsRouter.get(
       partenaireId?: string;
       renouvellementProche?: string;
     };
-    // Purge les PREMIERS paiements toujours en attente/échoués 24h après la
-    // souscription — la page "Paiement en attente" ne doit jamais accumuler
-    // indéfiniment des tentatives de paiement abandonnées.
+    // Purge les PREMIERS paiements toujours en attente/échoués 72h après la
+    // souscription (DELAI_EXPIRATION_ATTENTE_MS) — la page "Paiement en attente" ne doit
+    // jamais accumuler indéfiniment des tentatives de paiement abandonnées.
     if (attente === "1") {
       await prisma.souscriptionAccident.deleteMany({
         where: {
           waveStatut: { in: ["en_attente", "echoue"] },
-          createdAt: { lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          createdAt: { lt: new Date(Date.now() - DELAI_EXPIRATION_ATTENTE_MS) },
         },
       });
     }

@@ -8,6 +8,14 @@ import { cycleDeSouscription, estProduitDommagesAvecPeriodicite } from "./period
 import type { Paiement } from "@prisma/client";
 
 /**
+ * Délai au-delà duquel une souscription dont le paiement n'a pas abouti (en attente ou échoué)
+ * est supprimée de la page « Paiement en attente » : 72 h (24 h jusqu'au 2026-10-30). Source
+ * unique, partagée par le modèle générique (routes/assurancesBranche.ts) et l'ancien Accident
+ * (routes/souscriptions.ts). Les demandes Santé n'y sont jamais soumises.
+ */
+export const DELAI_EXPIRATION_ATTENTE_MS = 72 * 60 * 60 * 1000;
+
+/**
  * Avance `date` de `nombrePeriodes` cycles RelaxMoto/RelaxAuto ("mensuel" =
  * 1 mois, "annuel" = 1 an). Le nombre de périodes correspond aux cycles payés
  * d'avance à la souscription (voir Souscription.nombrePeriodes).

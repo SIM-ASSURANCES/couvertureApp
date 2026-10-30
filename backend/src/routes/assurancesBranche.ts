@@ -14,7 +14,7 @@ import {
   messageReinitialisationMotDePasse,
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
-import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
+import { DELAI_EXPIRATION_ATTENTE_MS, confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { paiementBloqueParValidation } from "../services/assurancesSante.js";
 import { SOUS_BRANCHES_ASSURANCES, estSousBrancheAssurance, type SousBrancheAssurance } from "../services/sousBranches.js";
 import {
@@ -133,11 +133,9 @@ export function parseFiltres(query: Record<string, string | undefined>): Filtres
 // (aligné sur le rappel SMS automatique J-5, voir services/relances.ts).
 const RENOUVELLEMENT_FENETRE_MS = 5 * 24 * 60 * 60 * 1000;
 
-const DELAI_EXPIRATION_ATTENTE_MS = 24 * 60 * 60 * 1000;
-
 /**
  * Supprime les souscriptions du modèle générique (branche Accidents/Dommages)
- * encore en attente/échouées 24h après leur création — même politique que
+ * encore en attente/échouées 72h après leur création (DELAI_EXPIRATION_ATTENTE_MS) — même politique que
  * l'ancien Accident (voir routes/souscriptions.ts). Appelé avant toute
  * lecture en mode "attente" pour que la liste affichée soit toujours à jour,
  * sans dépendre d'une tâche planifiée séparée.

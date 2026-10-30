@@ -32,7 +32,7 @@ export default function PaiementsEnAttente() {
 
   // Autres produits de la branche (RelaxMoto/Auto, RelaxAccidents Frais
   // Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro Dommages) — modèle
-  // générique, purgé automatiquement 24h après la création côté serveur.
+  // générique, purgé automatiquement 72h après la création côté serveur.
   const genParams = new URLSearchParams();
   genParams.set("statut", "attente");
   if (part) genParams.set("partenaireId", part);
@@ -291,7 +291,7 @@ export default function PaiementsEnAttente() {
       >
         <p className="muted" style={{ fontSize: 13, marginTop: -8, marginBottom: 16 }}>
           RelaxMoto/Auto, RelaxAccidents Frais Médicaux/générale, RelaxVoyage, SecurHome+, SecurPro — supprimées
-          automatiquement 24h après la souscription si le paiement n'aboutit pas.
+          automatiquement 72h après la souscription si le paiement n'aboutit pas.
         </p>
         {genLoading && <Loader />}
         {genError && <ErrorBox message={genError} />}
