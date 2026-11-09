@@ -4,8 +4,10 @@
 // partie de la formule. Durée du contrat : voir paiementWave.ts::dureeFormuleMois
 // (grand public 2 mois, Livreurs/MotoTaxis 1 mois).
 //
-//   Formule 1 000 FCFA : frais médicaux 200 000 · Décès 50 000
-//   Formule   500 FCFA : frais médicaux  75 000 · Décès 25 000
+//   Formule 1 000 FCFA : frais médicaux 200 000 · Décès 100 000
+//   Formule   500 FCFA : frais médicaux  75 000 · Décès  50 000
+// (Décès : 50 000 / 25 000 le 2026-10-30, relevé à 100 000 / 50 000 sur demande le 2026-11-09 —
+// voir seed.ts::releverCapitalDecesRaf pour les bases déjà migrées.)
 //
 // Source de vérité en base : `TarifProduit.capitalGaranti` porte le plafond de frais
 // médicaux (comme avant) et `TarifProduit.donneesSpecifiques.capitalDeces` le capital Décès.
@@ -21,8 +23,17 @@ export function estProduitRaf(produitCode: string): boolean {
 
 /** Garanties par formule (clé = libellé de la formule = sa prime en FCFA). */
 export const GARANTIES_RAF_PAR_FORMULE: Record<string, { fraisMedicaux: number; deces: number }> = {
-  "1000": { fraisMedicaux: 200_000, deces: 50_000 },
-  "500": { fraisMedicaux: 75_000, deces: 25_000 },
+  "1000": { fraisMedicaux: 200_000, deces: 100_000 },
+  "500": { fraisMedicaux: 75_000, deces: 50_000 },
+};
+
+/**
+ * Anciens capitaux Décès (2026-10-30 → 2026-11-09) : sert uniquement à la migration qui relève
+ * les lignes de barème déjà posées à ces valeurs (jamais celles qu'un admin a modifiées depuis).
+ */
+export const ANCIEN_DECES_RAF_PAR_FORMULE: Record<string, number> = {
+  "1000": 50_000,
+  "500": 25_000,
 };
 
 /** Capital Décès de la formule, tel que posé sur la ligne de barème ; `null` si elle n'en porte pas. */

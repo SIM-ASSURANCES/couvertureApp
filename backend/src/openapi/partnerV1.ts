@@ -320,7 +320,7 @@ export const openapiPartnerV1: Record<string, unknown> = {
                   declarePasLivreur: { type: "boolean", description: "RelaxAccidents Frais Médicaux (grand public) : le souscripteur déclare ne pas être livreur." },
                   beneficiaire: {
                     type: "object",
-                    description: "Bénéficiaire de la garantie Décès (RelaxMoto, RelaxAuto, RelaxAccidents Frais Médicaux — Décès inclus dans la formule : 50 000 FCFA pour 1 000 F, 25 000 FCFA pour 500 F). Facultatif ici, imprimé sur le contrat.",
+                    description: "Bénéficiaire de la garantie Décès (RelaxMoto, RelaxAuto, RelaxAccidents Frais Médicaux — Décès inclus dans la formule : 100 000 FCFA pour 1 000 F, 50 000 FCFA pour 500 F). Facultatif ici, imprimé sur le contrat.",
                     required: ["nom", "telephone"],
                     properties: { nom: { type: "string" }, telephone: { type: "string" } },
                   },

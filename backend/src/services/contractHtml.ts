@@ -48,7 +48,7 @@ export interface ContratAccident {
   capitalGaranti: number;
   signature?: string | null;
   // RelaxAccidents Frais Médicaux uniquement — capital Décès inclus dans la formule
-  // (50 000 pour 1 000 F, 25 000 pour 500 F, depuis le 2026-10-30).
+  // (100 000 pour 1 000 F, 50 000 pour 500 F, depuis le 2026-11-09 ; avant : 50 000 / 25 000).
   capitalDeces?: number | null;
   // Ancienne option Décès facultative des souscriptions d'avant le 2026-10-30, garantie pour
   // une durée propre ; affichée telle qu'elle a été vendue.

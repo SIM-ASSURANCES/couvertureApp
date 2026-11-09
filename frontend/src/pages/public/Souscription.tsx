@@ -237,8 +237,8 @@ const TAGLINES_PRODUITS: Record<string, string> = {
 // grand public, 1 mois pour la version Livreurs/MotoTaxis.
 // Miroir de dureeFormuleMois() côté serveur (backend/src/services/paiementWave.ts),
 // qui fait foi pour la date de fin réelle : à garder synchronisés.
-// Plus d'option Décès : le capital Décès est inclus dans chaque formule (50 000 pour
-// 1 000 F, 25 000 pour 500 F), lu sur la ligne de barème (`donneesSpecifiques.capitalDeces`).
+// Plus d'option Décès : le capital Décès est inclus dans chaque formule (100 000 pour
+// 1 000 F, 50 000 pour 500 F), lu sur la ligne de barème (`donneesSpecifiques.capitalDeces`).
 function dureeContratRafMois(produitCode?: string): number {
   return produitCode === "relaxaccidents_fraismedicaux_livreurs" ? 1 : 2;
 }

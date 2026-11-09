@@ -6,7 +6,7 @@ import { emettreFacture } from "./services/facture.js";
 import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenaires.js";
 import { COMPOSITION_SANTE, FORMULES_SANTE, PRODUITS_SANTE, SOUS_BRANCHE_SANTE } from "./services/assurancesSante.js";
 import { cycleDeSouscription } from "./services/periodiciteDommages.js";
-import { GARANTIES_RAF_PAR_FORMULE } from "./services/garantieDecesFraisMedicaux.js";
+import { ANCIEN_DECES_RAF_PAR_FORMULE, GARANTIES_RAF_PAR_FORMULE } from "./services/garantieDecesFraisMedicaux.js";
 
 const prisma = new PrismaClient();
 
@@ -896,8 +896,8 @@ async function corrigerLibelleRafLivreurs() {
 /**
  * Migration ponctuelle (2026-10-30) : garanties des deux produits RelaxAccidents Frais Médicaux
  * (grand public et Livreurs/MotoTaxis) par formule — voir services/garantieDecesFraisMedicaux.ts.
- *   1 000 FCFA : frais médicaux 200 000 · Décès 50 000
- *     500 FCFA : frais médicaux  75 000 · Décès 25 000
+ *   1 000 FCFA : frais médicaux 200 000 · Décès 100 000 (posé à 50 000 le 2026-10-30, relevé le 2026-11-09)
+ *     500 FCFA : frais médicaux  75 000 · Décès  50 000 (posé à 25 000 le 2026-10-30, relevé le 2026-11-09)
  * Pose `capitalGaranti` (plafond de frais médicaux) et `donneesSpecifiques.capitalDeces`.
  *
  * Une seule fois par ligne : seules sont reprises les lignes dont `donneesSpecifiques` est encore
@@ -925,6 +925,43 @@ async function appliquerGarantiesRafParFormule() {
   }
   if (lignes > 0) {
     console.log(`[seed] RelaxAccidents Frais Médicaux : garanties Décès/frais médicaux posées sur ${lignes} formule(s).`);
+  }
+}
+
+/**
+ * Migration ponctuelle (2026-11-09) : relève le capital Décès des deux produits RelaxAccidents
+ * Frais Médicaux, posé à 50 000 (formule 1 000 F) et 25 000 (formule 500 F) par
+ * appliquerGarantiesRafParFormule le 2026-10-30 → 100 000 et 50 000.
+ *
+ * Seules sont reprises les lignes encore EXACTEMENT à l'ancienne valeur de leur formule : une
+ * ligne qu'un admin a modifiée entre-temps n'est jamais écrasée, et une base neuve (déjà posée
+ * aux nouvelles valeurs) n'est pas touchée — d'où le garde par formule (50 000 est l'ancien
+ * capital de la formule 1 000 F mais le nouveau de la formule 500 F). Les souscriptions déjà
+ * enregistrées gardent le capital figé à leur vente.
+ */
+async function releverCapitalDecesRaf() {
+  const produits = await prisma.produit.findMany({
+    where: { code: { in: ["relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"] } },
+    select: { id: true },
+  });
+  let lignes = 0;
+  for (const produit of produits) {
+    const tarifs = await prisma.tarifProduit.findMany({ where: { produitId: produit.id } });
+    for (const t of tarifs) {
+      const formule = t.libelleVariante ?? "";
+      const ancien = ANCIEN_DECES_RAF_PAR_FORMULE[formule];
+      const nouveau = GARANTIES_RAF_PAR_FORMULE[formule]?.deces;
+      const donnees = t.donneesSpecifiques as { capitalDeces?: unknown } | null;
+      if (ancien == null || nouveau == null || donnees?.capitalDeces !== ancien) continue;
+      await prisma.tarifProduit.update({
+        where: { id: t.id },
+        data: { donneesSpecifiques: { ...(donnees as object), capitalDeces: nouveau } },
+      });
+      lignes++;
+    }
+  }
+  if (lignes > 0) {
+    console.log(`[seed] RelaxAccidents Frais Médicaux : capital Décès relevé sur ${lignes} formule(s).`);
   }
 }
 
@@ -1065,6 +1102,7 @@ async function main() {
   await corrigerEcheanceSecurpro();
   await corrigerLibelleRafLivreurs();
   await appliquerGarantiesRafParFormule();
+  await releverCapitalDecesRaf();
   await seedPartenaireSouscriptionDirecte();
   await seedTarificationImf();
   await corrigerCommissionsImf();
