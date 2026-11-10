@@ -10,6 +10,7 @@ import type { Prisma, TarifProduit } from "@prisma/client";
 import { prisma } from "../db.js";
 import { mapperSouscriptionGenerique } from "./contratGenerique.js";
 import { resoudreOuCreerClient } from "./clients.js";
+import { estPaiementSansEncaissement } from "./paiementDesactive.js";
 
 type Tx = Prisma.TransactionClient;
 
@@ -51,6 +52,9 @@ export async function emettreFacture(paiementId: string, options: OptionsEmissio
       include: { souscription: { select: { dateDebut: true, dateFin: true, nombrePaiements: true } } },
     });
     if (!p || p.statut !== "paye" || p.numeroFacture) return;
+    // Souscription confirmée sans paiement (partenaire à paiement désactivé) : rien n'a été encaissé, donc
+    // aucune facture « acquittée » — ni à la confirmation, ni en rattrapage, ni à la consultation.
+    if (estPaiementSansEncaissement(p)) return;
 
     const dateRef = p.datePaiement ?? new Date();
     const numeroFacture = await prochainNumeroFacture(dateRef.getFullYear(), tx);

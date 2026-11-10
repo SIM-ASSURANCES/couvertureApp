@@ -199,6 +199,11 @@ model Partenaire {
   // Parametre). Renseigné, il remplace ce taux par défaut pour TOUTES les
   // ventes du partenaire (voir services/commission.ts).
   tauxCommission      Float?
+  // Paiement désactivé (2026-11-10, Super Administrateur) : les clients de ce partenaire souscrivent
+  // SANS payer (ni Wave ni Djogana) — la souscription est confirmée aussitôt, avec contrat et carte de
+  // prise en charge comme d'habitude, mais sans facture (aucun encaissement). Voir
+  // services/paiementDesactive.ts.
+  paiementDesactive   Boolean                @default(false)
   // Catégorie d'intermédiaire (1 à N, voir services/identifiantsPartenaires.ts)
   // et identifiant dérivé "<catégorie>.<n° d'ordre dans la catégorie>" (ex.
   // 1.0001). Les deux sont figés dès l'attribution de l'identifiant : changer

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, SlidersHorizontal, KeyRound, RefreshCw, Send, LockKeyhole } from "lucide-react";
+import { Plus, Search, QrCode, Power, Trash2, Download, X, Copy, Check, Eye, Pencil, FileSpreadsheet, SlidersHorizontal, KeyRound, RefreshCw, Send, LockKeyhole, CreditCard } from "lucide-react";
 import { PageHeader, Card, Badge, Loader, ErrorBox, fcfa, fmtDate, nb, waveBadge, statutIncendieBadge, PhoneInput } from "../../components/ui";
 import { BadgeAssurance, OptionsAssurances, type SousBrancheAssurance } from "../../components/BadgeAssurance";
 import { useFetch } from "../../useFetch";
@@ -1014,6 +1014,22 @@ export default function Partenaires() {
     }
   }
 
+  /** Active / désactive le paiement (Wave et Djogana) de ce partenaire — Super Administrateur seulement. */
+  async function basculerPaiement(p: Partenaire) {
+    const desactiver = !p.paiementDesactive;
+    const question = desactiver
+      ? `Désactiver le paiement de ${p.nomCommerce} ?\n\nSes clients pourront souscrire SANS payer (Wave et Djogana ne seront plus proposés) : la souscription sera confirmée aussitôt, avec le contrat et la carte de prise en charge, mais sans facture.`
+      : `Réactiver le paiement de ${p.nomCommerce} ?\n\nSes clients devront de nouveau payer (Wave ou Djogana) pour souscrire.`;
+    if (!window.confirm(question)) return;
+    try {
+      await api.patch(`/partenaires/${p.id}/paiement-desactive`, { desactive: desactiver });
+      notify(desactiver ? `Paiement désactivé pour ${p.nomCommerce} : ses clients souscrivent sans payer.` : `Paiement réactivé pour ${p.nomCommerce}.`);
+      reload();
+    } catch (err) {
+      notify((err as Error).message);
+    }
+  }
+
   const lienConnexionPartenaire = `${window.location.origin}/partenaire/connexion`;
 
   function copyCredentials() {
@@ -1249,6 +1265,14 @@ export default function Partenaires() {
                       </td>
                       <td>
                         <strong>{p.nomCommerce}</strong>
+                        {p.paiementDesactive && (
+                          <span
+                            title="Les clients de ce partenaire souscrivent sans payer"
+                            style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#b91c1c", background: "#fee2e2", borderRadius: 999, padding: "2px 8px" }}
+                          >
+                            Paiement désactivé
+                          </span>
+                        )}
                         <div className="muted" style={{ fontSize: 12 }}>
                           {p.nomResponsable}
                         </div>
@@ -1309,6 +1333,21 @@ export default function Partenaires() {
                           >
                             <LockKeyhole size={15} color="#b45309" />
                           </button>
+                          {/* Paiement Wave/Djogana : Super Administrateur global seulement. */}
+                          {user?.role === "SUPER_ADMIN" && (
+                            <button
+                              className="btn btn-ghost"
+                              style={{ padding: 8 }}
+                              title={
+                                p.paiementDesactive
+                                  ? "Paiement désactivé — cliquer pour le réactiver"
+                                  : "Désactiver le paiement (souscriptions sans payer)"
+                              }
+                              onClick={() => basculerPaiement(p)}
+                            >
+                              <CreditCard size={15} color={p.paiementDesactive ? "#dc2626" : "#16a34a"} />
+                            </button>
+                          )}
                           {isSuper && (
                             <button
                               className="btn btn-ghost"

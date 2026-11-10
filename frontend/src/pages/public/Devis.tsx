@@ -120,6 +120,17 @@ export default function Devis() {
   const sigRef = useRef<SignaturePadHandle>(null);
   const [envoi, setEnvoi] = useState(false);
   const [erreurForm, setErreurForm] = useState("");
+  // Paiement désactivé pour le partenaire de ce devis (Super Administrateur) : le client confirme sans payer.
+  const [paiementDesactive, setPaiementDesactive] = useState(false);
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${BASE}/public/moyens-paiement?devis=${encodeURIComponent(token)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { paiementDesactive?: boolean } | null) => setPaiementDesactive(!!d?.paiementDesactive))
+      .catch(() => {
+        /* le serveur contrôle de toute façon */
+      });
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -496,7 +507,13 @@ export default function Devis() {
               disabled={envoi}
               style={{ width: "100%", marginTop: 16, padding: "14px 0", background: "#004b9c", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: 15, cursor: "pointer", opacity: envoi ? 0.6 : 1 }}
             >
-              {envoi ? "Redirection vers Wave…" : `Payer ${fcfa(cotation.primeTTC)} avec Wave`}
+              {paiementDesactive
+                ? envoi
+                  ? "Confirmation…"
+                  : "Confirmer ma souscription"
+                : envoi
+                ? "Redirection vers Wave…"
+                : `Payer ${fcfa(cotation.primeTTC)} avec Wave`}
             </button>
           </form>
         )}

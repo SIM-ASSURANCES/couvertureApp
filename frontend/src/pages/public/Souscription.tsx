@@ -2424,14 +2424,18 @@ export default function Souscription() {
   // défaut : tant que la réponse n'est pas arrivée (ou en cas d'échec), seul
   // Wave est affiché, jamais un moyen que le serveur refuserait.
   const [djoganaDispo, setDjoganaDispo] = useState(false);
+  // Paiement désactivé pour le partenaire d'origine du QR (Super Administrateur) : le client souscrit sans
+  // payer — plus de choix Wave/Djogana, la souscription est confirmée aussitôt (services/paiementDesactive.ts).
+  const [paiementDesactive, setPaiementDesactive] = useState(false);
   useEffect(() => {
     let annule = false;
-    fetch(`${BASE}/public/moyens-paiement`)
+    fetch(`${BASE}/public/moyens-paiement${token ? `?qrToken=${encodeURIComponent(token)}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { djogana?: boolean } | null) => {
+      .then((d: { djogana?: boolean; paiementDesactive?: boolean } | null) => {
         if (annule) return;
         const dispo = !!d?.djogana;
         setDjoganaDispo(dispo);
+        setPaiementDesactive(!!d?.paiementDesactive);
         if (!dispo) setMoyenPaiement("wave");
       })
       .catch(() => {
@@ -2440,7 +2444,7 @@ export default function Souscription() {
     return () => {
       annule = true;
     };
-  }, []);
+  }, [token]);
   // Paiement Djogana en cours : référence de la ligne à payer (renseignée par
   // finaliserApresInitiate une fois l'OTP envoyé) et état de l'écran de saisie
   // du code — voir POST /public/paiement-djogana/*.
@@ -5602,7 +5606,18 @@ export default function Souscription() {
                 </div>
               )}
 
-              {qrInfo.produit !== "incendie" && !estProduitSante(qrInfo.produit) && (
+              {qrInfo.produit !== "incendie" && !estProduitSante(qrInfo.produit) && paiementDesactive && (
+                <div
+                  style={{
+                    marginTop: 14, background: "var(--sim-primary-50, #e6f1fb)", border: "1px solid var(--sim-primary, #004b9c)",
+                    borderRadius: 12, padding: "12px 14px", fontSize: 13, color: "#1e3a5f", lineHeight: 1.5,
+                  }}
+                >
+                  <strong>Aucun paiement à effectuer.</strong> Votre souscription est confirmée immédiatement : votre contrat et
+                  votre carte de prise en charge sont disponibles juste après.
+                </div>
+              )}
+              {qrInfo.produit !== "incendie" && !estProduitSante(qrInfo.produit) && !paiementDesactive && (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ fontSize: 12.5, color: "#5b6b80", fontWeight: 600, marginBottom: 6 }}>
                     Moyen de paiement
@@ -5671,6 +5686,8 @@ export default function Souscription() {
                   ? "Confirmer la souscription →"
                   : estProduitSante(qrInfo.produit)
                   ? "Envoyer ma demande →"
+                  : paiementDesactive
+                  ? "Confirmer ma souscription →"
                   : "Confirmer et payer →"}
               </button>
               <button

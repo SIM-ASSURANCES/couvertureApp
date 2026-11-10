@@ -19,6 +19,8 @@ export interface Partenaire {
   // Taux de commission propre au partenaire (fraction, ex. 0,25 = 25 %) ; null/absent =
   // rien de saisi, le taux par défaut s'applique d'office.
   tauxCommission?: number | null;
+  // Paiement (Wave/Djogana) désactivé par le Super Administrateur : ses clients souscrivent sans payer.
+  paiementDesactive?: boolean;
   produitIncendie: boolean;
   produitAccident: boolean;
   branche?: "INCENDIE_ACCIDENT" | "RELAX" | null;

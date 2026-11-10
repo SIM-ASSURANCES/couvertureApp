@@ -4,6 +4,7 @@ import { prisma } from "../db.js";
 import { asyncHandler } from "../util.js";
 import { initiateWavePayment } from "../services/notify.js";
 import { confirmerEcheance } from "../services/paiementWave.js";
+import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
 import {
   LIBELLES_PIECES_SANTE,
   QUESTIONNAIRE_SANTE,
@@ -145,8 +146,10 @@ santePiecesRouter.post(
     const successUrl = `${appUrl}/sante/pieces/${req.params.token}?paid=1`;
     const errorUrl = `${appUrl}/sante/pieces/${req.params.token}?paiement=echec`;
 
-    if (!process.env.WAVE_API_KEY) {
-      const transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    // Partenaire à paiement désactivé : la demande validée devient un contrat sans paiement (Wave/Djogana).
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
+    if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      const transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       return res.json({ checkoutUrl: successUrl, montant: echeance.montant });

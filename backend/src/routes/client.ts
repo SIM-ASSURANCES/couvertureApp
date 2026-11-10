@@ -12,6 +12,7 @@ import {
 } from "../services/notify.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { optionsRenouvellement, produitAChoixDeFormule } from "../services/renouvellementFormule.js";
+import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
@@ -348,8 +349,12 @@ async function creerEcheanceRenouvellement(souscriptionId: string, montant: numb
   const successUrl = `${appUrl}/client?renouvele=${paiement.id}`;
   const errorUrl = `${appUrl}/client?paiement=echec`;
 
-  if (!process.env.WAVE_API_KEY) {
-    const transactionId = `STUB-${paiement.id.slice(0, 8)}`;
+  // Partenaire à paiement désactivé : le renouvellement aussi se fait sans paiement (services/paiementDesactive.ts).
+  const sansPaiement = await partenaireSansPaiement(
+    (await prisma.souscription.findUnique({ where: { id: souscriptionId }, select: { partenaireId: true } }))?.partenaireId
+  );
+  if (sansPaiement || !process.env.WAVE_API_KEY) {
+    const transactionId = sansPaiement ? marqueSansPaiement(paiement.id) : `STUB-${paiement.id.slice(0, 8)}`;
     await prisma.paiement.update({ where: { id: paiement.id }, data: { waveTransactionId: transactionId } });
     await confirmerEcheance({ ...paiement, waveTransactionId: transactionId });
     return { paiementId: paiement.id, montant: paiement.montant, checkoutUrl: successUrl };

@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db.js";
-import { requireAuth, requireAnySuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
+import { requireAuth, requireAnySuperAdmin, requireSuperAdmin, requireSuperAdminBranche, estSuperAdminBranche, hasBranche, type AuthedRequest, type BrancheAcces } from "../auth.js";
 import { asyncHandler } from "../util.js";
 import { logAction } from "../journal.js";
 import { newQrToken, qrDataUrl } from "../services/qr.js";
@@ -612,6 +612,35 @@ partenairesRouter.post(
       valeurApres: { motDePasseReinitialise: true },
     });
     res.json({ nomCommerce: p.nomCommerce, email: p.email, motDePasseProvisoire });
+  })
+);
+
+const paiementDesactiveSchema = z.object({ desactive: z.boolean() });
+
+/**
+ * Désactive / réactive le paiement (Wave et Djogana) d'un partenaire — Super Administrateur seulement.
+ * Désactivé : ses clients souscrivent sans payer, quel que soit le produit, et la souscription est
+ * confirmée aussitôt (contrat, carte de prise en charge, accès client) ; aucune facture n'est émise.
+ * Ne touche jamais aux souscriptions déjà enregistrées. Voir services/paiementDesactive.ts.
+ */
+partenairesRouter.patch(
+  "/:id/paiement-desactive",
+  requireSuperAdmin,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { desactive } = paiementDesactiveSchema.parse(req.body ?? {});
+    const p = await prisma.partenaire.findUnique({ where: { id: req.params.id } });
+    if (!p) return res.status(404).json({ error: "Introuvable" });
+    if (p.paiementDesactive === desactive) return res.json({ id: p.id, paiementDesactive: p.paiementDesactive });
+    const maj = await prisma.partenaire.update({ where: { id: p.id }, data: { paiementDesactive: desactive } });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "partenaire",
+      objetId: p.id,
+      valeurAvant: { paiementDesactive: p.paiementDesactive },
+      valeurApres: { paiementDesactive: maj.paiementDesactive },
+    });
+    res.json({ id: maj.id, paiementDesactive: maj.paiementDesactive });
   })
 );
 

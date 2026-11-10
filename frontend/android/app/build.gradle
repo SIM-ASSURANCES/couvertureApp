@@ -35,9 +35,10 @@ android {
         // 15 = 2026-10-30 APK 1.14, RelaxAccidents Frais Médicaux grand public : contrat de nouveau 2 mois,
         // 16 = 2026-11-09 APK 1.15, reconstruite à la demande de l'utilisateur,
         // 17 = 2026-11-10 APK 1.16, refonte : 2e produit via l'espace client, formule au renouvellement,
-        // 18 = 2026-11-10 APK 1.17, bandeau « connectez-vous à votre espace client » dès la saisie du numéro).
-        versionCode 18
-        versionName "1.17"
+        // 18 = 2026-11-10 APK 1.17, bandeau « connectez-vous à votre espace client » dès la saisie du numéro,
+        // 19 = 2026-11-10 APK 1.18, partenaire à paiement désactivé : souscription sans payer).
+        versionCode 19
+        versionName "1.18"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

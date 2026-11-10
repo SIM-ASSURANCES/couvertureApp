@@ -41,6 +41,7 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../service
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { refusSiEspaceClientExistant } from "../services/accesClient.js";
+import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
 import { capitalDecesDuTarif, estProduitRaf, MESSAGE_OPTION_DECES_SUPPRIMEE } from "../services/garantieDecesFraisMedicaux.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, beneficiaireRequisPourDevis, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
@@ -384,9 +385,31 @@ publicRouter.get(
   })
 );
 
-publicRouter.get("/moyens-paiement", (_req, res) => {
-  res.json({ wave: true, djogana: djoganaDisponible() });
-});
+/**
+ * Partenaire d'origine d'un QR (token d'un QR générique, ou d'un QR historique d'un partenaire/agent) —
+ * `null` si le token est inconnu. Sert uniquement à savoir si son paiement est désactivé.
+ */
+async function partenaireIdDuToken(token: string): Promise<string | null> {
+  const qr = await prisma.qrCode.findFirst({ where: { token, actif: true }, select: { partenaireId: true } });
+  if (qr) return qr.partenaireId;
+  return (await resoudrePartenaireOuAgent(token))?.partenaireId ?? null;
+}
+
+publicRouter.get(
+  "/moyens-paiement",
+  asyncHandler(async (req, res) => {
+    // `?qrToken=` (formulaire de souscription) ou `?devis=` (page d'un devis) : dit si le partenaire
+    // d'origine a désactivé le paiement — le client souscrit alors sans payer (services/paiementDesactive.ts).
+    const qrToken = typeof req.query.qrToken === "string" ? req.query.qrToken : "";
+    const devis = typeof req.query.devis === "string" ? req.query.devis : "";
+    let partenaireId: string | null = null;
+    if (qrToken) partenaireId = await partenaireIdDuToken(qrToken);
+    else if (devis) {
+      partenaireId = (await prisma.cotation.findUnique({ where: { token: devis }, select: { partenaireId: true } }))?.partenaireId ?? null;
+    }
+    res.json({ wave: true, djogana: djoganaDisponible(), paiementDesactive: await partenaireSansPaiement(partenaireId) });
+  })
+);
 
 /** Tarifications accident disponibles */
 publicRouter.get(
@@ -887,18 +910,20 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/accident/${data.qrToken}?paid=${s.id}`;
     const errorUrl = `${appUrl}/s/accident/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, le client valide un OTP puis
       // confirme via POST /public/paiement-djogana/confirmer (type "accident").
-    } else if (!process.env.WAVE_API_KEY) {
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
       // Mode stub (dev / pas encore de clé) : confirmer immédiatement, via
       // confirmerAccident (comme le webhook Wave réel) plutôt qu'une
       // réimplémentation locale — sans quoi ce chemin divergeait du délai
       // d'attente de 72h et n'envoyait jamais les identifiants espace client.
-      transactionId = `STUB-${s.id.slice(0, 8)}`;
+      transactionId = paiementDesactive ? marqueSansPaiement(s.id) : `STUB-${s.id.slice(0, 8)}`;
       await confirmerAccident({ ...s, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
     } else {
@@ -1542,14 +1567,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securpro_dommages/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
@@ -1713,14 +1740,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securhome_dommages/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
@@ -1839,14 +1868,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/securmoto/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/securmoto/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
@@ -1959,14 +1990,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${premiereEcheance.id}`;
     const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${premiereEcheance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(premiereEcheance.id) : `STUB-${premiereEcheance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: premiereEcheance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...premiereEcheance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
@@ -2314,14 +2347,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/s/${code}/${data.qrToken}?paid=${echeance.id}`;
     const errorUrl = `${appUrl}/s/${code}/${data.qrToken}?paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
@@ -2632,14 +2667,16 @@ publicRouter.post(
     const successUrl = `${appUrl}/devis/${cotation.token}/retour?produit=${code}&paid=${echeance.id}`;
     const errorUrl = `${appUrl}/devis/${cotation.token}/retour?produit=${code}&paiement=echec`;
 
+    // Partenaire à paiement désactivé (Super Administrateur) : confirmation immédiate, sans Wave ni Djogana.
+    const paiementDesactive = await partenaireSansPaiement(s.partenaireId);
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement === "djogana") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
-    } else if (!process.env.WAVE_API_KEY) {
-      transactionId = `STUB-${echeance.id.slice(0, 8)}`;
+    } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
+      transactionId = paiementDesactive ? marqueSansPaiement(echeance.id) : `STUB-${echeance.id.slice(0, 8)}`;
       await prisma.paiement.update({ where: { id: echeance.id }, data: { waveTransactionId: transactionId } });
       await confirmerEcheance({ ...echeance, waveTransactionId: transactionId });
       checkoutUrl = successUrl;
