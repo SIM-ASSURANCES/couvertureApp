@@ -47,7 +47,7 @@ import { telechargerFacture } from "../../facture";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
 import { entetesJsonClient, getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
-import { LienEspaceClient } from "../../components/LienEspaceClient";
+import { BandeauEspaceClient, LienEspaceClient } from "../../components/LienEspaceClient";
 import {
   ACTIVITES_RELAXACCIDENTS_GENERALE,
   MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE,
@@ -2367,6 +2367,38 @@ export default function Souscription() {
   const [nomRx, setNomRx] = useState("");
   const [prenomRx, setPrenomRx] = useState("");
   const [telephoneRx, setTelephoneRx] = useState(PHONE_PREFIX);
+  // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit : on le lui annonce
+  // dès que le numéro est saisi (le serveur refuse de toute façon à la fin, voir services/accesClient.ts).
+  const [messageEspaceClient, setMessageEspaceClient] = useState("");
+  useEffect(() => {
+    const complets = [telephone, telephoneRx, telephoneInc].filter((t) => !phoneInvalid(t));
+    if (complets.length === 0) {
+      setMessageEspaceClient("");
+      return;
+    }
+    let annule = false;
+    const minuteur = setTimeout(async () => {
+      for (const t of complets) {
+        try {
+          const res = await fetch(`${BASE}/public/espace-client?telephone=${encodeURIComponent(t)}`, { headers: entetesJsonClient() });
+          const data = (await res.json()) as { connexionRequise?: boolean; message?: string };
+          if (annule) return;
+          if (data.connexionRequise) {
+            setMessageEspaceClient(data.message ?? "Connectez-vous à votre espace client pour souscrire à un autre produit.");
+            return;
+          }
+        } catch {
+          /* vérification indicative : le serveur contrôle de toute façon à la souscription */
+        }
+      }
+      if (!annule) setMessageEspaceClient("");
+    }, 500);
+    return () => {
+      annule = true;
+      clearTimeout(minuteur);
+    };
+  }, [telephone, telephoneRx, telephoneInc]);
+  const espaceExistant = messageEspaceClient !== "";
   const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
   const [piecePhotoRx, setPiecePhotoRx] = useState<string | null>(null);
   const [selfiePhotoRx, setSelfiePhotoRx] = useState<string | null>(null);
@@ -4696,6 +4728,8 @@ export default function Souscription() {
                 </div>
               )}
 
+              {espaceExistant && <BandeauEspaceClient message={messageEspaceClient} />}
+
               {estProduitSante(qrInfo?.produit) ? (
                 <AssuranceSanteForm
                   produit={qrInfo.produit}
@@ -5415,7 +5449,7 @@ export default function Souscription() {
                       if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
                       setStep("confirm");
                     }}
-                    disabled={bloque}
+                    disabled={bloque || espaceExistant}
                     style={{
                       marginTop: 8,
                       width: "100%",
@@ -5427,7 +5461,7 @@ export default function Souscription() {
                       fontWeight: 700,
                       fontSize: 15,
                       cursor: "pointer",
-                      opacity: bloque ? 0.5 : 1,
+                      opacity: bloque || espaceExistant ? 0.5 : 1,
                     }}
                   >
                     {estProduitSante(qrInfo?.produit) ? "Suivant : questionnaire médical →" : "Vérifier mes informations →"}

@@ -368,6 +368,22 @@ publicRouter.use((req, res, next) => {
  * quand `djogana` est faux (production sans identifiants), au lieu de
  * laisser le client choisir un moyen qui sera refusé.
  */
+/**
+ * Ce numéro doit-il se connecter à son espace client avant de souscrire ? Appelée par le formulaire de
+ * souscription dès que le numéro est saisi, pour prévenir le client tout de suite plutôt qu'à la fin du
+ * formulaire. Même règle que le refus 403 des routes de création (services/accesClient.ts) : un client
+ * déjà connecté avec ce numéro n'est pas concerné.
+ */
+publicRouter.get(
+  "/espace-client",
+  asyncHandler(async (req, res) => {
+    const telephone = typeof req.query.telephone === "string" ? req.query.telephone : "";
+    if (telephone.replace(/\D/g, "").length < 8) return res.json({ connexionRequise: false });
+    const refus = await refusSiEspaceClientExistant(req.headers.authorization, telephone);
+    res.json(refus ? { connexionRequise: true, message: refus.error } : { connexionRequise: false });
+  })
+);
+
 publicRouter.get("/moyens-paiement", (_req, res) => {
   res.json({ wave: true, djogana: djoganaDisponible() });
 });
