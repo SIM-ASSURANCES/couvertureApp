@@ -883,6 +883,10 @@ model Paiement {
   // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le
   // produit), sans reproduire la logique de première activation.
   estRenouvellement    Boolean        @default(false)
+  // Formule choisie par le client pour CE renouvellement (RelaxAccidents Frais Médicaux : "1000" /
+  // "500" ; RelaxMoto/RelaxAuto : "mensuel" / "annuel") — appliquée à la souscription à la
+  // confirmation du paiement (services/renouvellementFormule.ts). null = reconduction à l'identique.
+  formuleRenouvellement String?
   // Facture du paiement (services/facture.ts) : numéro séquentiel attribué à la
   // confirmation (FAC-AAAA-NNNNNN), jamais réattribué. La période couverte est
   // figée ICI car Souscription.dateFin est écrasée à chaque renouvellement —

@@ -11,6 +11,7 @@ import {
   numeroPoliceIncendieSynthetique,
 } from "../services/notify.js";
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
+import { optionsRenouvellement, produitAChoixDeFormule } from "../services/renouvellementFormule.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
@@ -326,7 +327,7 @@ clientRouter.get(
 );
 
 /** Crée une échéance de renouvellement sur le modèle générique et lance le paiement (ou stub-confirme sans WAVE_API_KEY). */
-async function creerEcheanceRenouvellement(souscriptionId: string, montant: number) {
+async function creerEcheanceRenouvellement(souscriptionId: string, montant: number, formule?: string) {
   const dernier = await prisma.paiement.findFirst({
     where: { souscriptionId },
     orderBy: { numeroEcheance: "desc" },
@@ -338,6 +339,8 @@ async function creerEcheanceRenouvellement(souscriptionId: string, montant: numb
       montant,
       dateEcheance: new Date(),
       estRenouvellement: true,
+      // Formule choisie par le client : appliquée à la confirmation du paiement (renouvellementFormule.ts).
+      formuleRenouvellement: formule ?? null,
     },
   });
 
@@ -356,6 +359,26 @@ async function creerEcheanceRenouvellement(souscriptionId: string, montant: numb
   await prisma.paiement.update({ where: { id: paiement.id }, data: { waveTransactionId: wave.transactionId } });
   return { paiementId: paiement.id, montant: paiement.montant, checkoutUrl: wave.checkoutUrl };
 }
+
+const renouvellementSchema = z.object({ formule: z.string().trim().min(1).max(40).optional() });
+
+/**
+ * Formules proposées au renouvellement du contrat connecté (produits à deux formules : RelaxAccidents
+ * Frais Médicaux 1 000 F / 500 F, RelaxMoto et RelaxAuto mensuelle / annuelle). `options` est vide pour
+ * les autres produits et les anciens modèles : le renouvellement s'y fait à l'identique.
+ */
+clientRouter.get(
+  "/renouvellement-options",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    if (produitType(req) !== "generique") return res.json({ options: [], formuleActuelle: null });
+    const s = await prisma.souscription.findUnique({
+      where: { id: req.user!.sub },
+      include: { produit: { select: { code: true } } },
+    });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    res.json(await optionsRenouvellement(s));
+  })
+);
 
 /**
  * Renouvellement, tous produits confondus — trois mécaniques selon
@@ -435,6 +458,20 @@ clientRouter.post(
     // une nouvelle souscription, pas un renouvellement.
     if (s.produit.code === "relaxvoyage") {
       return res.status(400).json({ error: "RelaxVoyage ne se renouvelle pas : souscrivez un nouveau contrat pour votre prochain trajet." });
+    }
+
+    // Produit à deux formules (RelaxAccidents Frais Médicaux, RelaxMoto/RelaxAuto) : le client choisit la
+    // formule de sa prochaine période depuis son espace. Sans `formule` (ancienne version de l'application),
+    // le contrat se reconduit à l'identique, comme avant.
+    const { formule } = renouvellementSchema.parse(req.body ?? {});
+    if (formule) {
+      if (!produitAChoixDeFormule(s.produit.code)) {
+        return res.status(400).json({ error: "Ce produit n'a pas de choix de formule au renouvellement." });
+      }
+      if (s.waveStatut !== "confirme") return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+      const choix = (await optionsRenouvellement(s)).options.find((o) => o.formule === formule);
+      if (!choix) return res.status(400).json({ error: "Formule indisponible pour ce produit." });
+      return res.status(201).json(await creerEcheanceRenouvellement(s.id, choix.montant, formule));
     }
 
     if (s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel") {

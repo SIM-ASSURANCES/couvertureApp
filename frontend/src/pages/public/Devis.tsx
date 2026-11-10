@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { API_BASE } from "../../api";
 import { fcfa } from "../../components/ui";
+import { entetesJsonClient, estRefusConnexionRequise } from "../../clientAuth";
+import { LienEspaceClient } from "../../components/LienEspaceClient";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
 
@@ -168,7 +170,7 @@ export default function Devis() {
     try {
       const res = await fetch(`${BASE}/public/cotations/${token}/souscrire`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: entetesJsonClient(),
         body: JSON.stringify({
           nom,
           prenom,
@@ -204,7 +206,7 @@ export default function Devis() {
           documents.map((doc) =>
             fetch(`${BASE}/public/souscriptions/${cotation.produitCode}/${data.souscriptionId}/documents`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: entetesJsonClient(),
               body: JSON.stringify(doc),
             }).catch(() => null)
           )
@@ -477,7 +479,17 @@ export default function Devis() {
 
             <SignaturePad ref={sigRef} label="Signature (facultative)" />
 
-            {erreurForm && <div style={{ color: "#dc2626", fontSize: 13, margin: "10px 0" }}>{erreurForm}</div>}
+            {erreurForm && (
+              <>
+                <div style={{ color: "#dc2626", fontSize: 13, margin: "10px 0" }}>{erreurForm}</div>
+                <LienEspaceClient message={erreurForm} />
+                {estRefusConnexionRequise(erreurForm) && (
+                  <div style={{ color: "#5b6b80", fontSize: 12.5, marginTop: 8, textAlign: "center" }}>
+                    Une fois connecté, rouvrez le lien de ce devis dans le même navigateur pour le payer.
+                  </div>
+                )}
+              </>
+            )}
 
             <button
               type="submit"

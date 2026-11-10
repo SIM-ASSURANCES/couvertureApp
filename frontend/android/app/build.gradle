@@ -33,9 +33,10 @@ android {
         // 14 = 2026-10-30 APK 1.13, RelaxAccidents Frais Médicaux : contrat 1 mois,
         //      option Décès supprimée, bénéficiaire toujours demandé,
         // 15 = 2026-10-30 APK 1.14, RelaxAccidents Frais Médicaux grand public : contrat de nouveau 2 mois,
-        // 16 = 2026-11-09 APK 1.15, reconstruite à la demande de l'utilisateur).
-        versionCode 16
-        versionName "1.15"
+        // 16 = 2026-11-09 APK 1.15, reconstruite à la demande de l'utilisateur,
+        // 17 = 2026-11-10 APK 1.16, refonte : 2e produit via l'espace client, formule au renouvellement).
+        versionCode 17
+        versionName "1.16"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

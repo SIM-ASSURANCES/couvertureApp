@@ -46,7 +46,8 @@ import { telechargerCarte } from "../../carte";
 import { telechargerFacture } from "../../facture";
 import SignaturePad, { type SignaturePadHandle } from "../../components/SignaturePad";
 import PhotoCapture from "../../components/PhotoCapture";
-import { getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
+import { entetesJsonClient, getClientToken, getClientUser, getClientProfilIdentite, type ClientProfilIdentite } from "../../clientAuth";
+import { LienEspaceClient } from "../../components/LienEspaceClient";
 import {
   ACTIVITES_RELAXACCIDENTS_GENERALE,
   MOYENS_DEPLACEMENT_RELAXACCIDENTS_GENERALE,
@@ -3278,7 +3279,7 @@ export default function Souscription() {
     try {
       const res = await fetch(`${BASE}/public/paiement-djogana/otp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: entetesJsonClient(),
         body: JSON.stringify({ type, id, telephone: telephoneUtilise }),
       });
       const otpData = await res.json();
@@ -3300,7 +3301,7 @@ export default function Souscription() {
     try {
       const res = await fetch(`${BASE}/public/paiement-djogana/otp`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: entetesJsonClient(),
         body: JSON.stringify({
           type: djoganaPaiement.type,
           id: djoganaPaiement.id,
@@ -3324,7 +3325,7 @@ export default function Souscription() {
     try {
       const res = await fetch(`${BASE}/public/paiement-djogana/confirmer`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: entetesJsonClient(),
         body: JSON.stringify({
           type: djoganaPaiement.type,
           id: djoganaPaiement.id,
@@ -3375,7 +3376,7 @@ export default function Souscription() {
         if (!classeRelaxAccidents || cnpsDeclare === null || !moyenDeplacementRa) return;
         const res = await fetch(`${BASE}/public/souscriptions/relaxaccidents/initiate-formule`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3410,7 +3411,7 @@ export default function Souscription() {
           documentsRa.map((doc) =>
             fetch(`${BASE}/public/souscriptions/relaxaccidents/${data.souscriptionId}/documents`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: entetesJsonClient(),
               body: JSON.stringify(doc),
             }).catch(() => null)
           )
@@ -3428,7 +3429,7 @@ export default function Souscription() {
         if (!nombrePiecesSecurhome || !statutOccupationSecurhome) return;
         const res = await fetch(`${BASE}/public/souscriptions/securhome/initiate-formule`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3457,7 +3458,7 @@ export default function Souscription() {
         if (!selectedFormule || !personnesAssurees || !fiche || !sexe) return;
         const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             // « Nom complet », enregistré tel que saisi (pas de prénom séparé).
@@ -3488,7 +3489,7 @@ export default function Souscription() {
       } else if (qrInfo.produit === "securpro_dommages") {
         const res = await fetch(`${BASE}/public/souscriptions/securpro_dommages/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3531,7 +3532,7 @@ export default function Souscription() {
       } else if (qrInfo.produit === "securhome_dommages") {
         const res = await fetch(`${BASE}/public/souscriptions/securhome_dommages/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3570,7 +3571,7 @@ export default function Souscription() {
       } else if (qrInfo.produit === "securmoto") {
         const res = await fetch(`${BASE}/public/souscriptions/securmoto/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3596,7 +3597,7 @@ export default function Souscription() {
       } else if (qrInfo.produit === "relaxvoyage") {
         const res = await fetch(`${BASE}/public/souscriptions/relaxvoyage/initiate-formule`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3630,7 +3631,7 @@ export default function Souscription() {
         if (piecePhotoVoyage) {
           await fetch(`${BASE}/public/souscriptions/relaxvoyage/${data.souscriptionId}/documents`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: entetesJsonClient(),
             body: JSON.stringify({ type: typePieceVoyage, url: piecePhotoVoyage }),
           }).catch(() => null);
         }
@@ -3646,7 +3647,7 @@ export default function Souscription() {
       } else if (qrInfo.produit === "accident") {
         const res = await fetch(`${BASE}/public/souscriptions/accident/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3672,7 +3673,7 @@ export default function Souscription() {
       } else if (isRelaxAccidentsFraisMedicaux(qrInfo.produit)) {
         const res = await fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/initiate-formule`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom,
@@ -3709,7 +3710,7 @@ export default function Souscription() {
           documentsFraisMedicaux.map((doc) =>
             fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/${data.souscriptionId}/documents`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: entetesJsonClient(),
               body: JSON.stringify(doc),
             }).catch(() => null)
           )
@@ -3727,7 +3728,7 @@ export default function Souscription() {
         const produit = qrInfo.produit;
         const res = await fetch(`${BASE}/public/souscriptions/${produit}/initiate`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             nom: nomRx,
@@ -3761,7 +3762,7 @@ export default function Souscription() {
           documents.map((doc) =>
             fetch(`${BASE}/public/souscriptions/${produit}/${data.souscriptionId}/documents`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: entetesJsonClient(),
               body: JSON.stringify(doc),
             }).catch(() => null)
           )
@@ -3772,7 +3773,7 @@ export default function Souscription() {
       } else {
         const res = await fetch(`${BASE}/public/souscriptions/incendie`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({
             qrToken: token,
             telephone: telephoneInc,
@@ -4003,7 +4004,7 @@ export default function Souscription() {
           ].map((doc) =>
             fetch(`${BASE}/public/souscriptions/${qrInfo.produit}/${souscriptionId}/documents`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: entetesJsonClient(),
               body: JSON.stringify(doc),
             })
           )
@@ -4012,7 +4013,7 @@ export default function Souscription() {
       } else {
         const res = await fetch(`${BASE}/public/souscriptions/accident/${paidId}/carte-photos`, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: entetesJsonClient(),
           body: JSON.stringify({ pieceIdentiteUrl: cartePieceUrl, selfieUrl: carteSelfieUrl }),
         });
         const d = await res.json();
@@ -4202,6 +4203,7 @@ export default function Souscription() {
               <div style={{ marginTop: 8, color: "#5b6b80", fontSize: 14 }}>
                 {errorMsg}
               </div>
+              <LienEspaceClient message={errorMsg} />
             </div>
           )}
 
@@ -5448,7 +5450,12 @@ export default function Souscription() {
                 setDeclare={setDeclareSante}
                 sigRef={sigRef}
               />
-              {errorMsg && <div style={{ color: "#dc2626", fontSize: 13, margin: "10px 0" }}>{errorMsg}</div>}
+              {errorMsg && (
+                <>
+                  <div style={{ color: "#dc2626", fontSize: 13, margin: "10px 0" }}>{errorMsg}</div>
+                  <LienEspaceClient message={errorMsg} />
+                </>
+              )}
               <button
                 onClick={() => {
                   setErrorMsg("");
@@ -5609,7 +5616,10 @@ export default function Souscription() {
               )}
 
               {errorMsg && (
-                <div style={{ marginTop: 14, color: "#dc2626", fontSize: 13.5, textAlign: "center" }}>{errorMsg}</div>
+                <>
+                  <div style={{ marginTop: 14, color: "#dc2626", fontSize: 13.5, textAlign: "center" }}>{errorMsg}</div>
+                  <LienEspaceClient message={errorMsg} />
+                </>
               )}
 
               <button
@@ -5753,7 +5763,7 @@ export default function Souscription() {
                   try {
                     const res = await fetch(`${BASE}/public/souscriptions/accident/initiate`, {
                       method: "POST",
-                      headers: { "Content-Type": "application/json" },
+                      headers: entetesJsonClient(),
                       body: JSON.stringify({
                         qrToken: token,
                         nom,

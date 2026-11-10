@@ -5,6 +5,7 @@ import { genererCarte, renouvelerCarte } from "./novelia.js";
 import { emettreFacture } from "./facture.js";
 import { DUREE_CONTRAT_SANTE_MOIS, estProduitSante, paiementBloqueParValidation } from "./assurancesSante.js";
 import { cycleDeSouscription, estProduitDommagesAvecPeriodicite } from "./periodiciteDommages.js";
+import { appliquerFormuleRenouvellement } from "./renouvellementFormule.js";
 import type { Paiement } from "@prisma/client";
 
 /**
@@ -106,11 +107,17 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
   });
 
   if (p.estRenouvellement) {
-    const s = await prisma.souscription.findUnique({
-      where: { id: p.souscriptionId },
-      include: { produit: { select: { code: true } } },
-    });
+    const inclureProduit = { produit: { select: { code: true } } };
+    let s = await prisma.souscription.findUnique({ where: { id: p.souscriptionId }, include: inclureProduit });
     if (!s) return;
+    // Formule choisie par le client pour ce renouvellement (espace client) : appliquée AVANT de calculer
+    // la nouvelle échéance (le cycle d'un RelaxMoto/Auto peut changer). Une formule différente de celle
+    // du contrat en cours repart sur une police neuve (garanties et code d'offre NOVELIA différents).
+    let formuleChangee = false;
+    if (p.formuleRenouvellement) {
+      formuleChangee = (await appliquerFormuleRenouvellement(s, p.formuleRenouvellement)).changee;
+      s = (await prisma.souscription.findUnique({ where: { id: p.souscriptionId }, include: inclureProduit })) ?? s;
+    }
     const base = s.dateFin && s.dateFin > new Date() ? s.dateFin : new Date();
     const dateFin =
       s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel"
@@ -125,7 +132,7 @@ async function activerOuProlonger(p: Paiement): Promise<void> {
     // Police conservée si le renouvellement tombe dans le délai de grâce
     // (2 jours après l'échéance) ; police neuve au-delà. La carte NOVELIA suit
     // exactement la même règle — voir novelia.ts::renouvelerCarte.
-    const numeroPolice = numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);
+    const numeroPolice = formuleChangee ? newNumeroPolice() : numeroPoliceRenouvellement(s.numeroPolice, s.dateFin);
     const creerNouvellePolice = numeroPolice !== s.numeroPolice;
     // Période couverte par CE paiement, figée pour la facture : dateFin de la
     // souscription sera encore écrasée au renouvellement suivant.

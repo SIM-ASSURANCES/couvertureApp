@@ -40,6 +40,7 @@ import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDom
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { refusSiEspaceClientExistant } from "../services/accesClient.js";
 import { capitalDecesDuTarif, estProduitRaf, MESSAGE_OPTION_DECES_SUPPRIMEE } from "../services/garantieDecesFraisMedicaux.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, beneficiaireRequisPourDevis, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
 import { appliquerPeriodicite, cycleDommagesSchema, detailMensuelTarifFixe, primeMensuelle } from "../services/periodiciteDommages.js";
@@ -577,6 +578,9 @@ publicRouter.post(
     // enverrait pas encore.
     const token = newFormulaireToken();
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionIncendie.create({
       data: {
@@ -843,6 +847,9 @@ publicRouter.post(
       }
     }
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionAccident.create({
       data: {
@@ -1462,6 +1469,9 @@ publicRouter.post(
     // services/periodiciteDommages.ts). `resultat` est la prime d'UNE période.
     const resultat = appliquerPeriodicite(resultatAnnuel, data.cycle);
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
@@ -1634,6 +1644,9 @@ publicRouter.post(
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
@@ -1770,6 +1783,9 @@ publicRouter.post(
       return res.status(400).json({ error: e instanceof Error ? e.message : "Entrées invalides." });
     }
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
@@ -1883,6 +1899,9 @@ publicRouter.post(
     const nombrePeriodes = data.nombrePeriodes ?? 1;
     const montantTotal = tarif.prime * nombrePeriodes;
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
@@ -2163,6 +2182,9 @@ publicRouter.post(
       ? securhomeMensuel.primeTTC
       : tarif.prime + surchargeDeplacement;
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {
@@ -2534,6 +2556,9 @@ publicRouter.post(
             cycle: entrees.cycle ?? "annuel",
           };
 
+    // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
       data: {

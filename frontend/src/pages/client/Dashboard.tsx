@@ -105,6 +105,12 @@ const inputStyle: React.CSSProperties = {
   color: "#0f1b2d",
 };
 
+/** Formules proposées au renouvellement (GET /client/renouvellement-options) — vide pour les produits à une seule formule. */
+interface FormulesRenouvellement {
+  options: { formule: string; libelle: string; montant: number; details: string[] }[];
+  formuleActuelle: string | null;
+}
+
 export default function ClientDashboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -120,6 +126,10 @@ export default function ClientDashboard() {
   const [telechargementCarte, setTelechargementCarte] = useState(false);
   const [telechargementContrat, setTelechargementContrat] = useState(false);
   const [autresProduits, setAutresProduits] = useState<{ qrToken: string | null; produits: ProduitDisponible[] } | null>(null);
+  // Produit à deux formules : le client choisit celle de sa prochaine période avant de payer.
+  const [formulesRenouvellement, setFormulesRenouvellement] = useState<FormulesRenouvellement>({ options: [], formuleActuelle: null });
+  const [choixFormuleOuvert, setChoixFormuleOuvert] = useState(false);
+  const [formuleChoisie, setFormuleChoisie] = useState("");
 
   const [afficherFormSinistre, setAfficherFormSinistre] = useState(false);
   const [contratsAccidents, setContratsAccidents] = useState<ContratAccident[] | null>(null);
@@ -140,12 +150,17 @@ export default function ClientDashboard() {
 
   async function charger() {
     try {
-      const [m, s, p, c] = await Promise.all([
+      const [m, s, p, c, f] = await Promise.all([
         clientApi.get<Moi>("/moi"),
         clientApi.get<Sinistre[]>("/sinistres"),
         clientApi.get<{ qrToken: string | null; produits: ProduitDisponible[] }>("/produits-disponibles"),
         clientApi.get<ContratAccident[]>("/mes-contrats-accidents"),
+        // Les formules proposées au renouvellement ne doivent jamais empêcher l'espace de s'afficher.
+        clientApi
+          .get<FormulesRenouvellement>("/renouvellement-options")
+          .catch((): FormulesRenouvellement => ({ options: [], formuleActuelle: null })),
       ]);
+      setFormulesRenouvellement(f);
       setMoi(m);
       setSinistres(s);
       setAutresProduits(p);
@@ -195,10 +210,20 @@ export default function ClientDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renouveleId]);
 
-  async function renouveler() {
+  /** Clic sur « Renouveler » : produit à deux formules → fenêtre de choix, sinon renouvellement direct. */
+  function demanderRenouvellement() {
+    if (formulesRenouvellement.options.length >= 2) {
+      setFormuleChoisie(formulesRenouvellement.formuleActuelle ?? formulesRenouvellement.options[0].formule);
+      setChoixFormuleOuvert(true);
+      return;
+    }
+    renouveler();
+  }
+
+  async function renouveler(formule?: string) {
     setRenouvellement(true);
     try {
-      const r = await clientApi.post<{ checkoutUrl?: string; sms?: boolean }>("/renouveler");
+      const r = await clientApi.post<{ checkoutUrl?: string; sms?: boolean }>("/renouveler", formule ? { formule } : undefined);
       if (r.sms) {
         notify("SMS envoyé — rendez-vous en boutique avec une nouvelle réf.facture pour finaliser le renouvellement.");
         setRenouvellement(false);
@@ -536,7 +561,7 @@ export default function ClientDashboard() {
                   voyage, donc une nouvelle souscription. */}
               {moi.produitCode !== "relaxvoyage" && (
                 <button
-                  onClick={renouveler}
+                  onClick={demanderRenouvellement}
                   disabled={renouvellement}
                   style={{
                     marginTop: 10, width: "100%", padding: "12px 0", background: "#004b9c", color: "#fff",
@@ -552,6 +577,75 @@ export default function ClientDashboard() {
                 </button>
               )}
             </div>
+
+            {choixFormuleOuvert && (
+              <div
+                onClick={() => !renouvellement && setChoixFormuleOuvert(false)}
+                style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ background: "#fff", borderRadius: 16, padding: 22, width: 420, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto" }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Choisissez votre formule</div>
+                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 14 }}>
+                    Votre contrat se renouvelle avec la formule que vous sélectionnez.
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {formulesRenouvellement.options.map((o) => (
+                      <label
+                        key={o.formule}
+                        style={{
+                          display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px", cursor: "pointer",
+                          border: `2px solid ${formuleChoisie === o.formule ? "#004b9c" : "#d5dbe5"}`, borderRadius: 14,
+                          background: formuleChoisie === o.formule ? "#e6f1fb" : "#fff",
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="formule-renouvellement"
+                          checked={formuleChoisie === o.formule}
+                          onChange={() => setFormuleChoisie(o.formule)}
+                          style={{ marginTop: 4 }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }}>
+                            <strong style={{ fontSize: 16, color: "#004b9c" }}>{o.libelle}</strong>
+                            {o.formule === formulesRenouvellement.formuleActuelle && (
+                              <span style={{ fontSize: 11.5, color: "#5b6b80" }}>Formule actuelle</span>
+                            )}
+                          </span>
+                          {o.details.map((d) => (
+                            <span key={d} style={{ display: "block", fontSize: 12.5, color: "#5b6b80", marginTop: 3 }}>{d}</span>
+                          ))}
+                          <span style={{ display: "block", fontSize: 13, marginTop: 6 }}>
+                            À payer : <strong>{fcfa(o.montant)}</strong>
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+                    <button
+                      type="button"
+                      onClick={() => setChoixFormuleOuvert(false)}
+                      disabled={renouvellement}
+                      style={{ flex: 1, padding: "12px 0", background: "#fff", color: "#004b9c", border: "1.5px solid #004b9c", borderRadius: 12, fontWeight: 700, cursor: "pointer" }}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => renouveler(formuleChoisie)}
+                      disabled={renouvellement || !formuleChoisie}
+                      style={{ flex: 1, padding: "12px 0", background: "#004b9c", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, cursor: "pointer", opacity: renouvellement ? 0.5 : 1 }}
+                    >
+                      {renouvellement ? "Veuillez patienter…" : "Renouveler et payer"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {autresProduits && autresProduits.produits.length > 0 && (
               <div style={card}>

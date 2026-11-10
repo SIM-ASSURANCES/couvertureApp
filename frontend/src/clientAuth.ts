@@ -19,6 +19,21 @@ export function getClientToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+/**
+ * En-têtes JSON d'une requête de souscription : joint le jeton du client connecté, s'il y en a un.
+ * Un client qui a déjà un espace ne peut souscrire un autre produit qu'en y étant connecté (le serveur
+ * refuse sinon, voir backend/src/services/accesClient.ts) ; sans jeton, la requête part comme avant.
+ */
+export function entetesJsonClient(): Record<string, string> {
+  const jeton = getClientToken();
+  return { "Content-Type": "application/json", ...(jeton ? { Authorization: `Bearer ${jeton}` } : {}) };
+}
+
+/** Ce message d'erreur est-il le refus « vous avez déjà un espace client, connectez-vous » ? */
+export function estRefusConnexionRequise(message: string): boolean {
+  return /déjà un espace client/i.test(message);
+}
+
 export function getClientUser(): ClientUser | null {
   const raw = localStorage.getItem(USER_KEY);
   return raw ? JSON.parse(raw) : null;
