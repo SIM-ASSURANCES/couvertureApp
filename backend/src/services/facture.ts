@@ -52,9 +52,6 @@ export async function emettreFacture(paiementId: string, options: OptionsEmissio
       include: { souscription: { select: { dateDebut: true, dateFin: true, nombrePaiements: true } } },
     });
     if (!p || p.statut !== "paye" || p.numeroFacture) return;
-    // Souscription confirmée sans paiement (partenaire à paiement désactivé) : rien n'a été encaissé, donc
-    // aucune facture « acquittée » — ni à la confirmation, ni en rattrapage, ni à la consultation.
-    if (estPaiementSansEncaissement(p)) return;
 
     const dateRef = p.datePaiement ?? new Date();
     const numeroFacture = await prochainNumeroFacture(dateRef.getFullYear(), tx);
@@ -183,6 +180,9 @@ export async function detailDePrime(
 }
 
 function moyenDePaiement(p: { waveTransactionId: string | null; djoganaTransactionId: string | null }): string | null {
+  // Souscription confirmée sans paiement (partenaire à paiement désactivé) : la facture est émise comme
+  // pour tout paiement, mais ne cite aucun moyen de règlement (ni Wave ni Peya pay n'ont servi).
+  if (estPaiementSansEncaissement(p)) return null;
   if (p.djoganaTransactionId) return "Peya pay";
   // Canal API partenaire : le partenaire a encaissé lui-même (voir partnerApi.ts).
   if (p.waveTransactionId?.startsWith("API-")) return "Encaissé par le partenaire";

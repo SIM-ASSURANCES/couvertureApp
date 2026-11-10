@@ -7,8 +7,6 @@ import { attribuerIdentifiantsEnAttente } from "./services/identifiantsPartenair
 import { COMPOSITION_SANTE, FORMULES_SANTE, PRODUITS_SANTE, SOUS_BRANCHE_SANTE } from "./services/assurancesSante.js";
 import { cycleDeSouscription } from "./services/periodiciteDommages.js";
 import { ANCIEN_DECES_RAF_PAR_FORMULE, GARANTIES_RAF_PAR_FORMULE } from "./services/garantieDecesFraisMedicaux.js";
-import { MARQUE_SANS_PAIEMENT } from "./services/paiementDesactive.js";
-
 const prisma = new PrismaClient();
 
 async function seedSuperAdmin() {
@@ -1075,15 +1073,7 @@ async function rattacherClientsRetroactivement() {
  */
 async function emettreFacturesRetroactivement() {
   const aEmettre = await prisma.paiement.findMany({
-    // Hors souscriptions confirmées sans paiement (partenaire à paiement désactivé) : jamais de facture.
-    where: {
-      statut: "paye",
-      numeroFacture: null,
-      NOT: [
-        { waveTransactionId: { startsWith: MARQUE_SANS_PAIEMENT } },
-        { djoganaTransactionId: { startsWith: MARQUE_SANS_PAIEMENT } },
-      ],
-    },
+    where: { statut: "paye", numeroFacture: null },
     orderBy: [{ datePaiement: "asc" }, { createdAt: "asc" }],
     select: { id: true },
   });

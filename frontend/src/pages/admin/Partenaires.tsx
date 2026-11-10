@@ -1018,7 +1018,7 @@ export default function Partenaires() {
   async function basculerPaiement(p: Partenaire) {
     const desactiver = !p.paiementDesactive;
     const question = desactiver
-      ? `Désactiver le paiement de ${p.nomCommerce} ?\n\nSes clients pourront souscrire SANS payer (Wave et Djogana ne seront plus proposés) : la souscription sera confirmée aussitôt, avec le contrat et la carte de prise en charge, mais sans facture.`
+      ? `Désactiver le paiement de ${p.nomCommerce} ?\n\nSes clients pourront souscrire SANS payer (Wave et Djogana ne seront plus proposés) : la souscription sera confirmée aussitôt, avec le contrat, la carte de prise en charge et la facture.`
       : `Réactiver le paiement de ${p.nomCommerce} ?\n\nSes clients devront de nouveau payer (Wave ou Djogana) pour souscrire.`;
     if (!window.confirm(question)) return;
     try {

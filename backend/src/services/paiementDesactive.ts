@@ -5,8 +5,9 @@
 // La souscription est confirmée immédiatement par le point d'entrée habituel
 // (paiementWave.ts::confirmerEcheance) : police, dates d'effet, accès client, carte de prise en charge
 // et contrat sont produits comme après un paiement. Le paiement porte une marque `SANS-PAIEMENT-…` à la
-// place d'un identifiant de transaction : aucune facture n'est émise (rien n'a été encaissé), voir
-// services/facture.ts.
+// place d'un identifiant de transaction. La facture est émise comme d'habitude (décision de l'utilisateur,
+// 2026-11-10) mais sans moyen de règlement cité, voir services/facture.ts::moyenDePaiement ; la commission
+// et le chiffre d'affaires comptent ces souscriptions comme les autres.
 
 import { prisma } from "../db.js";
 

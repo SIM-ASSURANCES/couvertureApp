@@ -620,7 +620,7 @@ const paiementDesactiveSchema = z.object({ desactive: z.boolean() });
 /**
  * Désactive / réactive le paiement (Wave et Djogana) d'un partenaire — Super Administrateur seulement.
  * Désactivé : ses clients souscrivent sans payer, quel que soit le produit, et la souscription est
- * confirmée aussitôt (contrat, carte de prise en charge, accès client) ; aucune facture n'est émise.
+ * confirmée aussitôt (contrat, carte de prise en charge, accès client, facture).
  * Ne touche jamais aux souscriptions déjà enregistrées. Voir services/paiementDesactive.ts.
  */
 partenairesRouter.patch(
