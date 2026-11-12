@@ -159,6 +159,65 @@ client payer lui-même par le lien Wave de son SMS (la souscription passe alors
 `montantAReverser` = prime encaissée − commission « canal API ». C'est le
 montant dû à SIM Assurances (rapprochement mensuel).
 
+### Référence des paramètres par produit
+
+`POST /devis` et `POST /souscriptions` reçoivent **les mêmes** `produit`,
+`formule` et `entrees`. Une valeur hors barème renvoie `400 entrees_invalides`
+(avec le détail des champs en cause) ou `400 devis_invalide`.
+
+**Formules (`formule`)**
+
+| Produit | Valeurs |
+|---|---|
+| `relaxmoto`, `relaxauto` | `mensuel`, `annuel` (+ `nombrePeriodes` 1 à 12) |
+| `relaxaccidents_fraismedicaux`, `…_livreurs` | `500`, `1000` (prime en FCFA ; Décès inclus dans la formule) |
+| `relaxvoyage` | `250`, `400`, `600`, `1000` |
+| `sante_solo`, `sante_duo` | `70`, `80` (taux de prise en charge, %) |
+| `sante_famille` | `70`, `80`, `80-2`, `80-3` |
+
+Pour `relaxvoyage` et `sante_*`, `formule` peut aussi être placée dans
+`entrees.formule`. Les valeurs exactes du moment se lisent dans
+`GET /catalogue` (`formules[].libelleVariante`).
+
+**Paramètres `entrees` des produits calculés**
+
+| Produit | Champs |
+|---|---|
+| `relaxaccidents` | `classe` (1 à 4), `cnpsDeclare` (booléen), `cycle` (`annuel` \| `mensuel`), `moyenDeplacement` (`voiture` \| `moto_tricycle` \| `autres` — le supplément moto/tricycle est inclus dans la prime) |
+| `securhome` | `nombrePieces` (1 à 5), `statutOccupation` (`proprietaire` \| `locataire`), `cycle` (`annuel` par défaut, `mensuel` = prime annuelle ÷ 10) |
+| `securhome_dommages` | `statutOccupation`, `valeurBatiment` (propriétaire) ou `loyerMensuel` (locataire), `contenu`, `gardien`, `extincteur`, `camera`, `volContenu` (booléens), capitaux facultatifs `ddeCapital` (1 M ou 2 M), `deCapital`, `bdgCapital`, `cycle` |
+| `securpro_dommages` | `classe` (1 à 4), `statutOccupation`, `valeurBatiment` ou `loyerMensuel`, `contenu`, `dansMarche`, `gardien`, `extincteur`, `volContenu` (booléens), facultatifs : `majorationVolContenu`, `volCaisseCapital`, `majorationVolCaisse`, `ddeCapital`, `deCapital`, `bdgCapital`, `cycle` |
+| `securmoto` | `valeurMoto` (1 à 700 000 FCFA), `ageMoto` (`NEUVE` \| `1 AN` \| `2 ANS`), `cycle` |
+
+Capitaux autorisés : `ddeCapital` 1 000 000 / 2 000 000 ; `deCapital`
+100 000 à 2 000 000 ; `bdgCapital` 250 000 à 2 000 000 ; `volCaisseCapital`
+25 000 à 500 000. Un capital hors liste est refusé.
+
+**Blocs métier de `POST /souscriptions`**
+
+| Bloc | Produit | Contenu |
+|---|---|---|
+| `voyage` | `relaxvoyage` (obligatoire) | `compagnie`, `lieuDepart`, `lieuArrivee`, `numeroTicket`, `dateDepart` (`AAAA-MM-JJ`, pas dans le passé), `numeroPersonneContact`, `typePiece` (`CNI` \| `Permis` \| `Passeport`, facultatif) |
+| `commerce` | `securhome_dommages`, `securpro_dommages` (facultatif) | `nomCommercial`, `ville`, `communeQuartier`, `refFacture` |
+| `beneficiaire` | obligatoire : `relaxvoyage`, `relaxaccidents` ; facultatif : Moto, Auto, RAF | `{ "nom", "telephone" }` — bénéficiaire de la garantie Décès |
+| `sante` | `sante_*` (obligatoire) | `ficheSante`, `personnesAssurees`, `questionnaireSante` (voir ci-dessous) |
+
+**Assurances Santé — contenu du bloc `sante`**
+
+- `prospect.dateNaissance` (assuré principal de 15 à 65 ans) et `prospect.sexe` sont obligatoires.
+- `ficheSante` : `profession`, `lieuResidence`, `situationMatrimoniale` (`celibataire`, `marie`, `divorce`, `veuf`, `union_libre`), `poidsKg`, `tailleCm`, `tensionArterielle` (`120/80`), `groupeSanguin` (`A+`…`O-` ou `inconnu`), `numeroCmu` facultatif.
+- `personnesAssurees` : Solo → aucune ; Duo → le conjoint ; Famille → le conjoint et jusqu'à 3 enfants. Chacune : `lien` (`conjoint` \| `enfant`), `nom`, `prenom`, `dateNaissance`, `sexe`, `lieuResidence` (+ `profession` pour le conjoint).
+- `questionnaireSante` : `declareExactEtSincere: true` et `personnes[]` — une entrée par personne assurée (souscripteur en tête), avec une réponse `true`/`false` à chaque question applicable à son sexe. Un questionnaire incomplet renvoie `400 questionnaire_invalide` avec la question manquante.
+
+**Pièces d'identité (data URL image ≤ 2 Mo)**
+
+| Produits | `pieceIdentiteUrl` | `selfieUrl` |
+|---|---|---|
+| Moto, Auto, RAF ×2, RelaxAccidents | obligatoire | obligatoire |
+| RelaxVoyage | obligatoire | non requis |
+| SecurHome, SecurHome+, SecurPro, SecurMoto | facultative | facultatif |
+| Santé | facultative (les pièces sont déposées par le client via le lien SMS) | facultatif |
+
 ### Exemple
 
 ```bash
@@ -193,6 +252,37 @@ curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
     "produit":"securmoto",
     "entrees":{"valeurMoto":500000,"ageMoto":"NEUVE","cycle":"annuel"},
     "prospect":{"nom":"KOUAME","prenom":"Ama","telephone":"+2250700000000"}
+  }'
+
+# RelaxVoyage : bloc voyage + pièce + bénéficiaire
+curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "produit":"relaxvoyage","formule":"250",
+    "prospect":{"nom":"KOUAME","prenom":"Ama","telephone":"+2250700000000","dateNaissance":"1990-05-15","sexe":"feminin"},
+    "pieceIdentiteUrl":"data:image/jpeg;base64,...",
+    "beneficiaire":{"nom":"KOUAME Yao","telephone":"+2250500000000"},
+    "voyage":{"typePiece":"CNI","compagnie":"UTB","lieuDepart":"Abidjan","lieuArrivee":"Bouaké",
+              "numeroTicket":"T123456","dateDepart":"2026-12-01","numeroPersonneContact":"+2250100000000"}
+  }'
+
+# Santé Duo : demande (statut en_attente_validation), validée ensuite par SIM
+curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "produit":"sante_duo","formule":"70",
+    "prospect":{"nom":"KOUAME","prenom":"Ama","telephone":"+2250700000000","dateNaissance":"1990-05-15","sexe":"masculin","email":"ama@example.com"},
+    "sante":{
+      "ficheSante":{"profession":"Enseignant","lieuResidence":"Abidjan Cocody","situationMatrimoniale":"marie",
+                    "poidsKg":75,"tailleCm":178,"tensionArterielle":"120/80","groupeSanguin":"O+"},
+      "personnesAssurees":[{"lien":"conjoint","nom":"KOUAME","prenom":"Awa","dateNaissance":"1992-03-10",
+                            "sexe":"feminin","lieuResidence":"Abidjan","profession":"Couturière"}],
+      "questionnaireSante":{"declareExactEtSincere":true,
+                            "personnes":[{"reponses":{"hta":false,"asthme":false,"...":false}},
+                                         {"reponses":{"hta":false,"asthme":false,"...":false}}]}
+    }
   }'
 
 # Confirmation de paiement
