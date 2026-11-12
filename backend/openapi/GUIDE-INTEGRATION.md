@@ -66,6 +66,7 @@ Intégrez sur le `code`, jamais sur le `message` (susceptible d'évoluer).
 | 404 | `produit_inconnu` | Code produit inexistant ou inactif |
 | 403 | `produit_non_autorise` | Produit non rattaché à votre compte |
 | 403 | `produit_desactive` | Produit désactivé pour votre compte |
+| 403 | `produit_verrouille` | Produit verrouillé sur l'API : les trois Assurances Santé (`sante_solo`, `sante_duo`, `sante_famille`) — devis et souscription indisponibles |
 | 501 | `devis_calcule_non_supporte` | Produit sans barème exploitable (ne concerne aucun des 13 produits aujourd'hui) |
 | 501 | `produit_non_supporte_api` | Garde-fou : produit ajouté au catalogue sans être branché à la souscription API |
 | 400 | `formule_requise` / `formule_inconnue` | Formule absente ou non reconnue |
@@ -131,8 +132,13 @@ GET /souscriptions?limit=50&cursor=b1f2...
 6. GET  /souscriptions/{id}/carte.png      → carte de prise en charge
 ```
 
-Les **13 produits** du catalogue sont ouverts à `POST /devis` et
-`POST /souscriptions` (data URL image ≤ 2 Mo pour les pièces). Deux familles :
+Le catalogue liste **13 produits**, dont **10 sont ouverts** à `POST /devis` et
+`POST /souscriptions` (data URL image ≤ 2 Mo pour les pièces). Les trois
+**Assurances Santé sont verrouillées** sur l'API : visibles au catalogue
+(`verrouille: true`, `souscriptionApi: false`), mais devis et souscription
+répondent `403 produit_verrouille`. Les lignes `sante_*` du tableau et la
+section Santé ci-dessous sont donc **réservées** : elles décrivent le parcours
+qui sera ouvert si le verrou est levé. Trois familles :
 
 | Produits | Prime | À fournir en plus du `prospect` |
 |---|---|---|
@@ -267,7 +273,8 @@ curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
               "numeroTicket":"T123456","dateDepart":"2026-12-01","numeroPersonneContact":"+2250100000000"}
   }'
 
-# Santé Duo : demande (statut en_attente_validation), validée ensuite par SIM
+# Santé Duo — RÉSERVÉ : verrouillé aujourd'hui (403 produit_verrouille). Parcours prévu si le verrou est levé :
+# demande (statut en_attente_validation), validée ensuite par SIM
 curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -H "Idempotency-Key: $(uuidgen)" \

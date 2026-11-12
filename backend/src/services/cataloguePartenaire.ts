@@ -41,9 +41,20 @@ export const PRODUITS_API_CALCULES = new Set([
 ]);
 
 /**
+ * Produits VERROUILLÉS sur l'API (2026-11-12) : les trois Assurances Santé. Ils restent visibles au
+ * catalogue (`verrouille: true`, `souscriptionApi: false`) mais `POST /v1/devis` et `POST /v1/souscriptions`
+ * répondent 403 `produit_verrouille`. La création d'une demande Santé reste possible par les autres canaux
+ * (site public, QR, devis partageable). Le code de souscription Santé de l'API est conservé : pour rouvrir
+ * le produit, il suffit de retirer son code de cet ensemble. Les demandes Santé déjà créées par l'API
+ * restent lisibles et leur `confirmer-paiement` continue de fonctionner.
+ */
+export const PRODUITS_VERROUILLES_API = new Set(["sante_solo", "sante_duo", "sante_famille"]);
+
+/**
  * Produits que `POST /v1/souscriptions` sait créer : les 13 des trois Assurances (depuis le 2026-11-12,
- * les 9 produits « calculés » s'ajoutent aux 4 produits tarifés par formule). Garde-fou : un produit
- * ajouté au catalogue sans être branché ici répond 501 `produit_non_supporte_api`.
+ * les 9 produits « calculés » s'ajoutent aux 4 produits tarifés par formule), moins les produits
+ * verrouillés ci-dessus. Garde-fou : un produit ajouté au catalogue sans être branché ici répond 501
+ * `produit_non_supporte_api`.
  */
 export const PRODUITS_SOUSCRIPTION_API = new Set([
   "relaxmoto",
@@ -81,8 +92,10 @@ export type ProduitCatalogue = {
   tauxCommissionApi: number;
   /** true = pas de TarifProduit → prime calculée dynamiquement (SecurHome+, SecurPro Dommages). */
   devisCalcule: boolean;
-  /** true = `POST /v1/souscriptions` sait créer ce produit ; false = catalogue seulement (501 à la souscription). */
+  /** true = `POST /v1/souscriptions` sait créer ce produit ; false = catalogue seulement (verrouillé ou non branché). */
   souscriptionApi: boolean;
+  /** true = produit verrouillé sur l'API (Assurances Santé) : devis et souscription répondent 403 `produit_verrouille`. */
+  verrouille: boolean;
   formules: FormuleCatalogue[];
 };
 
@@ -166,7 +179,8 @@ export async function catalogueDuPartenaire(partenaireId: string): Promise<Produ
     kycRequis: p.sousBranche === "ASSURANCES_ACCIDENTS",
     tauxCommissionApi: p.tauxCommissionApi ?? tauxDefaut,
     devisCalcule: p.tarifs.length === 0,
-    souscriptionApi: PRODUITS_SOUSCRIPTION_API.has(p.code),
+    souscriptionApi: PRODUITS_SOUSCRIPTION_API.has(p.code) && !PRODUITS_VERROUILLES_API.has(p.code),
+    verrouille: PRODUITS_VERROUILLES_API.has(p.code),
     formules: p.tarifs.map((t) => ({
       libelleVariante: t.libelleVariante,
       prime: t.prime,

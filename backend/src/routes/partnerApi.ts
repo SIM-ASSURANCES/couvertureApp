@@ -20,6 +20,7 @@ import {
   catalogueDuPartenaire,
   PRODUITS_SOUSCRIPTION_API,
   PRODUITS_API_CALCULES,
+  PRODUITS_VERROUILLES_API,
   calculerCommissionApi,
   souscriptionGeneriqueDejaConfirmee,
   type ResolutionProduit,
@@ -110,6 +111,17 @@ const dataUrlImage = z
   .string()
   .max(2_000_000)
   .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
+/** Produit verrouillé sur l'API (Assurances Santé) : refus normalisé, ou `null` si le produit est ouvert. */
+function refusSiVerrouille(res: Response, codeProduit: string): Response | null {
+  if (!PRODUITS_VERROUILLES_API.has(codeProduit)) return null;
+  return apiError(
+    res,
+    403,
+    "produit_verrouille",
+    "Les Assurances Santé ne sont pas disponibles via l'API pour le moment. Contactez SIM Assurances pour souscrire ce produit."
+  );
+}
 
 /** Traduit un échec de résolution produit en réponse HTTP normalisée. */
 function erreurResolution(res: Response, raison: Exclude<ResolutionProduit, { ok: true }>["raison"]): Response {
@@ -226,6 +238,8 @@ partnerApiRouter.post(
     const resol = await resoudreProduitPourPartenaire(req.partner!.partenaireId, data.produit);
     if (!resol.ok) return erreurResolution(res, resol.raison);
     const { produit } = resol;
+    const verrou = refusSiVerrouille(res, produit.code);
+    if (verrou) return verrou;
 
     // Produits « calculés » : même moteur que le devis partageable, paramètres dans `entrees`.
     if (PRODUITS_API_CALCULES.has(produit.code)) {
@@ -439,6 +453,8 @@ partnerApiRouter.post(
     const resol = await resoudreProduitPourPartenaire(partenaireId, data.produit);
     if (!resol.ok) return erreurResolution(res, resol.raison);
     const { produit } = resol;
+    const verrou = refusSiVerrouille(res, produit.code);
+    if (verrou) return verrou;
 
     if (!PRODUITS_SOUSCRIPTION_API.has(produit.code)) {
       return apiError(

@@ -54,7 +54,8 @@ const produitCatalogue = {
     kycRequis: { type: "boolean", description: "Si true (Assurances Accidents), la pièce d'identité (`pieceIdentiteUrl`) est obligatoire à la souscription ; le selfie (`selfieUrl`) l'est aussi sauf pour RelaxVoyage. Les Assurances Dommages et Santé n'exigent aucune pièce." },
     tauxCommissionApi: { type: "number" },
     devisCalcule: { type: "boolean", description: "true = pas de ligne de barème unique : la prime est calculée à partir de `entrees` (SecurHome+, SecurPro, SecurMoto…). `POST /devis` les chiffre." },
-    souscriptionApi: { type: "boolean", description: "true = POST /souscriptions sait créer ce produit. Vrai pour les 13 produits depuis le 2026-11-12 ; les 9 produits « calculés » (RelaxVoyage, RelaxAccidents, SecurHome, SecurHome+, SecurPro, SecurMoto, Santé Solo/Duo/Famille) prennent leurs paramètres dans `entrees`." },
+    souscriptionApi: { type: "boolean", description: "true = POST /devis et POST /souscriptions acceptent ce produit. Vrai pour les 10 produits ouverts (Accidents ×6 dont RelaxVoyage et RelaxAccidents, Dommages ×4) ; les produits « calculés » (RelaxVoyage, RelaxAccidents, SecurHome, SecurHome+, SecurPro, SecurMoto) prennent leurs paramètres dans `entrees`. Faux pour les Assurances Santé (verrouillées)." },
+    verrouille: { type: "boolean", description: "true = produit verrouillé sur l'API (Assurances Santé) : visible au catalogue, mais devis et souscription répondent 403 `produit_verrouille`." },
     formules: { type: "array", items: formuleCatalogue },
   },
 };
@@ -298,14 +299,13 @@ export const openapiPartnerV1: Record<string, unknown> = {
         summary: "Crée une souscription en attente de confirmation de paiement",
         description:
           "Portée requise : `souscriptions:write`. Option B : aucune interaction de paiement ici, le partenaire encaisse puis appelle `confirmer-paiement`. " +
-          "**13 produits** (depuis le 2026-11-12). " +
+          "**10 produits ouverts** ; les trois Assurances Santé sont **verrouillées** sur l'API (403 `produit_verrouille`). " +
           "(1) `relaxmoto`, `relaxauto`, `relaxaccidents_fraismedicaux`, `relaxaccidents_fraismedicaux_livreurs` : `formule` + `pieceIdentiteUrl` + `selfieUrl` obligatoires. " +
           "(2) Produits « calculés », dont la prime est recalculée par SIM Assurances à partir de `entrees` (voir `POST /devis`) : " +
           "`relaxvoyage` (`formule`, bloc `voyage`, `pieceIdentiteUrl`, `beneficiaire`) ; " +
           "`relaxaccidents` (`entrees`, `pieceIdentiteUrl` + `selfieUrl`, `beneficiaire`) ; " +
           "`securhome`, `securhome_dommages`, `securpro_dommages`, `securmoto` (`entrees`, aucune pièce ; bloc `commerce` facultatif) ; " +
-          "`sante_solo`, `sante_duo`, `sante_famille` (`formule`, `prospect.dateNaissance` + `prospect.sexe`, bloc `sante`). " +
-          "**Assurances Santé** : la souscription est une demande (`statut: en_attente_validation`) que SIM Assurances valide ; le client reçoit alors par SMS le lien de dépôt des pièces. `confirmer-paiement` répond `409 validation_requise` tant que la demande n'est pas validée.",
+          "**Assurances Santé (`sante_solo`, `sante_duo`, `sante_famille`) : verrouillées** — `403 produit_verrouille` ; la souscription Santé se fait par les autres canaux de SIM Assurances. Les demandes Santé créées avant le verrouillage restent lisibles et `confirmer-paiement` répond `409 validation_requise` tant qu'elles ne sont pas validées.",
         parameters: [idempotencyHeader],
         requestBody: {
           required: true,
@@ -454,7 +454,7 @@ export const openapiPartnerV1: Record<string, unknown> = {
           "400": reponseErreur(
             "`formule_requise`, `formule_inconnue`, `nombre_periodes_non_applicable`, `option_deces_supprimee`, `kyc_requis`, `beneficiaire_requis`, `voyage_requis`, `date_depart_passee`, `date_naissance_invalide`, `entrees_invalides` (détail dans `details`), `devis_invalide`, Santé : `sante_requis`, `date_naissance_requise`, `age_non_eligible`, `sexe_requis`, `personnes_assurees_invalides`, `fiches_invalides`, `questionnaire_invalide` ; `idempotency_key_requis`."
           ),
-          "403": reponseErreur("`produit_non_autorise` / `produit_desactive` ou portée manquante."),
+          "403": reponseErreur("`produit_non_autorise` / `produit_desactive` / `produit_verrouille` (Assurances Santé) ou portée manquante."),
           "404": reponseErreur("`produit_inconnu`."),
           "409": reponseErreur("`souscription_doublon`, `cumul_relaxaccidents` (un seul produit RelaxAccidents par client, RelaxVoyage excepté), Santé : `demande_en_cours`, `idempotency_en_cours`, `idempotency_key_reutilisee`."),
           "501": reponseErreur("`produit_non_supporte_api` — garde-fou, aucun produit du catalogue n'y est aujourd'hui soumis."),
