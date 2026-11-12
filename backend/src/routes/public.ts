@@ -40,6 +40,7 @@ import { calculerSecurhome, type SecurhomeInput } from "../services/securhomeDom
 import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../services/securMoto.js";
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
+import { construireDonneesSpecifiques, resultatAStocker } from "../services/donneesSouscription.js";
 import { refusSiEspaceClientExistant } from "../services/accesClient.js";
 import { refusSiCumulRelaxAccidents } from "../services/cumulRelaxAccidents.js";
 import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
@@ -2545,83 +2546,11 @@ publicRouter.post(
     if (refusCumul) return res.status(409).json(refusCumul);
 
     const entrees = cotation.entrees as Record<string, unknown>;
-    const resultatDevis = (cotation.resultat ?? {}) as {
-      capitalDeces?: number | null;
-      // Devis d'avant le 2026-10-30 : option Décès facultative, honorée telle que chiffrée.
-      optionDeces?: { prime: number; capital: number; dureeMois: number } | null;
-    };
     const exigeBeneficiaire = beneficiaireRequisPourDevis(code, cotation.resultat);
     const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
-    const donneesSpecifiques =
-      code === "relaxmoto" || code === "relaxauto"
-        ? { signature: data.signature ?? null }
-        : code === "relaxaccidents_fraismedicaux" || code === "relaxaccidents_fraismedicaux_livreurs"
-        ? {
-            signature: data.signature ?? null,
-            // Garantie Décès incluse dans la formule chiffrée par le devis (2026-10-30), ou, pour un
-            // devis plus ancien, l'option Décès facultative qu'il avait chiffrée.
-            ...(resultatDevis.capitalDeces ? { garantieDeces: { capital: resultatDevis.capitalDeces } } : {}),
-            ...(resultatDevis.optionDeces
-              ? { ...(code === "relaxaccidents_fraismedicaux" ? { declarePasLivreur: true } : {}), optionDeces: resultatDevis.optionDeces }
-              : {}),
-          }
-        : code === "relaxvoyage"
-        ? {
-            signature: data.signature ?? null,
-            typePiece: data.typePiece ?? null,
-            compagnie: data.compagnie,
-            lieuDepart: data.lieuDepart,
-            lieuArrivee: data.lieuArrivee,
-            numeroTicket: data.numeroTicket,
-            dateDepart: data.dateDepart,
-            numeroPersonneContact: data.numeroPersonneContact,
-          }
-        : code === "relaxaccidents"
-        ? {
-            signature: data.signature ?? null,
-            classe: entrees.classe,
-            cnpsDeclare: entrees.cnpsDeclare,
-            cycle: entrees.cycle,
-            moyenDeplacement: entrees.moyenDeplacement,
-          }
-        : code === "securhome"
-        ? {
-            signature: data.signature ?? null,
-            nombrePieces: entrees.nombrePieces,
-            statutOccupation: entrees.statutOccupation,
-            cycle: entrees.cycle ?? "annuel",
-          }
-        : code === "securhome_dommages"
-        ? {
-            signature: data.signature ?? null,
-            nom: data.nom,
-            prenom: data.prenom,
-            ville: data.ville ?? null,
-            communeQuartier: data.communeQuartier ?? null,
-            refFacture: data.refFacture ?? null,
-            ...entrees,
-          }
-        : code === "securpro_dommages"
-        ? {
-            signature: data.signature ?? null,
-            nom: data.nom,
-            prenom: data.prenom,
-            nomCommercial: data.nomCommercial ?? null,
-            ville: data.ville ?? null,
-            communeQuartier: data.communeQuartier ?? null,
-            refFacture: data.refFacture ?? null,
-            ...entrees,
-          }
-        : {
-            // securmoto
-            signature: data.signature ?? null,
-            nom: data.nom,
-            prenom: data.prenom,
-            valeurMoto: entrees.valeurMoto,
-            ageMoto: entrees.ageMoto,
-            cycle: entrees.cycle ?? "annuel",
-          };
+    // Forme des données par produit : services/donneesSouscription.ts (partagée avec l'API partenaire).
+    const donneesSpecifiques = construireDonneesSpecifiques(code, entrees, cotation.resultat, data);
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
     const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
@@ -2659,11 +2588,7 @@ publicRouter.post(
         // Produits à tarif lu en base : aucun détail de devis à conserver (la prime se retrouve par
         // la formule). SecurHome annuel : détail lu dans le barème (resultat absent). Mensuel :
         // le devis porte le détail de la prime mensuelle, conservé tel quel.
-        resultat:
-          ["relaxaccidents", "relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs", "relaxvoyage"].includes(code) ||
-          (code === "securhome" && entrees.cycle !== "mensuel")
-            ? undefined
-            : JSON.parse(JSON.stringify(cotation.resultat)),
+        resultat: resultatAStocker(code, entrees, cotation.resultat),
         paiements: {
           create: { numeroEcheance: 1, montant: cotation.primeTTC, dateEcheance: new Date() },
         },

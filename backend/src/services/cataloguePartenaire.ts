@@ -23,15 +23,34 @@ import { SOUS_BRANCHES_ASSURANCES } from "./sousBranches.js";
 const SOUS_BRANCHES_API = SOUS_BRANCHES_ASSURANCES;
 
 /**
- * Produits que `POST /v1/souscriptions` sait créer aujourd'hui. Les autres (RelaxVoyage, RelaxAccidents
- * générale, Dommages, Santé…) demandent des champs métier supplémentaires ou un parcours de validation :
- * ils figurent au catalogue (`souscriptionApi: false`) mais la souscription par l'API répond 501.
+ * Produits dont la prime sort du moteur de devis (services/cotations.ts) : le partenaire envoie leurs
+ * paramètres de tarification dans `entrees` (+ champs métier : trajet RelaxVoyage, fiche et
+ * questionnaire Santé…), la prime est recalculée côté serveur, jamais transmise. Les quatre autres
+ * produits (RelaxMoto, RelaxAuto, RelaxAccidents Frais Médicaux ×2) restent tarifés par `formule`.
+ */
+export const PRODUITS_API_CALCULES = new Set([
+  "relaxvoyage",
+  "relaxaccidents",
+  "securhome",
+  "securhome_dommages",
+  "securpro_dommages",
+  "securmoto",
+  "sante_solo",
+  "sante_duo",
+  "sante_famille",
+]);
+
+/**
+ * Produits que `POST /v1/souscriptions` sait créer : les 13 des trois Assurances (depuis le 2026-11-12,
+ * les 9 produits « calculés » s'ajoutent aux 4 produits tarifés par formule). Garde-fou : un produit
+ * ajouté au catalogue sans être branché ici répond 501 `produit_non_supporte_api`.
  */
 export const PRODUITS_SOUSCRIPTION_API = new Set([
   "relaxmoto",
   "relaxauto",
   "relaxaccidents_fraismedicaux",
   "relaxaccidents_fraismedicaux_livreurs",
+  ...PRODUITS_API_CALCULES,
 ]);
 
 const TAUX_COMMISSION_API_REPLI = 0.1;

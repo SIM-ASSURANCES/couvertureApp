@@ -66,12 +66,21 @@ Intégrez sur le `code`, jamais sur le `message` (susceptible d'évoluer).
 | 404 | `produit_inconnu` | Code produit inexistant ou inactif |
 | 403 | `produit_non_autorise` | Produit non rattaché à votre compte |
 | 403 | `produit_desactive` | Produit désactivé pour votre compte |
-| 501 | `devis_calcule_non_supporte` | Devis dynamique (SecurHome+, SecurPro Dommages) |
-| 501 | `produit_non_supporte_api` | Souscription API pas encore ouverte à ce produit |
+| 501 | `devis_calcule_non_supporte` | Produit sans barème exploitable (ne concerne aucun des 13 produits aujourd'hui) |
+| 501 | `produit_non_supporte_api` | Garde-fou : produit ajouté au catalogue sans être branché à la souscription API |
 | 400 | `formule_requise` / `formule_inconnue` | Formule absente ou non reconnue |
+| 400 | `entrees_invalides` | Paramètres de tarification (`entrees`) manquants ou hors barème — détail dans `error.details` |
+| 400 | `devis_invalide` | Combinaison refusée par le barème (ex. capital au-dessus de la limite SecurPro) |
 | 400 | `nombre_periodes_non_applicable` | `nombrePeriodes` hors RelaxMoto/RelaxAuto |
-| 400 | `option_deces_indisponible` | Option Décès hors contexte autorisé |
+| 400 | `option_deces_supprimee` | Le champ `optionDeces` n'existe plus (Décès inclus dans la formule RAF) |
+| 400 | `kyc_requis` | Pièce d'identité (et selfie selon le produit) manquante |
+| 400 | `beneficiaire_requis` | Bénéficiaire Décès obligatoire (RelaxVoyage, RelaxAccidents) |
+| 400 | `voyage_requis` / `date_depart_passee` | Bloc `voyage` absent / date de départ passée (RelaxVoyage) |
+| 400 | `sante_requis`, `date_naissance_requise`, `age_non_eligible`, `sexe_requis`, `personnes_assurees_invalides`, `fiches_invalides`, `questionnaire_invalide` | Dossier Santé incomplet ou incohérent |
 | 409 | `souscription_doublon` | Souscription confirmée déjà existante (nom + téléphone + produit) |
+| 409 | `cumul_relaxaccidents` | Un seul produit RelaxAccidents par client (RelaxVoyage excepté) |
+| 409 | `demande_en_cours` | Une demande Santé est déjà en cours pour ce nom et ce téléphone |
+| 409 | `validation_requise` | `confirmer-paiement` sur une demande Santé non encore validée (ou refusée) |
 | 404 | `souscription_inconnue` | ID inconnu **ou** appartenant à un autre partenaire |
 | 409 | `deja_confirmee` | Paiement déjà confirmé |
 | 400 | `montant_incoherent` | `montantPercu` ≠ prime due (égalité stricte exigée) |
@@ -122,9 +131,30 @@ GET /souscriptions?limit=50&cursor=b1f2...
 6. GET  /souscriptions/{id}/carte.png      → carte de prise en charge
 ```
 
-Produits actuellement ouverts à `POST /souscriptions` : `relaxmoto`,
-`relaxauto`, `relaxaccidents_fraismedicaux`. `pieceIdentiteUrl` et
-`selfieUrl` (data URL image ≤ 2 Mo) sont obligatoires.
+Les **13 produits** du catalogue sont ouverts à `POST /devis` et
+`POST /souscriptions` (data URL image ≤ 2 Mo pour les pièces). Deux familles :
+
+| Produits | Prime | À fournir en plus du `prospect` |
+|---|---|---|
+| `relaxmoto`, `relaxauto`, `relaxaccidents_fraismedicaux`, `relaxaccidents_fraismedicaux_livreurs` | par `formule` (+ `nombrePeriodes` Moto/Auto) | `pieceIdentiteUrl` + `selfieUrl` |
+| `relaxvoyage` | `formule` (`250`, `400`, `600`, `1000`) | `voyage{…}`, `pieceIdentiteUrl`, `beneficiaire` |
+| `relaxaccidents` (générale) | `entrees{classe, cnpsDeclare, cycle, moyenDeplacement}` | `pieceIdentiteUrl` + `selfieUrl`, `beneficiaire` |
+| `securhome` | `entrees{nombrePieces, statutOccupation, cycle}` | — |
+| `securhome_dommages`, `securpro_dommages`, `securmoto` | `entrees{…}` (mêmes champs que le devis partageable) | — (`commerce{…}` facultatif) |
+| `sante_solo`, `sante_duo`, `sante_famille` | `formule` (`70`, `80`…) | `prospect.dateNaissance` + `sexe`, `sante{ficheSante, personnesAssurees, questionnaireSante}` |
+
+**La prime n'est jamais lue dans la requête** : elle est recalculée par SIM
+Assurances (entière, en FCFA) ; `POST /devis` avec les mêmes `entrees` vous
+donne le montant exact à encaisser.
+
+**Assurances Santé — parcours en plus.** La souscription est une *demande*
+(`statut: "en_attente_validation"`, `echeanceId: null`). SIM Assurances la
+valide (ou la refuse : `statut: "refusee"`) ; le client reçoit alors par SMS le
+lien de dépôt de ses pièces. Tant que la demande n'est pas validée,
+`confirmer-paiement` répond `409 validation_requise`. Après validation, vous
+pouvez confirmer l'encaissement comme pour les autres produits — ou laisser le
+client payer lui-même par le lien Wave de son SMS (la souscription passe alors
+`confirmee`, à lire par `GET /souscriptions/{id}`).
 
 `montantAReverser` = prime encaissée − commission « canal API ». C'est le
 montant dû à SIM Assurances (rapprochement mensuel).
@@ -149,6 +179,20 @@ curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
     "prospect":{"nom":"KOUAME","prenom":"Ama","telephone":"+2250700000000"},
     "pieceIdentiteUrl":"data:image/jpeg;base64,...",
     "selfieUrl":"data:image/jpeg;base64,..."
+  }'
+
+# Produit « calculé » (ici SecurMoto) : mêmes paramètres pour /devis et /souscriptions
+curl -s "$BASE/devis" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"produit":"securmoto","entrees":{"valeurMoto":500000,"ageMoto":"NEUVE","cycle":"annuel"}}'
+
+curl -s "$BASE/souscriptions" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "produit":"securmoto",
+    "entrees":{"valeurMoto":500000,"ageMoto":"NEUVE","cycle":"annuel"},
+    "prospect":{"nom":"KOUAME","prenom":"Ama","telephone":"+2250700000000"}
   }'
 
 # Confirmation de paiement

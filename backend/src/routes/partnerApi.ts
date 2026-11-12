@@ -1,7 +1,8 @@
 import { Router } from "express";
 import type { Response } from "express";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import type { Produit } from "@prisma/client";
 import { prisma } from "../db.js";
 import { asyncHandler } from "../util.js";
 import {
@@ -18,6 +19,7 @@ import {
   resoudreProduitPourPartenaire,
   catalogueDuPartenaire,
   PRODUITS_SOUSCRIPTION_API,
+  PRODUITS_API_CALCULES,
   calculerCommissionApi,
   souscriptionGeneriqueDejaConfirmee,
   type ResolutionProduit,
@@ -33,6 +35,24 @@ import { resoudreOuCreerClient } from "../services/clients.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker } from "../services/beneficiaireDeces.js";
 import { capitalDecesDuTarif, estProduitRaf } from "../services/garantieDecesFraisMedicaux.js";
 import { refusSiCumulRelaxAccidents } from "../services/cumulRelaxAccidents.js";
+import { calculerCotation, ErreurCotation, garantiesCotation, type ProduitCotation, type ResultatCotation } from "../services/cotations.js";
+import { construireDonneesSpecifiques, primeNetteDuDevis, resultatAStocker } from "../services/donneesSouscription.js";
+import { beneficiaireRequisPourDevis, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
+import {
+  AGE_MAX_ASSURE_PRINCIPAL,
+  AGE_MIN_ASSURE_PRINCIPAL,
+  VALIDATION_SANTE,
+  ageRevolu,
+  estProduitSante,
+  ficheSanteSchema,
+  paiementBloqueParValidation,
+  personneAssureeSanteSchema,
+  questionnaireSanteSchema,
+  type ReponsesSante,
+  validerFichesPersonnesSante,
+  validerPersonnesAssureesSante,
+  verifierQuestionnaireSante,
+} from "../services/assurancesSante.js";
 
 // =====================================================================
 // API partenaire — routeur `/api/partner/v1`.
@@ -160,7 +180,42 @@ const devisSchema = z.object({
   formule: z.string().min(1).optional(),
   /** Nombre de périodes souscrites d'avance — RelaxMoto/RelaxAuto uniquement. */
   nombrePeriodes: z.number().int().min(1).max(MAX_PERIODES).optional(),
+  /**
+   * Paramètres de tarification des produits « calculés » (RelaxVoyage, RelaxAccidents générale, SecurHome,
+   * SecurHome+, SecurPro, SecurMoto, Santé) — mêmes champs que le devis partageable (services/cotations.ts).
+   */
+  entrees: z.record(z.string(), z.unknown()).optional(),
 });
+
+/** Produits dont la « formule » du barème se place dans `entrees.formule` (le partenaire peut l'envoyer à la racine). */
+const FORMULE_DANS_ENTREES = new Set(["relaxvoyage", "sante_solo", "sante_duo", "sante_famille"]);
+
+/**
+ * Prix d'un produit « calculé » par le moteur de devis partagé (services/cotations.ts) — jamais lu dans
+ * la requête. Répond 400 et renvoie `null` si les paramètres sont invalides ou le barème indisponible.
+ */
+async function calculerDevisApi(
+  res: Response,
+  code: ProduitCotation,
+  formule: string | undefined,
+  entreesBrutes: Record<string, unknown> | undefined
+): Promise<ResultatCotation | null> {
+  const entrees: Record<string, unknown> = { ...(entreesBrutes ?? {}) };
+  if (formule !== undefined && entrees.formule === undefined && FORMULE_DANS_ENTREES.has(code)) entrees.formule = formule;
+  try {
+    return await calculerCotation(code, entrees);
+  } catch (e) {
+    if (e instanceof ZodError) {
+      apiError(res, 400, "entrees_invalides", "Paramètres de tarification invalides pour ce produit (voir « details »).", e.errors);
+      return null;
+    }
+    if (e instanceof ErreurCotation) {
+      apiError(res, 400, "devis_invalide", e.message);
+      return null;
+    }
+    throw e;
+  }
+}
 
 partnerApiRouter.post(
   "/v1/devis",
@@ -172,6 +227,45 @@ partnerApiRouter.post(
     if (!resol.ok) return erreurResolution(res, resol.raison);
     const { produit } = resol;
 
+    // Produits « calculés » : même moteur que le devis partageable, paramètres dans `entrees`.
+    if (PRODUITS_API_CALCULES.has(produit.code)) {
+      const code = produit.code as ProduitCotation;
+      const calcul = await calculerDevisApi(res, code, data.formule, data.entrees);
+      if (!calcul) return;
+      // Prime à l'unité de franc : la base stocke des montants entiers (SecurPro peut calculer 13 085,25).
+      const primeAPayer = Math.round(calcul.primeTTC);
+      const primeHT = await primeNetteDuDevis(code, calcul);
+      const commissionApi = await calculerCommissionApi(produit, primeHT);
+      const debut = dateDebutPremiereActivation(code);
+      const delaiAttente = debut.getTime() > Date.now() + 1000;
+      return apiOk(res, {
+        produit: { code: produit.code, libelle: produit.libelle, kycRequis: produit.sousBranche === "ASSURANCES_ACCIDENTS" },
+        formule: calcul.libelleFormule,
+        cycleFacturation: null,
+        nombrePeriodes: 1,
+        prime: primeAPayer,
+        primeUnitaire: primeAPayer,
+        primeHT,
+        capitalGaranti: calcul.capitalGaranti,
+        garanties: garantiesCotation(code, calcul.entrees, calcul.resultat, calcul.capitalGaranti),
+        // Détail de la prime (lignes de garanties, accessoires, taxes) pour SecurHome+, SecurPro et SecurMoto ;
+        // les produits à tarif fixe n'ont pas de détail ligne à ligne.
+        detail: calcul.resultat,
+        entrees: calcul.entrees,
+        beneficiaireRequis: beneficiaireRequisPourDevis(code, calcul.resultat),
+        // Assurances Santé : aucune couverture avant la validation de la demande par SIM Assurances.
+        validationRequise: estProduitSante(code),
+        priseEffet: {
+          delaiAttente72h: delaiAttente,
+          dateEstimee: debut.toISOString(),
+          description: delaiAttente
+            ? "Prise d'effet 24h après confirmation du paiement (produits Accidents)."
+            : "Prise d'effet immédiate à la confirmation du paiement.",
+        },
+        commissionApi: { montant: commissionApi, montantAReverser: primeAPayer - commissionApi },
+      });
+    }
+
     const tarifs = await prisma.tarifProduit.findMany({
       where: { produitId: produit.id },
       orderBy: { prime: "asc" },
@@ -181,7 +275,7 @@ partnerApiRouter.post(
         res,
         501,
         "devis_calcule_non_supporte",
-        "Ce produit exige un devis calculé (SecurHome+, SecurPro Dommages) — non encore disponible via l'API."
+        "Ce produit n'a pas de barème exploitable pour un devis via l'API."
       );
     }
 
@@ -259,23 +353,70 @@ partnerApiRouter.post(
 // Crée la souscription en attente de confirmation. Aucune interaction Wave :
 // la couverture n'est activée qu'à POST /v1/souscriptions/:id/confirmer-paiement.
 // ─────────────────────────────────────────────────────────────────────
+// Trajet RelaxVoyage (même contrôle que le parcours public).
+const voyageSchema = z.object({
+  typePiece: z.enum(["CNI", "Permis", "Passeport"]).optional(),
+  compagnie: z.string().min(1).max(120),
+  lieuDepart: z.string().min(1).max(120),
+  lieuArrivee: z.string().min(1).max(120),
+  numeroTicket: z.string().min(1).max(60),
+  dateDepart: z.coerce.date(),
+  numeroPersonneContact: z.string().min(6).max(40),
+});
+
+// Commerce / logement assuré — SecurHome+ et SecurPro (facultatif, imprimé sur le contrat).
+const commerceSchema = z.object({
+  nomCommercial: z.string().max(200).optional(),
+  ville: z.string().max(120).optional(),
+  communeQuartier: z.string().max(120).optional(),
+  refFacture: z.string().max(120).optional(),
+});
+
+// Assurances Santé : dossier médical de la demande, validé par SIM Assurances avant tout paiement.
+const santeSchema = z.object({
+  ficheSante: ficheSanteSchema,
+  /** Personnes couvertes en plus du souscripteur (Solo : aucune ; Duo : le conjoint ; Famille : conjoint + 3 enfants max). */
+  personnesAssurees: z.array(personneAssureeSanteSchema).max(4).default([]),
+  /** Réponses au questionnaire médical, une entrée par personne assurée (souscripteur en tête). */
+  questionnaireSante: questionnaireSanteSchema,
+});
+
 const souscriptionSchema = z.object({
   produit: z.string().min(1),
-  /** = TarifProduit.libelleVariante ("mensuel"/"annuel" pour RelaxMoto/Auto). */
-  formule: z.string().min(1),
+  /**
+   * = TarifProduit.libelleVariante : "mensuel"/"annuel" pour RelaxMoto/Auto, formule du barème pour les
+   * RelaxAccidents Frais Médicaux, RelaxVoyage et Santé. Inutile pour les autres produits « calculés »
+   * (leurs paramètres vont dans `entrees`). Exigée pour les 4 produits tarifés par formule — vérifié plus bas.
+   */
+  formule: z.string().min(1).optional(),
   /** Périodes payées d'avance — RelaxMoto/RelaxAuto uniquement. */
   nombrePeriodes: z.number().int().min(1).max(MAX_PERIODES).optional(),
+  /** Paramètres de tarification des 9 produits « calculés » — voir POST /v1/devis. */
+  entrees: z.record(z.string(), z.unknown()).optional(),
   prospect: z.object({
     nom: z.string().min(1).max(120),
     prenom: z.string().min(1).max(120),
     telephone: z.string().min(6).max(30),
     dateNaissance: z.coerce.date().optional(),
     sexe: z.enum(["masculin", "feminin"]).optional(),
+    civilite: z.enum(["M.", "MLLE", "MME"]).optional(),
+    email: z.string().trim().email().max(160).optional(),
+    ville: z.string().max(120).optional(),
+    commune: z.string().max(120).optional(),
+    adresse: z.string().max(200).optional(),
+    numeroPieceIdentite: z.string().max(60).optional(),
   }),
-  // KYC obligatoire : tous les produits actuellement supportés relèvent des
-  // Assurances Accidents (carte de prise en charge).
-  pieceIdentiteUrl: dataUrlImage,
-  selfieUrl: dataUrlImage,
+  /** RelaxVoyage uniquement — trajet. */
+  voyage: voyageSchema.optional(),
+  /** SecurHome+ / SecurPro uniquement — commerce ou logement assuré. */
+  commerce: commerceSchema.optional(),
+  /** Assurances Santé uniquement — dossier médical. */
+  sante: santeSchema.optional(),
+  // Pièce d'identité exigée pour les 6 produits Accidents ; selfie exigé pour tous sauf RelaxVoyage ; rien pour
+  // les Assurances Dommages et Santé (la pièce est déposée plus tard via le lien SMS de la demande Santé).
+  // Vérifié par produit plus bas.
+  pieceIdentiteUrl: dataUrlImage.optional(),
+  selfieUrl: dataUrlImage.optional(),
   signature: dataUrlImage.optional(),
   // RelaxAccidents Frais Médicaux : case « je ne suis pas livreur » (produit grand public).
   declarePasLivreur: z.boolean().optional(),
@@ -319,6 +460,17 @@ partnerApiRouter.post(
     // Un seul produit RelaxAccidents par client (RelaxVoyage excepté) — services/cumulRelaxAccidents.ts.
     const refusCumul = await refusSiCumulRelaxAccidents(produit.code, data.prospect.telephone);
     if (refusCumul) return apiError(res, 409, refusCumul.code, refusCumul.error);
+
+    // Les 9 produits « calculés » ont leur propre parcours (prime issue du moteur de devis).
+    if (PRODUITS_API_CALCULES.has(produit.code)) return souscrireProduitCalcule(req, res, data, produit);
+
+    // Produits tarifés par formule : formule et KYC (pièce + selfie) obligatoires.
+    if (!data.formule) return apiError(res, 400, "formule_requise", "Le champ « formule » est obligatoire pour ce produit.");
+    if (!data.pieceIdentiteUrl || !data.selfieUrl) {
+      return apiError(res, 400, "kyc_requis", "« pieceIdentiteUrl » et « selfieUrl » sont obligatoires pour ce produit.");
+    }
+    const pieceIdentiteUrl = data.pieceIdentiteUrl;
+    const selfieUrl = data.selfieUrl;
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: produit.id, libelleVariante: data.formule },
@@ -401,13 +553,13 @@ partnerApiRouter.post(
         nombreEcheances: 1,
         cycleFacturation: estCycle ? (data.formule as "mensuel" | "annuel") : null,
         nombrePeriodes,
-        pieceIdentiteUrl: data.pieceIdentiteUrl,
+        pieceIdentiteUrl,
         donneesSpecifiques,
         canalVente: "api",
         apiKeyId: req.partner!.apiKeyId,
         montantCommissionApi: commissionApi,
         montantAReverser,
-        documents: { create: { type: "Selfie", url: data.selfieUrl } },
+        documents: { create: { type: "Selfie", url: selfieUrl } },
         paiements: {
           create: { numeroEcheance: 1, montant: prime, dateEcheance: new Date() },
         },
@@ -462,6 +614,232 @@ partnerApiRouter.post(
   })
 );
 
+type DonneesSouscriptionApi = z.infer<typeof souscriptionSchema>;
+
+/**
+ * Souscription d'un des 9 produits « calculés » (RelaxVoyage, RelaxAccidents générale, SecurHome, SecurHome+,
+ * SecurPro, SecurMoto, Santé Solo/Duo/Famille). La prime vient du moteur de devis (jamais de la requête) ;
+ * les données sont écrites dans la même forme que sur le parcours public (services/donneesSouscription.ts),
+ * donc contrat, carte et facture se génèrent à la confirmation comme pour tout autre canal.
+ *
+ * Assurances Santé : la souscription est une DEMANDE (`validationStatut: en_attente`) que SIM Assurances
+ * valide avant tout paiement — le client reçoit alors le lien de dépôt des pièces par SMS.
+ */
+async function souscrireProduitCalcule(
+  req: PartnerRequest,
+  res: Response,
+  data: DonneesSouscriptionApi,
+  produit: Produit
+): Promise<Response | void> {
+  const code = produit.code as ProduitCotation;
+  const partenaireId = req.partner!.partenaireId;
+  const sante = estProduitSante(code);
+  const p = data.prospect;
+
+  // Pièces d'identité : exigées pour les produits Accidents (la pièce pour RelaxVoyage ; pièce + selfie pour
+  // RelaxAccidents générale) ; facultatives pour les Assurances Dommages et Santé.
+  if ((code === "relaxvoyage" || code === "relaxaccidents") && !data.pieceIdentiteUrl) {
+    return apiError(res, 400, "kyc_requis", "« pieceIdentiteUrl » est obligatoire pour ce produit.");
+  }
+  if (code === "relaxaccidents" && !data.selfieUrl) {
+    return apiError(res, 400, "kyc_requis", "« selfieUrl » est obligatoire pour ce produit.");
+  }
+  if (p.dateNaissance && p.dateNaissance > new Date()) {
+    return apiError(res, 400, "date_naissance_invalide", "La date de naissance ne peut pas être dans le futur.");
+  }
+
+  // Trajet RelaxVoyage.
+  if (code === "relaxvoyage") {
+    if (!data.voyage) {
+      return apiError(res, 400, "voyage_requis", "Le bloc « voyage » (compagnie, trajet, ticket, date de départ, contact) est obligatoire pour RelaxVoyage.");
+    }
+    const aujourdhui = new Date();
+    aujourdhui.setUTCHours(0, 0, 0, 0);
+    if (data.voyage.dateDepart < aujourdhui) {
+      return apiError(res, 400, "date_depart_passee", "La date de départ ne peut pas être passée.");
+    }
+  }
+
+  // Bénéficiaire de la garantie Décès : exigé pour RelaxVoyage et RelaxAccidents générale.
+  const exigeBeneficiaire = aGarantieDeces(code);
+  const erreurBeneficiaire = verifierBeneficiaire(
+    { beneficiaireNom: data.beneficiaire?.nom, beneficiaireTelephone: data.beneficiaire?.telephone },
+    exigeBeneficiaire
+  );
+  if (erreurBeneficiaire) return apiError(res, 400, "beneficiaire_requis", erreurBeneficiaire);
+
+  // Assurances Santé : mêmes contrôles que le formulaire public (âge, fiche, personnes assurées, questionnaire).
+  let reponsesSante: ReponsesSante[] = [];
+  if (sante) {
+    if (!data.sante) {
+      return apiError(res, 400, "sante_requis", "Le bloc « sante » (ficheSante, personnesAssurees, questionnaireSante) est obligatoire pour ce produit.");
+    }
+    if (!p.dateNaissance) {
+      return apiError(res, 400, "date_naissance_requise", "La date de naissance du souscripteur est obligatoire pour les Assurances Santé.");
+    }
+    const age = ageRevolu(p.dateNaissance);
+    if (age < AGE_MIN_ASSURE_PRINCIPAL || age > AGE_MAX_ASSURE_PRINCIPAL) {
+      return apiError(res, 400, "age_non_eligible", `L'assuré principal doit avoir entre ${AGE_MIN_ASSURE_PRINCIPAL} et ${AGE_MAX_ASSURE_PRINCIPAL} ans.`);
+    }
+    if (!p.sexe) return apiError(res, 400, "sexe_requis", "Le sexe du souscripteur est obligatoire pour les Assurances Santé.");
+    const erreurPersonnes = validerPersonnesAssureesSante(code as "sante_solo" | "sante_duo" | "sante_famille", data.sante.personnesAssurees);
+    if (erreurPersonnes) return apiError(res, 400, "personnes_assurees_invalides", erreurPersonnes);
+    const erreurFiches = validerFichesPersonnesSante(data.sante.personnesAssurees);
+    if (erreurFiches) return apiError(res, 400, "fiches_invalides", erreurFiches);
+    const verification = verifierQuestionnaireSante(p.sexe, data.sante.personnesAssurees, data.sante.questionnaireSante);
+    if ("erreur" in verification) return apiError(res, 400, "questionnaire_invalide", verification.erreur);
+    reponsesSante = verification.reponses;
+  }
+
+  // Prime : toujours recalculée ici depuis le barème, jamais transmise.
+  const calcul = await calculerDevisApi(res, code, data.formule, data.entrees);
+  if (!calcul) return;
+
+  if (sante) {
+    // Une demande déjà déposée (en attente de validation, ou validée mais pas encore payée) n'est pas doublée.
+    const demandeEnCours = await prisma.souscription.findFirst({
+      where: {
+        produitId: produit.id,
+        nom: { equals: p.nom.trim(), mode: "insensitive" },
+        telephone: p.telephone.trim(),
+        waveStatut: { not: "confirme" },
+        validationStatut: { in: [VALIDATION_SANTE.EN_ATTENTE, VALIDATION_SANTE.VALIDEE] },
+      },
+      select: { id: true },
+    });
+    if (demandeEnCours) {
+      return apiError(res, 409, "demande_en_cours", "Une demande est déjà en cours pour ce nom et ce numéro sur ce produit.");
+    }
+  }
+
+  // Montant entier : le même que celui du devis et de `Souscription.montantPrime` (colonne entière).
+  const prime = Math.round(calcul.primeTTC);
+  const primeHT = await primeNetteDuDevis(code, calcul);
+  const commissionApi = await calculerCommissionApi(produit, primeHT);
+  const montantAReverser = prime - commissionApi;
+
+  const donneesBase =
+    sante && data.sante
+      ? {
+          signature: data.signature ?? null,
+          formule: calcul.entrees.formule,
+          tauxPriseEnCharge: (calcul.resultat as { tauxPriseEnCharge?: number }).tauxPriseEnCharge,
+          personnesAssurees: data.sante.personnesAssurees,
+          // Fiche de l'assuré principal et questionnaire de chaque personne assurée — données de santé,
+          // relues uniquement par l'admin qui valide la demande.
+          ficheSante: data.sante.ficheSante,
+          questionnaireSante: {
+            personnes: reponsesSante.map((reponses) => ({ reponses })),
+            declareExactEtSincere: true,
+            signeLe: new Date().toISOString(),
+          },
+        }
+      : construireDonneesSpecifiques(code, calcul.entrees, calcul.resultat, {
+          nom: p.nom,
+          prenom: p.prenom,
+          signature: data.signature ?? null,
+          ville: data.commerce?.ville ?? p.ville ?? null,
+          communeQuartier: data.commerce?.communeQuartier ?? null,
+          refFacture: data.commerce?.refFacture ?? null,
+          nomCommercial: data.commerce?.nomCommercial ?? null,
+          typePiece: data.voyage?.typePiece ?? null,
+          compagnie: data.voyage?.compagnie,
+          lieuDepart: data.voyage?.lieuDepart,
+          lieuArrivee: data.voyage?.lieuArrivee,
+          numeroTicket: data.voyage?.numeroTicket,
+          dateDepart: data.voyage?.dateDepart,
+          numeroPersonneContact: data.voyage?.numeroPersonneContact,
+        });
+  const donneesSpecifiques = avecBeneficiaire(
+    donneesBase,
+    beneficiaireAStocker({ beneficiaireNom: data.beneficiaire?.nom, beneficiaireTelephone: data.beneficiaire?.telephone }, exigeBeneficiaire)
+  );
+
+  const client = await resoudreOuCreerClient(p.telephone, p.nom, p.prenom);
+  const s = await prisma.souscription.create({
+    data: {
+      produitId: produit.id,
+      partenaireId,
+      clientId: client.id,
+      nom: p.nom,
+      prenom: p.prenom,
+      telephone: p.telephone,
+      email: sante ? p.email ?? null : undefined,
+      dateNaissance: p.dateNaissance ?? null,
+      sexe: p.sexe ?? null,
+      civilite: p.civilite ?? null,
+      ville: p.ville ?? null,
+      commune: p.commune ?? null,
+      adresse: p.adresse ?? null,
+      numeroPieceIdentite: p.numeroPieceIdentite ?? null,
+      montantPrime: prime,
+      capitalGaranti: calcul.capitalGaranti,
+      waveStatut: "en_attente",
+      // Assurances Santé : demande soumise à la validation d'un admin, sans paiement immédiat.
+      validationStatut: sante ? VALIDATION_SANTE.EN_ATTENTE : null,
+      nombreEcheances: 1,
+      pieceIdentiteUrl: data.pieceIdentiteUrl ?? null,
+      donneesSpecifiques: JSON.parse(JSON.stringify(donneesSpecifiques)),
+      resultat: resultatAStocker(code, calcul.entrees, calcul.resultat),
+      canalVente: "api",
+      apiKeyId: req.partner!.apiKeyId,
+      montantCommissionApi: commissionApi,
+      montantAReverser,
+      ...(data.selfieUrl ? { documents: { create: { type: "Selfie", url: data.selfieUrl } } } : {}),
+      paiements: { create: { numeroEcheance: 1, montant: prime, dateEcheance: new Date() } },
+    },
+    include: { paiements: true },
+  });
+  res.locals.souscriptionId = s.id;
+
+  const statut = sante ? "en_attente_validation" : "en_attente_confirmation";
+  await notifyPartenaire(
+    partenaireId,
+    "souscription",
+    sante ? `Demande API ${produit.libelle}` : `Souscription API ${produit.libelle}`,
+    sante
+      ? `Nouvelle demande ${produit.libelle} (${prime} FCFA) via l'API — en attente de validation par SIM Assurances.`
+      : `Nouvelle souscription ${produit.libelle} (${prime} FCFA) via l'API — en attente de confirmation de paiement.`,
+    "/partenaire/souscriptions"
+  );
+  await emettreWebhook(req.partner!.apiKeyId, "souscription.creee", {
+    souscriptionId: s.id,
+    produit: produit.code,
+    formule: calcul.libelleFormule,
+    statut,
+    montantAPercevoir: prime,
+    montantAReverser,
+  }).catch((e) => console.error("[partnerWebhook] souscription.creee", e));
+
+  // Analyse anti-fraude IA : seulement si une pièce ET un selfie ont été fournis.
+  if (data.pieceIdentiteUrl && data.selfieUrl) {
+    void analyserSouscriptionApiIA(s.id).catch((e) => console.error("[fraudeIA] souscription API", e));
+  }
+
+  const debut = dateDebutPremiereActivation(code);
+  return apiOk(
+    res,
+    {
+      id: s.id,
+      statut,
+      produit: produit.code,
+      formule: calcul.libelleFormule,
+      montantAPercevoir: prime,
+      montantCommissionApi: commissionApi,
+      montantAReverser,
+      // Santé : le paiement n'est possible qu'après validation (voir confirmer-paiement).
+      echeanceId: sante ? null : s.paiements[0]?.id ?? null,
+      validationRequise: sante,
+      priseEffet: {
+        delaiAttente72h: debut.getTime() > Date.now() + 1000,
+        dateEstimee: debut.toISOString(),
+      },
+    },
+    undefined,
+    201
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // POST /v1/souscriptions/:id/confirmer-paiement
 //
@@ -496,6 +874,17 @@ partnerApiRouter.post(
 
     if (s.waveStatut === "confirme") {
       return apiError(res, 409, "deja_confirmee", "Cette souscription est déjà confirmée.");
+    }
+    // Assurances Santé : une demande doit être validée par SIM Assurances avant tout paiement.
+    if (paiementBloqueParValidation(s.validationStatut)) {
+      return apiError(
+        res,
+        409,
+        "validation_requise",
+        s.validationStatut === VALIDATION_SANTE.REFUSEE
+          ? "Cette demande a été refusée par SIM Assurances : aucun paiement ne peut être confirmé."
+          : "Cette demande Santé est en attente de validation par SIM Assurances : le paiement ne peut être confirmé qu'après validation."
+      );
     }
     if (data.montantPercu !== s.montantPrime) {
       return apiError(
@@ -571,9 +960,13 @@ partnerApiRouter.post(
 // Lecture des souscriptions du partenaire (canal API uniquement)
 // ─────────────────────────────────────────────────────────────────────
 
-/** État exposé côté partenaire, dérivé de `waveStatut`. */
-function statutPublic(waveStatut: string | null): "en_attente_confirmation" | "confirmee" | "echouee" {
+type StatutPublic = "en_attente_validation" | "refusee" | "en_attente_confirmation" | "confirmee" | "echouee";
+
+/** État exposé côté partenaire, dérivé de `waveStatut` et (Assurances Santé) de `validationStatut`. */
+function statutPublic(waveStatut: string | null, validationStatut: string | null): StatutPublic {
   if (waveStatut === "confirme") return "confirmee";
+  if (validationStatut === VALIDATION_SANTE.REFUSEE) return "refusee";
+  if (validationStatut === VALIDATION_SANTE.EN_ATTENTE) return "en_attente_validation";
   if (waveStatut === "echoue") return "echouee";
   return "en_attente_confirmation";
 }
@@ -583,6 +976,7 @@ type LigneSouscription = {
   produitId: string;
   cycleFacturation: string | null;
   waveStatut: string | null;
+  validationStatut: string | null;
   nom: string | null;
   prenom: string | null;
   telephone: string;
@@ -603,7 +997,7 @@ function vueSouscription(s: LigneSouscription) {
     produit: s.produit.code,
     produitLibelle: s.produit.libelle,
     formule: s.cycleFacturation,
-    statut: statutPublic(s.waveStatut),
+    statut: statutPublic(s.waveStatut, s.validationStatut),
     nom: s.nom,
     prenom: s.prenom,
     telephone: s.telephone,
@@ -621,19 +1015,29 @@ function vueSouscription(s: LigneSouscription) {
 const listeSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   cursor: z.string().min(1).optional(),
-  statut: z.enum(["en_attente_confirmation", "confirmee", "echouee"]).optional(),
+  statut: z.enum(["en_attente_validation", "refusee", "en_attente_confirmation", "confirmee", "echouee"]).optional(),
   produit: z.string().min(1).optional(),
   depuis: z.coerce.date().optional(),
 });
 
-const WAVE_STATUT_PAR_PUBLIC: Record<
-  "en_attente_confirmation" | "confirmee" | "echouee",
-  "en_attente" | "confirme" | "echoue"
-> = {
-  en_attente_confirmation: "en_attente",
-  confirmee: "confirme",
-  echouee: "echoue",
-};
+/** Filtre Prisma d'un statut public : `waveStatut` + (Assurances Santé) `validationStatut`. */
+function filtreStatutPublic(statut: StatutPublic): Prisma.SouscriptionWhereInput {
+  switch (statut) {
+    case "confirmee":
+      return { waveStatut: "confirme" };
+    case "en_attente_validation":
+      return { waveStatut: { not: "confirme" }, validationStatut: VALIDATION_SANTE.EN_ATTENTE };
+    case "refusee":
+      return { waveStatut: { not: "confirme" }, validationStatut: VALIDATION_SANTE.REFUSEE };
+    case "echouee":
+      return { waveStatut: "echoue", NOT: { validationStatut: { in: [VALIDATION_SANTE.EN_ATTENTE, VALIDATION_SANTE.REFUSEE] } } };
+    case "en_attente_confirmation":
+      return {
+        waveStatut: "en_attente",
+        OR: [{ validationStatut: null }, { validationStatut: VALIDATION_SANTE.VALIDEE }],
+      };
+  }
+}
 
 partnerApiRouter.get(
   "/v1/souscriptions",
@@ -653,7 +1057,7 @@ partnerApiRouter.get(
       canalVente: "api",
     };
     if (produitId) where.produitId = produitId;
-    if (q.statut) where.waveStatut = WAVE_STATUT_PAR_PUBLIC[q.statut];
+    if (q.statut) Object.assign(where, filtreStatutPublic(q.statut));
     if (q.depuis) where.createdAt = { gte: q.depuis };
 
     const lignes = await prisma.souscription.findMany({
@@ -687,6 +1091,8 @@ partnerApiRouter.get(
     apiOk(res, {
       ...vueSouscription(s),
       capitalGaranti: s.capitalGaranti,
+      // Assurances Santé : null pour les autres produits ; le motif de refus reste interne.
+      validationStatut: s.validationStatut,
       nombrePeriodes: s.nombrePeriodes,
       sexe: s.sexe,
       dateNaissance: s.dateNaissance,
