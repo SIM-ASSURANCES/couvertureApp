@@ -30,22 +30,36 @@ export const CODE_CUMUL_RELAXACCIDENTS = "cumul_relaxaccidents";
 export const MESSAGE_CUMUL_RELAXACCIDENTS =
   "Vous avez déjà souscrit un produit RelaxAccidents. Un client ne peut détenir qu'un seul produit RelaxAccidents : vous pouvez le renouveler depuis votre espace client. RelaxVoyage reste disponible en plus.";
 
-/** Produit RelaxAccidents confirmé que ce numéro détient déjà, ou `null` s'il n'en a aucun. */
+/** Code et libellé sous lesquels l'ancien produit « Accidents » (modèle SouscriptionAccident) est compté dans la famille. */
+export const PRODUIT_ACCIDENT_HISTORIQUE = { code: "accident", libelle: "Accidents (historique)" } as const;
+
+/**
+ * Produit RelaxAccidents confirmé que ce numéro détient déjà, ou `null` s'il n'en a aucun. Compte aussi
+ * l'ancien produit « Accidents » (modèle historique SouscriptionAccident, vendu sous la marque RelaxAccidents
+ * avant la refonte) : ses clients ont un espace client et ne doivent pas non plus se voir proposer
+ * un produit de la famille.
+ */
 export async function produitRelaxAccidentsDuClient(telephone: string): Promise<{ code: string; libelle: string } | null> {
   const cle = normaliserTelephone(telephone);
   if (!cle) return null;
   const client = await prisma.client.findUnique({ where: { telephone: cle }, select: { id: true } });
-  if (!client) return null;
+  // Rattachement par Client, ou à défaut par le numéro tel qu'enregistré (lignes pas encore rattachées à un Client).
+  const proprietaire = client ? [{ clientId: client.id }, { telephone }] : [{ telephone }];
   const s = await prisma.souscription.findFirst({
     where: {
-      clientId: client.id,
+      OR: proprietaire,
       waveStatut: "confirme",
       produit: { code: { in: [...PRODUITS_RELAXACCIDENTS] } },
     },
     select: { produit: { select: { code: true, libelle: true } } },
     orderBy: { createdAt: "desc" },
   });
-  return s ? s.produit : null;
+  if (s) return s.produit;
+  const historique = await prisma.souscriptionAccident.findFirst({
+    where: { OR: proprietaire, waveStatut: "confirme" },
+    select: { id: true },
+  });
+  return historique ? { ...PRODUIT_ACCIDENT_HISTORIQUE } : null;
 }
 
 /**
