@@ -17,6 +17,7 @@ import { partnerLimiter } from "../security.js";
 import {
   resoudreProduitPourPartenaire,
   catalogueDuPartenaire,
+  PRODUITS_SOUSCRIPTION_API,
   calculerCommissionApi,
   souscriptionGeneriqueDejaConfirmee,
   type ResolutionProduit,
@@ -80,19 +81,8 @@ partnerApiRouter.use(journaliserRequetesPartenaire());
 const PRODUITS_CYCLE = new Set(["relaxmoto", "relaxauto"]);
 const MAX_PERIODES = 12;
 
-/**
- * Produits que `POST /v1/souscriptions` sait créer aujourd'hui. Les autres
- * (RelaxVoyage, RelaxAccidents générale, SecurHome incendie, produits à devis
- * calculé, Incendie/Accident historiques) demandent des champs métier
- * supplémentaires — reportés à un ticket ultérieur qui extraira une fonction
- * commune partagée avec routes/public.ts.
- */
-const PRODUITS_SOUSCRIPTION_API = new Set([
-  "relaxmoto",
-  "relaxauto",
-  "relaxaccidents_fraismedicaux",
-  "relaxaccidents_fraismedicaux_livreurs",
-]);
+// Produits que `POST /v1/souscriptions` sait créer : voir PRODUITS_SOUSCRIPTION_API
+// (services/cataloguePartenaire.ts), aussi exposé au catalogue (`souscriptionApi`).
 
 // Data URL image bornée + regex stricte — même régime que routes/public.ts
 // (aucun caractère de sortie d'attribut HTML jusqu'au rendu PDF/carte).

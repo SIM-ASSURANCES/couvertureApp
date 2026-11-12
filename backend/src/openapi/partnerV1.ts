@@ -54,6 +54,7 @@ const produitCatalogue = {
     kycRequis: { type: "boolean", description: "Si true, pieceIdentiteUrl + selfieUrl sont obligatoires à la souscription." },
     tauxCommissionApi: { type: "number" },
     devisCalcule: { type: "boolean", description: "true = prime calculée dynamiquement, POST /devis non disponible pour l'instant." },
+    souscriptionApi: { type: "boolean", description: "true = POST /souscriptions sait créer ce produit ; false = présent au catalogue seulement (501 à la souscription)." },
     formules: { type: "array", items: formuleCatalogue },
   },
 };

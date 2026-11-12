@@ -1,20 +1,38 @@
 import type { Produit } from "@prisma/client";
 import { prisma } from "../db.js";
+import { SOUS_BRANCHES_ASSURANCES } from "./sousBranches.js";
 
 // =====================================================================
 // Catalogue « côté partenaire » pour l'API serveur-à-serveur.
 //
 // Remplace la résolution par QR code (routes/public.ts::resoudreQrCodeGenerique)
-// par une résolution par (partenaire, code produit) : mêmes règles de
-// visibilité — produits de la ou des sous-branches couvertes par les QR du
-// partenaire, `Produit.actif`, hors `produitsDesactives` du partenaire.
+// par une résolution par (partenaire, code produit).
+//
+// Visibilité (2026-11-12) : TOUS les produits des trois Assurances — Accidents (6), Dommages (4) et
+// Santé (3), soit 13 — pour toute clé API, quels que soient les QR codes du partenaire. Avant, le
+// catalogue se déduisait de ses QR codes : un partenaire dont les QR étaient limités à quelques produits
+// n'en voyait que 3, et la sous-branche Santé n'en faisait jamais partie (10 produits au mieux).
+// Restreindre un partenaire reste possible produit par produit (`Produit.actif`, `produitsDesactives` :
+// ils apparaissent alors avec `actifPourPartenaire: false`).
 //
 // NB : la logique de `produitDesactivePourPartenaire` / `souscriptionDejaExistante`
 // de routes/public.ts est ré-implémentée ici (5 lignes) plutôt qu'importée —
 // un service ne doit pas dépendre d'un module de routes.
 // =====================================================================
 
-const SOUS_BRANCHES_API = ["ASSURANCES_ACCIDENTS", "ASSURANCES_DOMMAGES"] as const;
+const SOUS_BRANCHES_API = SOUS_BRANCHES_ASSURANCES;
+
+/**
+ * Produits que `POST /v1/souscriptions` sait créer aujourd'hui. Les autres (RelaxVoyage, RelaxAccidents
+ * générale, Dommages, Santé…) demandent des champs métier supplémentaires ou un parcours de validation :
+ * ils figurent au catalogue (`souscriptionApi: false`) mais la souscription par l'API répond 501.
+ */
+export const PRODUITS_SOUSCRIPTION_API = new Set([
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+]);
 
 const TAUX_COMMISSION_API_REPLI = 0.1;
 
@@ -44,6 +62,8 @@ export type ProduitCatalogue = {
   tauxCommissionApi: number;
   /** true = pas de TarifProduit → prime calculée dynamiquement (SecurHome+, SecurPro Dommages). */
   devisCalcule: boolean;
+  /** true = `POST /v1/souscriptions` sait créer ce produit ; false = catalogue seulement (501 à la souscription). */
+  souscriptionApi: boolean;
   formules: FormuleCatalogue[];
 };
 
@@ -52,38 +72,17 @@ export type ResolutionProduit =
   | { ok: false; raison: "inconnu" | "non_autorise" | "desactive" };
 
 /**
- * Ensemble des ids de produits que ce partenaire peut distribuer, d'après
- * ses QR codes propres (agentDistributionId null) — AVANT filtre
- * actif/désactivé :
- *   - QR sur un produit précis        → ce produit
- *   - QR sur une sous-branche         → tous les produits de la sous-branche
- *   - QR unique (produitId + sousBranche null) → toutes les sous-branches
+ * Ensemble des ids de produits que toute clé API peut voir : tous ceux des trois Assurances
+ * (Accidents, Dommages, Santé) — AVANT filtre actif/désactivé. Ne dépend plus des QR codes du partenaire
+ * (une clé API est un canal à part entière, pas un QR) ; `_partenaireId` est gardé pour que la restriction
+ * par partenaire puisse revenir ici sans changer les appelants.
  */
-async function produitIdsEligibles(partenaireId: string): Promise<Set<string>> {
-  const qrs = await prisma.qrCode.findMany({
-    where: { partenaireId, agentDistributionId: null, actif: true },
-    select: { produitId: true, sousBranche: true },
+async function produitIdsEligibles(_partenaireId: string): Promise<Set<string>> {
+  const produits = await prisma.produit.findMany({
+    where: { sousBranche: { in: [...SOUS_BRANCHES_API] } },
+    select: { id: true },
   });
-  if (qrs.length === 0) return new Set();
-
-  const produitIds = new Set<string>();
-  const sousBranches = new Set<string>();
-  let toutesSousBranches = false;
-  for (const qr of qrs) {
-    if (qr.produitId) produitIds.add(qr.produitId);
-    else if (qr.sousBranche) sousBranches.add(qr.sousBranche);
-    else toutesSousBranches = true;
-  }
-
-  const filtre = toutesSousBranches ? [...SOUS_BRANCHES_API] : [...sousBranches];
-  if (filtre.length > 0) {
-    const parSousBranche = await prisma.produit.findMany({
-      where: { sousBranche: { in: filtre } },
-      select: { id: true },
-    });
-    for (const p of parSousBranche) produitIds.add(p.id);
-  }
-  return produitIds;
+  return new Set(produits.map((p) => p.id));
 }
 
 /** true si `produitId` est explicitement désactivé pour ce partenaire. */
@@ -148,6 +147,7 @@ export async function catalogueDuPartenaire(partenaireId: string): Promise<Produ
     kycRequis: p.sousBranche === "ASSURANCES_ACCIDENTS",
     tauxCommissionApi: p.tauxCommissionApi ?? tauxDefaut,
     devisCalcule: p.tarifs.length === 0,
+    souscriptionApi: PRODUITS_SOUSCRIPTION_API.has(p.code),
     formules: p.tarifs.map((t) => ({
       libelleVariante: t.libelleVariante,
       prime: t.prime,
