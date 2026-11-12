@@ -31,6 +31,7 @@ import { openapiPartnerV1 } from "../openapi/partnerV1.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker } from "../services/beneficiaireDeces.js";
 import { capitalDecesDuTarif, estProduitRaf } from "../services/garantieDecesFraisMedicaux.js";
+import { refusSiCumulRelaxAccidents } from "../services/cumulRelaxAccidents.js";
 
 // =====================================================================
 // API partenaire — routeur `/api/partner/v1`.
@@ -325,6 +326,9 @@ partnerApiRouter.post(
         "Une souscription confirmée existe déjà pour ce nom et ce numéro sur ce produit."
       );
     }
+    // Un seul produit RelaxAccidents par client (RelaxVoyage excepté) — services/cumulRelaxAccidents.ts.
+    const refusCumul = await refusSiCumulRelaxAccidents(produit.code, data.prospect.telephone);
+    if (refusCumul) return apiError(res, 409, refusCumul.code, refusCumul.error);
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: produit.id, libelleVariante: data.formule },

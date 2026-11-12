@@ -13,6 +13,7 @@ import {
 import { confirmerEcheance, verifierPaiementEcheance } from "../services/paiementWave.js";
 import { optionsRenouvellement, produitAChoixDeFormule } from "../services/renouvellementFormule.js";
 import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
+import { estProduitRelaxAccidents, produitRelaxAccidentsDuClient } from "../services/cumulRelaxAccidents.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
@@ -593,8 +594,15 @@ clientRouter.get(
     // produits Santé (voir resoudreQrCodeGenerique) : ne les proposer que si le
     // lien de souscription pourra réellement aboutir.
     const santeProduits = qr && (qr.sousBranche == null || qr.sousBranche === "ASSURANCES_SANTE") ? santeChooser.produits : [];
+    // Un seul produit RelaxAccidents par client (RelaxVoyage excepté) : s'il en détient déjà un (chez ce
+    // partenaire ou un autre), les autres produits de la famille ne lui sont plus proposés.
+    const detientRelaxAccidents = !!(await produitRelaxAccidentsDuClient(telephone));
     const produits = [...accidentsChooser.produits, ...dommagesChooser.produits, ...santeProduits].filter(
-      (p) => p.disponible && !codesDejaSouscrits.has(p.code) && !PRODUITS_HORS_ESPACE_CLIENT.has(p.code)
+      (p) =>
+        p.disponible &&
+        !codesDejaSouscrits.has(p.code) &&
+        !PRODUITS_HORS_ESPACE_CLIENT.has(p.code) &&
+        !(detientRelaxAccidents && estProduitRelaxAccidents(p.code))
     );
 
     res.json({

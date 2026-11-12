@@ -41,6 +41,7 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../service
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { refusSiEspaceClientExistant } from "../services/accesClient.js";
+import { refusSiCumulRelaxAccidents } from "../services/cumulRelaxAccidents.js";
 import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
 import { capitalDecesDuTarif, estProduitRaf, MESSAGE_OPTION_DECES_SUPPRIMEE } from "../services/garantieDecesFraisMedicaux.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker, beneficiaireRequisPourDevis, champsBeneficiaire, verifierBeneficiaire } from "../services/beneficiaireDeces.js";
@@ -379,9 +380,18 @@ publicRouter.get(
   "/espace-client",
   asyncHandler(async (req, res) => {
     const telephone = typeof req.query.telephone === "string" ? req.query.telephone : "";
-    if (telephone.replace(/\D/g, "").length < 8) return res.json({ connexionRequise: false });
+    const produit = typeof req.query.produit === "string" ? req.query.produit : "";
+    if (telephone.replace(/\D/g, "").length < 8) return res.json({ connexionRequise: false, cumulInterdit: false });
     const refus = await refusSiEspaceClientExistant(req.headers.authorization, telephone);
-    res.json(refus ? { connexionRequise: true, message: refus.error } : { connexionRequise: false });
+    // `?produit=` : le produit en cours de souscription — dit si ce numéro détient déjà un autre produit
+    // RelaxAccidents (un seul par client), pour l'annoncer dès la saisie du numéro.
+    const cumul = produit ? await refusSiCumulRelaxAccidents(produit, telephone) : null;
+    res.json({
+      connexionRequise: !!refus,
+      ...(refus ? { message: refus.error } : {}),
+      cumulInterdit: !!cumul,
+      ...(cumul ? { messageCumul: cumul.error } : {}),
+    });
   })
 );
 
@@ -2167,6 +2177,9 @@ publicRouter.post(
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
+    // Un seul produit RelaxAccidents par client (RelaxVoyage excepté) — services/cumulRelaxAccidents.ts.
+    const refusCumul = await refusSiCumulRelaxAccidents(code, data.telephone);
+    if (refusCumul) return res.status(409).json(refusCumul);
 
     const tarif = await prisma.tarifProduit.findFirst({
       where: { produitId: prod.id, libelleVariante: data.formule },
@@ -2527,6 +2540,9 @@ publicRouter.post(
     if (await souscriptionDejaExistante(prod.id, data.nom, data.telephone)) {
       return res.status(409).json({ error: MESSAGE_DOUBLON });
     }
+    // Un seul produit RelaxAccidents par client (RelaxVoyage excepté) — services/cumulRelaxAccidents.ts.
+    const refusCumul = await refusSiCumulRelaxAccidents(code, data.telephone);
+    if (refusCumul) return res.status(409).json(refusCumul);
 
     const entrees = cotation.entrees as Record<string, unknown>;
     const resultatDevis = (cotation.resultat ?? {}) as {

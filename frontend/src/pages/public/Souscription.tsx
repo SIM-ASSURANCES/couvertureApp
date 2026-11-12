@@ -2370,35 +2370,49 @@ export default function Souscription() {
   // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit : on le lui annonce
   // dès que le numéro est saisi (le serveur refuse de toute façon à la fin, voir services/accesClient.ts).
   const [messageEspaceClient, setMessageEspaceClient] = useState("");
+  // Un client ne peut détenir qu'UN produit RelaxAccidents (RelaxVoyage excepté) : annoncé lui aussi dès la saisie.
+  const [messageCumul, setMessageCumul] = useState("");
   useEffect(() => {
     const complets = [telephone, telephoneRx, telephoneInc].filter((t) => !phoneInvalid(t));
     if (complets.length === 0) {
       setMessageEspaceClient("");
+      setMessageCumul("");
       return;
     }
     let annule = false;
     const minuteur = setTimeout(async () => {
+      let connexion = "";
+      let cumul = "";
       for (const t of complets) {
         try {
-          const res = await fetch(`${BASE}/public/espace-client?telephone=${encodeURIComponent(t)}`, { headers: entetesJsonClient() });
-          const data = (await res.json()) as { connexionRequise?: boolean; message?: string };
+          const res = await fetch(
+            `${BASE}/public/espace-client?telephone=${encodeURIComponent(t)}&produit=${encodeURIComponent(qrInfo?.produit ?? "")}`,
+            { headers: entetesJsonClient() }
+          );
+          const data = (await res.json()) as { connexionRequise?: boolean; message?: string; cumulInterdit?: boolean; messageCumul?: string };
           if (annule) return;
-          if (data.connexionRequise) {
-            setMessageEspaceClient(data.message ?? "Connectez-vous à votre espace client pour souscrire à un autre produit.");
-            return;
+          if (data.connexionRequise && !connexion) {
+            connexion = data.message ?? "Connectez-vous à votre espace client pour souscrire à un autre produit.";
+          }
+          if (data.cumulInterdit && !cumul) {
+            cumul = data.messageCumul ?? "Vous avez déjà souscrit un produit RelaxAccidents : un client ne peut en détenir qu'un seul.";
           }
         } catch {
           /* vérification indicative : le serveur contrôle de toute façon à la souscription */
         }
       }
-      if (!annule) setMessageEspaceClient("");
+      if (annule) return;
+      setMessageEspaceClient(connexion);
+      setMessageCumul(cumul);
     }, 500);
     return () => {
       annule = true;
       clearTimeout(minuteur);
     };
-  }, [telephone, telephoneRx, telephoneInc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [telephone, telephoneRx, telephoneInc, qrInfo?.produit]);
   const espaceExistant = messageEspaceClient !== "";
+  const cumulInterdit = messageCumul !== "";
   const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
   const [piecePhotoRx, setPiecePhotoRx] = useState<string | null>(null);
   const [selfiePhotoRx, setSelfiePhotoRx] = useState<string | null>(null);
@@ -4733,6 +4747,17 @@ export default function Souscription() {
               )}
 
               {espaceExistant && <BandeauEspaceClient message={messageEspaceClient} />}
+              {cumulInterdit && (
+                <div
+                  role="alert"
+                  style={{
+                    background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: "14px 16px",
+                    marginBottom: 16, color: "#7c2d12", fontSize: 13.5, lineHeight: 1.5,
+                  }}
+                >
+                  {messageCumul}
+                </div>
+              )}
 
               {estProduitSante(qrInfo?.produit) ? (
                 <AssuranceSanteForm
@@ -5453,7 +5478,7 @@ export default function Souscription() {
                       if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
                       setStep("confirm");
                     }}
-                    disabled={bloque || espaceExistant}
+                    disabled={bloque || espaceExistant || cumulInterdit}
                     style={{
                       marginTop: 8,
                       width: "100%",
@@ -5465,7 +5490,7 @@ export default function Souscription() {
                       fontWeight: 700,
                       fontSize: 15,
                       cursor: "pointer",
-                      opacity: bloque || espaceExistant ? 0.5 : 1,
+                      opacity: bloque || espaceExistant || cumulInterdit ? 0.5 : 1,
                     }}
                   >
                     {estProduitSante(qrInfo?.produit) ? "Suivant : questionnaire médical →" : "Vérifier mes informations →"}
