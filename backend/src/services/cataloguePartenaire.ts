@@ -1,6 +1,5 @@
 import type { Produit } from "@prisma/client";
 import { prisma } from "../db.js";
-import { SOUS_BRANCHES_ASSURANCES } from "./sousBranches.js";
 
 // =====================================================================
 // Catalogue « côté partenaire » pour l'API serveur-à-serveur.
@@ -8,10 +7,12 @@ import { SOUS_BRANCHES_ASSURANCES } from "./sousBranches.js";
 // Remplace la résolution par QR code (routes/public.ts::resoudreQrCodeGenerique)
 // par une résolution par (partenaire, code produit).
 //
-// Visibilité (2026-11-12) : TOUS les produits des trois Assurances — Accidents (6), Dommages (4) et
-// Santé (3), soit 13 — pour toute clé API, quels que soient les QR codes du partenaire. Avant, le
-// catalogue se déduisait de ses QR codes : un partenaire dont les QR étaient limités à quelques produits
-// n'en voyait que 3, et la sous-branche Santé n'en faisait jamais partie (10 produits au mieux).
+// Visibilité (2026-11-16) : une clé API n'expose que QUATRE produits — RelaxMoto, RelaxAuto,
+// RelaxAccidents Frais Médicaux et RelaxAccidents FM Livreurs/MotoTaxis (`PRODUITS_EXPOSES_API`),
+// quels que soient les QR codes du partenaire. Les neuf autres (RelaxAccidents, RelaxVoyage, SecurHome,
+// SecurHome+, SecurPro, SecurMoto, Santé ×3) sont absents du catalogue et répondent 403
+// `produit_non_autorise` au devis comme à la souscription. (Historique : le 2026-11-12 le catalogue
+// affichait les 13 produits des trois Assurances ; avant, il se déduisait des QR codes du partenaire.)
 // Restreindre un partenaire reste possible produit par produit (`Produit.actif`, `produitsDesactives` :
 // ils apparaissent alors avec `actifPourPartenaire: false`).
 //
@@ -20,13 +21,22 @@ import { SOUS_BRANCHES_ASSURANCES } from "./sousBranches.js";
 // un service ne doit pas dépendre d'un module de routes.
 // =====================================================================
 
-const SOUS_BRANCHES_API = SOUS_BRANCHES_ASSURANCES;
+/**
+ * Les seuls produits ouverts à l'API partenaire. Pour en rouvrir un (ex. un produit « calculé » dont le
+ * code de souscription est conservé dans routes/partnerApi.ts), il suffit de l'ajouter ici.
+ */
+export const PRODUITS_EXPOSES_API = new Set([
+  "relaxmoto",
+  "relaxauto",
+  "relaxaccidents_fraismedicaux",
+  "relaxaccidents_fraismedicaux_livreurs",
+]);
 
 /**
  * Produits dont la prime sort du moteur de devis (services/cotations.ts) : le partenaire envoie leurs
  * paramètres de tarification dans `entrees` (+ champs métier : trajet RelaxVoyage, fiche et
- * questionnaire Santé…), la prime est recalculée côté serveur, jamais transmise. Les quatre autres
- * produits (RelaxMoto, RelaxAuto, RelaxAccidents Frais Médicaux ×2) restent tarifés par `formule`.
+ * questionnaire Santé…), la prime est recalculée côté serveur, jamais transmise. Parcours CONSERVÉ mais
+ * INACCESSIBLE tant que ces produits ne figurent pas dans `PRODUITS_EXPOSES_API`.
  */
 export const PRODUITS_API_CALCULES = new Set([
   "relaxvoyage",
@@ -41,19 +51,8 @@ export const PRODUITS_API_CALCULES = new Set([
 ]);
 
 /**
- * Produits VERROUILLÉS sur l'API (2026-11-12) : les trois Assurances Santé. Ils restent visibles au
- * catalogue (`verrouille: true`, `souscriptionApi: false`) mais `POST /v1/devis` et `POST /v1/souscriptions`
- * répondent 403 `produit_verrouille`. La création d'une demande Santé reste possible par les autres canaux
- * (site public, QR, devis partageable). Le code de souscription Santé de l'API est conservé : pour rouvrir
- * le produit, il suffit de retirer son code de cet ensemble. Les demandes Santé déjà créées par l'API
- * restent lisibles et leur `confirmer-paiement` continue de fonctionner.
- */
-export const PRODUITS_VERROUILLES_API = new Set(["sante_solo", "sante_duo", "sante_famille"]);
-
-/**
- * Produits que `POST /v1/souscriptions` sait créer : les 13 des trois Assurances (depuis le 2026-11-12,
- * les 9 produits « calculés » s'ajoutent aux 4 produits tarifés par formule), moins les produits
- * verrouillés ci-dessus. Garde-fou : un produit ajouté au catalogue sans être branché ici répond 501
+ * Produits que `POST /v1/souscriptions` sait créer (les 4 tarifés par formule + les 9 « calculés »).
+ * Garde-fou : un produit exposé (`PRODUITS_EXPOSES_API`) mais non branché ici répond 501
  * `produit_non_supporte_api`.
  */
 export const PRODUITS_SOUSCRIPTION_API = new Set([
@@ -92,10 +91,8 @@ export type ProduitCatalogue = {
   tauxCommissionApi: number;
   /** true = pas de TarifProduit → prime calculée dynamiquement (SecurHome+, SecurPro Dommages). */
   devisCalcule: boolean;
-  /** true = `POST /v1/souscriptions` sait créer ce produit ; false = catalogue seulement (verrouillé ou non branché). */
+  /** true = `POST /v1/souscriptions` sait créer ce produit (toujours vrai pour les produits exposés). */
   souscriptionApi: boolean;
-  /** true = produit verrouillé sur l'API (Assurances Santé) : devis et souscription répondent 403 `produit_verrouille`. */
-  verrouille: boolean;
   formules: FormuleCatalogue[];
 };
 
@@ -104,14 +101,14 @@ export type ResolutionProduit =
   | { ok: false; raison: "inconnu" | "non_autorise" | "desactive" };
 
 /**
- * Ensemble des ids de produits que toute clé API peut voir : tous ceux des trois Assurances
- * (Accidents, Dommages, Santé) — AVANT filtre actif/désactivé. Ne dépend plus des QR codes du partenaire
- * (une clé API est un canal à part entière, pas un QR) ; `_partenaireId` est gardé pour que la restriction
- * par partenaire puisse revenir ici sans changer les appelants.
+ * Ensemble des ids de produits que toute clé API peut voir : les quatre de `PRODUITS_EXPOSES_API` —
+ * AVANT filtre actif/désactivé. Ne dépend pas des QR codes du partenaire (une clé API est un canal à
+ * part entière, pas un QR) ; `_partenaireId` est gardé pour que la restriction par partenaire puisse
+ * revenir ici sans changer les appelants.
  */
 async function produitIdsEligibles(_partenaireId: string): Promise<Set<string>> {
   const produits = await prisma.produit.findMany({
-    where: { sousBranche: { in: [...SOUS_BRANCHES_API] } },
+    where: { code: { in: [...PRODUITS_EXPOSES_API] } },
     select: { id: true },
   });
   return new Set(produits.map((p) => p.id));
@@ -179,8 +176,7 @@ export async function catalogueDuPartenaire(partenaireId: string): Promise<Produ
     kycRequis: p.sousBranche === "ASSURANCES_ACCIDENTS",
     tauxCommissionApi: p.tauxCommissionApi ?? tauxDefaut,
     devisCalcule: p.tarifs.length === 0,
-    souscriptionApi: PRODUITS_SOUSCRIPTION_API.has(p.code) && !PRODUITS_VERROUILLES_API.has(p.code),
-    verrouille: PRODUITS_VERROUILLES_API.has(p.code),
+    souscriptionApi: PRODUITS_SOUSCRIPTION_API.has(p.code),
     formules: p.tarifs.map((t) => ({
       libelleVariante: t.libelleVariante,
       prime: t.prime,
