@@ -817,11 +817,107 @@ async function identifiantIntermediaire(type: TypeContrat, souscriptionId: strin
   return s?.agentDistribution?.identifiant ?? s?.partenaire.identifiant ?? null;
 }
 
-/** Remplace INTÉGRALEMENT `data` : aucune clé envoyée par l'appelant ne survit (un `Object.assign` simple laisserait passer toute clé que la relecture ne renseigne pas). */
-function remplacerParDonneesVerifiees(data: object, verite: object): void {
-  const cible = data as Record<string, unknown>;
-  for (const cle of Object.keys(cible)) delete cible[cle];
-  Object.assign(cible, verite);
+/**
+ * Type de contrat d'un produit du modèle générique (`Souscription`) — `null` pour un produit sans
+ * contrat générique. Même correspondance que CODES_PRODUIT_PAR_TYPE et que le frontend.
+ */
+export function typeContratDuProduit(code: string): TypeContrat | null {
+  if (code === "relaxmoto" || code === "relaxauto") return "relaxmoto_relaxauto";
+  if (code === "relaxaccidents_fraismedicaux" || code === "relaxaccidents_fraismedicaux_livreurs") return "relaxaccidents_fraismedicaux";
+  if (code === "relaxvoyage") return "relaxvoyage";
+  if (code === "relaxaccidents") return "relaxaccidents_generale";
+  if (code === "securhome") return "securhome_incendie";
+  if (code === "securhome_dommages" || code === "securpro_dommages" || code === "securmoto") return code;
+  if (estProduitSante(code)) return "assurance_sante";
+  return null;
+}
+
+/**
+ * Contrat PDF d'une souscription, construit UNIQUEMENT à partir de la base (`type` + `souscriptionId`) :
+ * utilisé par `POST /contrats/pdf` (admin, client, retour de paiement) et par l'API partenaire
+ * (`GET /api/partner/v1/souscriptions/:id/contrat.pdf`). `null` si la souscription n'existe pas, n'est
+ * pas confirmée ou ne correspond pas au type annoncé.
+ */
+export async function genererPdfContrat(
+  type: TypeContrat,
+  souscriptionId: string
+): Promise<{ pdf: Buffer; nomFichier: string } | null> {
+  // Audit sécurité 2026-10-05 : relecture en base SYSTÉMATIQUE, pour tous les types — le PDF ne peut
+  // afficher que ce qui existe réellement en base.
+  const verite = await chargerDonneesVerifiees(type, souscriptionId);
+  if (!verite) return null;
+  // Les données relues remplacent intégralement le contenu : la forme typée par le schéma ne sert
+  // qu'à aiguiller le gabarit (même principe que la route historique qui écrasait `body.data`).
+  const body = { type, souscriptionId, data: { ...verite } } as z.infer<typeof bodySchema>;
+
+  // L'identifiant de l'intermédiaire figure sur la ligne « Intermédiaire » du
+  // contrat (ex. « Cabinet Koffi (N° 1.0001) »). Ajouté ici, une seule fois,
+  // plutôt que dans les 13 gabarits : ils impriment tous `partenaire` ou
+  // `intermediaire` tels quels.
+  const idIntermediaire = await identifiantIntermediaire(body.type, body.souscriptionId);
+  if (idIntermediaire) {
+    const cible = body.data as Record<string, unknown>;
+    for (const cle of ["partenaire", "intermediaire"]) {
+      if (typeof cible[cle] === "string" && cible[cle]) cible[cle] = `${cible[cle]} (N° ${idIntermediaire})`;
+    }
+  }
+
+  let html: string;
+  switch (body.type) {
+    case "incendie":
+      html = await renderContratIncendie(body.data);
+      break;
+    case "accident":
+      html = await renderContratAccident(body.data);
+      break;
+    case "relaxaccidents_fraismedicaux":
+      html = await renderContratAccident(body.data);
+      break;
+    case "relaxmoto_relaxauto":
+      html = await renderContratRelaxMotoAuto(body.data);
+      break;
+    case "relaxvoyage":
+      html = await renderContratRelaxVoyage(body.data);
+      break;
+    case "relaxaccidents_generale":
+      html = await renderContratRelaxAccidentsGenerale(body.data);
+      break;
+    case "securpro":
+      html = await renderContratSecurpro(body.data);
+      break;
+    case "securpro_dommages":
+      // Produit Assurances Dommages : pas de logo RCMEC (réservé aux contrats IMF).
+      html = await renderContratSecurpro(body.data, false);
+      break;
+    case "securhome_dommages":
+      html = await renderContratSecurhome(body.data);
+      break;
+    case "securmoto":
+      html = await renderContratSecurMoto(body.data);
+      break;
+    case "securhome_incendie":
+      html = await renderContratSecurhomeIncendie(body.data);
+      break;
+    case "assurance_sante":
+      html = await renderContratAssuranceSante(body.data);
+      break;
+    case "securstock":
+      html = await renderContratSecurstock(body.data);
+      break;
+    case "securecolte":
+      html = await renderContratSecurecolte(body.data);
+      break;
+    case "coupsdurs":
+      html = await renderContratCoupsdurs(body.data);
+      break;
+    case "deces":
+      html = await renderContratDeces(body.data);
+      break;
+  }
+
+  const pdf = await htmlToPdf(html);
+  const numeroPolice = String(body.data.numeroPolice ?? "").replace(/[^a-zA-Z0-9-_]+/g, "-") || "contrat";
+  return { pdf, nomFichier: `contrat-${numeroPolice}.pdf` };
 }
 
 /** Génération PDF des contrats — rendu serveur (texte réel, pas une image). */
@@ -836,86 +932,14 @@ contratsRouter.post(
         error: "Mise à jour requise : rechargez ou mettez à jour l'application, puis réessayez de télécharger le contrat.",
       });
     }
+    // Le corps est encore validé (type connu, forme attendue) ; son contenu `data` est ensuite ignoré.
     const body = bodySchema.parse(req.body);
-
-    // Audit sécurité 2026-10-05 : relecture en base SYSTÉMATIQUE, pour tous les
-    // types. Ce que le client envoie dans `data` est écarté en bloc — le PDF
-    // ne peut plus afficher que ce qui existe réellement en base.
-    const verite = await chargerDonneesVerifiees(body.type, body.souscriptionId);
-    if (!verite) {
+    const resultat = await genererPdfContrat(body.type, body.souscriptionId);
+    if (!resultat) {
       return res.status(404).json({ error: "Souscription introuvable, non confirmée, ou pas encore synchronisée." });
     }
-    remplacerParDonneesVerifiees(body.data, verite);
-
-    // L'identifiant de l'intermédiaire figure sur la ligne « Intermédiaire » du
-    // contrat (ex. « Cabinet Koffi (N° 1.0001) »). Ajouté ici, une seule fois,
-    // plutôt que dans les 13 gabarits : ils impriment tous `partenaire` ou
-    // `intermediaire` tels quels.
-    const idIntermediaire = await identifiantIntermediaire(body.type, body.souscriptionId);
-    if (idIntermediaire) {
-      const cible = body.data as Record<string, unknown>;
-      for (const cle of ["partenaire", "intermediaire"]) {
-        if (typeof cible[cle] === "string" && cible[cle]) cible[cle] = `${cible[cle]} (N° ${idIntermediaire})`;
-      }
-    }
-
-    let html: string;
-    switch (body.type) {
-      case "incendie":
-        html = await renderContratIncendie(body.data);
-        break;
-      case "accident":
-        html = await renderContratAccident(body.data);
-        break;
-      case "relaxaccidents_fraismedicaux":
-        html = await renderContratAccident(body.data);
-        break;
-      case "relaxmoto_relaxauto":
-        html = await renderContratRelaxMotoAuto(body.data);
-        break;
-      case "relaxvoyage":
-        html = await renderContratRelaxVoyage(body.data);
-        break;
-      case "relaxaccidents_generale":
-        html = await renderContratRelaxAccidentsGenerale(body.data);
-        break;
-      case "securpro":
-        html = await renderContratSecurpro(body.data);
-        break;
-      case "securpro_dommages":
-        // Produit Assurances Dommages : pas de logo RCMEC (réservé aux contrats IMF).
-        html = await renderContratSecurpro(body.data, false);
-        break;
-      case "securhome_dommages":
-        html = await renderContratSecurhome(body.data);
-        break;
-      case "securmoto":
-        html = await renderContratSecurMoto(body.data);
-        break;
-      case "securhome_incendie":
-        html = await renderContratSecurhomeIncendie(body.data);
-        break;
-      case "assurance_sante":
-        html = await renderContratAssuranceSante(body.data);
-        break;
-      case "securstock":
-        html = await renderContratSecurstock(body.data);
-        break;
-      case "securecolte":
-        html = await renderContratSecurecolte(body.data);
-        break;
-      case "coupsdurs":
-        html = await renderContratCoupsdurs(body.data);
-        break;
-      case "deces":
-        html = await renderContratDeces(body.data);
-        break;
-    }
-
-    const pdf = await htmlToPdf(html);
-    const numeroPolice = body.data.numeroPolice.replace(/[^a-zA-Z0-9-_]+/g, "-") || "contrat";
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="contrat-${numeroPolice}.pdf"`);
-    res.send(pdf);
+    res.setHeader("Content-Disposition", `attachment; filename="${resultat.nomFichier}"`);
+    res.send(resultat.pdf);
   })
 );

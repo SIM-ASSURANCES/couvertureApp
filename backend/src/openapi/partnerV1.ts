@@ -439,6 +439,16 @@ export const openapiPartnerV1: Record<string, unknown> = {
                     dateDebut: { type: ["string", "null"], format: "date-time" },
                     dateFin: { type: ["string", "null"], format: "date-time" },
                     montantAReverser: { type: ["integer", "null"] },
+                    documents: {
+                      type: ["object", "null"],
+                      description: "Liens des documents, une fois la souscription confirmée.",
+                      properties: {
+                        carteUrl: { type: "string" },
+                        contratUrl: { type: "string" },
+                        factureUrl: { type: "string" },
+                        facturesUrl: { type: "string" },
+                      },
+                    },
                   },
                 }),
               },
@@ -498,12 +508,66 @@ export const openapiPartnerV1: Record<string, unknown> = {
     "/souscriptions/{id}/contrat.pdf": {
       get: {
         tags: ["Documents"],
-        summary: "Contrat PDF (non disponible pour l'instant)",
-        description: "Portée requise : `documents:read`. Renvoie actuellement `501 contrat_pdf_non_disponible`.",
+        summary: "Contrat PDF (conditions particulières)",
+        description:
+          "Portée requise : `documents:read`. Disponible dès la confirmation du paiement : même contrat que celui de l'espace client (police, dates d'effet et d'échéance, garanties, bénéficiaire Décès, intermédiaire), construit par SIM Assurances à partir de ses données.",
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: {
+          "200": { description: "Document PDF.", content: { "application/pdf": { schema: { type: "string", format: "binary" } } } },
+          "404": reponseErreur("`souscription_inconnue` ou `contrat_indisponible`."),
+          "409": reponseErreur("`souscription_non_confirmee` — paiement pas encore confirmé."),
+        },
+      },
+    },
+    "/souscriptions/{id}/factures": {
+      get: {
+        tags: ["Documents"],
+        summary: "Factures d'une souscription",
+        description:
+          "Portée requise : `documents:read`. Une facture par paiement confirmé (souscription, puis chaque renouvellement), la plus récente en tête. Liste vide tant que le paiement n'est pas confirmé.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": {
+            description: "Factures.",
+            content: {
+              "application/json": {
+                schema: enveloppeSucces({
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      paiementId: { type: "string" },
+                      numeroFacture: { type: "string", description: "Ex. FAC-2026-000096." },
+                      datePaiement: { type: ["string", "null"], format: "date-time" },
+                      montant: { type: "number" },
+                      estRenouvellement: { type: "boolean" },
+                      periodeDebut: { type: ["string", "null"], format: "date-time" },
+                      periodeFin: { type: ["string", "null"], format: "date-time" },
+                      url: { type: "string", description: "Lien du PDF de cette facture." },
+                    },
+                  },
+                }),
+              },
+            },
+          },
           "404": reponseErreur("`souscription_inconnue`."),
-          "501": reponseErreur("`contrat_pdf_non_disponible`."),
+        },
+      },
+    },
+    "/souscriptions/{id}/facture.pdf": {
+      get: {
+        tags: ["Documents"],
+        summary: "Facture PDF",
+        description:
+          "Portée requise : `documents:read`. La facture la plus récente, ou celle d'un paiement précis avec `?paiementId=` (voir `GET /souscriptions/{id}/factures`). Émise dès la confirmation du paiement ; mention « règlement : encaissé par le partenaire ».",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "paiementId", in: "query", required: false, schema: { type: "string" } },
+        ],
+        responses: {
+          "200": { description: "Document PDF.", content: { "application/pdf": { schema: { type: "string", format: "binary" } } } },
+          "404": reponseErreur("`souscription_inconnue` ou `facture_inconnue`."),
+          "409": reponseErreur("`souscription_non_confirmee` — aucune facture tant que le paiement n'est pas confirmé."),
         },
       },
     },

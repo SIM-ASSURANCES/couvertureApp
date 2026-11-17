@@ -31,6 +31,10 @@ import { renderCartePngGenerique, CarteIndisponibleError } from "../services/car
 import { emettreWebhook } from "../services/partnerWebhook.js";
 import { analyserSouscriptionApiIA } from "../services/fraudeIA.js";
 import { openapiPartnerV1 } from "../openapi/partnerV1.js";
+import { genererPdfContrat, typeContratDuProduit } from "./contrats.js";
+import { chargerDonneesFacture, emettreFacture } from "../services/facture.js";
+import { renderFactureHtml } from "../services/factureHtml.js";
+import { htmlToPdf } from "../services/pdf.js";
 import { resoudreOuCreerClient } from "../services/clients.js";
 import { aGarantieDeces, avecBeneficiaire, beneficiaireAStocker } from "../services/beneficiaireDeces.js";
 import { capitalDecesDuTarif, estProduitRaf } from "../services/garantieDecesFraisMedicaux.js";
@@ -110,6 +114,12 @@ const dataUrlImage = z
   .string()
   .max(2_000_000)
   .regex(/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/]+=*$/, "Image invalide");
+
+/** Liens (relatifs à l'hôte) des documents d'une souscription confirmée : carte, contrat, dernière facture. */
+function liensDocuments(souscriptionId: string) {
+  const base = `/api/partner/v1/souscriptions/${souscriptionId}`;
+  return { carteUrl: `${base}/carte.png`, contratUrl: `${base}/contrat.pdf`, factureUrl: `${base}/facture.pdf`, facturesUrl: `${base}/factures` };
+}
 
 /** Traduit un échec de résolution produit en réponse HTTP normalisée. */
 function erreurResolution(res: Response, raison: Exclude<ResolutionProduit, { ok: true }>["raison"]): Response {
@@ -941,7 +951,7 @@ partnerApiRouter.post(
       await emettreWebhook(apiKeyId, "contrat.disponible", {
         souscriptionId: s.id,
         numeroPolice: apres.numeroPolice,
-        carteUrl: `/api/partner/v1/souscriptions/${s.id}/carte.png`,
+        ...liensDocuments(s.id),
       }).catch((e) => console.error("[partnerWebhook] contrat.disponible", e));
     }
 
@@ -952,6 +962,7 @@ partnerApiRouter.post(
       dateDebut: apres.dateDebut,
       dateFin: apres.dateFin,
       montantAReverser: apres.montantAReverser,
+      documents: apres.waveStatut === "confirme" ? liensDocuments(s.id) : null,
     });
   })
 );
@@ -1098,6 +1109,8 @@ partnerApiRouter.get(
       dateNaissance: s.dateNaissance,
       garanties: s.donneesSpecifiques ?? null,
       documents: s.documents.map((d) => ({ type: d.type, depuisLe: d.createdAt })),
+      // Carte, contrat et facture à télécharger — seulement une fois la souscription confirmée.
+      telechargements: s.waveStatut === "confirme" ? liensDocuments(s.id) : null,
     });
   })
 );
@@ -1161,8 +1174,51 @@ partnerApiRouter.get(
   })
 );
 
+/**
+ * Contrat PDF — même document que celui de l'espace admin / client, construit côté serveur à partir de
+ * la base seule (routes/contrats.ts::genererPdfContrat). Disponible dès que la souscription est confirmée.
+ */
 partnerApiRouter.get(
   "/v1/souscriptions/:id/contrat.pdf",
+  requireScope("documents:read"),
+  asyncHandler(async (req: PartnerRequest, res) => {
+    const s = await prisma.souscription.findFirst({
+      where: { id: req.params.id, partenaireId: req.partner!.partenaireId, canalVente: "api" },
+      select: { id: true, waveStatut: true, produit: { select: { code: true } } },
+    });
+    if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
+    if (s.waveStatut !== "confirme") {
+      return apiError(res, 409, "souscription_non_confirmee", "Le contrat est disponible après la confirmation du paiement (POST /v1/souscriptions/:id/confirmer-paiement).");
+    }
+    const type = typeContratDuProduit(s.produit.code);
+    const resultat = type ? await genererPdfContrat(type, s.id) : null;
+    if (!resultat) return apiError(res, 404, "contrat_indisponible", "Contrat introuvable pour cette souscription.");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${resultat.nomFichier}"`);
+    res.send(resultat.pdf);
+  })
+);
+
+/** Paiements confirmés d'une souscription API du partenaire, numérotés (factures émises au besoin). */
+async function facturesDeLaSouscription(souscriptionId: string) {
+  // Paiements confirmés sans numéro (antérieurs à la facturation) : numérotés à la première consultation,
+  // comme dans l'espace client (routes/factures.ts).
+  const sansNumero = await prisma.paiement.findMany({
+    where: { souscriptionId, statut: "paye", numeroFacture: null },
+    orderBy: { datePaiement: "asc" },
+    select: { id: true },
+  });
+  for (const { id } of sansNumero) await emettreFacture(id, { rattrapage: true });
+  return prisma.paiement.findMany({
+    where: { souscriptionId, statut: "paye", numeroFacture: { not: null } },
+    orderBy: [{ datePaiement: "desc" }, { numeroEcheance: "desc" }],
+    select: { id: true, numeroFacture: true, datePaiement: true, montant: true, estRenouvellement: true, periodeDebut: true, periodeFin: true },
+  });
+}
+
+/** Liste des factures d'une souscription (une par paiement confirmé : souscription puis chaque renouvellement). */
+partnerApiRouter.get(
+  "/v1/souscriptions/:id/factures",
   requireScope("documents:read"),
   asyncHandler(async (req: PartnerRequest, res) => {
     const s = await prisma.souscription.findFirst({
@@ -1170,14 +1226,50 @@ partnerApiRouter.get(
       select: { id: true },
     });
     if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
-    // L'assemblage des données de contrat vit aujourd'hui côté frontend
-    // (routes/contrats.ts::POST /pdf attend un payload déjà construit).
-    // Portage serveur prévu dans un ticket ultérieur.
-    return apiError(
+    const factures = await facturesDeLaSouscription(s.id);
+    apiOk(
       res,
-      501,
-      "contrat_pdf_non_disponible",
-      "Le PDF du contrat n'est pas encore exposé via l'API. Utilisez les champs de GET /v1/souscriptions/:id."
+      factures.map((f) => ({
+        paiementId: f.id,
+        numeroFacture: f.numeroFacture,
+        datePaiement: f.datePaiement,
+        montant: f.montant,
+        estRenouvellement: f.estRenouvellement,
+        periodeDebut: f.periodeDebut,
+        periodeFin: f.periodeFin,
+        url: `/api/partner/v1/souscriptions/${s.id}/facture.pdf?paiementId=${f.id}`,
+      })),
+      { total: factures.length }
     );
+  })
+);
+
+/**
+ * Facture PDF — la plus récente par défaut, ou celle d'un paiement précis (`?paiementId=`). Même document
+ * que l'espace client (services/facture.ts + factureHtml.ts).
+ */
+partnerApiRouter.get(
+  "/v1/souscriptions/:id/facture.pdf",
+  requireScope("documents:read"),
+  asyncHandler(async (req: PartnerRequest, res) => {
+    const paiementId = typeof req.query.paiementId === "string" ? req.query.paiementId : undefined;
+    const s = await prisma.souscription.findFirst({
+      where: { id: req.params.id, partenaireId: req.partner!.partenaireId, canalVente: "api" },
+      select: { id: true },
+    });
+    if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
+    const factures = await facturesDeLaSouscription(s.id);
+    if (factures.length === 0) {
+      return apiError(res, 409, "souscription_non_confirmee", "La facture est émise après la confirmation du paiement (POST /v1/souscriptions/:id/confirmer-paiement).");
+    }
+    // Un paiementId d'une autre souscription est refusé comme inconnu : ne pas révéler quels identifiants existent.
+    const cible = paiementId ? factures.find((f) => f.id === paiementId) : factures[0];
+    if (!cible) return apiError(res, 404, "facture_inconnue", "Aucune facture pour ce paiement sur cette souscription.");
+    const donnees = await chargerDonneesFacture(cible.id);
+    if (!donnees) return apiError(res, 404, "facture_inconnue", "Facture indisponible pour ce paiement.");
+    const pdf = await htmlToPdf(renderFactureHtml(donnees));
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${donnees.numeroFacture}.pdf"`);
+    res.send(pdf);
   })
 );

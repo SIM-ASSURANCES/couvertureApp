@@ -28,7 +28,7 @@ Authorization: Bearer LA_CLE_FOURNIE_PAR_SIM
 | `catalogue:read` | `/catalogue`, `/produits/{code}`, `/devis` |
 | `souscriptions:write` | `POST /souscriptions`, `/souscriptions/{id}/confirmer-paiement` |
 | `souscriptions:read` | `GET /souscriptions`, `/souscriptions/{id}`, `/souscriptions/{id}/evenements` |
-| `documents:read` | `/souscriptions/{id}/carte.png`, `/souscriptions/{id}/contrat.pdf` |
+| `documents:read` | `/souscriptions/{id}/carte.png`, `/souscriptions/{id}/contrat.pdf`, `/souscriptions/{id}/facture.pdf`, `/souscriptions/{id}/factures` |
 
 `GET /ping` ne demande aucune portée (auth seule).
 
@@ -76,7 +76,8 @@ Intégrez sur le `code`, jamais sur le `message` (susceptible d'évoluer).
 | 409 | `deja_confirmee` | Paiement déjà confirmé |
 | 400 | `montant_incoherent` | `montantPercu` ≠ prime due (égalité stricte exigée) |
 | 400 | `selfie_absent` / 404 `carte_indisponible` | Carte pas encore générable |
-| 501 | `contrat_pdf_non_disponible` | Endpoint contrat PDF pas encore exposé |
+| 409 | `souscription_non_confirmee` | Contrat ou facture demandés avant la confirmation du paiement |
+| 404 | `contrat_indisponible` / `facture_inconnue` | Document introuvable pour cette souscription (ou `paiementId` d'une autre souscription) |
 
 ---
 
@@ -120,7 +121,26 @@ GET /souscriptions?limit=50&cursor=b1f2...
 5. POST /souscriptions/{id}/confirmer-paiement   → { statut: "confirmee", numeroPolice, dateDebut, dateFin }
        (+ Idempotency-Key ; montantPercu STRICTEMENT égal à la prime)
 6. GET  /souscriptions/{id}/carte.png      → carte de prise en charge
+7. GET  /souscriptions/{id}/contrat.pdf    → contrat (conditions particulières)
+8. GET  /souscriptions/{id}/facture.pdf    → facture acquittée (FAC-AAAA-NNNNNN)
 ```
+
+### Documents (portée `documents:read`)
+
+Dès que `confirmer-paiement` répond `statut: "confirmee"`, trois documents
+sont disponibles ; leurs liens sont renvoyés dans `data.documents` de la
+confirmation, dans `data.telechargements` de `GET /souscriptions/{id}` et
+dans le webhook `contrat.disponible` :
+
+| Document | Route | Format |
+|---|---|---|
+| Carte de prise en charge | `GET /souscriptions/{id}/carte.png` | PNG |
+| Contrat | `GET /souscriptions/{id}/contrat.pdf` | PDF |
+| Facture la plus récente | `GET /souscriptions/{id}/facture.pdf` | PDF |
+| Liste des factures | `GET /souscriptions/{id}/factures` | JSON (une par paiement confirmé, renouvellements compris) |
+| Facture d'un paiement précis | `GET /souscriptions/{id}/facture.pdf?paiementId=…` | PDF |
+
+Avant la confirmation, contrat et facture répondent `409 souscription_non_confirmee`.
 
 **Quatre produits** sont ouverts à la clé API (catalogue, `POST /devis` et
 `POST /souscriptions`) :
