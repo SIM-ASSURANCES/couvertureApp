@@ -17,6 +17,18 @@ export function getUser(): {
   return raw ? JSON.parse(raw) : null;
 }
 
+/**
+ * Page de connexion propre à un type de compte. Depuis la séparation des
+ * espaces (2026-09-18), "/" n'accepte QUE les administrateurs : y renvoyer un
+ * partenaire (déconnexion, session expirée…) lui faisait saisir ses
+ * identifiants sur la page admin, qui les refusait toujours — d'où « mon
+ * nouveau mot de passe n'est pas reconnu ». La page partenaire accepte aussi
+ * les agents IMF (repli automatique, voir pages/partenaire/Login.tsx).
+ */
+export function pageConnexion(type: string | null | undefined): string {
+  return type === "partenaire" || type === "agent_imf" ? "/partenaire/connexion" : "/";
+}
+
 export class ApiError extends Error {}
 
 async function request<T>(
@@ -33,6 +45,10 @@ async function request<T>(
     },
   });
   if (res.status === 401) {
+    // Type lu AVANT d'effacer la session ; à défaut, déduit de l'URL courante.
+    const type =
+      getUser()?.type ??
+      (/^\/(partenaire|agent-imf)(\/|$)/.test(location.pathname) ? "partenaire" : null);
     localStorage.removeItem("sim_token");
     localStorage.removeItem("sim_user");
     if (
@@ -40,7 +56,7 @@ async function request<T>(
       !location.pathname.endsWith("/connexion") &&
       location.pathname !== "/"
     ) {
-      location.href = "/";
+      location.href = pageConnexion(type);
     }
   }
   if (!res.ok) {

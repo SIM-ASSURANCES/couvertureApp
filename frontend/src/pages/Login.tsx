@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 
 export default function Login() {
@@ -174,6 +174,14 @@ export default function Login() {
                 {loading ? "Connexion en cours…" : "Se connecter"}
               </button>
             </form>
+            {/* Page réservée aux administrateurs : un partenaire arrivé ici (ancien
+                favori, lien partagé) y voyait ses identifiants toujours refusés. */}
+            <p style={{ textAlign: "center", fontSize: 13, color: "#6b7280", margin: "20px 0 0" }}>
+              Vous êtes partenaire ?{" "}
+              <Link to="/partenaire/connexion" style={{ color: "#004b9c", fontWeight: 700 }}>
+                Connexion partenaire
+              </Link>
+            </p>
           </div>
 
           <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 12, marginTop: 20 }}>

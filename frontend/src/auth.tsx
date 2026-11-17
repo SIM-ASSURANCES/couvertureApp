@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { Navigate } from "react-router-dom";
-import { api, getUser } from "./api";
+import { api, getUser, pageConnexion } from "./api";
 
 type Role = "ADMIN" | "BRANCH_SUPER_ADMIN" | "SUPER_ADMIN";
 export type BrancheAcces = "INCENDIE_ACCIDENT" | "RELAX" | "IMF" | "IMF_PARTENAIRES";
@@ -84,6 +84,6 @@ export function RequireAuth({
   children: ReactNode;
 }) {
   const { user } = useAuth();
-  if (!user || user.type !== type) return <Navigate to="/" replace />;
+  if (!user || user.type !== type) return <Navigate to={pageConnexion(type)} replace />;
   return <>{children}</>;
 }

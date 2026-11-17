@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { ChevronsLeft, ChevronsRight, ChevronDown, LogOut, Menu } from "lucide-react";
 import { isNavBranch, type AdminNavEntry, type NavGroup } from "./nav";
 import { useAuth } from "../../auth";
+import { pageConnexion } from "../../api";
 import NotificationsBell from "../NotificationsBell";
 
 interface Props {
@@ -47,7 +48,7 @@ export default function DashboardLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const branchIds = nav.filter(isNavBranch).map((b) => b.id);
   // "/admin" est la racine du layout entier (incendie/accident ET relax y sont
@@ -73,8 +74,11 @@ export default function DashboardLayout({
   }, [activeBranchId?.id]);
 
   function handleLogout() {
+    // Chaque espace revient à SA page de connexion (un partenaire renvoyé sur
+    // "/" — connexion admin — voyait ses identifiants systématiquement refusés).
+    const destination = pageConnexion(user?.type);
     logout();
-    navigate("/");
+    navigate(destination);
   }
 
   function closeSidebar() {
