@@ -11,7 +11,13 @@ import {
   type SecurproInput,
   type SecurstockInput,
 } from "../services/tarificationImf.js";
-import { ensureBaremesImf } from "../services/provisioningImf.js";
+import { ensureBaremesImf, ensureProduitsImf, codesProduitsActifs } from "../services/provisioningImf.js";
+import {
+  calculerDecesEmprunteur,
+  calculerDecesParrainage,
+  estProduitDecesCepeci,
+  TAUX_COMMISSION_DECES_CEPECI,
+} from "../services/decesCepeci.js";
 
 /**
  * Sérialise une souscription IMF pour l'espace admin en aplatissant le nom de
@@ -146,6 +152,14 @@ agentImfRouter.get(
   })
 );
 
+/** Produits proposés par l'IMF de l'agent (le simulateur n'affiche qu'eux). */
+agentImfRouter.get(
+  "/produits-actifs",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    res.json(await codesProduitsActifs(scopeImfAgent(req)));
+  })
+);
+
 /** Lecture seule pour le simulateur agent : barèmes en vigueur (ceux de l'IMF de l'agent si scopé). */
 agentImfRouter.get(
   "/baremes/securpro",
@@ -257,6 +271,24 @@ const decesInputSchema = z.object({
   beneficiaires: z.array(beneficiaireSchema).optional(),
 });
 
+/** DÉCÈS EMPRUNTEUR (CEPE-CI) : montant et durée du prêt ; le bénéficiaire est CEPE-CI (encours). */
+const decesEmprunteurInputSchema = z.object({
+  montantPret: z.number().int().positive(),
+  dureeMois: z.number().int().min(1),
+});
+
+/** DÉCÈS PARRAINAGE DE COMPTE (CEPE-CI) : option, nombre d'enfants couverts, ayants-droits (100 %). */
+const decesParrainageInputSchema = z
+  .object({
+    option: z.enum(["individuelle", "famille", "ascendants", "complete"]),
+    nombreEnfants: z.number().int().min(0).default(0),
+    beneficiaires: z.array(beneficiaireSchema).min(1, "Désignez au moins un bénéficiaire."),
+  })
+  .refine((d) => Math.round(d.beneficiaires.reduce((s, b) => s + b.pourcentage, 0)) === 100, {
+    message: "La somme des parts des bénéficiaires doit être égale à 100%.",
+    path: ["beneficiaires"],
+  });
+
 /**
  * COUPS DURS (produit unique fusionné) : Maladie Coups Durs est incluse
  * d'office (garantie socle, toujours facturée), Décès suite à Coups Durs est
@@ -295,7 +327,7 @@ const LABEL_GARANTIE_COUPSDURS: Record<string, string> = {
 };
 
 export const simulationSchema = z.object({
-  produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte", "deces"]),
+  produitCode: z.enum(["securpro", "securstock", "coupsdurs", "securecolte", "deces", "deces_emprunteur", "deces_parrainage"]),
   entrees: z.record(z.unknown()),
   // Clé d'idempotence PWA (mode hors-ligne) — voir SimulationImf.offlineId.
   offlineId: z.string().min(1).optional(),
@@ -310,7 +342,12 @@ type GarantieImfConfig = { code: string; actif: boolean; plafond: number | null 
  */
 async function chargerConfigProduitImf(imfId: string | null | undefined, produitCode: string) {
   if (!imfId) return null;
-  const row = await prisma.imfProduit.findUnique({ where: { imfId_code: { imfId, code: produitCode } } });
+  let row = await prisma.imfProduit.findUnique({ where: { imfId_code: { imfId, code: produitCode } } });
+  if (!row) {
+    // Produit ajouté au catalogue après la création de l'IMF : provisionné à la volée (idempotent).
+    await ensureProduitsImf(imfId);
+    row = await prisma.imfProduit.findUnique({ where: { imfId_code: { imfId, code: produitCode } } });
+  }
   if (!row) return { actif: false, plafond: null, garanties: [] as GarantieImfConfig[] };
   const garanties = Array.isArray(row.garanties) ? (row.garanties as unknown as GarantieImfConfig[]) : [];
   return { actif: row.actif, plafond: row.plafond, garanties };
@@ -394,6 +431,23 @@ export async function calculerDevisImf(
     });
     const primeTTC = lignes.reduce((s, l) => s + l.prime, 0);
     return { ok: true, resultat: { lignes, primeTTC, dureeMois: input.dureeMois }, primeTTC };
+  }
+  if (produitCode === "deces_emprunteur") {
+    // Négocié avec CEPE-CI — voir services/decesCepeci.ts (refus au-delà de 10 M FCFA ou de 24 mois).
+    const input = decesEmprunteurInputSchema.parse(entrees);
+    const r = calculerDecesEmprunteur(input.montantPret, input.dureeMois);
+    if (!r.ok) return r;
+    return { ok: true, resultat: r.resultat, primeTTC: r.resultat.primeTTC };
+  }
+  if (produitCode === "deces_parrainage") {
+    const input = decesParrainageInputSchema.parse(entrees);
+    const r = calculerDecesParrainage(input.option, input.nombreEnfants);
+    if (!r.ok) return r;
+    return {
+      ok: true,
+      resultat: { ...r.resultat, beneficiaires: input.beneficiaires },
+      primeTTC: r.resultat.primeTTC,
+    };
   }
   if (produitCode === "deces") {
     const input = decesInputSchema.parse(entrees);
@@ -486,6 +540,15 @@ publicImfRouter.get(
     const agent = await resolveAgentImfParToken(req.params.token);
     if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
     res.json({ nom: agent.nom, prenom: agent.prenom, agenceNom: agent.agence?.nom ?? null });
+  })
+);
+
+publicImfRouter.get(
+  "/:token/produits-actifs",
+  asyncHandler(async (req, res) => {
+    const agent = await resolveAgentImfParToken(req.params.token);
+    if (!agent) return res.status(404).json({ error: "Lien invalide ou expiré" });
+    res.json(await codesProduitsActifs(agent.imfId));
   })
 );
 
@@ -902,6 +965,9 @@ agentImfRouter.get(
         const bareme = baremesSecurstock.find((b) => b.classe === entrees.classe);
         return Math.round((resultat.primeNetteHT ?? 0) * (bareme?.tauxCommission ?? 0));
       }
+      if (estProduitDecesCepeci(s.produitCode)) {
+        return Math.round((resultat.primeNetteHT ?? 0) * TAUX_COMMISSION_DECES_CEPECI);
+      }
       if (s.produitCode === "coupsdurs") {
         // Garanties combinées : commission = somme, garantie par garantie, de
         // (prime HT de la ligne × taux courant de la ligne) — jamais figée au devis.
@@ -974,8 +1040,10 @@ export const FAMILLE_PRODUIT: Record<string, string> = {
   coupsdurs_incapacite: "COUPS DURS",
   securecolte: "SECURECOLTE",
   deces: "DECES",
+  deces_emprunteur: "DECES EMPRUNTEUR",
+  deces_parrainage: "DECES PARRAINAGE",
 };
-export const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE", "DECES"];
+export const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE", "DECES", "DECES EMPRUNTEUR", "DECES PARRAINAGE"];
 
 /* ────────────────────────────────────────────────────────────────────────
  * Phase 6 — Sinistres IMF
@@ -1049,6 +1117,29 @@ export function checklistImf(produitCode: string, typeEvenement: string): string
       "Pièce d'identité du (des) bénéficiaire(s)",
       "Acte de mariage du conjoint (si nécessaire)",
       "Procès-verbal de constat de gendarmerie/police (si accident de la circulation)",
+      "Certificat d'individualité (si nécessaire)",
+    ];
+  }
+  if (produitCode === "deces_emprunteur") {
+    const commun = [
+      "Formulaire de déclaration de sinistre",
+      "Carte d'assuré et pièce d'identité",
+      "Tableau d'amortissement du prêt",
+      "Attestation d'encours du prêt délivrée par CEPE-CI",
+    ];
+    return typeEvenement === "ipt"
+      ? [...commun, "Certificat médical constatant l'Invalidité Permanente Totale"]
+      : [...commun, "Acte de décès", "Certificat de genre de mort", "Procès-verbal de constat de gendarmerie/police (si accident)"];
+  }
+  if (produitCode === "deces_parrainage") {
+    return [
+      "Formulaire de déclaration de sinistre",
+      "Carte d'assuré et pièce d'identité du titulaire du compte",
+      "Acte de décès",
+      "Certificat de genre de mort",
+      "Justificatif du lien avec le titulaire (acte de mariage, extrait de naissance)",
+      "Extrait de naissance du (des) bénéficiaire(s)",
+      "Pièce d'identité du (des) bénéficiaire(s)",
       "Certificat d'individualité (si nécessaire)",
     ];
   }

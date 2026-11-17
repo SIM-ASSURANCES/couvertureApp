@@ -9,6 +9,15 @@ import { useBaremeCache } from "../../offline/useBaremes";
 import { calculerSecurpro as calculerSecurproLocal, calculerSecurstock as calculerSecurstockLocal, type SecurproInput, type SecurstockInput } from "../../offline/tarification";
 import { calculerCoupsdursHorsLigne, calculerSecurecolteHorsLigne, calculerDecesHorsLigne } from "../../offline/catalogue";
 import { putQueueItem, type SouscriptionEnAttente } from "../../offline/db";
+import {
+  calculerDecesEmprunteurHorsLigne,
+  calculerDecesParrainageHorsLigne,
+  estProduitDecesCepeci,
+  trancheEmprunteurLibelle,
+  OPTIONS_PARRAINAGE,
+  MAX_ENFANTS_PARRAINAGE,
+  type OptionParrainage,
+} from "../../offline/decesCepeci";
 import type { SouscriptionImf, SimulationImf } from "../../types";
 
 const PRODUIT_LABEL: Record<string, string> = {
@@ -17,9 +26,11 @@ const PRODUIT_LABEL: Record<string, string> = {
   coupsdurs: "Coups Durs",
   securecolte: "SECURECOLTE",
   deces: "Décès",
+  deces_emprunteur: "Décès Emprunteur",
+  deces_parrainage: "Décès Parrainage de Compte",
 };
 
-type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte" | "deces";
+type ProduitCode = "securpro" | "securstock" | "coupsdurs" | "securecolte" | "deces" | "deces_emprunteur" | "deces_parrainage";
 
 const PRODUITS: { code: ProduitCode; label: string }[] = [
   { code: "securpro", label: "SECURPRO" },
@@ -27,6 +38,9 @@ const PRODUITS: { code: ProduitCode; label: string }[] = [
   { code: "coupsdurs", label: "Coups Durs" },
   { code: "securecolte", label: "SECURECOLTE" },
   { code: "deces", label: "Décès" },
+  // Négociés avec CEPE-CI : n'apparaissent que si l'IMF les propose (voir produitsProposes).
+  { code: "deces_emprunteur", label: "Décès Emprunteur" },
+  { code: "deces_parrainage", label: "Décès Parrainage de Compte" },
 ];
 
 const VOL_CAISSE_CAPITAUX = [25000, 50000, 100000, 250000, 500000];
@@ -132,6 +146,8 @@ interface LignePrime {
 interface ResultatFormule {
   depassementPlafond: boolean;
   lignes: LignePrime[];
+  /** Capitaux garantis affichés au-dessus des primes (Décès Emprunteur / Parrainage). */
+  garanties?: { garantie: string; capital: number }[];
   primeNetteHT: number;
   accessoires: number;
   taxes: number;
@@ -167,6 +183,18 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   const [erreurSouscription, setErreurSouscription] = useState("");
   const sigRef = useRef<SignaturePadHandle>(null);
   const online = useOnline();
+  // Produits proposés par l'IMF (Décès Emprunteur / Parrainage : CEPE-CI seulement), mis en cache pour
+  // le hors-ligne. À défaut de réponse (route absente, jamais chargée) : tout sauf les produits CEPE-CI.
+  const produitsActifs = useBaremeCache<string[]>(`produits_actifs:${apiBase}`, `${apiBase}/produits-actifs`, online);
+  const produitsProposes = PRODUITS.filter((p) =>
+    produitsActifs && produitsActifs.length ? produitsActifs.includes(p.code) : !estProduitDecesCepeci(p.code)
+  );
+  useEffect(() => {
+    if (produitsProposes.length && !produitsProposes.some((p) => p.code === produitCode)) {
+      setProduitCode(produitsProposes[0].code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [produitsActifs]);
   const [souscriptionHorsLigne, setSouscriptionHorsLigne] = useState<SouscriptionEnAttente | null>(null);
   const [entreesCourantes, setEntreesCourantes] = useState<Record<string, unknown> | null>(null);
   const [resultatCourant, setResultatCourant] = useState<unknown>(null);
@@ -269,6 +297,11 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
       });
     } else if (b.produitCode === "deces") {
       setBeneficiaires((e.beneficiaires as Beneficiaire[]) ?? []);
+    } else if (b.produitCode === "deces_emprunteur") {
+      setEmp({ montantPret: (e.montantPret as number) ?? 0, dureeMois: (e.dureeMois as number) ?? 12 });
+    } else if (b.produitCode === "deces_parrainage") {
+      setPar({ option: (e.option as OptionParrainage) ?? "individuelle", nombreEnfants: (e.nombreEnfants as number) ?? 0 });
+      setBeneficiaires((e.beneficiaires as Beneficiaire[]) ?? []);
     }
     notify("Brouillon repris — vérifiez le devis avant de souscrire.");
   }
@@ -334,7 +367,10 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   const [cd, setCd] = useState({ deces: false, incapacite: null as null | "plafond_500000" | "plafond_1000000", dureeMois: 12 });
   const estCoupsdurs = produitCode === "coupsdurs";
   const estDeces = produitCode === "deces";
-  const necessiteBeneficiaires = (estCoupsdurs && cd.deces) || estDeces;
+  const estEmprunteur = produitCode === "deces_emprunteur";
+  const estParrainage = produitCode === "deces_parrainage";
+  // Décès Emprunteur : le bénéficiaire est CEPE-CI (encours du prêt), pas d'ayants-droits à désigner.
+  const necessiteBeneficiaires = (estCoupsdurs && cd.deces) || estDeces || estParrainage;
 
   // COUPS DURS : déclaration de bonne santé + bénéficiaires (si Décès coché)
   const [sante, setSante] = useState(defaultSante());
@@ -346,6 +382,10 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   // pack — voir calculerSecurecolteHorsLigne().
   const estSecurecolte = produitCode === "securecolte";
   const [secol, setSecol] = useState({ valeurPackage: 0, superficieHa: 0 });
+
+  // DÉCÈS EMPRUNTEUR / DÉCÈS PARRAINAGE (CEPE-CI) — voir offline/decesCepeci.ts.
+  const [emp, setEmp] = useState({ montantPret: 0, dureeMois: 12 });
+  const [par, setPar] = useState({ option: "individuelle" as OptionParrainage, nombreEnfants: 0 });
 
   function toggleAffection(a: string) {
     setSante((s) => ({
@@ -453,6 +493,30 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
         nextResultat = r;
         nextPrimeTTC = r.primeTTC;
       }
+    } else if (produitCode === "deces_emprunteur") {
+      if (emp.montantPret > 0) {
+        const r = calculerDecesEmprunteurHorsLigne(emp.montantPret, emp.dureeMois);
+        if (r.ok) {
+          nextEntrees = { montantPret: emp.montantPret, dureeMois: emp.dureeMois };
+          nextResultat = r.resultat;
+          nextPrimeTTC = r.resultat.primeTTC;
+        } else {
+          nextError = r.error;
+        }
+      }
+    } else if (produitCode === "deces_parrainage") {
+      const r = calculerDecesParrainageHorsLigne(par.option, par.nombreEnfants);
+      if (r.ok) {
+        nextEntrees = {
+          option: par.option,
+          nombreEnfants: OPTIONS_PARRAINAGE[par.option].avecEnfants ? par.nombreEnfants : 0,
+          beneficiaires,
+        };
+        nextResultat = r.resultat;
+        nextPrimeTTC = r.resultat.primeTTC;
+      } else {
+        nextError = r.error;
+      }
     } else if (produitCode === "deces") {
       const r = calculerDecesHorsLigne();
       if (r) {
@@ -487,7 +551,7 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
     setPrimeTTCCourante(nextPrimeTTC);
     setError(nextError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, cd, secol]);
+  }, [produitCode, sp, ss, variante, sante, beneficiaires, baremeSecurpro, baremeSecurstock, cd, secol, emp, par]);
 
   function reset() {
     setSouscription(null);
@@ -499,6 +563,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
     setBeneficiaires([]);
     setSecol({ valeurPackage: 0, superficieHa: 0 });
     setCd({ deces: false, incapacite: null, dureeMois: 12 });
+    setEmp({ montantPret: 0, dureeMois: 12 });
+    setPar({ option: "individuelle", nombreEnfants: 0 });
   }
 
   async function souscrire(e: React.FormEvent) {
@@ -588,7 +654,7 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
               value={produitCode}
               onChange={(e) => { setProduitCode(e.target.value as ProduitCode); reset(); }}
             >
-              {PRODUITS.map((p) => <option key={p.code} value={p.code}>{p.label}</option>)}
+              {produitsProposes.map((p) => <option key={p.code} value={p.code}>{p.label}</option>)}
             </select>
           </div>
 
@@ -821,6 +887,80 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
                   supplémentaire. Renseignez uniquement les bénéficiaires ci-dessous.
                 </div>
               </div>
+            )}
+
+            {estEmprunteur && (
+              <>
+                <div className="field">
+                  <label className="label">Montant du prêt (FCFA) <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={emp.montantPret || ""}
+                    onChange={(e) => setEmp({ ...emp, montantPret: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                    placeholder="Ex. 1 000 000"
+                  />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Maximum 10 000 000 FCFA (au-delà : accord préalable de SIM Assurances).
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="label">Durée du prêt (mois) <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={24}
+                    value={emp.dureeMois || ""}
+                    onChange={(e) => setEmp({ ...emp, dureeMois: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                  />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {trancheEmprunteurLibelle(emp.dureeMois) ?? "24 mois au plus"} — prime TTC : montant × {emp.dureeMois > 12 ? "1,6 %" : "1 %"}.
+                    Bénéficiaire : CEPE-CI (encours du prêt). Âge limite à la souscription : 65 ans.
+                  </div>
+                </div>
+              </>
+            )}
+
+            {estParrainage && (
+              <>
+                <div className="field">
+                  <label className="label">Option <span className="req">*</span></label>
+                  <select
+                    className="select"
+                    value={par.option}
+                    onChange={(e) => setPar({ ...par, option: e.target.value as OptionParrainage })}
+                  >
+                    {(Object.keys(OPTIONS_PARRAINAGE) as OptionParrainage[]).map((o) => (
+                      <option key={o} value={o}>
+                        {OPTIONS_PARRAINAGE[o].libelle} — {fcfa(OPTIONS_PARRAINAGE[o].primeNetteHT + OPTIONS_PARRAINAGE[o].accessoires)} / an
+                      </option>
+                    ))}
+                  </select>
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Titulaire du compte : 60 ans au plus à la souscription.
+                    {(par.option === "ascendants" || par.option === "complete") && " Parents : 70 ans au plus, carence de 3 mois."}
+                  </div>
+                </div>
+                {OPTIONS_PARRAINAGE[par.option].avecEnfants && (
+                  <div className="field">
+                    <label className="label">Nombre d'enfants couverts (12 à 21 ans)</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      max={MAX_ENFANTS_PARRAINAGE}
+                      value={par.nombreEnfants}
+                      onChange={(e) => setPar({ ...par, nombreEnfants: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                    />
+                    <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                      Les 5 premiers enfants sont couverts.
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {estCoupsdurs && (
@@ -1073,6 +1213,12 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
               ) : (
                 <table className="tbl" style={{ width: "100%" }}>
                   <tbody>
+                    {resultat.garanties?.map((g, i) => (
+                      <tr key={`g${i}`}>
+                        <td className="muted">{g.garantie}</td>
+                        <td style={{ textAlign: "right" }}>{fcfa(g.capital)}</td>
+                      </tr>
+                    ))}
                     {resultat.lignes.map((l, i) => (
                       <tr key={i}>
                         <td>{l.garantie}{l.capital ? ` (${fcfa(l.capital)})` : ""}</td>

@@ -1,6 +1,6 @@
 /**
  * Catalogue de référence des produits de la branche IMF (SECURPRO, SECURSTOCK,
- * COUPS DURS, SECURECOLTE, DÉCÈS) et de leurs garanties.
+ * COUPS DURS, SECURECOLTE, DÉCÈS, DÉCÈS EMPRUNTEUR, DÉCÈS PARRAINAGE) et de leurs garanties.
  *
  * Sert de gabarit au paramétrage PAR IMF (branche « IMF Partenaires », phase 2) :
  * à la création d'une IMF, une ligne `ImfProduit` est provisionnée par produit,
@@ -71,6 +71,28 @@ export const CATALOGUE_PRODUITS_IMF: ProduitImfCatalogue[] = [
     aFormule: false,
     garanties: [
       { code: "standard", libelle: "Décès / IPT" },
+    ],
+  },
+  // Produits négociés avec CEPE-CI (2026-11-17) — réservés à cette IMF, voir services/decesCepeci.ts.
+  {
+    code: "deces_emprunteur",
+    libelle: "Décès Emprunteur",
+    aFormule: false,
+    garanties: [
+      { code: "deces_toutes_causes", libelle: "Décès toutes causes" },
+      { code: "deces_accidentel", libelle: "Décès accidentel" },
+      { code: "ipt", libelle: "Invalidité Permanente Totale" },
+    ],
+  },
+  {
+    code: "deces_parrainage",
+    libelle: "Décès Parrainage de Compte",
+    aFormule: false,
+    garanties: [
+      { code: "individuelle", libelle: "Option Individuelle" },
+      { code: "famille", libelle: "Option Famille" },
+      { code: "ascendants", libelle: "Option Assuré principal + ascendants" },
+      { code: "complete", libelle: "Option Complète" },
     ],
   },
 ];

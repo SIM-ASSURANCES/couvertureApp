@@ -16,6 +16,7 @@
 
 import { prisma } from "../db.js";
 import { mapperSouscriptionGenerique } from "./contratGenerique.js";
+import { conditionsGeneralesDecesCepeci, estProduitDecesCepeci } from "./decesCepeci.js";
 import {
   SECURPRO_CLASSE_LABELS,
   SECURSTOCK_CLASSE_LABELS,
@@ -162,7 +163,7 @@ const CODES_PRODUIT_IMF: Record<TypeImf, string[]> = {
   securstock: ["securstock"],
   securecolte: ["securecolte"],
   coupsdurs: ["coupsdurs", "coupsdurs_classique", "coupsdurs_incapacite"],
-  deces: ["deces"],
+  deces: ["deces", "deces_emprunteur", "deces_parrainage"],
 };
 
 const COUPSDURS_VARIANTE_LABELS: Record<string, string> = {
@@ -298,6 +299,59 @@ export async function chargerContratImfVerifie(type: TypeImf, souscriptionId: st
       valeurPackage: entrees.valeurPackage ?? null,
       superficieHa: entrees.superficieHa ?? null,
       capitaux,
+    };
+  }
+
+  if (type === "deces" && estProduitDecesCepeci(s.produitCode)) {
+    // Décès Emprunteur / Décès Parrainage de Compte (CEPE-CI) — voir services/decesCepeci.ts.
+    const r = s.resultat as unknown as {
+      garanties?: { garantie: string; capital: number }[];
+      primeNetteHT?: number;
+      accessoires?: number;
+      capitalGaranti?: number;
+      montantPret?: number;
+      dureeMois?: number;
+      tranche?: string;
+      optionLibelle?: string;
+      nombreEnfants?: number;
+    };
+    const entrees = s.entrees as unknown as { beneficiaires?: BeneficiaireCoupsdurs[] };
+    const emprunteur = s.produitCode === "deces_emprunteur";
+    const montantTexte = (n: number) => `${new Intl.NumberFormat("fr-FR").format(n).replace(/[\u202f\u00a0]/g, " ")} FCFA`;
+    // Décès Emprunteur : la couverture court sur la durée du prêt (et non un an).
+    let dateFin = commun.dateFin;
+    if (emprunteur && r.dureeMois) {
+      const fin = new Date(s.createdAt);
+      fin.setMonth(fin.getMonth() + r.dureeMois);
+      dateFin = fin.toISOString();
+    }
+    return {
+      ...commun,
+      dateFin,
+      capitalGaranti: r.capitalGaranti ?? 0,
+      primeTTC: s.primeTTC,
+      beneficiaires: emprunteur ? null : entrees.beneficiaires ?? null,
+      titre: emprunteur ? "DECES EMPRUNTEUR" : "DECES PARRAINAGE DE COMPTE",
+      sousTitre: emprunteur
+        ? "Décès / Invalidité Permanente Totale de l'emprunteur — prêt CEPE-CI"
+        : `Décès du titulaire du compte CEPE-CI — option ${r.optionLibelle ?? ""}`,
+      garanties: r.garanties ?? null,
+      primeNetteHT: r.primeNetteHT ?? null,
+      accessoires: r.accessoires ?? null,
+      details: emprunteur
+        ? [
+            { libelle: "Montant du prêt", valeur: montantTexte(r.montantPret ?? 0) },
+            { libelle: "Durée du prêt", valeur: `${r.dureeMois ?? "—"} mois` },
+            { libelle: "Type de prêt", valeur: r.tranche ?? "—" },
+          ]
+        : [
+            { libelle: "Option", valeur: r.optionLibelle ?? "—" },
+            ...(r.nombreEnfants ? [{ libelle: "Nombre d'enfants couverts", valeur: String(r.nombreEnfants) }] : []),
+          ],
+      beneficiaireTexte: emprunteur
+        ? "CEPE-CI, à hauteur de l'encours du prêt (net des intérêts et autres frais) au jour du sinistre."
+        : null,
+      conditionsGenerales: conditionsGeneralesDecesCepeci(s.produitCode),
     };
   }
 

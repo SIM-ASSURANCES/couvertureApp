@@ -343,6 +343,16 @@ export interface ContratDeces {
   primeTTC: number;
   beneficiaires?: BeneficiaireCoupsdurs[] | null;
   signature?: string | null;
+  // Produits CEPE-CI (Décès Emprunteur / Décès Parrainage de Compte, voir services/decesCepeci.ts) :
+  // absents pour le Décès historique, qui garde exactement son rendu.
+  titre?: string | null;
+  sousTitre?: string | null;
+  garanties?: { garantie: string; capital: number }[] | null;
+  details?: { libelle: string; valeur: string }[] | null;
+  primeNetteHT?: number | null;
+  accessoires?: number | null;
+  beneficiaireTexte?: string | null;
+  conditionsGenerales?: string[] | null;
 }
 
 export interface ContratCoupsdurs {
@@ -1277,10 +1287,38 @@ export async function renderContratDeces(c: ContratDeces): Promise<string> {
   </table>`
       : "";
 
+  const titre = c.titre ?? "DECES";
+  const garantiesSection = c.garanties?.length
+    ? `
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital garanti</td></tr>
+    ${c.garanties.map((g) => `<tr><td>${val(g.garantie)}</td><td>${fcfa(g.capital)}</td></tr>`).join("")}
+    ${c.primeNetteHT != null ? `<tr><td class="k">Prime nette HT</td><td>${fcfa(c.primeNetteHT)}</td></tr>` : ""}
+    ${c.accessoires != null ? `<tr><td class="k">Accessoires</td><td>${fcfa(c.accessoires)}</td></tr>` : ""}
+    <tr><td class="k">Taxes</td><td>${fcfa(0)}</td></tr>
+    <tr><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
+  </table>`
+    : `
+  <table>
+    <tr><td class="k">Garantie</td><td class="k">Capital garanti</td><td class="k">Prime</td></tr>
+    <tr><td>Décès / IPT</td><td>${fcfa(c.capitalGaranti)}</td><td>${fcfa(c.primeTTC)}</td></tr>
+  </table>`;
+  const detailsSection = c.details?.length
+    ? `
+  <table>
+    ${c.details.map((d) => `<tr><td class="k">${val(d.libelle)}</td><td>${val(d.valeur)}</td></tr>`).join("")}
+  </table>`
+    : "";
+  const beneficiaireTexteSection = c.beneficiaireTexte
+    ? `
+  <h2>Bénéficiaire</h2>
+  <div class="note">${val(c.beneficiaireTexte)}</div>`
+    : "";
+
   const cp = `
   ${header(c.numeroPolice, true)}
-  <h1>Conditions Particulières — DECES</h1>
-  <div class="sub">Décès / Invalidité Permanente Totale · Distribué via ${val(c.intermediaire)}</div>
+  <h1>Conditions Particulières — ${val(titre)}</h1>
+  <div class="sub">${val(c.sousTitre ?? "Décès / Invalidité Permanente Totale")} · Distribué via ${val(c.intermediaire)}</div>
 
   <h2>Conditions Particulières</h2>
   <table>
@@ -1289,11 +1327,9 @@ export async function renderContratDeces(c: ContratDeces): Promise<string> {
     <tr><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td><td class="k">Prime TTC</td><td><strong>${fcfa(c.primeTTC)}</strong></td></tr>
   </table>
 
-  <h2>Garantie souscrite</h2>
-  <table>
-    <tr><td class="k">Garantie</td><td class="k">Capital garanti</td><td class="k">Prime</td></tr>
-    <tr><td>Décès / IPT</td><td>${fcfa(c.capitalGaranti)}</td><td>${fcfa(c.primeTTC)}</td></tr>
-  </table>
+  <h2>${c.garanties?.length && c.garanties.length > 1 ? "Garanties souscrites" : "Garantie souscrite"}</h2>
+  ${garantiesSection}
+  ${detailsSection}
 
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
@@ -1303,12 +1339,21 @@ export async function renderContratDeces(c: ContratDeces): Promise<string> {
 
   <div class="note">
     Le présent contrat conclu entre le Souscripteur (ci-dessus) et SIM ASSURANCES CI (l'Assureur) est régi par les
-    Conditions Générales du contrat DECES et les présentes Conditions Particulières.
+    Conditions Générales du contrat ${val(titre)} et les présentes Conditions Particulières.
   </div>
+  ${beneficiaireTexteSection}
   ${beneficiairesSection}
   ${signatures(c.signature)}`;
 
-  const cgSection = `
+  const cgSection = c.conditionsGenerales?.length
+    ? `
+  <div class="pagebreak"></div>
+  <h1>Conditions Générales — ${val(titre)}</h1>
+  <div class="note">
+    ${c.conditionsGenerales.join("<br/><br/>")}
+  </div>
+  ${RECLAMATION}`
+    : `
   <div class="pagebreak"></div>
   <h1>Conditions Générales — DECES</h1>
   <div class="note">

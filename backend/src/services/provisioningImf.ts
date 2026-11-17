@@ -8,6 +8,7 @@ import {
   TARIFS_FIXES_DEFAUT,
   PRODUITS_TARIF_FIXE_IMF,
 } from "./baremesImfDefaut.js";
+import { estImfCepeci, estProduitDecesCepeci } from "./decesCepeci.js";
 
 /**
  * Provisionnement (idempotent) du paramétrage d'une IMF partenaire — appelé à
@@ -22,10 +23,32 @@ export async function ensureProduitsImf(imfId: string, tx: Prisma.TransactionCli
   const presents = new Set(existants.map((p) => p.code));
   const manquants = CATALOGUE_PRODUITS_IMF.filter((p) => !presents.has(p.code));
   if (manquants.length === 0) return;
+  // Décès Emprunteur / Décès Parrainage : négociés avec CEPE-CI, actifs pour elle seule (les autres IMF
+  // les reçoivent désactivés ; l'admin peut les activer dans « Produits & garanties »).
+  const imf = await tx.imf.findUnique({ where: { id: imfId }, select: { nom: true, code: true } });
+  const cepeci = !!imf && estImfCepeci(imf);
   await tx.imfProduit.createMany({
-    data: manquants.map((p) => ({ imfId, code: p.code, actif: true, garanties: garantiesInitiales(p.code) })),
+    data: manquants.map((p) => ({
+      imfId,
+      code: p.code,
+      actif: estProduitDecesCepeci(p.code) ? cepeci : true,
+      garanties: garantiesInitiales(p.code),
+    })),
     skipDuplicates: true,
   });
+}
+
+/**
+ * Codes des produits proposés par cette IMF (simulateur : la liste déroulante n'affiche qu'eux).
+ * Sans IMF (branche historique « Assurances IMF »), tout le catalogue sauf les produits réservés
+ * à CEPE-CI.
+ */
+export async function codesProduitsActifs(imfId: string | null | undefined): Promise<string[]> {
+  if (!imfId) return CATALOGUE_PRODUITS_IMF.map((p) => p.code).filter((c) => !estProduitDecesCepeci(c));
+  await ensureProduitsImf(imfId);
+  const rows = await prisma.imfProduit.findMany({ where: { imfId, actif: true }, select: { code: true } });
+  const actifs = new Set(rows.map((r) => r.code));
+  return CATALOGUE_PRODUITS_IMF.map((p) => p.code).filter((c) => actifs.has(c));
 }
 
 /**

@@ -3,13 +3,15 @@ import { PageHeader, Card, Loader, ErrorBox, fcfa, nb } from "../../../component
 import { useFetch } from "../../../useFetch";
 import type { ZoneImf, AgenceImf, AgentImf, StatsImf, StatsSinistresImf } from "../../../types";
 
-const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE", "DECES"] as const;
+const FAMILLES = ["SECURPRO", "SECURSTOCK", "COUPS DURS", "SECURECOLTE", "DECES", "DECES EMPRUNTEUR", "DECES PARRAINAGE"] as const;
 const COULEURS: Record<string, string> = {
   SECURPRO: "#2563eb",
   SECURSTOCK: "#16a34a",
   "COUPS DURS": "#f59e0b",
   SECURECOLTE: "#db2777",
   DECES: "#7c3aed",
+  "DECES EMPRUNTEUR": "#0f766e",
+  "DECES PARRAINAGE": "#be185d",
 };
 
 function StatCard({

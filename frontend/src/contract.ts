@@ -636,6 +636,7 @@ export function genererContratDepuisDonnees(c: DonneesContrat): void {
 export function contratImfDisponible(produitCode: string): boolean {
   return [
     "securpro", "securstock", "securecolte", "coupsdurs", "coupsdurs_classique", "coupsdurs_incapacite", "deces",
+    "deces_emprunteur", "deces_parrainage",
   ].includes(produitCode);
 }
 
@@ -649,7 +650,8 @@ export function genererContratImf(s: SouscriptionImf): void {
   else if (s.produitCode === "securecolte") genererContratSecurecolte(souscriptionImfToContratSecurecolte(s), s.id);
   else if (s.produitCode === "coupsdurs" || s.produitCode === "coupsdurs_classique" || s.produitCode === "coupsdurs_incapacite")
     genererContratCoupsdurs(souscriptionImfToContratCoupsdurs(s), s.id);
-  else if (s.produitCode === "deces") genererContratDeces(souscriptionImfToContratDeces(s), s.id);
+  else if (s.produitCode === "deces" || s.produitCode === "deces_emprunteur" || s.produitCode === "deces_parrainage")
+    genererContratDeces(souscriptionImfToContratDeces(s), s.id);
 }
 
 const SECURSTOCK_CLASSE_LABELS: Record<number, string> = {

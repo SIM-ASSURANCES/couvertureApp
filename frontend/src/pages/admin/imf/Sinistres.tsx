@@ -16,6 +16,20 @@ const TYPE_EVENEMENT_OPTIONS: Record<string, { value: string; label: string }[]>
     { value: "deces", label: "Décès suite à Coups Durs" },
   ],
   coupsdurs_incapacite: [{ value: "incapacite_temporaire", label: "Incapacité temporaire de l'emprunteur" }],
+  deces: [
+    { value: "deces", label: "Décès" },
+    { value: "ipt", label: "Invalidité Permanente Totale" },
+  ],
+  deces_emprunteur: [
+    { value: "deces", label: "Décès de l'emprunteur" },
+    { value: "ipt", label: "Invalidité Permanente Totale de l'emprunteur" },
+  ],
+  deces_parrainage: [
+    { value: "deces_assure", label: "Décès du titulaire du compte" },
+    { value: "deces_conjoint", label: "Décès du conjoint" },
+    { value: "deces_enfant", label: "Décès d'un enfant" },
+    { value: "deces_ascendant", label: "Décès d'un ascendant (père ou mère)" },
+  ],
 };
 
 /** COUPS DURS (produit fusionné) : ne propose que les garanties réellement souscrites. */

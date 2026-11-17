@@ -29,7 +29,7 @@ import {
   type PieceChecklist,
   type VirementBordereau,
 } from "./imf.js";
-import { ensureBaremesImf, ensureProduitsImf } from "../services/provisioningImf.js";
+import { ensureBaremesImf, ensureProduitsImf, codesProduitsActifs } from "../services/provisioningImf.js";
 import { newQrToken, qrDataUrlImf } from "../services/qr.js";
 
 /**
@@ -382,6 +382,14 @@ imfPartenairesReseauRouter.get(
     await ensureBaremesImf(imfId(req));
     const rows = await prisma.imfBaremeSecurstock.findMany({ where: { imfId: imfId(req) }, orderBy: { classe: "asc" } });
     res.json(rows);
+  })
+);
+
+// Produits proposés par cette IMF (le simulateur n'affiche qu'eux).
+imfPartenairesReseauRouter.get(
+  "/produits-actifs",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    res.json(await codesProduitsActifs(imfId(req)));
   })
 );
 

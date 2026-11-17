@@ -15,6 +15,9 @@ const PRODUITS = [
   { value: "coupsdurs_classique", label: "Coups Durs — Classique (ancien)" },
   { value: "coupsdurs_incapacite", label: "Coups Durs — Incapacité (ancien)" },
   { value: "securecolte", label: "SECURECOLTE" },
+  { value: "deces", label: "Décès" },
+  { value: "deces_emprunteur", label: "Décès Emprunteur" },
+  { value: "deces_parrainage", label: "Décès Parrainage de Compte" },
 ];
 
 /** Contrats IMF actifs du réseau, regroupés par zone puis par agence. Voir ZonesInner pour le paramétrage. */
