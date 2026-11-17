@@ -397,6 +397,36 @@ publicRouter.get(
 );
 
 /**
+ * Même vérification, avec toute l'identité saisie (nom, prénoms, date de naissance, numéro de pièce) :
+ * un client qui revient avec un autre numéro est reconnu dès la saisie. En POST pour que ces données
+ * personnelles ne passent pas dans l'URL (journaux d'accès). Le GET ci-dessus reste pour les anciennes
+ * applications mobiles.
+ */
+const verificationEspaceSchema = z.object({
+  telephone: z.string().max(30).default(""),
+  nom: z.string().max(120).optional(),
+  prenom: z.string().max(160).optional(),
+  dateNaissance: optionalDate,
+  numeroPieceIdentite: z.string().max(60).optional(),
+  produit: z.string().max(60).optional(),
+});
+publicRouter.post(
+  "/espace-client",
+  asyncHandler(async (req, res) => {
+    const data = verificationEspaceSchema.parse(req.body ?? {});
+    const telephoneComplet = data.telephone.replace(/\D/g, "").length >= 8;
+    const refus = await refusSiEspaceClientExistant(req.headers.authorization, data);
+    const cumul = data.produit && telephoneComplet ? await refusSiCumulRelaxAccidents(data.produit, data.telephone) : null;
+    res.json({
+      connexionRequise: !!refus,
+      ...(refus ? { message: refus.error } : {}),
+      cumulInterdit: !!cumul,
+      ...(cumul ? { messageCumul: cumul.error } : {}),
+    });
+  })
+);
+
+/**
  * Partenaire d'origine d'un QR (token d'un QR générique, ou d'un QR historique d'un partenaire/agent) —
  * `null` si le token est inconnu. Sert uniquement à savoir si son paiement est désactivé.
  */
@@ -629,7 +659,7 @@ publicRouter.post(
     const token = newFormulaireToken();
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionIncendie.create({
@@ -898,7 +928,7 @@ publicRouter.post(
     }
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscriptionAccident.create({
@@ -1522,7 +1552,7 @@ publicRouter.post(
     const resultat = appliquerPeriodicite(resultatAnnuel, data.cycle);
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -1699,7 +1729,7 @@ publicRouter.post(
     }
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -1840,7 +1870,7 @@ publicRouter.post(
     }
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -1958,7 +1988,7 @@ publicRouter.post(
     const montantTotal = tarif.prime * nombrePeriodes;
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -2246,7 +2276,7 @@ publicRouter.post(
       : tarif.prime + surchargeDeplacement;
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({
@@ -2553,7 +2583,7 @@ publicRouter.post(
     const donneesSpecifiques = construireDonneesSpecifiques(code, entrees, cotation.resultat, data);
 
     // Un client qui a déjà un espace doit s'y connecter pour souscrire un autre produit (services/accesClient.ts).
-    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data.telephone);
+    const refusEspaceClient = await refusSiEspaceClientExistant(req.headers.authorization, data);
     if (refusEspaceClient) return res.status(403).json(refusEspaceClient);
     const client = await resoudreOuCreerClient(data.telephone, data.nom, data.prenom);
     const s = await prisma.souscription.create({

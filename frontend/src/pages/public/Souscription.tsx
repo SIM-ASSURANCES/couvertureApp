@@ -2372,9 +2372,25 @@ export default function Souscription() {
   const [messageEspaceClient, setMessageEspaceClient] = useState("");
   // Un client ne peut détenir qu'UN produit RelaxAccidents (RelaxVoyage excepté) : annoncé lui aussi dès la saisie.
   const [messageCumul, setMessageCumul] = useState("");
+  // Déclaré avant l'effet ci-dessous, qui le lit dans ses dépendances (requis par l'intégration NOVELIA).
+  const [numeroPieceRx, setNumeroPieceRx] = useState("");
   useEffect(() => {
-    const complets = [telephone, telephoneRx, telephoneInc].filter((t) => !phoneInvalid(t));
-    if (complets.length === 0) {
+    // Le client est reconnu par son numéro, mais aussi par sa pièce d'identité ou ses nom + prénoms +
+    // date de naissance (un autre numéro ne suffit plus à contourner la règle) — un jeu de champs par
+    // famille de formulaire. Seuls les jeux qui portent au moins un critère complet sont envoyés.
+    const identites = [
+      { telephone, nom, prenom, dateNaissance, numeroPieceIdentite: numeroPieceIdentite || numeroPieceRa },
+      { telephone: telephoneRx, nom: nomRx, prenom: prenomRx, dateNaissance, numeroPieceIdentite: numeroPieceRx },
+      { telephone: telephoneInc, nom: nomInc, prenom: prenomInc, dateNaissance: "", numeroPieceIdentite: "" },
+    ]
+      .map((i) => ({ ...i, telephone: phoneInvalid(i.telephone) ? "" : i.telephone }))
+      .filter(
+        (i) =>
+          i.telephone !== "" ||
+          i.numeroPieceIdentite.trim().length >= 5 ||
+          (i.nom.trim() !== "" && i.prenom.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(i.dateNaissance))
+      );
+    if (identites.length === 0) {
       setMessageEspaceClient("");
       setMessageCumul("");
       return;
@@ -2383,12 +2399,19 @@ export default function Souscription() {
     const minuteur = setTimeout(async () => {
       let connexion = "";
       let cumul = "";
-      for (const t of complets) {
+      for (const identite of identites) {
         try {
-          const res = await fetch(
-            `${BASE}/public/espace-client?telephone=${encodeURIComponent(t)}&produit=${encodeURIComponent(qrInfo?.produit ?? "")}`,
-            { headers: entetesJsonClient() }
-          );
+          // POST : nom, date de naissance et pièce ne doivent pas passer dans l'URL.
+          const res = await fetch(`${BASE}/public/espace-client`, {
+            method: "POST",
+            headers: entetesJsonClient(),
+            body: JSON.stringify({
+              ...identite,
+              dateNaissance: identite.dateNaissance || undefined,
+              numeroPieceIdentite: identite.numeroPieceIdentite || undefined,
+              produit: qrInfo?.produit ?? undefined,
+            }),
+          });
           const data = (await res.json()) as { connexionRequise?: boolean; message?: string; cumulInterdit?: boolean; messageCumul?: string };
           if (annule) return;
           if (data.connexionRequise && !connexion) {
@@ -2410,7 +2433,12 @@ export default function Souscription() {
       clearTimeout(minuteur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [telephone, telephoneRx, telephoneInc, qrInfo?.produit]);
+  }, [
+    telephone, nom, prenom, dateNaissance, numeroPieceIdentite, numeroPieceRa,
+    telephoneRx, nomRx, prenomRx, numeroPieceRx,
+    telephoneInc, nomInc, prenomInc,
+    qrInfo?.produit,
+  ]);
   const espaceExistant = messageEspaceClient !== "";
   const cumulInterdit = messageCumul !== "";
   const [typePieceRx, setTypePieceRx] = useState<"CNI" | "Permis">("CNI");
@@ -2421,7 +2449,6 @@ export default function Souscription() {
   const [villeRx, setVilleRx] = useState("");
   const [communeRx, setCommuneRx] = useState("");
   const [adresseRx, setAdresseRx] = useState("");
-  const [numeroPieceRx, setNumeroPieceRx] = useState("");
   // RelaxAccidents Frais Médicaux : le produit exclut les livreurs, le
   // souscripteur doit le déclarer explicitement avant de pouvoir payer.
   const [declarePasLivreur, setDeclarePasLivreur] = useState(false);
