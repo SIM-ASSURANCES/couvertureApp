@@ -60,6 +60,10 @@ interface Contrat extends DonneesContrat {
   fg?: number | null;
   accessoires?: number | null;
   referenceWave?: string | null;
+  // Assurances Dommages (2026-11-19) — SecurHome / SecurHome+ et SecurMoto (services/champsDommages.ts).
+  refSodeci?: string | null;
+  lieuHabitation?: string | null;
+  plaqueImmatriculation?: string | null;
 }
 
 function produitBadge(c: Contrat, catalogue?: CatalogueEntry[] | null) {
@@ -497,6 +501,24 @@ export default function Contrats() {
                     <tr>
                       <td className="muted">Réf. facture</td>
                       <td>{detail.refFacture}</td>
+                    </tr>
+                  )}
+                  {detail.refSodeci && (
+                    <tr>
+                      <td className="muted">Réf. SODECI</td>
+                      <td>{detail.refSodeci}</td>
+                    </tr>
+                  )}
+                  {detail.lieuHabitation && (
+                    <tr>
+                      <td className="muted">Lieu d'habitation</td>
+                      <td>{detail.lieuHabitation}</td>
+                    </tr>
+                  )}
+                  {detail.plaqueImmatriculation && (
+                    <tr>
+                      <td className="muted">Plaque d'immatriculation</td>
+                      <td>{detail.plaqueImmatriculation}</td>
                     </tr>
                   )}
                   <tr>

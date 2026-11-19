@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import type { ProduitCotation, ResultatCotation } from "./cotations.js";
+import { donneesChampsDommages, type ChampsDommages } from "./champsDommages.js";
 
 // =====================================================================
 // Construction de `Souscription.donneesSpecifiques` et de `Souscription.resultat` pour les
@@ -11,7 +12,7 @@ import type { ProduitCotation, ResultatCotation } from "./cotations.js";
 // =====================================================================
 
 /** Champs saisis par le souscripteur qui entrent dans `donneesSpecifiques` selon le produit. */
-export interface ChampsSouscripteur {
+export interface ChampsSouscripteur extends ChampsDommages {
   nom: string;
   prenom: string;
   signature?: string | null;
@@ -94,6 +95,7 @@ export function construireDonneesSpecifiques(
       nombrePieces: entrees.nombrePieces,
       statutOccupation: entrees.statutOccupation,
       cycle: entrees.cycle ?? "annuel",
+      ...donneesChampsDommages(code, champs),
     };
   }
 
@@ -106,6 +108,7 @@ export function construireDonneesSpecifiques(
       communeQuartier: champs.communeQuartier ?? null,
       refFacture: champs.refFacture ?? null,
       ...entrees,
+      ...donneesChampsDommages(code, champs),
     };
   }
 
@@ -130,6 +133,7 @@ export function construireDonneesSpecifiques(
     valeurMoto: entrees.valeurMoto,
     ageMoto: entrees.ageMoto,
     cycle: entrees.cycle ?? "annuel",
+    ...donneesChampsDommages(code, champs),
   };
 }
 

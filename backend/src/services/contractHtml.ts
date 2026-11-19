@@ -157,6 +157,8 @@ export interface ContratSecurhome {
   ville?: string | null;
   communeQuartier?: string | null;
   referenceCIE?: string | null;
+  referenceSODECI?: string | null;
+  lieuHabitation?: string | null;
   nombrePieces?: number | null;
   statutOccupation: "proprietaire" | "locataire";
   valeurBatimentOuLoyer: number;
@@ -184,6 +186,7 @@ export interface ContratSecurMoto {
   telephone: string;
   valeurMoto: number;
   ageMoto: "NEUVE" | "1 AN" | "2 ANS";
+  plaqueImmatriculation?: string | null;
   capitalGaranti: number;
   primeNetteHT: number;
   accessoires: number;
@@ -207,6 +210,9 @@ export interface ContratSecurhomeIncendie {
   telephone: string;
   nombrePieces: number;
   statutOccupation: "proprietaire" | "locataire";
+  referenceCIE?: string | null;
+  referenceSODECI?: string | null;
+  lieuHabitation?: string | null;
   montant: number;
   capitalGaranti: number;
   periodicite?: "annuel" | "mensuel";
@@ -895,6 +901,14 @@ export async function renderContratSecurpro(c: ContratSecurpro, avecLogoRcmec = 
   return document_(`Contrat ${c.numeroPolice}`, cp + cgSection);
 }
 
+/** Lignes « Référence SODECI » et « Lieu d'habitation » (SecurHome, SecurHome+) — vides pour un ancien contrat. */
+function ligneLogement(c: { referenceSODECI?: string | null; lieuHabitation?: string | null }): string {
+  return [
+    c.referenceSODECI ? `<tr><td class="k">Référence SODECI</td><td colspan="3">${val(c.referenceSODECI)}</td></tr>` : "",
+    c.lieuHabitation ? `<tr><td class="k">Lieu d'habitation</td><td colspan="3">${val(c.lieuHabitation)}</td></tr>` : "",
+  ].join("");
+}
+
 export async function renderContratSecurhome(c: ContratSecurhome): Promise<string> {
   const cp = `
   ${header(c.numeroPolice)}
@@ -911,6 +925,7 @@ export async function renderContratSecurhome(c: ContratSecurhome): Promise<strin
   <table>
     <tr><td class="k">Nom</td><td>${val(c.nom)}</td><td class="k">Prénom</td><td>${val(c.prenom)}</td></tr>
     <tr><td class="k">Téléphone</td><td>${val(c.telephone)}</td><td class="k">Référence CIE</td><td>${val(c.referenceCIE)}</td></tr>
+    ${ligneLogement(c)}
     <tr><td class="k">Ville</td><td>${val(c.ville)}</td><td class="k">Commune</td><td>${val(c.communeQuartier)}</td></tr>
     <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Nombre de pièces</td><td>${val(c.nombrePieces)}</td></tr>
   </table>
@@ -950,6 +965,7 @@ export async function renderContratSecurMoto(c: ContratSecurMoto): Promise<strin
     <tr><td class="k">Numéro de police</td><td>${val(c.numeroPolice)}</td><td class="k">Intermédiaire</td><td>${val(c.partenaire)}</td></tr>
     <tr><td class="k">Date d'effet</td><td>${dfr(c.dateDebut)}</td><td class="k">Date d'échéance</td><td>${dfr(c.dateFin)}</td></tr>
     <tr><td class="k">Valeur de la moto à neuf</td><td>${fcfa(c.valeurMoto)}</td><td class="k">Âge de la moto</td><td>${val(c.ageMoto)}</td></tr>
+    ${c.plaqueImmatriculation ? `<tr><td class="k">Plaque d'immatriculation</td><td colspan="3">${val(c.plaqueImmatriculation)}</td></tr>` : ""}
     <tr><td class="k">Capital garanti (dommages)</td><td>${fcfa(c.capitalGaranti)}</td><td class="k"></td><td></td></tr>
   </table>
 
@@ -992,6 +1008,8 @@ export async function renderContratSecurhomeIncendie(c: ContratSecurhomeIncendie
   <table>
     <tr><td class="k">Souscripteur / Assuré</td><td>${val(c.prenom)} ${val(c.nom)}</td><td class="k">Contact</td><td>${val(c.telephone)}</td></tr>
     <tr><td class="k">Statut</td><td>${c.statutOccupation === "locataire" ? "Locataire" : "Propriétaire"}</td><td class="k">Nombre de pièces</td><td>${val(c.nombrePieces)}</td></tr>
+    ${c.referenceCIE ? `<tr><td class="k">Référence CIE</td><td colspan="3">${val(c.referenceCIE)}</td></tr>` : ""}
+    ${ligneLogement(c)}
   </table>
 
   <div class="note">

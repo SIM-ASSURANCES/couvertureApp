@@ -1613,6 +1613,81 @@ function SecurhomeDommagesForm({
 // SecurMoto (2026-09-17) — Assurances Dommages, deux-roues : le prospect
 // déclare la valeur à neuf et l'âge — capital garanti et prime TTC
 // recalculés en direct (voir frontend/src/securMoto.ts).
+/**
+ * SecurHome / SecurHome+ (2026-11-19) — références CIE (si `setRefCie` : SecurHome+ a déjà son propre
+ * champ CIE) et SODECI (facultative), lieu d'habitation précis, photo de la facture.
+ */
+function ChampsLogement({
+  refCie,
+  setRefCie,
+  refSodeci,
+  setRefSodeci,
+  lieu,
+  setLieu,
+  photo,
+  setPhoto,
+}: {
+  refCie?: string;
+  setRefCie?: (v: string) => void;
+  refSodeci: string;
+  setRefSodeci: (v: string) => void;
+  lieu: string;
+  setLieu: (v: string) => void;
+  photo: string | null;
+  setPhoto: (v: string | null) => void;
+}) {
+  return (
+    <>
+      {setRefCie && (
+        <FieldRow label="Référence CIE *">
+          <input value={refCie ?? ""} onChange={(e) => setRefCie(e.target.value)} placeholder="N° de votre facture CIE" style={inputStyle} />
+        </FieldRow>
+      )}
+      <FieldRow label="Référence SODECI">
+        <input value={refSodeci} onChange={(e) => setRefSodeci(e.target.value)} placeholder="N° de votre facture SODECI (facultatif)" style={inputStyle} />
+      </FieldRow>
+      <FieldRow label="Lieu d'habitation précis *">
+        <textarea
+          value={lieu}
+          onChange={(e) => setLieu(e.target.value)}
+          rows={2}
+          placeholder="Quartier, rue, repère proche (ex. Cocody Angré 8e tranche, derrière la pharmacie)"
+          style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical" }}
+        />
+      </FieldRow>
+      <PhotoCapture label="Photo de la facture (CIE ou SODECI)" value={photo} onChange={setPhoto} capture="environment" required />
+    </>
+  );
+}
+
+/** SecurMoto (2026-11-19) — plaque d'immatriculation et photo de la carte grise de l'engin. */
+function ChampsEngin({
+  plaque,
+  setPlaque,
+  photo,
+  setPhoto,
+}: {
+  plaque: string;
+  setPlaque: (v: string) => void;
+  photo: string | null;
+  setPhoto: (v: string | null) => void;
+}) {
+  return (
+    <>
+      <FieldRow label="Plaque d'immatriculation *">
+        <input
+          value={plaque}
+          onChange={(e) => setPlaque(e.target.value.toUpperCase())}
+          placeholder="Ex. 1234 AB 01"
+          maxLength={20}
+          style={inputStyle}
+        />
+      </FieldRow>
+      <PhotoCapture label="Photo de la carte grise de l'engin" value={photo} onChange={setPhoto} capture="environment" required />
+    </>
+  );
+}
+
 function SecurMotoForm({
   nom,
   setNom,
@@ -2334,6 +2409,23 @@ export default function Souscription() {
   // `sigRef` partagés avec les branches ci-dessus.
   const [valeurMotoSm, setValeurMotoSm] = useState("");
   const [ageMotoSm, setAgeMotoSm] = useState<AgeMoto>("NEUVE");
+  // Champs complémentaires (2026-11-19), exigés aussi par le serveur (services/champsDommages.ts) :
+  // SecurHome / SecurHome+ → références CIE (SecurHome+ : `refFactureSh`) et SODECI (facultative),
+  // lieu d'habitation précis, photo de la facture ; SecurMoto → plaque et photo de la carte grise.
+  const [refCieSecurhome, setRefCieSecurhome] = useState("");
+  const [refSodeciLog, setRefSodeciLog] = useState("");
+  const [lieuHabitationLog, setLieuHabitationLog] = useState("");
+  const [photoFactureLog, setPhotoFactureLog] = useState<string | null>(null);
+  const [plaqueSm, setPlaqueSm] = useState("");
+  const [photoCarteGriseSm, setPhotoCarteGriseSm] = useState<string | null>(null);
+  function champsDommagesIncomplets(produit: string | undefined): boolean {
+    if (produit === "securhome" || produit === "securhome_dommages") {
+      const cie = produit === "securhome" ? refCieSecurhome : refFactureSh;
+      return !cie.trim() || lieuHabitationLog.trim().length < 5 || !photoFactureLog;
+    }
+    if (produit === "securmoto") return plaqueSm.replace(/[^A-Za-z0-9]/g, "").length < 4 || !photoCarteGriseSm;
+    return false;
+  }
 
   // Champs SecurHome (Assurances Dommages, incendie uniquement, tarif fixe
   // par nombre de pièces) — `nom`/`prenom`/`telephone`/`sigRef` partagés avec
@@ -3201,6 +3293,10 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Nombre de pièces", valeur: nombrePiecesSecurhome || "—" });
       l.push({ label: "Statut d'occupation", valeur: statutOccupationSecurhome === "proprietaire" ? "Propriétaire" : statutOccupationSecurhome === "locataire" ? "Locataire" : "—" });
+      l.push({ label: "Référence CIE", valeur: refCieSecurhome });
+      if (refSodeciLog.trim()) l.push({ label: "Référence SODECI", valeur: refSodeciLog });
+      l.push({ label: "Lieu d'habitation", valeur: lieuHabitationLog });
+      l.push({ label: "Photo de la facture", valeur: photoFactureLog ? "Fournie" : "—" });
       l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
       return l;
     }
@@ -3245,6 +3341,11 @@ export default function Souscription() {
       l.push({ label: "Ville", valeur: pro ? villeSp : villeSh });
       l.push({ label: "Commune / quartier", valeur: pro ? communeSp : communeSh });
       l.push({ label: "Référence CIE", valeur: pro ? refFactureSp : refFactureSh });
+      if (!pro) {
+        if (refSodeciLog.trim()) l.push({ label: "Référence SODECI", valeur: refSodeciLog });
+        l.push({ label: "Lieu d'habitation", valeur: lieuHabitationLog });
+        l.push({ label: "Photo de la facture", valeur: photoFactureLog ? "Fournie" : "—" });
+      }
       if (pro && classeSp) l.push({ label: "Classe d'activité", valeur: `Classe ${classeSp}` });
       if (!pro && nombrePiecesSh) l.push({ label: "Nombre de pièces", valeur: nombrePiecesSh });
       l.push({ label: "Statut d'occupation", valeur: statut === "proprietaire" ? "Propriétaire" : "Locataire" });
@@ -3276,6 +3377,8 @@ export default function Souscription() {
       l.push({ label: "Téléphone", valeur: telephone });
       l.push({ label: "Valeur de la moto à neuf", valeur: fcfa(Number(valeurMotoSm || 0)) });
       l.push({ label: "Âge de la moto", valeur: ageMotoSm });
+      l.push({ label: "Plaque d'immatriculation", valeur: plaqueSm.trim().toUpperCase() });
+      l.push({ label: "Photo de la carte grise", valeur: photoCarteGriseSm ? "Fournie" : "—" });
       l.push({ label: "Périodicité de la prime", valeur: cycleDommages ? libellePeriodicite(cycleDommages) : "—" });
       return l;
     }
@@ -3427,6 +3530,7 @@ export default function Souscription() {
     if (isSecurhomeIncendie(qrInfo.produit) && (!nombrePiecesSecurhome || !statutOccupationSecurhome)) return;
     if (estProduitSante(qrInfo.produit) && (!selectedFormule || !personnesSante(qrInfo.produit) || !ficheSanteDepuisSaisie(ficheSante) || !sexe || !questionnaireSanteComplet())) return;
     if (isSecurMoto(qrInfo.produit) && !valeurMotoSm) return;
+    if (champsDommagesIncomplets(qrInfo.produit)) return;
     // Produits Dommages : la périodicité (annuelle/mensuelle) doit avoir été choisie.
     if (estProduitDommagesAvecPeriodicite(qrInfo.produit) && !cycleDommages) return;
     // Signature facultative : envoyée si le client a signé, sinon on continue
@@ -3514,6 +3618,10 @@ export default function Souscription() {
             telephone,
             formule: nombrePiecesSecurhome,
             statutOccupation: statutOccupationSecurhome,
+            refFacture: refCieSecurhome,
+            refSodeci: refSodeciLog || undefined,
+            lieuHabitation: lieuHabitationLog,
+            photoFacture: photoFactureLog ?? undefined,
             signature,
             cycle: cycleDommages,
             moyenPaiement,
@@ -3617,6 +3725,9 @@ export default function Souscription() {
             ville: villeSh,
             communeQuartier: communeSh,
             refFacture: refFactureSh,
+            refSodeci: refSodeciLog || undefined,
+            lieuHabitation: lieuHabitationLog,
+            photoFacture: photoFactureLog ?? undefined,
             nombrePieces: nombrePiecesSh ? Number(nombrePiecesSh) : undefined,
             telephone,
             signature,
@@ -3657,6 +3768,8 @@ export default function Souscription() {
             signature,
             valeurMoto: Number(valeurMotoSm || 0),
             ageMoto: ageMotoSm,
+            plaqueImmatriculation: plaqueSm,
+            photoCarteGrise: photoCarteGriseSm ?? undefined,
             cycle: cycleDommages,
             moyenPaiement,
           }),
@@ -4818,7 +4931,21 @@ export default function Souscription() {
                   setStatutOccupation={setStatutOccupationSecurhome}
                   tarifsFormule={tarifsFormule}
                   sigRef={sigRef}
-                  choixPeriodicite={choixPeriodicite}
+                  choixPeriodicite={
+                    <>
+                      <ChampsLogement
+                        refCie={refCieSecurhome}
+                        setRefCie={setRefCieSecurhome}
+                        refSodeci={refSodeciLog}
+                        setRefSodeci={setRefSodeciLog}
+                        lieu={lieuHabitationLog}
+                        setLieu={setLieuHabitationLog}
+                        photo={photoFactureLog}
+                        setPhoto={setPhotoFactureLog}
+                      />
+                      {choixPeriodicite}
+                    </>
+                  }
                 />
               ) : isSecurhomeDommages(qrInfo?.produit) ? (
                 <SecurhomeDommagesForm
@@ -4859,7 +4986,19 @@ export default function Souscription() {
                   bdgCapital={bdgCapitalSh}
                   setBdgCapital={setBdgCapitalSh}
                   sigRef={sigRef}
-                  choixPeriodicite={choixPeriodicite}
+                  choixPeriodicite={
+                    <>
+                      <ChampsLogement
+                        refSodeci={refSodeciLog}
+                        setRefSodeci={setRefSodeciLog}
+                        lieu={lieuHabitationLog}
+                        setLieu={setLieuHabitationLog}
+                        photo={photoFactureLog}
+                        setPhoto={setPhotoFactureLog}
+                      />
+                      {choixPeriodicite}
+                    </>
+                  }
                 />
               ) : isSecurMoto(qrInfo?.produit) ? (
                 <SecurMotoForm
@@ -4874,7 +5013,12 @@ export default function Souscription() {
                   ageMoto={ageMotoSm}
                   setAgeMoto={setAgeMotoSm}
                   sigRef={sigRef}
-                  choixPeriodicite={choixPeriodicite}
+                  choixPeriodicite={
+                    <>
+                      <ChampsEngin plaque={plaqueSm} setPlaque={setPlaqueSm} photo={photoCarteGriseSm} setPhoto={setPhotoCarteGriseSm} />
+                      {choixPeriodicite}
+                    </>
+                  }
                 />
               ) : isSecurproDommages(qrInfo?.produit) ? (
                 <SecurproDommagesForm
@@ -5440,13 +5584,14 @@ export default function Souscription() {
                         return r.depassementPlafond;
                       })()
                     : isSecurhomeIncendie(qrInfo?.produit)
-                    ? !nom || !prenom || phoneInvalid(telephone) || !nombrePiecesSecurhome || !statutOccupationSecurhome
+                    ? !nom || !prenom || phoneInvalid(telephone) || !nombrePiecesSecurhome || !statutOccupationSecurhome || champsDommagesIncomplets("securhome")
                     : isSecurhomeDommages(qrInfo?.produit)
                     ? !nom ||
                       !prenom ||
                       !villeSh ||
                       !communeSh ||
                       !refFactureSh ||
+                      champsDommagesIncomplets("securhome_dommages") ||
                       phoneInvalid(telephone) ||
                       (statutOccupationSh === "proprietaire" ? !valeurBatimentSh : !loyerMensuelSh) ||
                       (() => {
@@ -5473,6 +5618,7 @@ export default function Souscription() {
                     ? !nom ||
                       !prenom ||
                       !valeurMotoSm ||
+                      champsDommagesIncomplets("securmoto") ||
                       phoneInvalid(telephone) ||
                       (() => {
                         try {

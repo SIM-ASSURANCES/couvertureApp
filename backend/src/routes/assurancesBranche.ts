@@ -1079,10 +1079,17 @@ assurancesBrancheRouter.get(
     });
     const piece = documents.find((d) => d.type === "CNI" || d.type === "Permis" || d.type === "Passeport");
     const selfie = documents.find((d) => d.type === "Selfie");
+    // Facture CIE/SODECI (SecurHome, SecurHome+) et carte grise (SecurMoto) — services/champsDommages.ts.
+    const justificatifs = await prisma.document.findMany({
+      where: { souscriptionId: id, type: { in: ["Facture", "CarteGrise"] } },
+      orderBy: { createdAt: "desc" },
+    });
     res.json({
       pieceIdentiteUrl: s.pieceIdentiteUrl ?? piece?.url ?? null,
       selfieUrl: selfie?.url ?? null,
       typePiece: s.pieceIdentiteUrl ? null : piece?.type ?? null,
+      factureUrl: justificatifs.find((d) => d.type === "Facture")?.url ?? null,
+      carteGriseUrl: justificatifs.find((d) => d.type === "CarteGrise")?.url ?? null,
     });
   })
 );

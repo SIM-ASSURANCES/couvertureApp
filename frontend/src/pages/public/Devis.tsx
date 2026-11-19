@@ -69,6 +69,8 @@ const NECESSITE_PIECE_IDENTITE = new Set([
 // souscription directe de ces produits.
 const EXIGE_IDENTITE_COMPLETE = new Set(["relaxmoto", "relaxauto", "relaxaccidents_fraismedicaux", "relaxaccidents_fraismedicaux_livreurs"]);
 const CHAMPS_COMMERCE = new Set(["securhome_dommages", "securpro_dommages"]);
+// Champs complémentaires exigés par le serveur (backend/src/services/champsDommages.ts, 2026-11-19).
+const PRODUITS_LOGEMENT = new Set(["securhome", "securhome_dommages"]);
 
 /**
  * Page publique du parcours devis (Cotation) : lecture par lien partagé
@@ -104,6 +106,11 @@ export default function Devis() {
   const [nomCommercial, setNomCommercial] = useState("");
   const [communeQuartier, setCommuneQuartier] = useState("");
   const [refFacture, setRefFacture] = useState("");
+  const [refSodeci, setRefSodeci] = useState("");
+  const [lieuHabitation, setLieuHabitation] = useState("");
+  const [photoFacture, setPhotoFacture] = useState<string | null>(null);
+  const [plaque, setPlaque] = useState("");
+  const [photoCarteGrise, setPhotoCarteGrise] = useState<string | null>(null);
   const [typePiece, setTypePiece] = useState<"CNI" | "Permis" | "Passeport">("CNI");
   // RelaxVoyage : trajet déclaré par le client.
   const [compagnie, setCompagnie] = useState("");
@@ -173,6 +180,21 @@ export default function Devis() {
       setErreurForm("Merci de renseigner le voyage : compagnie, trajet, numéro de ticket, date de départ et contact.");
       return;
     }
+    if (PRODUITS_LOGEMENT.has(cotation.produitCode)) {
+      const manquants = [
+        !refFacture.trim() && "référence CIE",
+        lieuHabitation.trim().length < 5 && "lieu d'habitation précis",
+        !photoFacture && "photo de la facture",
+      ].filter(Boolean);
+      if (manquants.length > 0) {
+        setErreurForm(`Merci de renseigner : ${manquants.join(", ")}.`);
+        return;
+      }
+    }
+    if (cotation.produitCode === "securmoto" && (plaque.replace(/[^A-Za-z0-9]/g, "").length < 4 || !photoCarteGrise)) {
+      setErreurForm("Merci d'indiquer la plaque d'immatriculation et d'ajouter la photo de la carte grise.");
+      return;
+    }
     if (cotation.beneficiaireRequis && (beneficiaireNom.trim().length < 2 || beneficiaireTelephone.replace(/\D/g, "").length < 6)) {
       setErreurForm("Merci d'indiquer le nom et le numéro de téléphone du bénéficiaire en cas de décès.");
       return;
@@ -196,6 +218,11 @@ export default function Devis() {
           nomCommercial: nomCommercial || undefined,
           communeQuartier: communeQuartier || undefined,
           refFacture: refFacture || undefined,
+          refSodeci: refSodeci || undefined,
+          lieuHabitation: lieuHabitation || undefined,
+          photoFacture: photoFacture ?? undefined,
+          plaqueImmatriculation: plaque || undefined,
+          photoCarteGrise: photoCarteGrise ?? undefined,
           typePiece: NECESSITE_PIECE_IDENTITE.has(cotation.produitCode) ? typePiece : undefined,
           ...(cotation.produitCode === "relaxvoyage"
             ? { compagnie, lieuDepart, lieuArrivee, numeroTicket, dateDepart, numeroPersonneContact }
@@ -482,9 +509,42 @@ export default function Devis() {
                 <FieldRow label="Commune / Quartier">
                   <input value={communeQuartier} onChange={(e) => setCommuneQuartier(e.target.value)} style={inputStyle} />
                 </FieldRow>
-                <FieldRow label="Référence facture">
+                {/* SecurHome+ : la référence CIE est obligatoire (voir PRODUITS_LOGEMENT plus bas). */}
+                <FieldRow label={cotation.produitCode === "securhome_dommages" ? "Référence CIE *" : "Référence facture"}>
                   <input value={refFacture} onChange={(e) => setRefFacture(e.target.value)} style={inputStyle} />
                 </FieldRow>
+              </>
+            )}
+
+            {PRODUITS_LOGEMENT.has(cotation.produitCode) && (
+              <>
+                {cotation.produitCode === "securhome" && (
+                  <FieldRow label="Référence CIE *">
+                    <input value={refFacture} onChange={(e) => setRefFacture(e.target.value)} placeholder="N° de votre facture CIE" style={inputStyle} />
+                  </FieldRow>
+                )}
+                <FieldRow label="Référence SODECI">
+                  <input value={refSodeci} onChange={(e) => setRefSodeci(e.target.value)} placeholder="Facultatif" style={inputStyle} />
+                </FieldRow>
+                <FieldRow label="Lieu d'habitation précis *">
+                  <textarea
+                    value={lieuHabitation}
+                    onChange={(e) => setLieuHabitation(e.target.value)}
+                    rows={2}
+                    placeholder="Quartier, rue, repère proche"
+                    style={{ ...inputStyle, height: "auto", padding: "10px 12px", resize: "vertical" }}
+                  />
+                </FieldRow>
+                <PhotoCapture label="Photo de la facture (CIE ou SODECI)" value={photoFacture} onChange={setPhotoFacture} capture="environment" required />
+              </>
+            )}
+
+            {cotation.produitCode === "securmoto" && (
+              <>
+                <FieldRow label="Plaque d'immatriculation *">
+                  <input value={plaque} onChange={(e) => setPlaque(e.target.value.toUpperCase())} placeholder="Ex. 1234 AB 01" maxLength={20} style={inputStyle} />
+                </FieldRow>
+                <PhotoCapture label="Photo de la carte grise de l'engin" value={photoCarteGrise} onChange={setPhotoCarteGrise} capture="environment" required />
               </>
             )}
 

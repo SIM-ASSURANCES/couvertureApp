@@ -6,6 +6,9 @@ interface Photos {
   pieceIdentiteUrl: string | null;
   selfieUrl: string | null;
   typePiece: "CNI" | "Permis" | "Passeport" | null;
+  // Assurances Dommages (2026-11-19) : facture CIE/SODECI (SecurHome, SecurHome+), carte grise (SecurMoto).
+  factureUrl?: string | null;
+  carteGriseUrl?: string | null;
 }
 
 const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9-_]+/g, "-");
@@ -40,8 +43,10 @@ export default function PhotosClientModal({
   const vignettes = [
     { url: data?.pieceIdentiteUrl ?? null, titre: libellePiece, fichier: `piece-${base}` },
     { url: data?.selfieUrl ?? null, titre: "Selfie", fichier: `selfie-${base}` },
+    { url: data?.factureUrl ?? null, titre: "Facture CIE / SODECI", fichier: `facture-${base}` },
+    { url: data?.carteGriseUrl ?? null, titre: "Carte grise", fichier: `carte-grise-${base}` },
   ];
-  const aucune = !loading && !data?.pieceIdentiteUrl && !data?.selfieUrl;
+  const aucune = !loading && vignettes.every((v) => !v.url);
 
   return (
     <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border, #e5e7eb)" }}>

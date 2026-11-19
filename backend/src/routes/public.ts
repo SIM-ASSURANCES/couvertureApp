@@ -41,6 +41,12 @@ import { calculerSecurMoto, type SecurMotoInput, type AgeMoto } from "../service
 import { DDE_CAPITAUX, DE_CAPITAUX, BDG_CAPITAUX, VOL_CAISSE_CAPITAUX, capitalDansListe } from "../services/capitauxDommages.js";
 import { estProduitCotation, estCotationSansPaiementDirect, garantiesCotation, LIBELLES_PRODUIT_COTATION, type ProduitCotation } from "../services/cotations.js";
 import { construireDonneesSpecifiques, resultatAStocker } from "../services/donneesSouscription.js";
+import {
+  champsDommagesSchema,
+  verifierChampsDommages,
+  donneesChampsDommages,
+  documentsChampsDommages,
+} from "../services/champsDommages.js";
 import { refusSiEspaceClientExistant } from "../services/accesClient.js";
 import { refusSiCumulRelaxAccidents } from "../services/cumulRelaxAccidents.js";
 import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
@@ -1664,6 +1670,11 @@ const securhomeDommagesSchema = z.object({
   ville: z.string().min(1).max(120),
   communeQuartier: z.string().min(1).max(120),
   refFacture: z.string().min(1).max(120),
+  // Référence SODECI (facultative), lieu d'habitation précis et photo de la facture — exigés par
+  // services/champsDommages.ts (2026-11-19).
+  refSodeci: champsDommagesSchema.refSodeci,
+  lieuHabitation: champsDommagesSchema.lieuHabitation,
+  photoFacture: champsDommagesSchema.photoFacture,
   // Informatif uniquement — n'entre pas dans le calcul de la prime (confirmé
   // avec l'utilisateur).
   nombrePieces: z.number().int().min(0).optional(),
@@ -1688,6 +1699,8 @@ publicRouter.post(
   "/souscriptions/securhome_dommages/initiate",
   asyncHandler(async (req, res) => {
     const data = securhomeDommagesSchema.parse(req.body);
+    const erreurChamps = verifierChampsDommages("securhome_dommages", data);
+    if (erreurChamps) return res.status(400).json({ error: erreurChamps });
 
     if (data.statutOccupation === "proprietaire" && data.valeurBatiment == null) {
       return res.status(400).json({ error: "Valeur du bâtiment manquante." });
@@ -1745,6 +1758,7 @@ publicRouter.post(
         capitalGaranti: resultat.capitauxTotaux,
         waveStatut: "en_attente",
         nombreEcheances: 1,
+        documents: { create: documentsChampsDommages("securhome_dommages", data) },
         donneesSpecifiques: {
           signature: data.signature ?? null,
           nom: data.nom,
@@ -1752,6 +1766,7 @@ publicRouter.post(
           ville: data.ville,
           communeQuartier: data.communeQuartier,
           refFacture: data.refFacture,
+          ...donneesChampsDommages("securhome_dommages", data),
           nombrePieces: data.nombrePieces ?? null,
           statutOccupation: data.statutOccupation,
           valeurBatiment: data.valeurBatiment ?? null,
@@ -1837,6 +1852,9 @@ const securMotoSchema = z.object({
   signature: dataUrlImage.optional(),
   valeurMoto: z.number().finite().min(1).max(700_000),
   ageMoto: z.enum(["NEUVE", "1 AN", "2 ANS"]),
+  // Plaque d'immatriculation et photo de la carte grise — exigées par services/champsDommages.ts.
+  plaqueImmatriculation: champsDommagesSchema.plaqueImmatriculation,
+  photoCarteGrise: champsDommagesSchema.photoCarteGrise,
   cycle: cycleDommagesSchema,
   ...moyenPaiementField,
 });
@@ -1845,6 +1863,8 @@ publicRouter.post(
   "/souscriptions/securmoto/initiate",
   asyncHandler(async (req, res) => {
     const data = securMotoSchema.parse(req.body);
+    const erreurChamps = verifierChampsDommages("securmoto", data);
+    if (erreurChamps) return res.status(400).json({ error: erreurChamps });
 
     const resolu = await resoudreQrCodeGenerique("securmoto", data.qrToken);
     if (!resolu) return res.status(404).json({ error: "QR invalide pour ce produit" });
@@ -1886,12 +1906,14 @@ publicRouter.post(
         capitalGaranti: resultat.capitalGaranti,
         waveStatut: "en_attente",
         nombreEcheances: 1,
+        documents: { create: documentsChampsDommages("securmoto", data) },
         donneesSpecifiques: {
           signature: data.signature ?? null,
           nom: data.nom,
           prenom: data.prenom,
           valeurMoto: data.valeurMoto,
           ageMoto: data.ageMoto,
+          ...donneesChampsDommages("securmoto", data),
           cycle: data.cycle,
         },
         resultat: JSON.parse(JSON.stringify(resultat)),
@@ -2091,6 +2113,10 @@ const formuleSchema = z.object({
   sexe: z.enum(["masculin", "feminin"]).optional(),
   formule: z.string().min(1),
   signature: dataUrlImage.optional(),
+  // SecurHome uniquement — références CIE/SODECI, lieu d'habitation précis, photo de la facture
+  // (exigés par services/champsDommages.ts). Plaque/carte grise : jamais envoyées ici (SecurMoto
+  // a sa propre route), ignorées.
+  ...champsDommagesSchema,
   // SecurHome uniquement — périodicité de la prime (annuelle par défaut), voir
   // services/periodiciteDommages.ts. Ignorée pour tous les autres produits.
   cycle: cycleDommagesSchema,
@@ -2160,6 +2186,10 @@ publicRouter.post(
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
     if (code === "securhome" && !data.statutOccupation) {
       return res.status(400).json({ error: "Statut d'occupation manquant (locataire ou propriétaire)." });
+    }
+    if (code === "securhome") {
+      const erreurChamps = verifierChampsDommages(code, data);
+      if (erreurChamps) return res.status(400).json({ error: erreurChamps });
     }
     // Assurances Santé : la date de naissance du souscripteur est obligatoire,
     // et les personnes déclarées doivent correspondre au produit (Solo : aucune,
@@ -2304,6 +2334,7 @@ publicRouter.post(
         // paiement immédiat (voir routes/assurancesSante.ts).
         validationStatut: sante ? VALIDATION_SANTE.EN_ATTENTE : null,
         nombreEcheances: 1,
+        ...(code === "securhome" ? { documents: { create: documentsChampsDommages(code, data) } } : {}),
         donneesSpecifiques: avecBeneficiaire(
           code === "relaxvoyage"
             ? {
@@ -2329,6 +2360,7 @@ publicRouter.post(
                 signature: data.signature ?? null,
                 nombrePieces: Number(data.formule),
                 statutOccupation: data.statutOccupation,
+                ...donneesChampsDommages(code, data),
                 cycle: data.cycle,
               }
             : sante
@@ -2510,6 +2542,12 @@ const cotationSouscrireSchema = z.object({
   nomCommercial: z.string().max(200).optional(),
   communeQuartier: z.string().max(120).optional(),
   refFacture: z.string().max(120).optional(),
+  // SecurHome / SecurHome+ / SecurMoto — champs complémentaires (services/champsDommages.ts).
+  refSodeci: champsDommagesSchema.refSodeci,
+  lieuHabitation: champsDommagesSchema.lieuHabitation,
+  photoFacture: champsDommagesSchema.photoFacture,
+  plaqueImmatriculation: champsDommagesSchema.plaqueImmatriculation,
+  photoCarteGrise: champsDommagesSchema.photoCarteGrise,
   // RelaxVoyage uniquement — trajet déclaré par le client (jamais par l'auteur du devis).
   typePiece: z.enum(["CNI", "Permis", "Passeport"]).optional(),
   compagnie: z.string().min(1).max(120).optional(),
@@ -2579,6 +2617,8 @@ publicRouter.post(
     const exigeBeneficiaire = beneficiaireRequisPourDevis(code, cotation.resultat);
     const erreurBeneficiaire = verifierBeneficiaire(data, exigeBeneficiaire);
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
+    const erreurChamps = verifierChampsDommages(code, data);
+    if (erreurChamps) return res.status(400).json({ error: erreurChamps });
     // Forme des données par produit : services/donneesSouscription.ts (partagée avec l'API partenaire).
     const donneesSpecifiques = construireDonneesSpecifiques(code, entrees, cotation.resultat, data);
 
@@ -2606,6 +2646,7 @@ publicRouter.post(
         capitalGaranti: cotation.capitalGaranti,
         waveStatut: "en_attente",
         nombreEcheances: 1,
+        documents: { create: documentsChampsDommages(code, data) },
         // RelaxMoto/RelaxAuto : abonnement à cycle — le montant du devis inclut déjà le nombre de
         // périodes ; cycle et périodes pilotent la durée de couverture et les renouvellements.
         ...(code === "relaxmoto" || code === "relaxauto"

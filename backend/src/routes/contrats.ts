@@ -758,6 +758,9 @@ async function chargerDonneesVerifieesServeur(
     telephone: d.telephone,
     nombrePieces: d.nombrePieces,
     statutOccupation: d.statutOccupation,
+    referenceCIE: d.refFacture,
+    referenceSODECI: d.refSodeci,
+    lieuHabitation: d.lieuHabitation,
     montant: d.montant,
     capitalGaranti: d.capitalGaranti,
     // Périodicité choisie à la souscription (depuis le 2026-10-16) ; absente des

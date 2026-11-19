@@ -149,6 +149,9 @@ enum TypeDocument {
   Permis
   Passeport
   Selfie
+  // Assurances Dommages (2026-11-19) — voir services/champsDommages.ts.
+  Facture // facture CIE/SODECI (SecurHome, SecurHome+)
+  CarteGrise // carte grise de l'engin (SecurMoto)
 }
 
 enum StatutValidationDocument {

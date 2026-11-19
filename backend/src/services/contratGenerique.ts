@@ -66,6 +66,11 @@ export interface DonneesContratGenerique {
   ville: string | null;
   communeQuartier: string | null;
   refFacture: string | null;
+  // SecurHome / SecurHome+ (2026-11-19) : référence SODECI (facultative) et lieu d'habitation précis.
+  refSodeci: string | null;
+  lieuHabitation: string | null;
+  // SecurMoto (2026-11-19).
+  plaqueImmatriculation: string | null;
   statutOccupation: "proprietaire" | "locataire" | null;
   valeurBatiment: number | null;
   loyerMensuel: number | null;
@@ -215,6 +220,9 @@ export async function mapperSouscriptionGenerique(
     ville: str("ville"),
     communeQuartier: str("communeQuartier"),
     refFacture: str("refFacture"),
+    refSodeci: str("refSodeci"),
+    lieuHabitation: str("lieuHabitation"),
+    plaqueImmatriculation: str("plaqueImmatriculation"),
     statutOccupation: (d?.statutOccupation as "proprietaire" | "locataire" | undefined) ?? null,
     valeurBatiment: num("valeurBatiment"),
     loyerMensuel: num("loyerMensuel"),
