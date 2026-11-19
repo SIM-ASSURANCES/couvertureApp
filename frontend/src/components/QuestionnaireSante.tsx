@@ -187,7 +187,7 @@ export default function QuestionnaireSante({
           Je déclare <strong>exacts et sincères</strong> les renseignements fournis pour moi et pour chaque personne assurée.
         </span>
       </label>
-      <SignaturePad ref={sigRef} label="Signature de l'adhérent (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature de l'adhérent (obligatoire)" />
     </>
   );
 }

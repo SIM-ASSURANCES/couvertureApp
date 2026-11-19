@@ -747,6 +747,13 @@ publicRouter.get(
 );
 
 /** Incendie : complétion du formulaire via lien WhatsApp */
+// Signature du souscripteur OBLIGATOIRE sur toute souscription Accidents & Dommages (demande du
+// 2026-11-19) — vérifiée explicitement dans chaque route de création, pour renvoyer ce message plutôt que
+// le « Données invalides » générique d'une erreur de schéma. Hors périmètre : branche IMF (décision
+// utilisateur), API partenaire (vente B2B sans le client), créations par un administrateur.
+const MESSAGE_SIGNATURE_OBLIGATOIRE =
+  "Votre signature est obligatoire : signez dans le cadre prévu avant de valider la souscription.";
+
 const completionIncendieSchema = z.object({
   nom: z.string().min(1).max(120).optional(),
   prenom: z.string().min(1).max(120).optional(),
@@ -772,6 +779,7 @@ publicRouter.patch(
       nom, prenom, email, refFacture, commune, quartier, numeroMaison, signature,
       dateNaissance, pieceIdentiteUrl, selfieUrl,
     } = completionIncendieSchema.parse(req.body ?? {});
+    if (!signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
 
     // Renouvellement : une souscription déjà "complet" qui reçoit une NOUVELLE
     // complétion (relance admin, voir /souscriptions/incendie/:id/relance-
@@ -884,6 +892,7 @@ publicRouter.post(
   "/souscriptions/accident/initiate",
   asyncHandler(async (req, res) => {
     const data = accSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
     const resolu = await resoudrePartenaireOuAgent(data.qrToken);
     if (!resolu || resolu.qrChamp !== "qrAccidentToken") {
       return res.status(404).json({ error: "QR Accidents invalide" });
@@ -1490,6 +1499,7 @@ publicRouter.post(
   "/souscriptions/securpro_dommages/initiate",
   asyncHandler(async (req, res) => {
     const data = securproDommagesSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
 
     if (data.statutOccupation === "proprietaire" && data.valeurBatiment == null) {
       return res.status(400).json({ error: "Valeur du bâtiment manquante." });
@@ -1699,6 +1709,7 @@ publicRouter.post(
   "/souscriptions/securhome_dommages/initiate",
   asyncHandler(async (req, res) => {
     const data = securhomeDommagesSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
     const erreurChamps = verifierChampsDommages("securhome_dommages", data);
     if (erreurChamps) return res.status(400).json({ error: erreurChamps });
 
@@ -1863,6 +1874,7 @@ publicRouter.post(
   "/souscriptions/securmoto/initiate",
   asyncHandler(async (req, res) => {
     const data = securMotoSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
     const erreurChamps = verifierChampsDommages("securmoto", data);
     if (erreurChamps) return res.status(400).json({ error: erreurChamps });
 
@@ -1978,6 +1990,7 @@ publicRouter.post(
     const code = req.params.produit;
     if (!isProduitRelax(code)) return res.status(404).json({ error: "Produit inconnu" });
     const data = relaxSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
     const erreurBeneficiaire = verifierBeneficiaire(data, true);
     if (erreurBeneficiaire) return res.status(400).json({ error: erreurBeneficiaire });
 
@@ -2170,6 +2183,7 @@ publicRouter.post(
     const code = req.params.produit;
     if (!isProduitFormule(code)) return res.status(404).json({ error: "Produit inconnu" });
     const data = formuleSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
 
     if (code === "relaxvoyage" && RELAXVOYAGE_CHAMPS_REQUIS.some((champ) => !data[champ])) {
       return res.status(400).json({ error: "Champs de voyage manquants (compagnie, trajet, ticket, date de départ, contact)." });
@@ -2574,6 +2588,7 @@ publicRouter.post(
   "/cotations/:token/souscrire",
   asyncHandler(async (req, res) => {
     const data = cotationSouscrireSchema.parse(req.body);
+    if (!data.signature) return res.status(400).json({ error: MESSAGE_SIGNATURE_OBLIGATOIRE, code: "signature_requise" });
     const cotation = await prisma.cotation.findUnique({ where: { token: req.params.token } });
     if (!cotation || cotation.statut === "brouillon") return res.status(404).json({ error: "Devis introuvable." });
     if (cotation.statut === "converti") {

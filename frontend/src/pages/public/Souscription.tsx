@@ -959,7 +959,7 @@ function RelaxAccidentsGeneraleForm({
 
       {blocBeneficiaire}
 
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
     </>
   );
 }
@@ -1328,7 +1328,7 @@ function SecurproDommagesForm({
 
       {choixPeriodicite}
 
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
     </>
   );
 }
@@ -1605,7 +1605,7 @@ function SecurhomeDommagesForm({
 
       {choixPeriodicite}
 
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
     </>
   );
 }
@@ -1798,7 +1798,7 @@ function SecurMotoForm({
 
       {choixPeriodicite}
 
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
     </>
   );
 }
@@ -1904,7 +1904,7 @@ function SecurhomeIncendieForm({
 
       {choixPeriodicite}
 
-      <SignaturePad ref={sigRef} label="Signature (facultative)" />
+      <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
     </>
   );
 }
@@ -2315,6 +2315,7 @@ export default function Souscription() {
   // signature", quoi que le client ait dessiné.
   const [signatureCapturee, setSignatureCapturee] = useState<string | null>(null);
   const [retrySignature, setRetrySignature] = useState<string | null>(null);
+  const retrySigRef = useRef<SignaturePadHandle>(null);
 
   // Champs incendie
   const [telephoneInc, setTelephoneInc] = useState(PHONE_PREFIX);
@@ -3533,8 +3534,8 @@ export default function Souscription() {
     if (champsDommagesIncomplets(qrInfo.produit)) return;
     // Produits Dommages : la périodicité (annuelle/mensuelle) doit avoir été choisie.
     if (estProduitDommagesAvecPeriodicite(qrInfo.produit) && !cycleDommages) return;
-    // Signature facultative : envoyée si le client a signé, sinon on continue
-    // sans. Lue depuis signatureCapturee (capturée en quittant l'étape
+    // Signature obligatoire (2026-11-19), exigée à l'étape « Vos informations » et par le serveur.
+    // Lue depuis signatureCapturee (capturée en quittant l'étape
     // "infos", voir le bouton "Vérifier mes informations") et non depuis
     // sigRef.current, qui est nul ici : le pavé est démonté une fois sur
     // l'écran de récapitulatif.
@@ -5177,7 +5178,7 @@ export default function Souscription() {
                     <PhoneInput value={numeroPersonneContact} onChange={setNumeroPersonneContact} />
                   </FieldRow>
                   <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
-                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
+                  <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
                 </>
               ) : qrInfo?.produit === "accident" ? (
                 <>
@@ -5204,7 +5205,7 @@ export default function Souscription() {
                     <DateNaissanceInput value={dateNaissance} onChange={setDateNaissance} />
                   </FieldRow>
                   <SexeField value={sexe} onChange={setSexe} />
-                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
+                  <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
                 </>
               ) : isRelaxAccidentsFraisMedicaux(qrInfo?.produit) ? (
                 <>
@@ -5310,7 +5311,7 @@ export default function Souscription() {
                       et affiché sur sa carte ; il faut donc toujours désigner un bénéficiaire. */}
                   <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
 
-                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
+                  <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
                 </>
               ) : qrInfo && isRelax(qrInfo.produit) ? (
                 <>
@@ -5376,7 +5377,7 @@ export default function Souscription() {
                     required
                   />
                   <BeneficiaireDecesFields nom={beneficiaireNom} setNom={setBeneficiaireNom} telephone={beneficiaireTel} setTelephone={setBeneficiaireTel} />
-                  <SignaturePad ref={sigRef} label="Signature (facultative)" />
+                  <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
                 </>
               ) : chooserInfo && !montantAchatIncConfirme ? (
                 <FieldRow label="Montant de votre achat (FCFA) *">
@@ -5648,6 +5649,12 @@ export default function Souscription() {
                       }
                       setErrorMsg("");
                       const nouvelleSignature = sigRef.current?.toDataURL() ?? null;
+                      // Signature obligatoire (2026-11-19) : une signature déjà capturée (retour pour
+                      // corriger un champ) suffit ; sinon le pavé ne doit pas être vide.
+                      if (sigRef.current && !nouvelleSignature && !signatureCapturee) {
+                        setErrorMsg("Votre signature est obligatoire : signez dans le cadre prévu avant de continuer.");
+                        return;
+                      }
                       if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
                       setStep("confirm");
                     }}
@@ -5697,6 +5704,10 @@ export default function Souscription() {
                   setErrorMsg("");
                   // Signature capturée ici, tant que le pavé est monté (voir signatureCapturee).
                   const nouvelleSignature = sigRef.current?.toDataURL() ?? null;
+                  if (sigRef.current && !nouvelleSignature && !signatureCapturee) {
+                    setErrorMsg("Votre signature est obligatoire : signez dans le cadre prévu avant de continuer.");
+                    return;
+                  }
                   if (nouvelleSignature) setSignatureCapturee(nouvelleSignature);
                   setStep("confirm");
                 }}
@@ -6005,9 +6016,19 @@ export default function Souscription() {
                 <div><strong>Assuré :</strong> {prenom} {nom}</div>
                 <div><strong>Capital garanti :</strong> {fcfa(result.capitalGaranti!)}</div>
               </div>
+              {!retrySignature && (
+                <div style={{ textAlign: "left", marginBottom: 12 }}>
+                  <SignaturePad ref={retrySigRef} label="Signature (obligatoire)" />
+                </div>
+              )}
               <button
                 onClick={async () => {
                   if (!token || !result.montant) return;
+                  const signatureRelance = retrySignature ?? retrySigRef.current?.toDataURL() ?? null;
+                  if (!signatureRelance) {
+                    setErrorMsg("Votre signature est obligatoire : signez dans le cadre prévu avant de continuer.");
+                    return;
+                  }
                   setSubmitting(true);
                   try {
                     const res = await fetch(`${BASE}/public/souscriptions/accident/initiate`, {
@@ -6020,7 +6041,7 @@ export default function Souscription() {
                         telephone,
                         dateNaissance,
                         tarifAccidentId: selectedTarifId ?? undefined,
-                        signature: retrySignature,
+                        signature: signatureRelance,
                       }),
                     });
                     const data = await res.json();

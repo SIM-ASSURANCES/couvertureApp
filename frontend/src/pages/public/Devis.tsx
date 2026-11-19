@@ -199,6 +199,10 @@ export default function Devis() {
       setErreurForm("Merci d'indiquer le nom et le numéro de téléphone du bénéficiaire en cas de décès.");
       return;
     }
+    if (!sigRef.current || sigRef.current.isEmpty()) {
+      setErreurForm("Votre signature est obligatoire : signez dans le cadre prévu avant de continuer.");
+      return;
+    }
     setEnvoi(true);
     try {
       const res = await fetch(`${BASE}/public/cotations/${token}/souscrire`, {
@@ -548,7 +552,7 @@ export default function Devis() {
               </>
             )}
 
-            <SignaturePad ref={sigRef} label="Signature (facultative)" />
+            <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
 
             {erreurForm && (
               <>

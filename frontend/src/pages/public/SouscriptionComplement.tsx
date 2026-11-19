@@ -129,9 +129,12 @@ export default function SouscriptionComplement() {
       setErrorMsg("Réf.facture, commune et quartier sont obligatoires.");
       return;
     }
-    // Signature facultative : on l'envoie si le client a signé, sinon on
-    // poursuit sans (le contrat pourra être signé après impression).
+    // Signature obligatoire (2026-11-19), exigée aussi par le serveur.
     const signature = sigRef.current?.toDataURL() ?? undefined;
+    if (!signature) {
+      setErrorMsg("Votre signature est obligatoire : signez dans le cadre prévu avant de continuer.");
+      return;
+    }
     setSubmitting(true);
     setErrorMsg("");
     try {
@@ -341,7 +344,7 @@ export default function SouscriptionComplement() {
                 />
               </FieldRow>
 
-              <SignaturePad ref={sigRef} label="Signature (facultative)" />
+              <SignaturePad ref={sigRef} label="Signature (obligatoire)" />
 
               <div style={{ fontWeight: 800, fontSize: 16, marginTop: 22, marginBottom: 4 }}>
                 Carte virtuelle de prise en charge
