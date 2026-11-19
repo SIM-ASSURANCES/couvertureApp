@@ -37,9 +37,11 @@ android {
         // 17 = 2026-11-10 APK 1.16, refonte : 2e produit via l'espace client, formule au renouvellement,
         // 18 = 2026-11-10 APK 1.17, bandeau « connectez-vous à votre espace client » dès la saisie du numéro,
         // 19 = 2026-11-10 APK 1.18, partenaire à paiement désactivé : souscription sans payer,
-        // 20 = 2026-11-12 APK 1.19, un seul produit RelaxAccidents par client : avertissement dès la saisie du numéro).
-        versionCode 20
-        versionName "1.19"
+        // 20 = 2026-11-12 APK 1.19, un seul produit RelaxAccidents par client : avertissement dès la saisie du numéro,
+        // 21 = 2026-11-19 APK 1.20, client reconnu par son identité pour un 2e produit ; SecurHome/SecurHome+ :
+        //      références CIE/SODECI, lieu d'habitation, photo de la facture ; SecurMoto : plaque, carte grise).
+        versionCode 21
+        versionName "1.20"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
