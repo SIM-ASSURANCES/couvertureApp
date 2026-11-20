@@ -39,9 +39,10 @@ android {
         // 19 = 2026-11-10 APK 1.18, partenaire à paiement désactivé : souscription sans payer,
         // 20 = 2026-11-12 APK 1.19, un seul produit RelaxAccidents par client : avertissement dès la saisie du numéro,
         // 21 = 2026-11-19 APK 1.20, client reconnu par son identité pour un 2e produit ; SecurHome/SecurHome+ :
-        //      références CIE/SODECI, lieu d'habitation, photo de la facture ; SecurMoto : plaque, carte grise).
-        versionCode 21
-        versionName "1.20"
+        //      références CIE/SODECI, lieu d'habitation, photo de la facture ; SecurMoto : plaque, carte grise),
+        // 22 = 2026-11-20 APK 1.21, signature obligatoire (Accidents & Dommages), Orange Money comme moyen de paiement.
+        versionCode 22
+        versionName "1.21"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
