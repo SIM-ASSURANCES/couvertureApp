@@ -2552,7 +2552,9 @@ export default function Souscription() {
 
   // Moyen de paiement choisi à l'écran de vérification — Wave (redirection,
   // historique) ou Djogana/Peya Pay (OTP, sans redirection).
-  const [moyenPaiement, setMoyenPaiement] = useState<"wave" | "djogana">("wave");
+  const [moyenPaiement, setMoyenPaiement] = useState<"wave" | "djogana" | "orange_money">("wave");
+  // Orange Money (page Orange hébergée, comme Wave) : proposé seulement si le serveur a ses identifiants.
+  const [orangeMoneyDispo, setOrangeMoneyDispo] = useState(false);
   // Peya pay n'est proposé que si le serveur le confirme (production avec
   // identifiants configurés) — voir GET /public/moyens-paiement. Faux par
   // défaut : tant que la réponse n'est pas arrivée (ou en cas d'échec), seul
@@ -2565,12 +2567,15 @@ export default function Souscription() {
     let annule = false;
     fetch(`${BASE}/public/moyens-paiement${token ? `?qrToken=${encodeURIComponent(token)}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { djogana?: boolean; paiementDesactive?: boolean } | null) => {
+      .then((d: { djogana?: boolean; orangeMoney?: boolean; paiementDesactive?: boolean } | null) => {
         if (annule) return;
         const dispo = !!d?.djogana;
+        const omDispo = !!d?.orangeMoney;
         setDjoganaDispo(dispo);
+        setOrangeMoneyDispo(omDispo);
         setPaiementDesactive(!!d?.paiementDesactive);
-        if (!dispo) setMoyenPaiement("wave");
+        // Revient à Wave seulement si le moyen déjà choisi n'est plus proposé.
+        setMoyenPaiement((m) => ((m === "djogana" && !dispo) || (m === "orange_money" && !omDispo) ? "wave" : m));
       })
       .catch(() => {
         /* serveur injoignable : Peya pay reste masqué */
@@ -3447,6 +3452,10 @@ export default function Souscription() {
       window.location.href = data.checkoutUrl;
       return;
     }
+    if (moyenPaiement === "orange_money") {
+      await redirigerVersOrangeMoney(data);
+      return;
+    }
     // Tout le parcours Peya pay (écran OTP + requêtes) utilise le numéro local,
     // sans "+225" — le numéro enregistré sur la souscription le garde, lui,
     // pour les SMS de confirmation et d'accès envoyés après le paiement.
@@ -3471,6 +3480,33 @@ export default function Souscription() {
       setStep("djogana-otp");
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'envoi du code Peya pay");
+    }
+  }
+
+  /**
+   * Orange Money : la souscription vient d'être créée en attente ; le serveur ouvre la session
+   * Orange (POST /public/paiement-orange-money/initier) et renvoie l'URL de la page de paiement
+   * Orange. Au retour, Orange repasse par le serveur, qui renvoie vers `successUrl` (?paid=…),
+   * où la page vérifie le paiement comme pour Wave.
+   */
+  async function redirigerVersOrangeMoney(data: { successUrl?: string; souscriptionId?: string; echeanceId?: string }) {
+    const type: "accident" | "echeance" = data.echeanceId ? "echeance" : "accident";
+    const id = data.echeanceId ?? data.souscriptionId;
+    if (!id || !data.successUrl) {
+      setErrorMsg("Erreur inattendue : référence de paiement manquante");
+      return;
+    }
+    try {
+      const res = await fetch(`${BASE}/public/paiement-orange-money/initier`, {
+        method: "POST",
+        headers: entetesJsonClient(),
+        body: JSON.stringify({ type, id, retourUrl: data.successUrl }),
+      });
+      const om = await res.json();
+      if (!res.ok || !om.paymentUrl) throw new Error(om.error || "Orange Money indisponible");
+      window.location.href = om.paymentUrl;
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : "Erreur lors de l'ouverture du paiement Orange Money");
     }
   }
 
@@ -5831,7 +5867,7 @@ export default function Souscription() {
                   <div style={{ fontSize: 12.5, color: "#5b6b80", fontWeight: 600, marginBottom: 6 }}>
                     Moyen de paiement
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {(
                       [
                         { value: "wave" as const, label: "Wave", logo: "/logo_wave.png" },
@@ -5839,9 +5875,12 @@ export default function Souscription() {
                         // par l'API (moyenPaiement), seul le nom commercial
                         // affiché au client change.
                         { value: "djogana" as const, label: "Peya pay", logo: "/logo_djogana.png" },
-                      ]
+                        // Logo large (texte « Orange Money » inclus) : affiché seul, voir le rendu plus bas.
+                        { value: "orange_money" as const, label: "Orange Money", logo: "/OM.png" },
+                      ] as { value: "wave" | "djogana" | "orange_money"; label: string; logo: string }[]
                     )
                       .filter((opt) => opt.value !== "djogana" || djoganaDispo)
+                      .filter((opt) => opt.value !== "orange_money" || orangeMoneyDispo)
                       .map((opt) => (
                       <button
                         key={opt.value}
@@ -5849,6 +5888,7 @@ export default function Souscription() {
                         onClick={() => setMoyenPaiement(opt.value)}
                         style={{
                           flex: 1,
+                          minWidth: 120,
                           padding: "10px 0",
                           borderRadius: 10,
                           border: moyenPaiement === opt.value ? "1.5px solid #004b9c" : "1.5px solid #dde3ec",
@@ -5863,10 +5903,18 @@ export default function Souscription() {
                           gap: 6,
                         }}
                       >
-                        {opt.logo && (
-                          <img src={opt.logo} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
+                        {opt.value === "orange_money" ? (
+                          // 547×365 avec de larges marges : `cover` dans 96×26 rogne le blanc et garde
+                          // flèches + texte lisibles ; `multiply` fond le fond blanc du PNG dans le bleu du bouton choisi.
+                          <img src={opt.logo} alt={opt.label} style={{ width: 96, height: 26, objectFit: "cover", mixBlendMode: "multiply" }} />
+                        ) : (
+                          <>
+                            {opt.logo && (
+                              <img src={opt.logo} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
+                            )}
+                            {opt.label}
+                          </>
                         )}
-                        {opt.label}
                       </button>
                     ))}
                   </div>

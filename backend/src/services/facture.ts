@@ -179,11 +179,16 @@ export async function detailDePrime(
   return { primeHT, accessoires, taxes, optionDeces: primeOption || null };
 }
 
-function moyenDePaiement(p: { waveTransactionId: string | null; djoganaTransactionId: string | null }): string | null {
+function moyenDePaiement(p: {
+  waveTransactionId: string | null;
+  djoganaTransactionId: string | null;
+  orangeMoneyTransactionId?: string | null;
+}): string | null {
   // Souscription confirmée sans paiement (partenaire à paiement désactivé) : la facture est émise comme
   // pour tout paiement, mais ne cite aucun moyen de règlement (ni Wave ni Peya pay n'ont servi).
   if (estPaiementSansEncaissement(p)) return null;
   if (p.djoganaTransactionId) return "Peya pay";
+  if (p.orangeMoneyTransactionId) return "Orange Money";
   // Canal API partenaire : le partenaire a encaissé lui-même (voir partnerApi.ts).
   if (p.waveTransactionId?.startsWith("API-")) return "Encaissé par le partenaire";
   if (p.waveTransactionId) return "Wave";

@@ -30,6 +30,16 @@ import {
   MESSAGE_DJOGANA_INDISPONIBLE,
 } from "../services/djogana.js";
 import {
+  initierPaiementOrangeMoney,
+  orangeMoneyDisponible,
+  MESSAGE_ORANGE_MONEY_INDISPONIBLE,
+} from "../services/orangeMoney.js";
+import {
+  appliquerStatutOrangeMoney,
+  synchroniserOrangeMoneyPour,
+  synchroniserTentativeOrangeMoney,
+} from "../services/paiementOrangeMoney.js";
+import {
   parseFormuleRelaxAccidentsGenerale,
   formuleRelaxAccidentsGenerale,
   surchargeMoyenDeplacementRelaxAccidentsGenerale,
@@ -112,9 +122,11 @@ const optionalDate = z.preprocess(
 
 // Moyen de paiement choisi par le client — Wave (redirection, comportement
 // historique) ou Djogana/Peya Pay (validation par OTP, sans redirection, voir
-// POST /public/paiement-djogana/*). Partagé par tous les schémas de
-// souscription payante ci-dessous.
-const moyenPaiementField = { moyenPaiement: z.enum(["wave", "djogana"]).default("wave") };
+// POST /public/paiement-djogana/*) ou Orange Money (page Orange hébergée, ouverte
+// APRÈS la création par POST /public/paiement-orange-money/initier). Hors Wave,
+// les routes /initiate* créent la souscription en attente sans rien encaisser.
+// Partagé par tous les schémas de souscription payante ci-dessous.
+const moyenPaiementField = { moyenPaiement: z.enum(["wave", "djogana", "orange_money"]).default("wave") };
 
 // Produits à formule unique payée en une fois (pas d'échéancier récurrent),
 // bâtis sur le même modèle générique Produit/TarifProduit/Souscription —
@@ -369,6 +381,14 @@ publicRouter.use((req, res, next) => {
   if (veutDjogana && !djoganaDisponible()) {
     return res.status(503).json({ error: MESSAGE_DJOGANA_INDISPONIBLE });
   }
+  // Même garde pour Orange Money : sans identifiants (ou bac à sable en production), refus AVANT
+  // de créer une souscription en attente que le client ne pourrait pas payer.
+  const veutOrangeMoney =
+    req.path.startsWith("/paiement-orange-money/") ||
+    (req.method === "POST" && (req.body as { moyenPaiement?: unknown } | undefined)?.moyenPaiement === "orange_money");
+  if (veutOrangeMoney && !orangeMoneyDisponible()) {
+    return res.status(503).json({ error: MESSAGE_ORANGE_MONEY_INDISPONIBLE });
+  }
   next();
 });
 
@@ -454,7 +474,12 @@ publicRouter.get(
     else if (devis) {
       partenaireId = (await prisma.cotation.findUnique({ where: { token: devis }, select: { partenaireId: true } }))?.partenaireId ?? null;
     }
-    res.json({ wave: true, djogana: djoganaDisponible(), paiementDesactive: await partenaireSansPaiement(partenaireId) });
+    res.json({
+      wave: true,
+      djogana: djoganaDisponible(),
+      orangeMoney: orangeMoneyDisponible(),
+      paiementDesactive: await partenaireSansPaiement(partenaireId),
+    });
   })
 );
 
@@ -971,7 +996,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, le client valide un OTP puis
       // confirme via POST /public/paiement-djogana/confirmer (type "accident").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -1286,6 +1311,131 @@ publicRouter.post(
 );
 
 /**
+ * Paiement Orange Money Web Payment — voir services/orangeMoney.ts et paiementOrangeMoney.ts.
+ * Le formulaire crée d'abord la souscription en attente (/initiate*, moyenPaiement "orange_money"),
+ * puis appelle /paiement-orange-money/initier avec la référence de la ligne à payer (même
+ * convention type/id que Peya pay) et la page SIM où revenir. Le montant est toujours relu en base.
+ *
+ * Orange limite return_url/cancel_url/notif_url à 120 caractères : on lui donne donc des URL
+ * courtes de CE serveur (/orange-money/retour|annulation/:tentative), qui redirigent ensuite vers
+ * la page SIM mémorisée (validée : même origine que APP_PUBLIC_URL, jamais une URL arbitraire).
+ */
+const orangeMoneyInitSchema = z.object({
+  type: z.enum(["accident", "echeance"]),
+  id: z.string().min(1),
+  retourUrl: z.string().url().max(2000),
+});
+
+function urlDuSite(url: string): boolean {
+  const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+  try {
+    return new URL(url).origin === new URL(appUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** Page d'échec correspondant à une page de retour : `?paid=…` devient `?paiement=echec` (format des errorUrl Wave). */
+function urlEchecDepuisRetour(retourUrl: string): string {
+  const u = new URL(retourUrl);
+  u.searchParams.delete("paid");
+  u.searchParams.set("paiement", "echec");
+  return u.toString();
+}
+
+function baseRoutesOrangeMoney(): string {
+  const appUrl = (process.env.APP_PUBLIC_URL || "http://localhost:5173").replace(/\/+$/, "");
+  return `${appUrl}/api/public/orange-money`;
+}
+
+publicRouter.post(
+  "/paiement-orange-money/initier",
+  asyncHandler(async (req, res) => {
+    const data = orangeMoneyInitSchema.parse(req.body);
+    if (!urlDuSite(data.retourUrl)) return res.status(400).json({ error: "URL de retour invalide" });
+
+    // Même résolution que Peya pay : montant relu en base, Santé bloquée tant que non validée.
+    const ref = await resoudreReferenceDjogana(data.type, data.id);
+    if (!ref) return res.status(404).json({ error: "Paiement introuvable" });
+
+    const dejaPaye =
+      data.type === "echeance"
+        ? (await prisma.paiement.findUnique({ where: { id: data.id }, select: { statut: true } }))?.statut === "paye"
+        : await prisma.souscriptionAccident
+            .findUnique({ where: { id: data.id }, select: { waveStatut: true, renouvellementEnCoursDepuis: true } })
+            .then((s) => s?.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis);
+    if (dejaPaye) return res.json({ paymentUrl: data.retourUrl, dejaPaye: true });
+
+    const t = await prisma.tentativeOrangeMoney.create({
+      data: { cible: data.type, cibleId: data.id, montant: ref.montant, retourUrl: data.retourUrl },
+    });
+    const base = baseRoutesOrangeMoney();
+    try {
+      const session = await initierPaiementOrangeMoney({
+        orderId: t.id,
+        montant: ref.montant,
+        returnUrl: `${base}/retour/${t.id}`,
+        cancelUrl: `${base}/annulation/${t.id}`,
+        notifUrl: process.env.ORANGE_MONEY_NOTIF_URL || `${base}/notification`,
+      });
+      await prisma.tentativeOrangeMoney.update({
+        where: { id: t.id },
+        data: { payToken: session.payToken, notifToken: session.notifToken },
+      });
+      res.json({ paymentUrl: session.paymentUrl });
+    } catch (e) {
+      console.error("[OrangeMoney] initiation", t.id, e);
+      await prisma.tentativeOrangeMoney.update({ where: { id: t.id }, data: { statut: "ERREUR" } });
+      res.status(502).json({ error: e instanceof Error ? e.message : MESSAGE_ORANGE_MONEY_INDISPONIBLE });
+    }
+  })
+);
+
+/**
+ * Notification Orange (notif_url) : { status, notif_token, txnid }, envoyée quand la transaction
+ * se termine en SUCCESS ou FAILED. Orange ne signe pas ses notifications : le notif_token, reçu à
+ * l'initiation et connu de nous seuls, prouve l'origine. Par prudence on redemande en plus l'état
+ * réel à Orange (transactionstatus) ; on ne s'en remet au corps de la notification que si Orange
+ * ne répond pas.
+ */
+publicRouter.post(
+  "/orange-money/notification",
+  asyncHandler(async (req, res) => {
+    const body = (req.body ?? {}) as { status?: string; notif_token?: string; txnid?: string };
+    if (!body.notif_token) return res.status(400).json({ error: "notif_token manquant" });
+    const t = await prisma.tentativeOrangeMoney.findUnique({ where: { notifToken: String(body.notif_token) } });
+    if (!t) return res.status(404).json({ error: "Transaction inconnue" });
+
+    const issue =
+      (await synchroniserTentativeOrangeMoney(t)) ??
+      (await appliquerStatutOrangeMoney(t, String(body.status ?? "PENDING"), body.txnid ? String(body.txnid) : null));
+    res.json({ ok: true, statut: issue });
+  })
+);
+
+/** Retour du client depuis la page Orange : on demande l'état à Orange puis on renvoie vers la page SIM. */
+publicRouter.get(
+  "/orange-money/retour/:id",
+  asyncHandler(async (req, res) => {
+    const t = await prisma.tentativeOrangeMoney.findUnique({ where: { id: req.params.id } });
+    if (!t) return res.redirect(302, process.env.APP_PUBLIC_URL || "/");
+    const issue = await synchroniserTentativeOrangeMoney(t).catch(() => null);
+    // Paiement encore en cours (PENDING) : la page SIM interroge /verify jusqu'à la confirmation.
+    res.redirect(302, issue === "echoue" ? urlEchecDepuisRetour(t.retourUrl) : t.retourUrl);
+  })
+);
+
+/** Annulation sur la page Orange : retour vers la page d'échec, d'où le client peut réessayer. */
+publicRouter.get(
+  "/orange-money/annulation/:id",
+  asyncHandler(async (req, res) => {
+    const t = await prisma.tentativeOrangeMoney.findUnique({ where: { id: req.params.id } });
+    if (!t) return res.redirect(302, process.env.APP_PUBLIC_URL || "/");
+    res.redirect(302, urlEchecDepuisRetour(t.retourUrl));
+  })
+);
+
+/**
  * Vérifie l'état du paiement directement auprès de Wave et confirme si payé.
  * Appelé par le frontend au retour du paiement (filet de sécurité si le webhook
  * n'arrive pas). Renvoie le statut courant de la souscription.
@@ -1293,6 +1443,8 @@ publicRouter.post(
 publicRouter.get(
   "/souscriptions/accident/:id/verify",
   asyncHandler(async (req, res) => {
+    // Paiement Orange Money éventuel (filet si la notification n'est pas arrivée) — avant la relecture.
+    await synchroniserOrangeMoneyPour("accident", req.params.id);
     const s = await prisma.souscriptionAccident.findUnique({
       where: { id: req.params.id },
     });
@@ -1629,7 +1781,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -1812,7 +1964,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -1948,7 +2100,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -2071,7 +2223,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -2442,7 +2594,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -2699,7 +2851,7 @@ publicRouter.post(
     let checkoutUrl: string | null = null;
     let transactionId: string | null = null;
 
-    if (!paiementDesactive && data.moyenPaiement === "djogana") {
+    if (!paiementDesactive && data.moyenPaiement !== "wave") {
       // Paiement Djogana : pas de redirection, confirmé par OTP ensuite —
       // voir POST /public/paiement-djogana/confirmer (type "echeance").
     } else if (paiementDesactive || !process.env.WAVE_API_KEY) {
@@ -2740,6 +2892,8 @@ publicRouter.get(
   "/souscriptions/:produit/echeances/:echeanceId/verify",
   asyncHandler(async (req, res) => {
     if (!isProduitGenerique(req.params.produit)) return res.status(404).json({ error: "Produit inconnu" });
+    // Paiement Orange Money éventuel (filet si la notification n'est pas arrivée) — avant la relecture.
+    await synchroniserOrangeMoneyPour("echeance", req.params.echeanceId);
     const p = await prisma.paiement.findUnique({ where: { id: req.params.echeanceId } });
     if (!p) return res.status(404).json({ error: "Échéance introuvable" });
     const statut = await verifierPaiementEcheance(p);

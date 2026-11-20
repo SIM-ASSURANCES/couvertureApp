@@ -443,6 +443,8 @@ model SouscriptionAccident {
   waveTransactionId    String?
   // Voir Paiement.djoganaTransactionId.
   djoganaTransactionId String?
+  // Voir Paiement.orangeMoneyTransactionId.
+  orangeMoneyTransactionId String?
   waveStatut           WaveStatut         @default(en_attente)
   numeroPolice         String?            @unique
   dateDebut            DateTime?
@@ -885,6 +887,9 @@ model Paiement {
   // Renseigné uniquement si l'échéance a été payée par ce moyen (alternative
   // à Wave, sans redirection : validation par OTP puis débit direct).
   djoganaTransactionId String?
+  // Identifiant de transaction Orange Money (txnid, ex. "MP150709.1341.A00073") — renseigné à la
+  // confirmation d'un paiement Orange Money Web Payment (voir services/orangeMoney.ts).
+  orangeMoneyTransactionId String?
   // Paiement de renouvellement (RelaxMoto/Auto : depuis l'espace client ;
   // formule unique : relance admin) plutôt qu'échéance du cycle initial —
   // confirmerEcheance prolonge alors juste dateFin (1 an ou 3 mois selon le
@@ -913,6 +918,34 @@ model Paiement {
   // paiement par identifiant de transaction (chemin critique d'un paiement).
   @@index([waveTransactionId])
   @@index([djoganaTransactionId])
+}
+
+/**
+ * Tentative de paiement Orange Money Web Payment (voir services/orangeMoney.ts). Une ligne par
+ * redirection vers la page Orange : `order_id` doit être UNIQUE chez Orange et limité à 30
+ * caractères — l'UUID d'un Paiement (36) ne convient pas, et un client qui réessaie après un
+ * abandon a besoin d'un nouvel order_id. `id` (cuid, 25 caractères) sert donc d'order_id.
+ * `cible` + `cibleId` désignent la ligne à payer : "echeance" → Paiement, "accident" →
+ * SouscriptionAccident (même convention que les routes /paiement-djogana/*).
+ */
+model TentativeOrangeMoney {
+  id          String   @id @default(cuid())
+  cible       String
+  cibleId     String
+  montant     Int
+  payToken    String?
+  // Secret partagé avec Orange : la notification sur notif_url n'est acceptée que si elle le
+  // renvoie (Orange ne signe pas ses notifications).
+  notifToken  String?  @unique
+  // INITIATED | PENDING | SUCCESS | FAILED | EXPIRED (statuts Orange), "ERREUR" si l'initiation a échoué.
+  statut      String   @default("INITIATED")
+  txnid       String?
+  // Page SIM vers laquelle renvoyer le client après la page Orange (validée : même origine que APP_PUBLIC_URL).
+  retourUrl   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([cible, cibleId])
 }
 
 /**
