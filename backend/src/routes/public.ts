@@ -29,15 +29,15 @@ import {
   djoganaDisponible,
   MESSAGE_DJOGANA_INDISPONIBLE,
 } from "../services/djogana.js";
-import {
-  initierPaiementOrangeMoney,
-  orangeMoneyDisponible,
-  MESSAGE_ORANGE_MONEY_INDISPONIBLE,
-} from "../services/orangeMoney.js";
+import { orangeMoneyDisponible, MESSAGE_ORANGE_MONEY_INDISPONIBLE } from "../services/orangeMoney.js";
 import {
   appliquerStatutOrangeMoney,
+  ErreurOrangeMoney,
+  ouvrirPaiementOrangeMoney,
   synchroniserOrangeMoneyPour,
   synchroniserTentativeOrangeMoney,
+  urlDuSite,
+  urlEchecDepuisRetour,
 } from "../services/paiementOrangeMoney.js";
 import {
   parseFormuleRelaxAccidentsGenerale,
@@ -1326,28 +1326,6 @@ const orangeMoneyInitSchema = z.object({
   retourUrl: z.string().url().max(2000),
 });
 
-function urlDuSite(url: string): boolean {
-  const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
-  try {
-    return new URL(url).origin === new URL(appUrl).origin;
-  } catch {
-    return false;
-  }
-}
-
-/** Page d'échec correspondant à une page de retour : `?paid=…` devient `?paiement=echec` (format des errorUrl Wave). */
-function urlEchecDepuisRetour(retourUrl: string): string {
-  const u = new URL(retourUrl);
-  u.searchParams.delete("paid");
-  u.searchParams.set("paiement", "echec");
-  return u.toString();
-}
-
-function baseRoutesOrangeMoney(): string {
-  const appUrl = (process.env.APP_PUBLIC_URL || "http://localhost:5173").replace(/\/+$/, "");
-  return `${appUrl}/api/public/orange-money`;
-}
-
 publicRouter.post(
   "/paiement-orange-money/initier",
   asyncHandler(async (req, res) => {
@@ -1366,27 +1344,17 @@ publicRouter.post(
             .then((s) => s?.waveStatut === "confirme" && !s.renouvellementEnCoursDepuis);
     if (dejaPaye) return res.json({ paymentUrl: data.retourUrl, dejaPaye: true });
 
-    const t = await prisma.tentativeOrangeMoney.create({
-      data: { cible: data.type, cibleId: data.id, montant: ref.montant, retourUrl: data.retourUrl },
-    });
-    const base = baseRoutesOrangeMoney();
     try {
-      const session = await initierPaiementOrangeMoney({
-        orderId: t.id,
+      const paymentUrl = await ouvrirPaiementOrangeMoney({
+        cible: data.type,
+        cibleId: data.id,
         montant: ref.montant,
-        returnUrl: `${base}/retour/${t.id}`,
-        cancelUrl: `${base}/annulation/${t.id}`,
-        notifUrl: process.env.ORANGE_MONEY_NOTIF_URL || `${base}/notification`,
+        retourUrl: data.retourUrl,
       });
-      await prisma.tentativeOrangeMoney.update({
-        where: { id: t.id },
-        data: { payToken: session.payToken, notifToken: session.notifToken },
-      });
-      res.json({ paymentUrl: session.paymentUrl });
+      res.json({ paymentUrl });
     } catch (e) {
-      console.error("[OrangeMoney] initiation", t.id, e);
-      await prisma.tentativeOrangeMoney.update({ where: { id: t.id }, data: { statut: "ERREUR" } });
-      res.status(502).json({ error: e instanceof Error ? e.message : MESSAGE_ORANGE_MONEY_INDISPONIBLE });
+      if (!(e instanceof ErreurOrangeMoney)) throw e;
+      res.status(502).json({ error: e.message });
     }
   })
 );

@@ -15,6 +15,8 @@ import { optionsRenouvellement, produitAChoixDeFormule } from "../services/renou
 import { marqueSansPaiement, partenaireSansPaiement } from "../services/paiementDesactive.js";
 import { estProduitRelaxAccidents, produitRelaxAccidentsDuClient } from "../services/cumulRelaxAccidents.js";
 import { confirmerAccident, verifierPaiementAccident } from "../services/accident.js";
+import { orangeMoneyDisponible, MESSAGE_ORANGE_MONEY_INDISPONIBLE } from "../services/orangeMoney.js";
+import { ErreurOrangeMoney, ouvrirPaiementOrangeMoney, synchroniserOrangeMoneyPour } from "../services/paiementOrangeMoney.js";
 import { construireChooserProduits } from "./public.js";
 import { mapperSouscriptionGenerique } from "../services/contratGenerique.js";
 import { estProduitSante, lirePersonnesAssureesSante, tauxPriseEnChargeDuTarif } from "../services/assurancesSante.js";
@@ -328,8 +330,19 @@ clientRouter.get(
   })
 );
 
-/** Crée une échéance de renouvellement sur le modèle générique et lance le paiement (ou stub-confirme sans WAVE_API_KEY). */
-async function creerEcheanceRenouvellement(souscriptionId: string, montant: number, formule?: string) {
+type MoyenRenouvellement = "wave" | "orange_money";
+
+/**
+ * Crée une échéance de renouvellement sur le modèle générique et lance le paiement : page Orange
+ * Money si le client l'a choisie, sinon Wave (ou stub-confirme sans WAVE_API_KEY). Peut lever
+ * ErreurOrangeMoney (Orange refuse ou ne répond pas) : l'échéance reste alors en attente.
+ */
+async function creerEcheanceRenouvellement(
+  souscriptionId: string,
+  montant: number,
+  formule?: string,
+  moyen: MoyenRenouvellement = "wave"
+) {
   const dernier = await prisma.paiement.findFirst({
     where: { souscriptionId },
     orderBy: { numeroEcheance: "desc" },
@@ -354,11 +367,23 @@ async function creerEcheanceRenouvellement(souscriptionId: string, montant: numb
   const sansPaiement = await partenaireSansPaiement(
     (await prisma.souscription.findUnique({ where: { id: souscriptionId }, select: { partenaireId: true } }))?.partenaireId
   );
-  if (sansPaiement || !process.env.WAVE_API_KEY) {
+  // Le mode test sans WAVE_API_KEY ne concerne que Wave : un client qui a choisi Orange Money doit
+  // toujours passer par la page Orange, jamais être confirmé sans payer.
+  if (sansPaiement || (moyen === "wave" && !process.env.WAVE_API_KEY)) {
     const transactionId = sansPaiement ? marqueSansPaiement(paiement.id) : `STUB-${paiement.id.slice(0, 8)}`;
     await prisma.paiement.update({ where: { id: paiement.id }, data: { waveTransactionId: transactionId } });
     await confirmerEcheance({ ...paiement, waveTransactionId: transactionId });
     return { paiementId: paiement.id, montant: paiement.montant, checkoutUrl: successUrl };
+  }
+
+  if (moyen === "orange_money") {
+    const checkoutUrl = await ouvrirPaiementOrangeMoney({
+      cible: "echeance",
+      cibleId: paiement.id,
+      montant: paiement.montant,
+      retourUrl: successUrl,
+    });
+    return { paiementId: paiement.id, montant: paiement.montant, checkoutUrl };
   }
 
   const wave = await initiateWavePayment(paiement.montant, paiement.id, successUrl, errorUrl);
@@ -366,7 +391,12 @@ async function creerEcheanceRenouvellement(souscriptionId: string, montant: numb
   return { paiementId: paiement.id, montant: paiement.montant, checkoutUrl: wave.checkoutUrl };
 }
 
-const renouvellementSchema = z.object({ formule: z.string().trim().min(1).max(40).optional() });
+const renouvellementSchema = z.object({
+  formule: z.string().trim().min(1).max(40).optional(),
+  // Absent (ancienne version de l'application) = Wave, comme avant. Peya pay (OTP) n'est pas proposé
+  // au renouvellement.
+  moyenPaiement: z.enum(["wave", "orange_money"]).default("wave"),
+});
 
 /**
  * Formules proposées au renouvellement du contrat connecté (produits à deux formules : RelaxAccidents
@@ -403,101 +433,130 @@ clientRouter.get(
 clientRouter.post(
   "/renouveler",
   asyncHandler(async (req: AuthedRequest, res) => {
-    const type = produitType(req);
-    const id = req.user!.sub;
-
-    if (type === "incendie") {
-      const s = await prisma.souscriptionIncendie.findUnique({ where: { id } });
-      if (!s) return res.status(404).json({ error: "Introuvable" });
-      if (s.statut !== "complet" || !s.lienFormulaireToken) {
-        return res.status(400).json({ error: "Ce contrat n'est pas encore complet." });
-      }
-      await sendSMS(
-        s.telephone,
-        messageRelanceRenouvellementIncendie(lienFormulaire("incendie", s.lienFormulaireToken))
-      );
-      const updated = await prisma.souscriptionIncendie.update({
-        where: { id: s.id },
-        data: { renouvellementEnCoursDepuis: new Date(), relanceRenouvellementCount: { increment: 1 } },
-      });
-      return res.json({ sms: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
+    try {
+      await renouveler(req, res);
+    } catch (e) {
+      // Orange a refusé la session ou n'a pas répondu : message réel au client, pas une 500 générique.
+      if (!(e instanceof ErreurOrangeMoney)) throw e;
+      res.status(502).json({ error: e.message });
     }
-
-    if (type === "accident") {
-      const s = await prisma.souscriptionAccident.findUnique({ where: { id } });
-      if (!s) return res.status(404).json({ error: "Introuvable" });
-      if (s.waveStatut !== "confirme" || !s.numeroPolice) {
-        return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
-      }
-
-      const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
-      const successUrl = `${appUrl}/client?renouvele=${s.id}`;
-      const errorUrl = `${appUrl}/client?paiement=echec`;
-
-      if (!process.env.WAVE_API_KEY) {
-        const transactionId = `STUB-${s.id.slice(0, 8)}-${Date.now()}`;
-        const stub = { ...s, waveTransactionId: transactionId, renouvellementEnCoursDepuis: new Date() };
-        await prisma.souscriptionAccident.update({
-          where: { id: s.id },
-          data: { waveTransactionId: transactionId, renouvellementEnCoursDepuis: stub.renouvellementEnCoursDepuis },
-        });
-        await confirmerAccident(stub);
-        return res.status(201).json({ checkoutUrl: successUrl });
-      }
-
-      const wave = await initiateWavePayment(s.montantPrime, s.id, successUrl, errorUrl);
-      await prisma.souscriptionAccident.update({
-        where: { id: s.id },
-        data: { waveTransactionId: wave.transactionId, renouvellementEnCoursDepuis: new Date() },
-      });
-      return res.status(201).json({ checkoutUrl: wave.checkoutUrl });
-    }
-
-    const s = await prisma.souscription.findUnique({
-      where: { id },
-      include: { produit: { select: { code: true } } },
-    });
-    if (!s) return res.status(404).json({ error: "Introuvable" });
-
-    // Le trajet couvert par RelaxVoyage est ponctuel (24h) : rien à
-    // reconduire — une nouvelle couverture suppose un nouveau voyage, donc
-    // une nouvelle souscription, pas un renouvellement.
-    if (s.produit.code === "relaxvoyage") {
-      return res.status(400).json({ error: "RelaxVoyage ne se renouvelle pas : souscrivez un nouveau contrat pour votre prochain trajet." });
-    }
-
-    // Produit à deux formules (RelaxAccidents Frais Médicaux, RelaxMoto/RelaxAuto) : le client choisit la
-    // formule de sa prochaine période depuis son espace. Sans `formule` (ancienne version de l'application),
-    // le contrat se reconduit à l'identique, comme avant.
-    const { formule } = renouvellementSchema.parse(req.body ?? {});
-    if (formule) {
-      if (!produitAChoixDeFormule(s.produit.code)) {
-        return res.status(400).json({ error: "Ce produit n'a pas de choix de formule au renouvellement." });
-      }
-      if (s.waveStatut !== "confirme") return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
-      const choix = (await optionsRenouvellement(s)).options.find((o) => o.formule === formule);
-      if (!choix) return res.status(400).json({ error: "Formule indisponible pour ce produit." });
-      return res.status(201).json(await creerEcheanceRenouvellement(s.id, choix.montant, formule));
-    }
-
-    if (s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel") {
-      const tarif = await prisma.tarifProduit.findFirst({
-        where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
-      });
-      if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
-      // Reconduction à l'identique : même durée que la souscription initiale
-      // (un contrat pris pour 3 mois se renouvelle par 3 mois), au tarif
-      // courant du cycle — voir confirmerEcheance, qui prolonge dateFin
-      // d'autant de cycles.
-      return res.status(201).json(await creerEcheanceRenouvellement(s.id, tarif.prime * s.nombrePeriodes));
-    }
-
-    if (s.waveStatut !== "confirme") {
-      return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
-    }
-    res.status(201).json(await creerEcheanceRenouvellement(s.id, s.montantPrime));
   })
 );
+
+async function renouveler(req: AuthedRequest, res: import("express").Response) {
+  const type = produitType(req);
+  const id = req.user!.sub;
+  const { formule, moyenPaiement } = renouvellementSchema.parse(req.body ?? {});
+  if (moyenPaiement === "orange_money" && type !== "incendie" && !orangeMoneyDisponible()) {
+    return res.status(503).json({ error: MESSAGE_ORANGE_MONEY_INDISPONIBLE });
+  }
+
+  if (type === "incendie") {
+    const s = await prisma.souscriptionIncendie.findUnique({ where: { id } });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.statut !== "complet" || !s.lienFormulaireToken) {
+      return res.status(400).json({ error: "Ce contrat n'est pas encore complet." });
+    }
+    await sendSMS(
+      s.telephone,
+      messageRelanceRenouvellementIncendie(lienFormulaire("incendie", s.lienFormulaireToken))
+    );
+    const updated = await prisma.souscriptionIncendie.update({
+      where: { id: s.id },
+      data: { renouvellementEnCoursDepuis: new Date(), relanceRenouvellementCount: { increment: 1 } },
+    });
+    return res.json({ sms: true, relanceRenouvellementCount: updated.relanceRenouvellementCount });
+  }
+
+  if (type === "accident") {
+    const s = await prisma.souscriptionAccident.findUnique({ where: { id } });
+    if (!s) return res.status(404).json({ error: "Introuvable" });
+    if (s.waveStatut !== "confirme" || !s.numeroPolice) {
+      return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+    }
+
+    const appUrl = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+    const successUrl = `${appUrl}/client?renouvele=${s.id}`;
+    const errorUrl = `${appUrl}/client?paiement=echec`;
+
+    if (moyenPaiement === "orange_money") {
+      // renouvellementEnCoursDepuis d'abord : c'est lui qui fait accepter le nouveau paiement à
+      // confirmerAccident sur une ligne déjà "confirme" (voir paiementOrangeMoney.ts).
+      await prisma.souscriptionAccident.update({
+        where: { id: s.id },
+        data: { renouvellementEnCoursDepuis: new Date() },
+      });
+      const checkoutUrl = await ouvrirPaiementOrangeMoney({
+        cible: "accident",
+        cibleId: s.id,
+        montant: s.montantPrime,
+        retourUrl: successUrl,
+      });
+      return res.status(201).json({ checkoutUrl });
+    }
+
+    if (!process.env.WAVE_API_KEY) {
+      const transactionId = `STUB-${s.id.slice(0, 8)}-${Date.now()}`;
+      const stub = { ...s, waveTransactionId: transactionId, renouvellementEnCoursDepuis: new Date() };
+      await prisma.souscriptionAccident.update({
+        where: { id: s.id },
+        data: { waveTransactionId: transactionId, renouvellementEnCoursDepuis: stub.renouvellementEnCoursDepuis },
+      });
+      await confirmerAccident(stub);
+      return res.status(201).json({ checkoutUrl: successUrl });
+    }
+
+    const wave = await initiateWavePayment(s.montantPrime, s.id, successUrl, errorUrl);
+    await prisma.souscriptionAccident.update({
+      where: { id: s.id },
+      data: { waveTransactionId: wave.transactionId, renouvellementEnCoursDepuis: new Date() },
+    });
+    return res.status(201).json({ checkoutUrl: wave.checkoutUrl });
+  }
+
+  const s = await prisma.souscription.findUnique({
+    where: { id },
+    include: { produit: { select: { code: true } } },
+  });
+  if (!s) return res.status(404).json({ error: "Introuvable" });
+
+  // Le trajet couvert par RelaxVoyage est ponctuel (24h) : rien à
+  // reconduire — une nouvelle couverture suppose un nouveau voyage, donc
+  // une nouvelle souscription, pas un renouvellement.
+  if (s.produit.code === "relaxvoyage") {
+    return res.status(400).json({ error: "RelaxVoyage ne se renouvelle pas : souscrivez un nouveau contrat pour votre prochain trajet." });
+  }
+
+  // Produit à deux formules (RelaxAccidents Frais Médicaux, RelaxMoto/RelaxAuto) : le client choisit la
+  // formule de sa prochaine période depuis son espace. Sans `formule` (ancienne version de l'application),
+  // le contrat se reconduit à l'identique, comme avant.
+  if (formule) {
+    if (!produitAChoixDeFormule(s.produit.code)) {
+      return res.status(400).json({ error: "Ce produit n'a pas de choix de formule au renouvellement." });
+    }
+    if (s.waveStatut !== "confirme") return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+    const choix = (await optionsRenouvellement(s)).options.find((o) => o.formule === formule);
+    if (!choix) return res.status(400).json({ error: "Formule indisponible pour ce produit." });
+    return res.status(201).json(await creerEcheanceRenouvellement(s.id, choix.montant, formule, moyenPaiement));
+  }
+
+  if (s.cycleFacturation === "mensuel" || s.cycleFacturation === "annuel") {
+    const tarif = await prisma.tarifProduit.findFirst({
+      where: { produitId: s.produitId, libelleVariante: s.cycleFacturation },
+    });
+    if (!tarif) return res.status(400).json({ error: "Tarif indisponible pour ce produit" });
+    // Reconduction à l'identique : même durée que la souscription initiale
+    // (un contrat pris pour 3 mois se renouvelle par 3 mois), au tarif
+    // courant du cycle — voir confirmerEcheance, qui prolonge dateFin
+    // d'autant de cycles.
+    return res.status(201).json(await creerEcheanceRenouvellement(s.id, tarif.prime * s.nombrePeriodes, undefined, moyenPaiement));
+  }
+
+  if (s.waveStatut !== "confirme") {
+    return res.status(400).json({ error: "Ce contrat n'est pas encore confirmé." });
+  }
+  res.status(201).json(await creerEcheanceRenouvellement(s.id, s.montantPrime, undefined, moyenPaiement));
+}
 
 clientRouter.get(
   "/renouveler/:paiementId/verify",
@@ -509,6 +568,8 @@ clientRouter.get(
     // bloqué en 404 dès que le webhook Wave n'aboutissait pas, laissant
     // renouvellementEnCoursDepuis/dateFin jamais mis à jour.
     if (produitType(req) === "accident") {
+      // Renouvellement payé par Orange Money : filet si la notification d'Orange n'est pas arrivée.
+      await synchroniserOrangeMoneyPour("accident", req.user!.sub);
       const s = await prisma.souscriptionAccident.findUnique({ where: { id: req.user!.sub } });
       if (!s) return res.status(404).json({ error: "Introuvable" });
       const statutAccident = await verifierPaiementAccident(s);
@@ -521,7 +582,9 @@ clientRouter.get(
 
     const p = await prisma.paiement.findUnique({ where: { id: req.params.paiementId } });
     if (!p || p.souscriptionId !== req.user!.sub) return res.status(404).json({ error: "Introuvable" });
-    const statut = await verifierPaiementEcheance(p);
+    // Renouvellement payé par Orange Money : filet si la notification d'Orange n'est pas arrivée.
+    await synchroniserOrangeMoneyPour("echeance", p.id);
+    const statut = await verifierPaiementEcheance((await prisma.paiement.findUnique({ where: { id: p.id } })) ?? p);
     res.json({ statut });
   })
 );

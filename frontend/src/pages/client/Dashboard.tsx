@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { clientApi, clientLogout, getClientUser } from "../../clientAuth";
+import { API_BASE } from "../../api";
 import PhotoCapture from "../../components/PhotoCapture";
 import { telechargerCarte } from "../../carte";
 import ReseauSoins from "../../components/ReseauSoins";
@@ -130,6 +131,10 @@ export default function ClientDashboard() {
   const [formulesRenouvellement, setFormulesRenouvellement] = useState<FormulesRenouvellement>({ options: [], formuleActuelle: null });
   const [choixFormuleOuvert, setChoixFormuleOuvert] = useState(false);
   const [formuleChoisie, setFormuleChoisie] = useState("");
+  // Moyen de paiement du renouvellement : Wave, ou Orange Money si le serveur le propose (ses clés
+  // Orange sont configurées) — voir GET /public/moyens-paiement.
+  const [orangeMoneyDispo, setOrangeMoneyDispo] = useState(false);
+  const [moyenRenouvellement, setMoyenRenouvellement] = useState<"wave" | "orange_money">("wave");
 
   const [afficherFormSinistre, setAfficherFormSinistre] = useState(false);
   const [contratsAccidents, setContratsAccidents] = useState<ContratAccident[] | null>(null);
@@ -182,6 +187,13 @@ export default function ClientDashboard() {
       return;
     }
     charger();
+    // Hors de charger() : une panne de cette route ne doit jamais empêcher l'espace de s'afficher.
+    fetch(`${API_BASE}/public/moyens-paiement`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { orangeMoney?: boolean } | null) => setOrangeMoneyDispo(!!d?.orangeMoney))
+      .catch(() => {
+        /* Orange Money reste masqué : renouvellement par Wave, comme avant */
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -210,20 +222,32 @@ export default function ClientDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renouveleId]);
 
-  /** Clic sur « Renouveler » : produit à deux formules → fenêtre de choix, sinon renouvellement direct. */
+  // Fenêtre de renouvellement : choix de la formule (produit à deux formules) et/ou du moyen de paiement
+  // (quand Orange Money est proposé). Incendie : pas de paiement en ligne (SMS, achat en boutique).
+  const choixFormuleRenouvellement = formulesRenouvellement.options.length >= 2;
+  const choixMoyenRenouvellement = orangeMoneyDispo && moi?.produitType !== "incendie";
+
+  /** Clic sur « Renouveler » : fenêtre de choix s'il y a quelque chose à choisir, sinon renouvellement direct. */
   function demanderRenouvellement() {
-    if (formulesRenouvellement.options.length >= 2) {
-      setFormuleChoisie(formulesRenouvellement.formuleActuelle ?? formulesRenouvellement.options[0].formule);
+    if (choixFormuleRenouvellement || choixMoyenRenouvellement) {
+      setFormuleChoisie(
+        choixFormuleRenouvellement ? formulesRenouvellement.formuleActuelle ?? formulesRenouvellement.options[0].formule : ""
+      );
+      setMoyenRenouvellement("wave");
       setChoixFormuleOuvert(true);
       return;
     }
     renouveler();
   }
 
-  async function renouveler(formule?: string) {
+  async function renouveler(formule?: string, moyenPaiement?: "wave" | "orange_money") {
     setRenouvellement(true);
     try {
-      const r = await clientApi.post<{ checkoutUrl?: string; sms?: boolean }>("/renouveler", formule ? { formule } : undefined);
+      const corps = { ...(formule ? { formule } : {}), ...(moyenPaiement ? { moyenPaiement } : {}) };
+      const r = await clientApi.post<{ checkoutUrl?: string; sms?: boolean }>(
+        "/renouveler",
+        Object.keys(corps).length ? corps : undefined
+      );
       if (r.sms) {
         notify("SMS envoyé — rendez-vous en boutique avec une nouvelle réf.facture pour finaliser le renouvellement.");
         setRenouvellement(false);
@@ -587,10 +611,15 @@ export default function ClientDashboard() {
                   onClick={(e) => e.stopPropagation()}
                   style={{ background: "#fff", borderRadius: 16, padding: 22, width: 420, maxWidth: "100%", maxHeight: "90vh", overflowY: "auto" }}
                 >
-                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>Choisissez votre formule</div>
-                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 14 }}>
-                    Votre contrat se renouvelle avec la formule que vous sélectionnez.
+                  <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4 }}>
+                    {choixFormuleRenouvellement ? "Choisissez votre formule" : "Renouveler mon contrat"}
                   </div>
+                  <div style={{ color: "#5b6b80", fontSize: 13, marginBottom: 14 }}>
+                    {choixFormuleRenouvellement
+                      ? "Votre contrat se renouvelle avec la formule que vous sélectionnez."
+                      : "Choisissez comment payer votre renouvellement."}
+                  </div>
+                  {choixFormuleRenouvellement && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {formulesRenouvellement.options.map((o) => (
                       <label
@@ -625,6 +654,43 @@ export default function ClientDashboard() {
                       </label>
                     ))}
                   </div>
+                  )}
+                  {choixMoyenRenouvellement && (
+                    <div style={{ marginTop: choixFormuleRenouvellement ? 16 : 0 }}>
+                      <div style={{ fontSize: 12.5, color: "#5b6b80", fontWeight: 600, marginBottom: 6 }}>Moyen de paiement</div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                        {(
+                          [
+                            { value: "wave", label: "Wave", logo: "/logo_wave.png" },
+                            { value: "orange_money", label: "Orange Money", logo: "/OM.png" },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => setMoyenRenouvellement(opt.value)}
+                            style={{
+                              flex: 1, minWidth: 120, padding: "10px 0", borderRadius: 10, cursor: "pointer",
+                              border: moyenRenouvellement === opt.value ? "1.5px solid #004b9c" : "1.5px solid #dde3ec",
+                              background: moyenRenouvellement === opt.value ? "#e6f1fb" : "#fff",
+                              color: moyenRenouvellement === opt.value ? "#004b9c" : "#5b6b80",
+                              fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                            }}
+                          >
+                            {opt.value === "orange_money" ? (
+                              // Même rendu que le formulaire de souscription : logo large recadré, fond blanc fondu.
+                              <img src={opt.logo} alt={opt.label} style={{ width: 96, height: 26, objectFit: "cover", mixBlendMode: "multiply" }} />
+                            ) : (
+                              <>
+                                <img src={opt.logo} alt="" style={{ width: 20, height: 20, borderRadius: "50%" }} />
+                                {opt.label}
+                              </>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
                     <button
                       type="button"
@@ -636,8 +702,10 @@ export default function ClientDashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => renouveler(formuleChoisie)}
-                      disabled={renouvellement || !formuleChoisie}
+                      onClick={() =>
+                        renouveler(formuleChoisie || undefined, choixMoyenRenouvellement ? moyenRenouvellement : undefined)
+                      }
+                      disabled={renouvellement || (choixFormuleRenouvellement && !formuleChoisie)}
                       style={{ flex: 1, padding: "12px 0", background: "#004b9c", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, cursor: "pointer", opacity: renouvellement ? 0.5 : 1 }}
                     >
                       {renouvellement ? "Veuillez patienter…" : "Renouveler et payer"}
@@ -817,7 +885,8 @@ export default function ClientDashboard() {
         )}
       </div>
       {toast && (
-        <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#0f1b2d", color: "#fff", padding: "10px 18px", borderRadius: 10, fontSize: 13 }}>
+        // zIndex au-dessus de la fenêtre de renouvellement (60) : une erreur de paiement s'y affiche aussi.
+        <div style={{ position: "fixed", bottom: 20, left: "50%", transform: "translateX(-50%)", zIndex: 70, maxWidth: "calc(100% - 32px)", background: "#0f1b2d", color: "#fff", padding: "10px 18px", borderRadius: 10, fontSize: 13 }}>
           {toast}
         </div>
       )}

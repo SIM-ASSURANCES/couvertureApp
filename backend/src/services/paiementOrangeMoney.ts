@@ -7,9 +7,80 @@ import type { TentativeOrangeMoney } from "@prisma/client";
 import { prisma } from "../db.js";
 import { confirmerEcheance } from "./paiementWave.js";
 import { confirmerAccident } from "./accident.js";
-import { interpreterStatutOrangeMoney, statutTransactionOrangeMoney, type IssueOrangeMoney } from "./orangeMoney.js";
+import {
+  initierPaiementOrangeMoney,
+  interpreterStatutOrangeMoney,
+  statutTransactionOrangeMoney,
+  MESSAGE_ORANGE_MONEY_INDISPONIBLE,
+  type IssueOrangeMoney,
+} from "./orangeMoney.js";
 
 export type CibleOrangeMoney = "echeance" | "accident";
+
+/** Échec d'ouverture d'une session Orange : message à montrer tel quel au client (HTTP 502). */
+export class ErreurOrangeMoney extends Error {}
+
+function appUrl(): string {
+  return (process.env.APP_PUBLIC_URL || "http://localhost:5173").replace(/\/+$/, "");
+}
+
+/** La page de retour est-elle sur notre site (même origine que APP_PUBLIC_URL) ? Jamais de redirection ailleurs. */
+export function urlDuSite(url: string): boolean {
+  try {
+    return new URL(url).origin === new URL(appUrl()).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Page d'échec correspondant à une page de retour : les paramètres de succès (`paid` du formulaire,
+ * `renouvele` de l'espace client) sont retirés et `paiement=echec` ajouté (format des errorUrl Wave).
+ */
+export function urlEchecDepuisRetour(retourUrl: string): string {
+  const u = new URL(retourUrl);
+  u.searchParams.delete("paid");
+  u.searchParams.delete("renouvele");
+  u.searchParams.set("paiement", "echec");
+  return u.toString();
+}
+
+/**
+ * Ouvre une session Orange pour la ligne à payer et renvoie l'URL de la page Orange. Orange limite
+ * return_url/cancel_url/notif_url à 120 caractères : on lui donne des URL courtes de NOTRE serveur
+ * (/api/public/orange-money/retour|annulation/:tentative), qui redirigent ensuite vers `retourUrl`.
+ * Lève ErreurOrangeMoney si Orange refuse ou ne répond pas (tentative marquée "ERREUR").
+ */
+export async function ouvrirPaiementOrangeMoney(p: {
+  cible: CibleOrangeMoney;
+  cibleId: string;
+  montant: number;
+  retourUrl: string;
+}): Promise<string> {
+  if (!urlDuSite(p.retourUrl)) throw new ErreurOrangeMoney("URL de retour invalide");
+  const t = await prisma.tentativeOrangeMoney.create({
+    data: { cible: p.cible, cibleId: p.cibleId, montant: p.montant, retourUrl: p.retourUrl },
+  });
+  const base = `${appUrl()}/api/public/orange-money`;
+  try {
+    const session = await initierPaiementOrangeMoney({
+      orderId: t.id,
+      montant: p.montant,
+      returnUrl: `${base}/retour/${t.id}`,
+      cancelUrl: `${base}/annulation/${t.id}`,
+      notifUrl: process.env.ORANGE_MONEY_NOTIF_URL || `${base}/notification`,
+    });
+    await prisma.tentativeOrangeMoney.update({
+      where: { id: t.id },
+      data: { payToken: session.payToken, notifToken: session.notifToken },
+    });
+    return session.paymentUrl;
+  } catch (e) {
+    console.error("[OrangeMoney] initiation", t.id, e);
+    await prisma.tentativeOrangeMoney.update({ where: { id: t.id }, data: { statut: "ERREUR" } });
+    throw new ErreurOrangeMoney(e instanceof Error ? e.message : MESSAGE_ORANGE_MONEY_INDISPONIBLE);
+  }
+}
 
 /** Statuts Orange définitifs : la tentative n'est plus interrogée. */
 const STATUTS_FINAUX = new Set(["SUCCESS", "FAILED", "EXPIRED", "ERREUR"]);
