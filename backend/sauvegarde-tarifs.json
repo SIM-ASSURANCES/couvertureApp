@@ -1,0 +1,439 @@
+[
+  {
+    "id": 1,
+    "produitId": "6b991687-70f1-496d-963f-b80117305ada",
+    "libelleVariante": "1000",
+    "prime": 1000,
+    "primeHT": 888.8888889,
+    "fg": 133.3333333,
+    "taxes": 111.111111,
+    "capitalGaranti": 500000,
+    "commission": 177.78,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T09:26:54.205Z",
+    "produit": {
+      "code": "incendie"
+    }
+  },
+  {
+    "id": 2,
+    "produitId": "6b991687-70f1-496d-963f-b80117305ada",
+    "libelleVariante": "2000",
+    "prime": 2000,
+    "primeHT": 1777.777778,
+    "fg": 266.6666667,
+    "taxes": 222.222222,
+    "capitalGaranti": 1000000,
+    "commission": 355.56,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T09:26:54.211Z",
+    "produit": {
+      "code": "incendie"
+    }
+  },
+  {
+    "id": 3,
+    "produitId": "5dadd633-117e-490d-96c4-c63f823ecab5",
+    "libelleVariante": null,
+    "prime": 500,
+    "primeHT": 466.2004662,
+    "fg": 69.93006993,
+    "taxes": 33.7995338,
+    "capitalGaranti": 100000,
+    "commission": 93.24,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T09:26:54.222Z",
+    "produit": {
+      "code": "accident"
+    }
+  },
+  {
+    "id": 4,
+    "produitId": "5dadd633-117e-490d-96c4-c63f823ecab5",
+    "libelleVariante": null,
+    "prime": 1000,
+    "primeHT": 932.4009324,
+    "fg": 139.8601399,
+    "taxes": 67.5990676,
+    "capitalGaranti": 250000,
+    "commission": 186.48,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T09:26:54.225Z",
+    "produit": {
+      "code": "accident"
+    }
+  },
+  {
+    "id": 7,
+    "produitId": "1e092d8f-9195-4e9c-a097-4e52a10e2d1e",
+    "libelleVariante": null,
+    "prime": 12000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 1800,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T10:00:20.868Z",
+    "produit": {
+      "code": "relaxmoto"
+    }
+  },
+  {
+    "id": 8,
+    "produitId": "06168624-ba63-42bd-b734-bca7b247d1a0",
+    "libelleVariante": null,
+    "prime": 24000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 1000000,
+    "commission": 3600,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-07-10T10:00:20.873Z",
+    "produit": {
+      "code": "relaxauto"
+    }
+  },
+  {
+    "id": 10,
+    "produitId": "2b5bbcf9-186d-40de-9a91-31cb39c949d3",
+    "libelleVariante": "1000",
+    "prime": 1000,
+    "primeHT": 932.4009324,
+    "fg": 139.8601399,
+    "taxes": 67.5990676,
+    "capitalGaranti": 250000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-05T09:59:58.726Z",
+    "produit": {
+      "code": "relaxaccidents_fraismedicaux"
+    }
+  },
+  {
+    "id": 13,
+    "produitId": "1e092d8f-9195-4e9c-a097-4e52a10e2d1e",
+    "libelleVariante": "annuel",
+    "prime": 25000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.489Z",
+    "produit": {
+      "code": "relaxmoto"
+    }
+  },
+  {
+    "id": 14,
+    "produitId": "1e092d8f-9195-4e9c-a097-4e52a10e2d1e",
+    "libelleVariante": "mensuel",
+    "prime": 2500,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.508Z",
+    "produit": {
+      "code": "relaxmoto"
+    }
+  },
+  {
+    "id": 15,
+    "produitId": "06168624-ba63-42bd-b734-bca7b247d1a0",
+    "libelleVariante": "annuel",
+    "prime": 25000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 1000000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.512Z",
+    "produit": {
+      "code": "relaxauto"
+    }
+  },
+  {
+    "id": 16,
+    "produitId": "06168624-ba63-42bd-b734-bca7b247d1a0",
+    "libelleVariante": "mensuel",
+    "prime": 2500,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 1000000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.514Z",
+    "produit": {
+      "code": "relaxauto"
+    }
+  },
+  {
+    "id": 18,
+    "produitId": "1b3ae94f-9901-45c1-adeb-b2a3fb454188",
+    "libelleVariante": "400",
+    "prime": 400,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 250000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": {
+      "bagages": "Pas de garantie",
+      "fraisSante": 100000
+    },
+    "createdAt": "2026-08-08T20:32:29.534Z",
+    "produit": {
+      "code": "relaxvoyage"
+    }
+  },
+  {
+    "id": 19,
+    "produitId": "1b3ae94f-9901-45c1-adeb-b2a3fb454188",
+    "libelleVariante": "600",
+    "prime": 600,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": {
+      "bagages": "Pas de garantie",
+      "fraisSante": 150000
+    },
+    "createdAt": "2026-08-08T20:32:29.537Z",
+    "produit": {
+      "code": "relaxvoyage"
+    }
+  },
+  {
+    "id": 20,
+    "produitId": "1b3ae94f-9901-45c1-adeb-b2a3fb454188",
+    "libelleVariante": "1000",
+    "prime": 1000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 1000000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": {
+      "bagages": "2 500 FCFA / Kg",
+      "fraisSante": 250000
+    },
+    "createdAt": "2026-08-08T20:32:29.539Z",
+    "produit": {
+      "code": "relaxvoyage"
+    }
+  },
+  {
+    "id": 21,
+    "produitId": "d4fbe1f4-55d3-4b38-8c65-1a54652f487c",
+    "libelleVariante": "maladie",
+    "prime": 14000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.608Z",
+    "produit": {
+      "code": "coupsdurs"
+    }
+  },
+  {
+    "id": 22,
+    "produitId": "d4fbe1f4-55d3-4b38-8c65-1a54652f487c",
+    "libelleVariante": "deces",
+    "prime": 4000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.609Z",
+    "produit": {
+      "code": "coupsdurs"
+    }
+  },
+  {
+    "id": 23,
+    "produitId": "d4fbe1f4-55d3-4b38-8c65-1a54652f487c",
+    "libelleVariante": "plafond_500000",
+    "prime": 4000,
+    "primeHT": 3229,
+    "fg": 1500,
+    "taxes": 271,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.610Z",
+    "produit": {
+      "code": "coupsdurs"
+    }
+  },
+  {
+    "id": 24,
+    "produitId": "d4fbe1f4-55d3-4b38-8c65-1a54652f487c",
+    "libelleVariante": "plafond_1000000",
+    "prime": 6000,
+    "primeHT": 5094,
+    "fg": 1500,
+    "taxes": 406,
+    "capitalGaranti": 1000000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.611Z",
+    "produit": {
+      "code": "coupsdurs"
+    }
+  },
+  {
+    "id": 25,
+    "produitId": "5f681766-c720-4237-b317-444e5e4fa995",
+    "libelleVariante": "maladie",
+    "prime": 14000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.614Z",
+    "produit": {
+      "code": "coupsdurs_classique"
+    }
+  },
+  {
+    "id": 26,
+    "produitId": "5f681766-c720-4237-b317-444e5e4fa995",
+    "libelleVariante": "deces",
+    "prime": 4000,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.615Z",
+    "produit": {
+      "code": "coupsdurs_classique"
+    }
+  },
+  {
+    "id": 27,
+    "produitId": "0db4466b-8d4c-4e69-84c6-ffe23f4f060f",
+    "libelleVariante": "plafond_500000",
+    "prime": 4000,
+    "primeHT": 3229,
+    "fg": 1500,
+    "taxes": 271,
+    "capitalGaranti": 500000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.621Z",
+    "produit": {
+      "code": "coupsdurs_incapacite"
+    }
+  },
+  {
+    "id": 28,
+    "produitId": "0db4466b-8d4c-4e69-84c6-ffe23f4f060f",
+    "libelleVariante": "plafond_1000000",
+    "prime": 6000,
+    "primeHT": 5094,
+    "fg": 1500,
+    "taxes": 406,
+    "capitalGaranti": 1000000,
+    "commission": 0.1,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.622Z",
+    "produit": {
+      "code": "coupsdurs_incapacite"
+    }
+  },
+  {
+    "id": 29,
+    "produitId": "c26a10b2-5fae-410a-9150-cce21fdb1da8",
+    "libelleVariante": "pack",
+    "prime": 31300,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 250000,
+    "commission": 0.22,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-08T20:32:29.625Z",
+    "produit": {
+      "code": "securecolte"
+    }
+  },
+  {
+    "id": 17,
+    "produitId": "1b3ae94f-9901-45c1-adeb-b2a3fb454188",
+    "libelleVariante": "250",
+    "prime": 250,
+    "primeHT": null,
+    "fg": null,
+    "taxes": null,
+    "capitalGaranti": 100000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": {
+      "bagages": "Pas de garantie",
+      "fraisSante": 50000
+    },
+    "createdAt": "2026-08-08T20:32:29.530Z",
+    "produit": {
+      "code": "relaxvoyage"
+    }
+  },
+  {
+    "id": 9,
+    "produitId": "2b5bbcf9-186d-40de-9a91-31cb39c949d3",
+    "libelleVariante": "500",
+    "prime": 500,
+    "primeHT": 466.2004662,
+    "fg": 69.93006993,
+    "taxes": 33.7995338,
+    "capitalGaranti": 100000,
+    "commission": 0,
+    "tauxCommissionMensuelle": null,
+    "donneesSpecifiques": null,
+    "createdAt": "2026-08-05T09:59:58.715Z",
+    "produit": {
+      "code": "relaxaccidents_fraismedicaux"
+    }
+  }
+]

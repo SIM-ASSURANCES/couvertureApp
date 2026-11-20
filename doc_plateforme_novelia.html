@@ -1,0 +1,648 @@
+<title>Documentation SIM Assurances</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #f5f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef2f8;
+    --ink: #101826;
+    --ink-2: #4b5768;
+    --ink-3: #7c8798;
+    --border: #dfe6f0;
+    --accent: #00478f;
+    --accent-ink: #ffffff;
+    --accent-soft: #e7f0fb;
+    --accent-soft-ink: #00478f;
+    --good: #146c43;
+    --good-bg: #e8f5ee;
+    --warn: #a35a00;
+    --warn-bg: #fdf1de;
+    --code-bg: #0f1b2d;
+    --code-ink: #d9e4f5;
+    --code-accent: #7cc4ff;
+    --shadow: 0 1px 2px rgba(16, 24, 38, 0.04), 0 8px 24px -12px rgba(16, 24, 38, 0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1420;
+      --surface: #141d2e;
+      --surface-2: #1a2436;
+      --ink: #eaf0fa;
+      --ink-2: #aab6c9;
+      --ink-3: #7c8798;
+      --border: #263349;
+      --accent: #6facf0;
+      --accent-ink: #071626;
+      --accent-soft: #1b2a42;
+      --accent-soft-ink: #8fc0f7;
+      --good: #6fd3a0;
+      --good-bg: #12271f;
+      --warn: #f0b464;
+      --warn-bg: #2a2210;
+      --code-bg: #080f1a;
+      --code-ink: #d9e4f5;
+      --code-accent: #7cc4ff;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1420;
+    --surface: #141d2e;
+    --surface-2: #1a2436;
+    --ink: #eaf0fa;
+    --ink-2: #aab6c9;
+    --ink-3: #7c8798;
+    --border: #263349;
+    --accent: #6facf0;
+    --accent-ink: #071626;
+    --accent-soft: #1b2a42;
+    --accent-soft-ink: #8fc0f7;
+    --good: #6fd3a0;
+    --good-bg: #12271f;
+    --warn: #f0b464;
+    --warn-bg: #2a2210;
+    --code-bg: #080f1a;
+    --code-ink: #d9e4f5;
+    --code-accent: #7cc4ff;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 { font-family: "Fraunces", Georgia, serif; text-wrap: balance; color: var(--ink); }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+
+  a { color: var(--accent); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 760px);
+    gap: 64px;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 56px 24px 120px;
+    justify-content: center;
+  }
+  @media (max-width: 920px) {
+    .layout { grid-template-columns: minmax(0, 1fr); padding: 32px 20px 80px; }
+    .toc { display: none; }
+  }
+
+  /* ── TOC ── */
+  .toc {
+    position: sticky;
+    top: 40px;
+    align-self: start;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+  }
+  .toc-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 14px;
+  }
+  .toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .toc li a {
+    display: block;
+    padding: 7px 10px;
+    border-radius: 7px;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 13.5px;
+    font-weight: 500;
+    border-left: 2px solid transparent;
+  }
+  .toc li a:hover { background: var(--surface-2); color: var(--ink); }
+  .toc li.sub a { padding-left: 22px; font-size: 13px; font-weight: 400; color: var(--ink-3); }
+
+  /* ── Header ── */
+  .doc-eyebrow {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .doc-eyebrow::before {
+    content: "";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+  }
+  h1.doc-title {
+    font-size: 40px;
+    font-weight: 500;
+    line-height: 1.12;
+    margin: 0 0 14px;
+  }
+  .doc-sub {
+    font-size: 17px;
+    color: var(--ink-2);
+    max-width: 60ch;
+    margin: 0 0 28px;
+  }
+  .doc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    font-size: 13px;
+    color: var(--ink-3);
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+  }
+  .doc-meta strong { color: var(--ink-2); font-weight: 600; }
+
+  /* ── Sections ── */
+  section { margin-top: 68px; scroll-margin-top: 32px; }
+  section > .kicker {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  h2 { font-size: 26px; font-weight: 500; margin: 0 0 6px; }
+  h2 + .lede { color: var(--ink-2); font-size: 15.5px; margin: 0 0 26px; max-width: 62ch; }
+  h3 {
+    font-size: 17px;
+    font-weight: 600;
+    font-family: "Public Sans", sans-serif;
+    color: var(--ink);
+    margin: 32px 0 10px;
+  }
+  p { margin: 0 0 14px; color: var(--ink); max-width: 68ch; }
+  ul, ol { margin: 0 0 14px; padding-left: 22px; max-width: 64ch; }
+  li { margin-bottom: 6px; }
+  strong { font-weight: 600; }
+  code.inline {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.88em;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 0.1em 0.4em;
+    border-radius: 5px;
+    color: var(--accent-soft-ink);
+    white-space: nowrap;
+  }
+
+  /* ── Cards / grid ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    margin: 20px 0 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 18px 16px;
+  }
+  .stat-card .n {
+    font-family: "Fraunces", serif;
+    font-size: 26px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-card .l { font-size: 12.5px; color: var(--ink-2); margin-top: 3px; }
+
+  .actor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+    margin: 18px 0 26px;
+  }
+  .actor {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 15px 16px;
+  }
+  .actor .name { font-weight: 600; font-size: 14.5px; margin-bottom: 4px; }
+  .actor .desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 22px 0;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+  .callout .callout-head {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 600;
+    font-size: 13.5px;
+    margin-bottom: 8px;
+  }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout.warn { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+  .callout.warn .callout-head { color: var(--warn); }
+  .callout.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+  .callout.info .callout-head { color: var(--accent); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+
+  /* ── Status pill ── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+  }
+  .pill .dot { width: 6px; height: 6px; }
+  .pill.done { background: var(--good-bg); color: var(--good); }
+  .pill.todo { background: var(--warn-bg); color: var(--warn); }
+  .pill.na { background: var(--surface-2); color: var(--ink-3); }
+
+  /* ── Tables ── */
+  .table-wrap { overflow-x: auto; margin: 18px 0 26px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.8px; min-width: 480px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  thead th {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    background: var(--surface-2);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td code.inline, th code.inline { white-space: normal; }
+
+  /* ── Code block ── */
+  .code-block {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin: 16px 0 24px;
+    overflow-x: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    box-shadow: var(--shadow);
+  }
+  .code-block .filename {
+    display: block;
+    font-family: "Public Sans", sans-serif;
+    font-size: 11.5px;
+    color: #8ba3c7;
+    margin-bottom: 10px;
+    letter-spacing: 0.02em;
+  }
+  .code-block pre { margin: 0; white-space: pre; }
+  .tok-com { color: #7891ae; }
+  .tok-kw { color: var(--code-accent); }
+  .tok-str { color: #9fe6a0; }
+  .tok-fn { color: #f0c674; }
+
+  /* ── Flow / diagram ── */
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0;
+    margin: 20px 0 28px;
+  }
+  .flow-step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    flex: 1 1 150px;
+    min-width: 140px;
+  }
+  .flow-step .k { font-size: 10.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 5px; }
+  .flow-step .v { font-size: 13.5px; font-weight: 500; line-height: 1.4; }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    color: var(--ink-3);
+    font-size: 16px;
+    flex: 0 0 auto;
+  }
+  @media (max-width: 640px) {
+    .flow { flex-direction: column; }
+    .flow-arrow { transform: rotate(90deg); padding: 2px 0; }
+  }
+
+  .access-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 18px 0 26px; }
+  .access-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--surface); }
+  .access-card .num { font-family: "Fraunces", serif; font-size: 20px; color: var(--accent); margin-bottom: 6px; }
+  .access-card h4 { margin: 0 0 5px; font-size: 14px; font-weight: 600; }
+  .access-card p { font-size: 12.8px; color: var(--ink-2); margin: 0; }
+
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+    color: var(--ink-3);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-soft-ink); }
+</style>
+
+<div class="layout">
+  <nav class="toc">
+    <div class="toc-label">Sommaire</div>
+    <ol>
+      <li><a href="#vue-ensemble">1. Vue d'ensemble</a></li>
+      <li><a href="#architecture">2. Architecture technique</a></li>
+      <li class="sub"><a href="#deploiement">Déploiement</a></li>
+      <li><a href="#carte">3. Carte de prise en charge</a></li>
+      <li class="sub"><a href="#carte-contenu">Composition visuelle</a></li>
+      <li class="sub"><a href="#carte-produits">Produits couverts</a></li>
+      <li class="sub"><a href="#carte-acces">Voies d'accès</a></li>
+      <li><a href="#novelia-api">4. Intégration API Novelia</a></li>
+      <li class="sub"><a href="#novelia-etat">État réel du code</a></li>
+      <li class="sub"><a href="#novelia-env">Variables d'environnement</a></li>
+      <li class="sub"><a href="#novelia-suite">Pour la vraie intégration</a></li>
+      <li><a href="#reseau-soins">5. Réseau de soins</a></li>
+      <li><a href="#annexe">6. Annexe — références</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header>
+      <div class="doc-eyebrow">SIM Assurances · Documentation technique</div>
+      <h1 class="doc-title">Plateforme &amp; intégration Novelia</h1>
+      <p class="doc-sub">Vue d'ensemble de la plateforme couvertureApp, puis dossier détaillé sur la carte visuelle de prise en charge des produits Accidents et sur l'état réel de la connexion avec Novelia.</p>
+      <div class="doc-meta">
+        <span><strong>Dépôt</strong> couvertureApp</span>
+        <span><strong>Backend</strong> v162 · <strong>Frontend</strong> v204</span>
+        <span><strong>Dernière relecture</strong> 11 septembre 2026</span>
+      </div>
+    </header>
+
+    <!-- 1. VUE D'ENSEMBLE -->
+    <section id="vue-ensemble">
+      <div class="kicker">01</div>
+      <h2>Vue d'ensemble</h2>
+      <p class="lede">Une application unique de micro-assurance couvrant trois branches métier, distribuée par QR code, avec paiement mobile et espace client en libre-service.</p>
+
+      <div class="card-grid">
+        <div class="stat-card"><div class="n">3</div><div class="l">branches produits</div></div>
+        <div class="stat-card"><div class="n">5</div><div class="l">types d'acteurs</div></div>
+        <div class="stat-card"><div class="n">7</div><div class="l">produits avec carte de prise en charge</div></div>
+        <div class="stat-card"><div class="n">747</div><div class="l">prestataires au réseau de soins</div></div>
+      </div>
+
+      <h3>Branches produits</h3>
+      <ul>
+        <li><strong>Assurances Accidents et Dommages</strong> — branche principale : RelaxMoto/RelaxAuto, RelaxAccidents (Frais Médicaux, générale), RelaxVoyage, SecurHome+, SecurPro Dommages, Incendie/Accident (modèles historiques).</li>
+        <li><strong>Relax</strong> — branche d'origine, pages admin toujours actives mais retirées du menu principal.</li>
+        <li><strong>Assurances IMF</strong> — distribution via un réseau zones → agences → agents pour les institutions de micro-finance (SecurPro, SecurStock, Coups Durs, SecurÉcolte), sans passerelle de paiement en ligne.</li>
+      </ul>
+
+      <h3>Acteurs de la plateforme</h3>
+      <div class="actor-grid">
+        <div class="actor"><div class="name">Admin</div><div class="desc">Trois niveaux (Admin, Super Admin de branche, Super Admin global) — gestion complète.</div></div>
+        <div class="actor"><div class="name">Partenaire</div><div class="desc">Commerçant distributeur, identifié par son QR code.</div></div>
+        <div class="actor"><div class="name">Agent de distribution</div><div class="desc">Rattaché à un partenaire, perçoit une part réglable de la commission sur ses ventes.</div></div>
+        <div class="actor"><div class="name">Agent IMF</div><div class="desc">Réseau à 5 rôles (agent → chef de zone), branche IMF.</div></div>
+        <div class="actor"><div class="name">Client</div><div class="desc">Espace en libre-service : contrat, renouvellement, sinistre, réseau de soins.</div></div>
+      </div>
+
+      <h3>Parcours de souscription type</h3>
+      <div class="flow">
+        <div class="flow-step"><div class="k">1 · Entrée</div><div class="v">Scan du QR code chez le partenaire</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="k">2 · Formulaire</div><div class="v">Souscription publique + photos</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="k">3 · Paiement</div><div class="v">Wave (mode stub si non configuré)</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="k">4 · Livrables</div><div class="v">Contrat PDF + carte de prise en charge + SMS</div></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step"><div class="k">5 · Suivi</div><div class="v">Espace client (renouvellement, sinistre)</div></div>
+      </div>
+    </section>
+
+    <!-- 2. ARCHITECTURE -->
+    <section id="architecture">
+      <div class="kicker">02</div>
+      <h2>Architecture technique</h2>
+      <p class="lede">Backend et frontend séparés, chacun packagé en image Docker et déployé indépendamment.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Couche</th><th>Choix technique</th></tr></thead>
+          <tbody>
+            <tr><td>Backend</td><td>Node.js + Express (TypeScript, modules ESM)</td></tr>
+            <tr><td>Base de données</td><td>PostgreSQL via Prisma ORM</td></tr>
+            <tr><td>Authentification</td><td>JWT + bcryptjs, validation des entrées avec zod</td></tr>
+            <tr><td>Rendu PDF / image</td><td><code class="inline">puppeteer-core</code> (Chromium headless) — contrats et cartes</td></tr>
+            <tr><td>Tâches planifiées</td><td><code class="inline">node-cron</code> (relances SMS, échéances)</td></tr>
+            <tr><td>Frontend</td><td>React 19 + TypeScript + Vite + React Router 7</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="deploiement">Déploiement</h3>
+      <p>Le VPS est piloté par <strong>Dokploy</strong> derrière un reverse-proxy <strong>Traefik</strong>. Deux images sont publiées sur GHCR :</p>
+      <ul>
+        <li><code class="inline">ghcr.io/sim-assurances/couvertureapp-backend</code></li>
+        <li><code class="inline">ghcr.io/sim-assurances/couvertureapp-frontend</code></li>
+      </ul>
+      <p>Chaque image est versionnée (<code class="inline">vN</code>) en plus du tag <code class="inline">latest</code>. Au démarrage, le conteneur backend exécute <code class="inline">prisma db push</code> puis un seed idempotent (compte Super Admin, catalogue produits). Le <code class="inline">docker-compose.yaml</code> du dépôt sert de référence locale — la configuration réelle de production est éditée dans Dokploy.</p>
+    </section>
+
+    <!-- 3. CARTE DE PRISE EN CHARGE -->
+    <section id="carte">
+      <div class="kicker">03</div>
+      <h2>La carte de prise en charge</h2>
+      <p class="lede">Un visuel individuel remis au client après paiement confirmé, reproduisant la mise en page de la carte physique fournie par Novelia — générée à la volée, pas imprimée à l'avance.</p>
+
+      <h3 id="carte-contenu">Composition visuelle</h3>
+      <p>La carte est composée en HTML/CSS (gabarit fixe <strong>1013 × 638 px</strong>) puis rendue en image PNG par Chromium headless. Elle affiche :</p>
+      <ul>
+        <li>le logo Novelia et le titre « Carte individuelle Accidents » ;</li>
+        <li>une bannière de garantie, dont le libellé varie par produit — <code class="inline">FMP</code> pour RelaxAccidents Frais Médicaux, <code class="inline">DÉCÈS / IPT</code> pour RelaxVoyage, <code class="inline">CAPITAL GARANTI</code> pour les autres ;</li>
+        <li>la photo du souscripteur (selfie déposé à la souscription), son matricule, nom, prénoms, date de naissance, sexe et date d'entrée ;</li>
+        <li>le pied de page SIM Assurances.</li>
+      </ul>
+      <p>Deux prérequis conditionnent sa disponibilité : la souscription doit être <strong>confirmée</strong> (paiement Wave validé) et un <strong>selfie</strong> doit avoir été déposé comme document justificatif.</p>
+
+      <div class="code-block">
+        <span class="filename">backend/src/services/carteRender.ts</span>
+        <pre><span class="tok-com">// Libellé de la garantie affichée sur la bannière, variable par produit</span>
+<span class="tok-kw">function</span> <span class="tok-fn">garantieAffichee</span>(produitCode: string) {
+  <span class="tok-kw">if</span> (produitCode === <span class="tok-str">"relaxaccidents_fraismedicaux"</span>) <span class="tok-kw">return</span> <span class="tok-str">"FMP"</span>;
+  <span class="tok-kw">if</span> (produitCode === <span class="tok-str">"relaxvoyage"</span>) <span class="tok-kw">return</span> <span class="tok-str">"DÉCÈS/IPT"</span>;
+  <span class="tok-kw">return</span> <span class="tok-str">"CAPITAL GARANTI"</span>;
+}</pre>
+      </div>
+
+      <h3 id="carte-produits">Produits couverts</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Produit</th><th>Carte disponible</th></tr></thead>
+          <tbody>
+            <tr><td>Incendie / Accident (modèles historiques)</td><td><span class="pill done"><span class="dot"></span>Oui</span></td></tr>
+            <tr><td>RelaxMoto / RelaxAuto</td><td><span class="pill done"><span class="dot"></span>Oui</span></td></tr>
+            <tr><td>RelaxAccidents Frais Médicaux (grand public + Livreurs/Taxis)</td><td><span class="pill done"><span class="dot"></span>Oui</span></td></tr>
+            <tr><td>RelaxVoyage</td><td><span class="pill done"><span class="dot"></span>Oui</span></td></tr>
+            <tr><td>RelaxAccidents générale (police collective)</td><td><span class="pill na"><span class="dot"></span>Non</span></td></tr>
+            <tr><td>SecurHome+ / SecurPro Dommages / SecurHome</td><td><span class="pill na"><span class="dot"></span>Non — branche Dommages</span></td></tr>
+            <tr><td>Produits IMF (SecurPro, SecurStock, Coups Durs, SecurÉcolte)</td><td><span class="pill na"><span class="dot"></span>Non — hors périmètre</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="carte-acces">Voies d'accès à la génération</h3>
+      <p>Un seul point d'entrée, <code class="inline">POST /api/cartes/png</code>, ouvert à trois profils :</p>
+      <div class="access-grid">
+        <div class="access-card"><div class="num">01</div><h4>Admin authentifié</h4><p>Depuis les pages Contrats et Clients du back-office.</p></div>
+        <div class="access-card"><div class="num">02</div><h4>Client connecté</h4><p>Sur sa propre souscription, depuis son espace.</p></div>
+        <div class="access-card"><div class="num">03</div><h4>Public post-paiement</h4><p>Via l'identifiant du paiement confirmé, juste après le retour de Wave — avant même la création du compte client.</p></div>
+      </div>
+    </section>
+
+    <!-- 4. NOVELIA API -->
+    <section id="novelia-api">
+      <div class="kicker">04</div>
+      <h2>Intégration API Novelia</h2>
+      <p class="lede">Le point que ce document doit poser clairement : la connexion à une véritable API Novelia n'existe pas encore dans le code.</p>
+
+      <div class="callout warn">
+        <div class="callout-head"><span class="dot"></span>État actuel : mode simulé (stub)</div>
+        <p>Le service <code class="inline">backend/src/services/novelia.ts</code> ne contacte aucun serveur Novelia. Il génère localement un numéro de carte et enregistre une ligne de suivi en base — que la clé d'environnement <code class="inline">NOVELIA_API_KEY</code> soit renseignée ou non change actuellement rien au résultat.</p>
+      </div>
+
+      <h3 id="novelia-etat">Ce que fait réellement le code aujourd'hui</h3>
+      <div class="code-block">
+        <span class="filename">backend/src/services/novelia.ts</span>
+        <pre><span class="tok-kw">export async function</span> <span class="tok-fn">genererCarte</span>(souscriptionId: string) {
+  <span class="tok-kw">const</span> existante = <span class="tok-kw">await</span> prisma.carte.findUnique({ where: { souscriptionId } });
+  <span class="tok-kw">if</span> (existante) <span class="tok-kw">return</span>;
+
+  <span class="tok-com">// Avec ou sans clé, le comportement est identique pour l'instant :</span>
+  <span class="tok-com">// TODO(intégration NOVELIA réelle) — appeler l'API une fois la</span>
+  <span class="tok-com">// documentation/clé fournie (endpoint, format requête/réponse).</span>
+  <span class="tok-kw">await</span> prisma.carte.create({
+    data: { souscriptionId, numero: <span class="tok-fn">newNumeroCarte</span>(), statut: <span class="tok-str">"generee"</span> },
+  });
+}</pre>
+      </div>
+      <p>Deux choses distinctes portent le nom « Novelia » dans la plateforme, et il est utile de ne pas les confondre :</p>
+      <ol>
+        <li><strong>Le visuel de la carte</strong> (section 3) — un gabarit HTML/CSS et un logo qui reproduisent <em>manuellement</em> le design de la carte physique Novelia. C'est fonctionnel, mais ce n'est pas une intégration API : aucune donnée n'est récupérée depuis Novelia pour la construire.</li>
+        <li><strong>L'annexe « réseau de soins »</strong> (section 5) — un fichier de données fourni par Novelia, importé une fois, pas interrogé en direct.</li>
+      </ol>
+      <p>Le modèle Prisma <code class="inline">Carte</code> porte déjà un champ <code class="inline">noveliaRef</code> réservé à une référence renvoyée par leur système — il n'est écrit nulle part dans le code actuel, ce qui confirme qu'il attend la vraie intégration.</p>
+
+      <h3 id="novelia-env">Variables d'environnement</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Déclarée dans</th><th>Effet actuel</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code class="inline">NOVELIA_API_KEY</code></td>
+              <td><code class="inline">.env.example</code>, <code class="inline">docker-compose.yaml</code>, <code class="inline">novelia.ts</code></td>
+              <td>Bascule une condition dont les deux branches produisent aujourd'hui le même résultat.</td>
+            </tr>
+            <tr>
+              <td><code class="inline">APP_PUBLIC_URL</code></td>
+              <td><code class="inline">carteHtml.ts</code></td>
+              <td>Non spécifique à Novelia, mais sert à construire l'URL du logo affiché sur la carte.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="novelia-suite">Pour engager la vraie intégration</h3>
+      <p>Trois éléments manquent aujourd'hui pour remplacer le stub par un appel réel :</p>
+      <ul>
+        <li>la <strong>documentation d'API</strong> fournie par Novelia (endpoint(s), méthode d'authentification, format de requête et de réponse) ;</li>
+        <li>une <strong>clé d'accès</strong> valide, à placer dans <code class="inline">NOVELIA_API_KEY</code> ;</li>
+        <li>une décision métier sur ce que l'appel doit accomplir concrètement — immatriculer le bénéficiaire dans le système Novelia, récupérer une référence de carte officielle à stocker dans <code class="inline">Carte.noveliaRef</code>, ou autre chose selon ce que propose leur API.</li>
+      </ul>
+      <p>Une fois ces éléments réunis, le point d'entrée à modifier est unique : la fonction <code class="inline">genererCarte()</code> dans <code class="inline">backend/src/services/novelia.ts</code>, appelée depuis la confirmation de paiement Wave (RelaxMoto/RelaxAuto) et depuis le renouvellement Relax historique.</p>
+    </section>
+
+    <!-- 5. RÉSEAU DE SOINS -->
+    <section id="reseau-soins">
+      <div class="kicker">05</div>
+      <h2>Réseau de soins</h2>
+      <p class="lede">Un annuaire de prestataires conventionnés, distinct de la carte et de toute connexion API — un fichier de données statique fourni par Novelia.</p>
+
+      <div class="card-grid">
+        <div class="stat-card"><div class="n">85</div><div class="l">établissements publics</div></div>
+        <div class="stat-card"><div class="n">662</div><div class="l">pharmacies</div></div>
+        <div class="stat-card"><div class="n">747</div><div class="l">total, 2 catégories</div></div>
+      </div>
+
+      <p>Les données vivent dans <code class="inline">frontend/public/reseau-soins.json</code> — pas de base de données, pas d'appel API : le fichier est servi tel quel et chargé à la demande (≈ 140 Ko) depuis l'onglet « Réseau » de l'espace client (<code class="inline">ReseauSoins.tsx</code>), avec recherche texte, filtres par catégorie/commune et pagination par 40. Il n'apparaît pas sur la carte visuelle elle-même — c'est une ressource consultée à côté.</p>
+
+      <div class="callout info">
+        <div class="callout-head"><span class="dot"></span>Pour mettre à jour l'annuaire</div>
+        <p>Remplacer <code class="inline">frontend/public/reseau-soins.json</code> à partir du fichier fourni par Novelia et redéployer le frontend — aucune migration ni changement de code nécessaire.</p>
+      </div>
+    </section>
+
+    <!-- 6. ANNEXE -->
+    <section id="annexe">
+      <div class="kicker">06</div>
+      <h2>Annexe — références rapides</h2>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Élément</th><th>Chemin</th></tr></thead>
+          <tbody>
+            <tr><td>Service Novelia (stub)</td><td><code class="inline">backend/src/services/novelia.ts</code></td></tr>
+            <tr><td>Gabarit HTML de la carte</td><td><code class="inline">backend/src/services/carteHtml.ts</code></td></tr>
+            <tr><td>Orchestration du rendu PNG</td><td><code class="inline">backend/src/services/carteRender.ts</code></td></tr>
+            <tr><td>Rendu Chromium headless (PDF/PNG)</td><td><code class="inline">backend/src/services/pdf.ts</code></td></tr>
+            <tr><td>Endpoint de génération de carte</td><td><code class="inline">backend/src/routes/cartes.ts</code> — <code class="inline">POST /api/cartes/png</code></td></tr>
+            <tr><td>Modèle de données</td><td><code class="inline">Carte</code>, table Prisma (<code class="inline">schema.prisma</code>)</td></tr>
+            <tr><td>Annuaire réseau de soins</td><td><code class="inline">frontend/public/reseau-soins.json</code></td></tr>
+            <tr><td>Composant d'affichage réseau de soins</td><td><code class="inline">frontend/src/components/ReseauSoins.tsx</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-head"><span class="dot"></span>Écart connu avec le README</div>
+        <p>Le README du dépôt annonce « plus de 1500 prestataires conventionnés » — le fichier réellement livré n'en compte que 747. À corriger dans le README si le chiffre attendu est bien 747, ou à vérifier si un fichier plus complet existe côté Novelia et n'a pas encore été intégré.</p>
+      </div>
+    </section>
+
+    <footer>
+      <span>Documentation générée à partir d'une relecture directe du code — aucune information n'est supposée au-delà de ce qui est implémenté.</span>
+      <span>couvertureApp</span>
+    </footer>
+  </main>
+</div>
