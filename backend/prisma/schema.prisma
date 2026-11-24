@@ -1143,6 +1143,10 @@ model Imf {
   statut            StatutPartenaire @default(actif)
   // Branding repris sur les documents et l'espace dédié de l'IMF (phase 4).
   logoUrl           String?
+  // Logo envoyé depuis l'onglet « Logo » (data URL PNG/JPEG/WebP, 1 Mo max, 2026-11-24). Servi par
+  // GET /api/public/imf-logos/:imfId, vers lequel pointe alors `logoUrl`. JAMAIS renvoyé dans les
+  // réponses JSON (omis à la lecture, voir routes/imfPartenaires.ts).
+  logoFichier       String?
   couleurPrimaire   String?
   couleurSecondaire String?
   mentionsLegales   String?

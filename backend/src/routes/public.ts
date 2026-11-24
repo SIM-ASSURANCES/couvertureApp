@@ -367,6 +367,29 @@ const ASSURANCES_QR_UNIQUE = [
 export const publicRouter = Router();
 
 /**
+ * Logo d'une IMF envoyé depuis l'onglet « Logo » (2026-11-24). Public (affiché dans l'espace agent, y
+ * compris l'appli mobile, d'où la politique cross-origin) ; `?telecharger=1` force le téléchargement.
+ */
+publicRouter.get(
+  "/imf-logos/:imfId",
+  asyncHandler(async (req, res) => {
+    const imf = await prisma.imf.findUnique({ where: { id: req.params.imfId }, select: { code: true, logoFichier: true } });
+    const m = imf?.logoFichier ? /^data:(image\/(png|jpeg|webp));base64,(.+)$/.exec(imf.logoFichier) : null;
+    if (!imf || !m) return res.status(404).json({ error: "Logo introuvable" });
+    res.setHeader("Content-Type", m[1]);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (req.query.telecharger) {
+      const ext = m[2] === "jpeg" ? "jpg" : m[2];
+      const nom = `logo-${imf.code}`.replace(/[^A-Za-z0-9_-]/g, "_");
+      res.setHeader("Content-Disposition", `attachment; filename="${nom}.${ext}"`);
+    }
+    res.send(Buffer.from(m[3], "base64"));
+  })
+);
+
+/**
  * Garde central de Peya pay (Djogana) : refuse, AVANT toute création de
  * souscription en attente, un paiement Peya pay quand ce moyen n'est pas
  * réellement utilisable (production sans identifiants — sinon le mode stub,

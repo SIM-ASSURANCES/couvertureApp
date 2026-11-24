@@ -79,6 +79,9 @@ const ImfRouteProduits = lazy(() =>
 const ImfRouteBaremes = lazy(() =>
   import("./pages/admin/imfs/fiche/OngletRoutes").then((m) => ({ default: m.RouteBaremes }))
 );
+const ImfRouteLogo = lazy(() =>
+  import("./pages/admin/imfs/fiche/OngletRoutes").then((m) => ({ default: m.RouteLogo }))
+);
 const ImfRouteDocuments = lazy(() =>
   import("./pages/admin/imfs/fiche/OngletRoutes").then((m) => ({ default: m.RouteDocuments }))
 );
@@ -150,6 +153,7 @@ export default function App() {
                 <Route index element={<Navigate to="tableau-de-bord" replace />} />
                 <Route path="tableau-de-bord" element={<ImfRouteTableauDeBord />} />
                 <Route path="general" element={<ImfRouteGeneral />} />
+                <Route path="logo" element={<ImfRouteLogo />} />
                 <Route path="reseau" element={<ImfRouteReseau />} />
                 <Route path="simulateur" element={<ImfRouteSimulateur />} />
                 <Route path="portefeuille" element={<ImfRoutePortefeuille />} />

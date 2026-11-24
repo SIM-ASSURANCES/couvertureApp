@@ -104,6 +104,7 @@ imfPartenairesRouter.get(
   asyncHandler(async (_req, res) => {
     const imfs = await prisma.imf.findMany({
       orderBy: { nom: "asc" },
+      omit: { logoFichier: true },
       include: {
         partenaire: {
           select: { id: true, nomResponsable: true, telephone: true, email: true, localisation: true },
@@ -137,6 +138,7 @@ imfPartenairesRouter.get(
   asyncHandler(async (req, res) => {
     const imf = await prisma.imf.findUnique({
       where: { id: req.params.id },
+      omit: { logoFichier: true },
       include: {
         partenaire: {
           select: { id: true, nomResponsable: true, telephone: true, email: true, localisation: true },
@@ -245,8 +247,10 @@ imfPartenairesRouter.patch(
   "/:id",
   asyncHandler(async (req: AuthedRequest, res) => {
     const data = updateSchema.parse(req.body);
-    const existant = await prisma.imf.findUnique({ where: { id: req.params.id } });
+    const existant = await prisma.imf.findUnique({ where: { id: req.params.id }, omit: { logoFichier: true } });
     if (!existant) return res.status(404).json({ error: "IMF introuvable" });
+    // Adresse de logo saisie à la main (onglet Général) qui ne pointe plus vers le fichier envoyé : on l'oublie.
+    const remplaceLogoFichier = data.logoUrl !== undefined && !(data.logoUrl || "").includes(`/imf-logos/${existant.id}`);
 
     const partData: Prisma.PartenaireUpdateInput = {};
     if (data.nomResponsable !== undefined) partData.nomResponsable = data.nomResponsable;
@@ -267,10 +271,12 @@ imfPartenairesRouter.patch(
             nom: data.nom,
             statut: data.statut,
             logoUrl: data.logoUrl !== undefined ? data.logoUrl || null : undefined,
+            ...(remplaceLogoFichier ? { logoFichier: null } : {}),
             couleurPrimaire: data.couleurPrimaire !== undefined ? data.couleurPrimaire || null : undefined,
             couleurSecondaire: data.couleurSecondaire !== undefined ? data.couleurSecondaire || null : undefined,
             mentionsLegales: data.mentionsLegales !== undefined ? data.mentionsLegales || null : undefined,
           },
+          omit: { logoFichier: true },
           include: {
             partenaire: {
               select: { id: true, nomResponsable: true, telephone: true, email: true, localisation: true },
@@ -312,12 +318,90 @@ imfPartenairesRouter.patch(
 
 /* ── Suppression (réservée au Super Administrateur de la branche) ── */
 
+/* ── Logo (onglet « Logo », 2026-11-24) ── */
+
+const TYPES_LOGO = ["image/png", "image/jpeg", "image/webp"] as const;
+const TAILLE_MAX_LOGO = 1024 * 1024; // 1 Mo (fichier décodé)
+const APP_PUBLIC_URL = process.env.APP_PUBLIC_URL || "http://localhost:5173";
+/** Base publique de l'API (en production : le domaine du site, dont nginx relaie /api). */
+const API_PUBLIC_URL = process.env.API_PUBLIC_URL || `${APP_PUBLIC_URL}/api`;
+
+const logoSchema = z.object({ image: z.string().min(1) });
+const INCLUDE_SERIALIZE = {
+  partenaire: { select: { id: true, nomResponsable: true, telephone: true, email: true, localisation: true } },
+  _count: { select: { zones: true, agences: true, agents: true, souscriptions: true } },
+} as const;
+
+/**
+ * Envoi du logo de l'IMF (image PNG/JPEG/WebP ≤ 1 Mo, en data URL). SVG refusé : servi depuis notre
+ * domaine, il pourrait exécuter du script. `logoUrl` pointe ensuite vers la route publique de l'image
+ * (avec ?v= pour que les navigateurs rechargent un logo remplacé) : en-tête de l'espace agent, aperçus…
+ */
+imfPartenairesRouter.post(
+  "/:id/logo",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const { image } = logoSchema.parse(req.body);
+    const m = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/.exec(image);
+    if (!m || !(TYPES_LOGO as readonly string[]).includes(m[1])) {
+      return res.status(400).json({ error: "Format non pris en charge : envoyez une image PNG, JPEG ou WebP." });
+    }
+    const octets = Buffer.from(m[2], "base64");
+    if (octets.length === 0) return res.status(400).json({ error: "Image vide." });
+    if (octets.length > TAILLE_MAX_LOGO) {
+      return res.status(413).json({ error: "Image trop lourde : 1 Mo maximum." });
+    }
+    const existant = await prisma.imf.findUnique({ where: { id: req.params.id }, select: { id: true, logoUrl: true } });
+    if (!existant) return res.status(404).json({ error: "IMF introuvable" });
+
+    const logoUrl = `${API_PUBLIC_URL}/public/imf-logos/${existant.id}?v=${Date.now().toString(36)}`;
+    const imf = await prisma.imf.update({
+      where: { id: existant.id },
+      data: { logoFichier: image, logoUrl },
+      omit: { logoFichier: true },
+      include: INCLUDE_SERIALIZE,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "modification",
+      objetType: "imf_logo",
+      objetId: imf.id,
+      valeurAvant: { logoUrl: existant.logoUrl },
+      valeurApres: { logoUrl, type: m[1], octets: octets.length },
+    });
+    res.json(serialize(imf));
+  })
+);
+
+/** Retire le logo (fichier envoyé ET adresse) — l'IMF retrouve l'affichage sans logo. */
+imfPartenairesRouter.delete(
+  "/:id/logo",
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const existant = await prisma.imf.findUnique({ where: { id: req.params.id }, select: { id: true, logoUrl: true } });
+    if (!existant) return res.status(404).json({ error: "IMF introuvable" });
+    const imf = await prisma.imf.update({
+      where: { id: existant.id },
+      data: { logoFichier: null, logoUrl: null },
+      omit: { logoFichier: true },
+      include: INCLUDE_SERIALIZE,
+    });
+    await logAction({
+      adminId: req.user!.sub,
+      typeAction: "suppression",
+      objetType: "imf_logo",
+      objetId: imf.id,
+      valeurAvant: { logoUrl: existant.logoUrl },
+    });
+    res.json(serialize(imf));
+  })
+);
+
 imfPartenairesRouter.delete(
   "/:id",
   requireSuperAdminBranche("IMF_PARTENAIRES"),
   asyncHandler(async (req: AuthedRequest, res) => {
     const imf = await prisma.imf.findUnique({
       where: { id: req.params.id },
+      omit: { logoFichier: true },
       include: {
         _count: { select: { zones: true, agences: true, agents: true, souscriptions: true, sinistres: true, bordereaux: true } },
       },

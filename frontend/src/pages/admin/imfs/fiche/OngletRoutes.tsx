@@ -8,6 +8,7 @@ import OngletPortefeuille from "./OngletPortefeuille";
 import OngletProduits from "./OngletProduits";
 import OngletBaremes from "./OngletBaremes";
 import OngletDocuments from "./OngletDocuments";
+import OngletLogo from "./OngletLogo";
 
 /** Accès au contexte de la fiche IMF (fourni par ImfFicheLayout via <Outlet context>). */
 export function useImfFiche() {
@@ -23,6 +24,10 @@ export function RouteTableauDeBord() {
 export function RouteGeneral() {
   const c = useImfFiche();
   return <OngletGeneral imf={c.imf} reload={c.reload} notify={c.notify} />;
+}
+export function RouteLogo() {
+  const c = useImfFiche();
+  return <OngletLogo imf={c.imf} reload={c.reload} notify={c.notify} />;
 }
 export function RouteReseau() {
   return <OngletReseau imfId={useImfFiche().imfId} />;
