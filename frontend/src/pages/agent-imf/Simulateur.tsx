@@ -178,6 +178,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
     nom: "", prenom: "", telephone: "", email: "",
     typePiece: "cni" as "cni" | "passeport" | "permis_conduire",
     numeroPiece: "", ville: "", communeQuartier: "",
+    // N° de compte CEPE-CI : demandé (et obligatoire) pour Décès Emprunteur / Décès Parrainage seulement.
+    numeroCompte: "",
   });
   const [souscrivant, setSouscrivant] = useState(false);
   const [erreurSouscription, setErreurSouscription] = useState("");
@@ -591,6 +593,7 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
             numeroPiece: client.numeroPiece,
             ville: client.ville,
             communeQuartier: client.communeQuartier,
+            numeroCompte: compteRequis ? client.numeroCompte.trim() : undefined,
             signature: sigRef.current?.toDataURL() ?? undefined,
           },
           tempNumero: `TMP-${Date.now().toString(36).toUpperCase()}`,
@@ -619,6 +622,7 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
         numeroPiece: client.numeroPiece,
         ville: client.ville,
         communeQuartier: client.communeQuartier,
+        numeroCompte: compteRequis ? client.numeroCompte.trim() : undefined,
         signature: sigRef.current?.toDataURL() ?? undefined,
       });
       setSouscription(res);
@@ -630,6 +634,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
   }
 
   const depassement = !!(resultat && "depassementPlafond" in resultat && resultat.depassementPlafond);
+  // Décès Emprunteur / Décès Parrainage de Compte : N° de compte du client obligatoire (contrôlé aussi côté serveur).
+  const compteRequis = estProduitDecesCepeci(produitCode);
   const devisValide = !!resultat && !depassement;
   const peutSouscrire = devisValide && !souscription && !souscriptionHorsLigne;
   const primeVolLigne = resultat && "lignes" in resultat ? resultat.lignes.find((l) => l.garantie === "Vol" || l.garantie.startsWith("Vol (")) : undefined;
@@ -1380,6 +1386,20 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
                   <label className="label">Commune ou quartier <span className="req">*</span></label>
                   <input className="input" required value={client.communeQuartier} onChange={(e) => setClient({ ...client, communeQuartier: e.target.value })} />
                 </div>
+                {compteRequis && (
+                  <div className="field">
+                    <label className="label">N° de compte <span className="req">*</span></label>
+                    <input
+                      className="input"
+                      required
+                      maxLength={50}
+                      name="numeroCompte"
+                      placeholder="N° du compte du client"
+                      value={client.numeroCompte}
+                      onChange={(e) => setClient({ ...client, numeroCompte: e.target.value })}
+                    />
+                  </div>
+                )}
                 <SignaturePad ref={sigRef} label="Signature du souscripteur (facultative)" />
                 {erreurSouscription && (
                   <div className="empty" style={{ color: "var(--danger)", marginBottom: 12 }}>{erreurSouscription}</div>
@@ -1393,7 +1413,8 @@ export default function Simulateur({ apiBase = "/agent-imf", header = true }: { 
                     !client.telephone.trim() ||
                     !client.numeroPiece.trim() ||
                     !client.ville.trim() ||
-                    !client.communeQuartier.trim()
+                    !client.communeQuartier.trim() ||
+                    (compteRequis && !client.numeroCompte.trim())
                   }
                 >
                   <FileCheck size={17} /> {souscrivant ? "Création…" : "Créer la souscription"}

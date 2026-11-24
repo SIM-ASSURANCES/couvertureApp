@@ -1537,6 +1537,9 @@ model SouscriptionImf {
   numeroPiece     String?
   ville           String?
   communeQuartier String?
+  // N° de compte du client chez l'IMF — obligatoire pour Décès Emprunteur et Décès Parrainage de
+  // Compte (CEPE-CI, 2026-11-24, voir services/decesCepeci.ts::verifierNumeroCompteCepeci), null sinon.
+  numeroCompte    String?
   // Signature manuscrite du souscripteur (data URL PNG), facultative — capturée
   // au moment de la conversion simulation → souscription, cf. contract.ts.
   signature       String?

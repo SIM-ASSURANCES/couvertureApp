@@ -320,6 +320,8 @@ export async function chargerContratImfVerifie(type: TypeImf, souscriptionId: st
     };
     const entrees = s.entrees as unknown as { beneficiaires?: BeneficiaireCoupsdurs[] };
     const emprunteur = s.produitCode === "deces_emprunteur";
+    // N° de compte CEPE-CI du client (obligatoire depuis le 2026-11-24 ; absent des contrats antérieurs).
+    const ligneCompte = s.numeroCompte ? [{ libelle: "N° de compte", valeur: s.numeroCompte }] : [];
     const montantTexte = (n: number) => `${new Intl.NumberFormat("fr-FR").format(n).replace(/[\u202f\u00a0]/g, " ")} FCFA`;
     // Décès Emprunteur : la couverture court sur la durée du prêt (et non un an).
     let dateFin = commun.dateFin;
@@ -343,11 +345,13 @@ export async function chargerContratImfVerifie(type: TypeImf, souscriptionId: st
       accessoires: r.accessoires ?? null,
       details: emprunteur
         ? [
+            ...ligneCompte,
             { libelle: "Montant du prêt", valeur: montantTexte(r.montantPret ?? 0) },
             { libelle: "Durée du prêt", valeur: `${r.dureeMois ?? "—"} mois` },
             { libelle: "Type de prêt", valeur: r.tranche ?? "—" },
           ]
         : [
+            ...ligneCompte,
             { libelle: "Option", valeur: r.optionLibelle ?? "—" },
             ...(r.nombreEnfants ? [{ libelle: "Nombre d'enfants couverts", valeur: String(r.nombreEnfants) }] : []),
           ],

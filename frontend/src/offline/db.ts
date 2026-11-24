@@ -30,6 +30,7 @@ export interface SouscriptionEnAttente {
     numeroPiece: string;
     ville: string;
     communeQuartier: string;
+    numeroCompte?: string; // Décès Emprunteur / Décès Parrainage (CEPE-CI) seulement
     signature?: string | null;
   };
   tempNumero: string; // "TMP-…" affiché à l'agent avant synchronisation

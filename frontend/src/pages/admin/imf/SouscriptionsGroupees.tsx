@@ -119,6 +119,7 @@ export default function SouscriptionsGroupees({
                         <td>
                           {s.prenom} {s.nom}
                           <div className="muted" style={{ fontSize: 12 }}>{s.telephone}</div>
+                          {s.numeroCompte && <div className="muted" style={{ fontSize: 12 }}>Compte {s.numeroCompte}</div>}
                         </td>
                         <td className="muted">{s.produitCode}</td>
                         <td className="muted">{g.directe ? (s.adminNom ?? "Direction") : s.agentNom}</td>

@@ -21,6 +21,23 @@ export function estProduitDecesCepeci(code: string): code is CodeDecesCepeci {
   return (CODES_DECES_CEPECI as readonly string[]).includes(code);
 }
 
+export const MESSAGE_NUMERO_COMPTE_REQUIS = "Le N° de compte du client est obligatoire pour ce produit.";
+
+/**
+ * N° de compte du client (2026-11-24) : obligatoire pour les 2 produits CEPE-CI, ignoré pour les
+ * autres produits IMF (renvoie null). Partagé par les 3 routes de souscription IMF (agent, lien
+ * public, réseau IMF Partenaires) pour qu'aucune ne l'oublie.
+ */
+export function verifierNumeroCompteCepeci(
+  produitCode: string,
+  numeroCompte: string | null | undefined
+): { ok: true; numeroCompte: string | null } | { ok: false; error: string } {
+  if (!estProduitDecesCepeci(produitCode)) return { ok: true, numeroCompte: null };
+  const n = (numeroCompte ?? "").trim();
+  if (!n) return { ok: false, error: MESSAGE_NUMERO_COMPTE_REQUIS };
+  return { ok: true, numeroCompte: n };
+}
+
 /** L'IMF est-elle CEPE-CI ? (nom ou code contenant « CEPE », casse et ponctuation ignorées). */
 export function estImfCepeci(imf: { nom?: string | null; code?: string | null }): boolean {
   const cle = `${imf.nom ?? ""} ${imf.code ?? ""}`.toUpperCase().replace(/[^A-Z0-9]/g, "");

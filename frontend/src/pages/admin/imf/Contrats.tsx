@@ -42,6 +42,7 @@ export function ContratsInner({
         "N° de police": s.numeroPolice,
         "Client": `${s.prenom} ${s.nom}`,
         "Téléphone": s.telephone,
+        "N° de compte": s.numeroCompte ?? "",
         "Produit": s.produitCode,
         "Zone": s.zoneNom ?? "",
         "Agence": s.agenceNom ?? "",

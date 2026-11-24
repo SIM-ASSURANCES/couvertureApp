@@ -434,6 +434,8 @@ export interface SouscriptionImf {
   numeroPiece?: string | null;
   ville?: string | null;
   communeQuartier?: string | null;
+  // N° de compte CEPE-CI (Décès Emprunteur / Décès Parrainage), null pour les autres produits.
+  numeroCompte?: string | null;
   signature?: string | null;
   entrees: Record<string, unknown>;
   resultat: Record<string, unknown>;

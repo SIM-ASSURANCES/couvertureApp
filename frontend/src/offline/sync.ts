@@ -33,6 +33,7 @@ export async function syncPendingQueue(): Promise<{ synced: number; failed: numb
         numeroPiece: item.client.numeroPiece,
         ville: item.client.ville,
         communeQuartier: item.client.communeQuartier,
+        numeroCompte: item.client.numeroCompte || undefined,
         signature: item.client.signature || undefined,
         offlineId: `${item.offlineId}-sub`,
       });

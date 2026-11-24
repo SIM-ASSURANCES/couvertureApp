@@ -31,6 +31,7 @@ import {
 } from "./imf.js";
 import { ensureBaremesImf, ensureProduitsImf, codesProduitsActifs } from "../services/provisioningImf.js";
 import { newQrToken, qrDataUrlImf } from "../services/qr.js";
+import { verifierNumeroCompteCepeci } from "../services/decesCepeci.js";
 
 /**
  * Phase 3a — Réseau d'une IMF partenaire : Zones / Agences / Agents, scopés par
@@ -455,6 +456,8 @@ const souscriptionScopedSchema = z.object({
   numeroPiece: z.string().min(1),
   ville: z.string().min(1),
   communeQuartier: z.string().min(1),
+  // N° de compte du client : obligatoire pour Décès Emprunteur / Décès Parrainage (verifierNumeroCompteCepeci).
+  numeroCompte: z.string().trim().max(50).optional(),
   signature: z.string().min(1).optional(),
 });
 
@@ -472,6 +475,8 @@ imfPartenairesReseauRouter.post(
     if (simulation.souscription) {
       return res.status(409).json({ error: "Cette simulation a déjà été convertie en souscription." });
     }
+    const compte = verifierNumeroCompteCepeci(simulation.produitCode, data.numeroCompte);
+    if (!compte.ok) return res.status(400).json({ error: compte.error, code: "numero_compte_requis" });
 
     const annee = new Date().getFullYear();
     const numeroPolice = `IMF-${simulation.produitCode.toUpperCase()}-${annee}-${simulation.id.slice(0, 8).toUpperCase()}`;
@@ -491,6 +496,7 @@ imfPartenairesReseauRouter.post(
         numeroPiece: data.numeroPiece,
         ville: data.ville,
         communeQuartier: data.communeQuartier,
+        numeroCompte: compte.numeroCompte,
         signature: data.signature,
         entrees: simulation.entrees as object,
         resultat: simulation.resultat as object,
