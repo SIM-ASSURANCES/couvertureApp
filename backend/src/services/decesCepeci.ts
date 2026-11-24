@@ -147,17 +147,34 @@ const CAPITAL_CONJOINT = 350_000;
 const CAPITAL_ENFANT = 250_000;
 const CAPITAL_ASCENDANT = 250_000;
 
+/** Personne couverte par une garantie du Parrainage — sert de clé aux plafonds réglés par IMF. */
+export type RoleParrainage = "assure_principal" | "conjoint" | "enfant" | "ascendant";
+
+/**
+ * Capitaux standard (grille CEPE-CI). Une IMF peut les modifier dans « Produits & garanties »
+ * (sous-options `<option>.<rôle>` du catalogue, 2026-11-24) : voir calculerDecesParrainage.
+ */
+export const CAPITAUX_PARRAINAGE: Record<RoleParrainage, number> = {
+  assure_principal: CAPITAL_PRINCIPAL,
+  conjoint: CAPITAL_CONJOINT,
+  enfant: CAPITAL_ENFANT,
+  ascendant: CAPITAL_ASCENDANT,
+};
+
+/** Capitaux propres à une IMF pour l'option choisie (absent = capital standard). */
+export type CapitauxParrainage = Partial<Record<RoleParrainage, number>>;
+
 export const MAX_ENFANTS_PARRAINAGE = 5;
 
 export const OPTIONS_PARRAINAGE: Record<
   OptionParrainage,
-  { libelle: string; primeNetteHT: number; accessoires: number; garanties: GarantieCapital[]; avecEnfants: boolean }
+  { libelle: string; primeNetteHT: number; accessoires: number; garanties: (GarantieCapital & { role: RoleParrainage })[]; avecEnfants: boolean }
 > = {
   individuelle: {
     libelle: "Individuelle",
     primeNetteHT: 4000,
     accessoires: 1000,
-    garanties: [{ garantie: "Décès / IPT de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL }],
+    garanties: [{ garantie: "Décès / IPT de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL, role: "assure_principal" }],
     avecEnfants: false,
   },
   famille: {
@@ -165,9 +182,9 @@ export const OPTIONS_PARRAINAGE: Record<
     primeNetteHT: 17000,
     accessoires: 2000,
     garanties: [
-      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL },
-      { garantie: "Décès du conjoint", capital: CAPITAL_CONJOINT },
-      { garantie: "Décès d'un enfant (12 à 21 ans)", capital: CAPITAL_ENFANT },
+      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL, role: "assure_principal" },
+      { garantie: "Décès du conjoint", capital: CAPITAL_CONJOINT, role: "conjoint" },
+      { garantie: "Décès d'un enfant (12 à 21 ans)", capital: CAPITAL_ENFANT, role: "enfant" },
     ],
     avecEnfants: true,
   },
@@ -176,8 +193,8 @@ export const OPTIONS_PARRAINAGE: Record<
     primeNetteHT: 17000,
     accessoires: 2000,
     garanties: [
-      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL },
-      { garantie: "Décès d'un ascendant (père ou mère)", capital: CAPITAL_ASCENDANT },
+      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL, role: "assure_principal" },
+      { garantie: "Décès d'un ascendant (père ou mère)", capital: CAPITAL_ASCENDANT, role: "ascendant" },
     ],
     avecEnfants: false,
   },
@@ -186,10 +203,10 @@ export const OPTIONS_PARRAINAGE: Record<
     primeNetteHT: 22500,
     accessoires: 2500,
     garanties: [
-      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL },
-      { garantie: "Décès du conjoint", capital: CAPITAL_CONJOINT },
-      { garantie: "Décès d'un enfant (12 à 21 ans)", capital: CAPITAL_ENFANT },
-      { garantie: "Décès d'un ascendant (père ou mère)", capital: CAPITAL_ASCENDANT },
+      { garantie: "Décès de l'assuré principal (titulaire du compte)", capital: CAPITAL_PRINCIPAL, role: "assure_principal" },
+      { garantie: "Décès du conjoint", capital: CAPITAL_CONJOINT, role: "conjoint" },
+      { garantie: "Décès d'un enfant (12 à 21 ans)", capital: CAPITAL_ENFANT, role: "enfant" },
+      { garantie: "Décès d'un ascendant (père ou mère)", capital: CAPITAL_ASCENDANT, role: "ascendant" },
     ],
     avecEnfants: true,
   },
@@ -197,7 +214,8 @@ export const OPTIONS_PARRAINAGE: Record<
 
 export function calculerDecesParrainage(
   option: OptionParrainage,
-  nombreEnfants: number
+  nombreEnfants: number,
+  capitaux: CapitauxParrainage = {}
 ): { ok: true; resultat: ResultatDecesCepeci & { option: OptionParrainage; optionLibelle: string; nombreEnfants: number } } | { ok: false; error: string } {
   const o = OPTIONS_PARRAINAGE[option];
   if (!o) return { ok: false, error: "Choisissez une option." };
@@ -209,17 +227,23 @@ export function calculerDecesParrainage(
     };
   }
   const primeTTC = o.primeNetteHT + o.accessoires;
+  // Plafond du capital réglé par l'IMF pour cette option (sinon capital standard) ; la prime ne change pas.
+  const capitalDe = (role: RoleParrainage, defaut: number) => {
+    const c = capitaux[role];
+    return typeof c === "number" && c > 0 ? c : defaut;
+  };
+  const garanties = o.garanties.map((g) => ({ garantie: g.garantie, capital: capitalDe(g.role, g.capital) }));
   return {
     ok: true,
     resultat: {
       depassementPlafond: false,
       lignes: [{ garantie: `Option ${o.libelle}`, prime: o.primeNetteHT }],
-      garanties: o.garanties,
+      garanties,
       primeNetteHT: o.primeNetteHT,
       accessoires: o.accessoires,
       taxes: 0,
       primeTTC,
-      capitalGaranti: CAPITAL_PRINCIPAL,
+      capitalGaranti: capitalDe("assure_principal", CAPITAL_PRINCIPAL),
       option,
       optionLibelle: o.libelle,
       nombreEnfants: enfants,

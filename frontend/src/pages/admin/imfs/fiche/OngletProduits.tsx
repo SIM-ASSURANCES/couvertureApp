@@ -8,7 +8,8 @@ import type { ImfProduitConfig } from "../../../../types";
 type Draft = {
   actif: boolean;
   plafond: string; // vide = null
-  garanties: { code: string; libelle: string; actif: boolean; plafond: string }[];
+  // `parent` : sous-option (Décès Parrainage, 2026-11-24) affichée sous son option, avec le plafond du capital.
+  garanties: { code: string; libelle: string; actif: boolean; plafond: string; parent?: string; plafondDefaut?: number }[];
 };
 
 function toDraft(p: ImfProduitConfig): Draft {
@@ -20,9 +21,13 @@ function toDraft(p: ImfProduitConfig): Draft {
       libelle: g.libelle,
       actif: g.actif,
       plafond: g.plafond != null ? String(g.plafond) : "",
+      parent: g.parent,
+      plafondDefaut: g.plafondDefaut,
     })),
   };
 }
+
+const fcfa = (n: number) => new Intl.NumberFormat("fr-FR").format(n);
 
 function memeValeur(a: Draft, p: ImfProduitConfig): boolean {
   if (a.actif !== p.actif) return false;
@@ -49,6 +54,10 @@ function ProduitCard({
   useEffect(() => setDraft(toDraft(produit)), [produit]);
 
   const dirty = !memeValeur(draft, produit);
+  // Options qui ont des sous-options : leur propre plafond n'a pas de sens, il se règle ligne par ligne.
+  const parents = new Set(draft.garanties.map((g) => g.parent).filter(Boolean));
+  const avecSousOptions = parents.size > 0;
+  const optionActive = (code?: string) => !code || draft.garanties.find((g) => g.code === code)?.actif !== false;
 
   function setGarantie(i: number, patch: Partial<{ actif: boolean; plafond: string }>) {
     setDraft((d) => ({
@@ -113,11 +122,33 @@ function ProduitCard({
             <tr>
               <th>Garantie</th>
               <th style={{ width: 90 }}>Activée</th>
-              <th style={{ width: 200 }}>Plafond (FCFA)</th>
+              <th style={{ width: 200 }}>{avecSousOptions ? "Plafond du capital (FCFA)" : "Plafond (FCFA)"}</th>
             </tr>
           </thead>
           <tbody>
-            {draft.garanties.map((g, i) => (
+            {draft.garanties.map((g, i) =>
+              g.parent ? (
+                <tr key={g.code}>
+                  <td style={{ paddingLeft: 32 }}>
+                    <span className="muted" aria-hidden="true">↳ </span>
+                    {g.libelle}
+                  </td>
+                  <td className="muted">—</td>
+                  <td>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      aria-label={`Plafond du capital — ${g.libelle}`}
+                      placeholder={g.plafondDefaut != null ? fcfa(g.plafondDefaut) : "—"}
+                      title={g.plafondDefaut != null ? `Capital standard : ${fcfa(g.plafondDefaut)} FCFA (champ vide = capital standard)` : undefined}
+                      value={g.plafond}
+                      disabled={!draft.actif || !optionActive(g.parent)}
+                      onChange={(e) => setGarantie(i, { plafond: e.target.value })}
+                    />
+                  </td>
+                </tr>
+              ) : (
               <tr key={g.code}>
                 <td>{g.libelle}</td>
                 <td>
@@ -129,18 +160,23 @@ function ProduitCard({
                   />
                 </td>
                 <td>
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    placeholder="—"
-                    value={g.plafond}
-                    disabled={!draft.actif || !g.actif}
-                    onChange={(e) => setGarantie(i, { plafond: e.target.value })}
-                  />
+                  {parents.has(g.code) ? (
+                    <span className="muted" style={{ fontSize: 12.5 }}>Par sous-option ci-dessous</span>
+                  ) : (
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      placeholder="—"
+                      value={g.plafond}
+                      disabled={!draft.actif || !g.actif}
+                      onChange={(e) => setGarantie(i, { plafond: e.target.value })}
+                    />
+                  )}
                 </td>
               </tr>
-            ))}
+              )
+            )}
           </tbody>
         </table>
       </div>

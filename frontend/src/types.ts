@@ -244,6 +244,9 @@ export interface ImfGarantieConfig {
   libelle: string;
   actif: boolean;
   plafond: number | null;
+  // Sous-option (Décès Parrainage) : option parente et capital standard (plafond vide = ce capital).
+  parent?: string;
+  plafondDefaut?: number;
 }
 
 /** Produit IMF activé pour une IMF, avec ses surcharges (branche « IMF Partenaires », phase 2a). */

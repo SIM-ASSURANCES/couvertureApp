@@ -11,9 +11,31 @@
  * dans `coupsdurs`) ne sont volontairement pas repris : plus jamais souscrits.
  */
 
+import { CAPITAUX_PARRAINAGE } from "./decesCepeci.js";
+
 export interface GarantieCatalogue {
   code: string;
   libelle: string;
+  /** Sous-option : code de l'option (garantie) à laquelle elle se rattache — affichée sous elle. */
+  parent?: string;
+  /** Plafond du capital proposé par défaut (sous-options du Décès Parrainage). */
+  plafondDefaut?: number;
+}
+
+/** Sous-options du Décès Parrainage (2026-11-24) : codes `<option>.<rôle>`, plafond = capital standard. */
+const LIBELLES_ROLES_PARRAINAGE = {
+  assure_principal: "Décès de l'assuré principal (détenteur du compte)",
+  conjoint: "Décès du conjoint",
+  enfant: "Décès d'un enfant",
+  ascendant: "Décès d'un ascendant (père et mère du détenteur du compte)",
+} as const;
+function sousOptionsParrainage(option: string, roles: (keyof typeof LIBELLES_ROLES_PARRAINAGE)[]): GarantieCatalogue[] {
+  return roles.map((r) => ({
+    code: `${option}.${r}`,
+    libelle: LIBELLES_ROLES_PARRAINAGE[r],
+    parent: option,
+    plafondDefaut: CAPITAUX_PARRAINAGE[r],
+  }));
 }
 
 export interface ProduitImfCatalogue {
@@ -91,8 +113,11 @@ export const CATALOGUE_PRODUITS_IMF: ProduitImfCatalogue[] = [
     garanties: [
       { code: "individuelle", libelle: "Option Individuelle" },
       { code: "famille", libelle: "Option Famille" },
-      { code: "ascendants", libelle: "Option Assuré principal + ascendants" },
+      ...sousOptionsParrainage("famille", ["assure_principal", "conjoint", "enfant"]),
+      { code: "ascendants", libelle: "Option Assuré principal (détenteur du compte) + ascendants" },
+      ...sousOptionsParrainage("ascendants", ["assure_principal", "ascendant"]),
       { code: "complete", libelle: "Option Complète" },
+      ...sousOptionsParrainage("complete", ["assure_principal", "conjoint", "enfant", "ascendant"]),
     ],
   },
 ];
@@ -103,13 +128,13 @@ export function produitImfCatalogue(code: string): ProduitImfCatalogue | undefin
   return CATALOGUE_PRODUITS_IMF.find((p) => p.code === code);
 }
 
-/** Bloc `garanties` initial d'un `ImfProduit` : toutes les garanties du catalogue, actives, sans plafond. */
+/** Bloc `garanties` initial d'un `ImfProduit` : toutes les garanties du catalogue, actives, plafond par défaut (souvent aucun). */
 export function garantiesInitiales(code: string): { code: string; libelle: string; actif: boolean; plafond: number | null }[] {
   return (produitImfCatalogue(code)?.garanties ?? []).map((g) => ({
     code: g.code,
     libelle: g.libelle,
     actif: true,
-    plafond: null,
+    plafond: g.plafondDefaut ?? null,
   }));
 }
 

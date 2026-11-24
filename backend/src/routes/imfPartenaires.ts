@@ -353,6 +353,9 @@ interface GarantieConfig {
   libelle: string;
   actif: boolean;
   plafond: number | null;
+  // Sous-option (Décès Parrainage) : option parente + plafond du capital standard.
+  parent?: string;
+  plafondDefaut?: number;
 }
 
 /** Réaligne le bloc `garanties` stocké sur le catalogue de référence (ajoute les nouvelles, garde les surcharges). */
@@ -370,7 +373,8 @@ function fusionnerGaranties(code: string, stocke: unknown): GarantieConfig[] {
       code: g.code,
       libelle: g.libelle,
       actif: typeof s?.actif === "boolean" ? s.actif : true,
-      plafond: typeof s?.plafond === "number" ? s.plafond : null,
+      plafond: typeof s?.plafond === "number" ? s.plafond : (g.plafondDefaut ?? null),
+      ...(g.parent ? { parent: g.parent, plafondDefaut: g.plafondDefaut } : {}),
     };
   });
 }

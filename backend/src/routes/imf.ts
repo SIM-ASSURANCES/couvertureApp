@@ -17,6 +17,8 @@ import {
   calculerDecesParrainage,
   estProduitDecesCepeci,
   verifierNumeroCompteCepeci,
+  type CapitauxParrainage,
+  type RoleParrainage,
   TAUX_COMMISSION_DECES_CEPECI,
 } from "../services/decesCepeci.js";
 
@@ -442,7 +444,14 @@ export async function calculerDevisImf(
   }
   if (produitCode === "deces_parrainage") {
     const input = decesParrainageInputSchema.parse(entrees);
-    const r = calculerDecesParrainage(input.option, input.nombreEnfants);
+    if (!garantieActive(input.option)) return { ok: false, error: "Cette option n'est pas proposée par cette IMF." };
+    // Plafonds du capital réglés pour l'IMF (« Produits & garanties », sous-options `<option>.<rôle>`).
+    const capitaux: CapitauxParrainage = {};
+    for (const g of cfg?.garanties ?? []) {
+      const [opt, role] = g.code.split(".");
+      if (opt === input.option && role && typeof g.plafond === "number") capitaux[role as RoleParrainage] = g.plafond;
+    }
+    const r = calculerDecesParrainage(input.option, input.nombreEnfants, capitaux);
     if (!r.ok) return r;
     return {
       ok: true,
