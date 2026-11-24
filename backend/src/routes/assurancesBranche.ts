@@ -1098,8 +1098,9 @@ assurancesBrancheRouter.get(
 
 /**
  * Réinitialise le mot de passe de l'espace client d'une souscription, à la
- * demande du client ou à tout moment — envoyé par SMS, jamais affiché à
- * l'admin (voir services/notify.ts::messageReinitialisationMotDePasse).
+ * demande du client ou à tout moment — envoyé par SMS (voir
+ * services/notify.ts::messageReinitialisationMotDePasse) ET renvoyé une seule
+ * fois à l'admin, qui peut le communiquer lui-même quand le SMS n'arrive pas.
  * Ouvert à tout admin (retiré de isSuper/requireAnySuperAdmin sur demande
  * explicite — voir mémoire acces-espace-client-tout-admin), contrairement à
  * PATCH .../photo-carte et DELETE .../souscriptions/:id qui restent réservés
@@ -1136,13 +1137,28 @@ assurancesBrancheRouter.post(
       numeroPolice = s.numeroPolice;
     }
 
-    await sendSMS(telephone, messageReinitialisationMotDePasse(numeroPolice ?? "—", motDePasse, lienClientRelax()));
+    // La connexion client (auth.ts POST /client/login) vérifie le mot de passe sur le contrat le PLUS
+    // RÉCENT de ce numéro, pas forcément celui-ci : on aligne donc tous les contrats du même téléphone
+    // qui ont déjà un espace client, sinon le mot de passe communiqué serait refusé (2e produit).
+    const memeCompte = { telephone, clientPasswordHash: { not: null } };
+    await Promise.all([
+      prisma.souscription.updateMany({ where: memeCompte, data: { clientPasswordHash: hash } }),
+      prisma.souscriptionIncendie.updateMany({ where: memeCompte, data: { clientPasswordHash: hash } }),
+      prisma.souscriptionAccident.updateMany({ where: memeCompte, data: { clientPasswordHash: hash } }),
+    ]);
+
+    const lienConnexion = lienClientRelax();
+    const sms = await sendSMS(telephone, messageReinitialisationMotDePasse(numeroPolice ?? "—", motDePasse, lienConnexion));
+    // Le mot de passe n'est JAMAIS journalisé (seule l'empreinte bcrypt est en base).
     await logAction({
       adminId: req.user!.sub,
       typeAction: "modification",
       objetType: "client_mot_de_passe",
       objetId: id,
     });
-    res.json({ ok: true });
+    // Affiché UNE fois à l'admin (2026-11-24) pour qu'il le communique au client quand le SMS n'arrive
+    // pas : rien ne permet de le relire ensuite (il faudrait réinitialiser à nouveau). Jamais mis en cache.
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, motDePasse, telephone, lienConnexion, smsEnvoye: sms.ok });
   })
 );
