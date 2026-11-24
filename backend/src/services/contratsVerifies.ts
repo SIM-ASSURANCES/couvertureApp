@@ -185,10 +185,24 @@ type ContratImf = ContratSecurpro | ContratSecurstock | ContratSecurecolte | Con
  * synchronisation a eu lieu ; avant, la souscription n'existe pas en base et
  * rien ne peut être émis — voir message d'erreur de la route).
  */
+/**
+ * Logo de l'IMF à imprimer sur le contrat (2026-11-24) : fichier envoyé (onglet « Logo », data URL —
+ * aucun appel réseau pendant le rendu PDF), sinon adresse https saisie dans l'onglet Général.
+ * Sans logo : `undefined` (logo RCMEC historique) pour l'ancienne branche sans IMF et pour l'IMF RCMEC,
+ * `null` (aucun logo) pour les autres IMF — jamais le logo d'une autre IMF.
+ */
+export function logoImfDuContrat(imf: { nom: string; logoUrl: string | null; logoFichier: string | null } | null): string | null | undefined {
+  if (!imf) return undefined;
+  if (imf.logoFichier && /^data:image\/(png|jpeg|webp);base64,/.test(imf.logoFichier)) return imf.logoFichier;
+  if (imf.logoUrl && /^https:\/\//i.test(imf.logoUrl) && !imf.logoUrl.includes("/imf-logos/")) return imf.logoUrl;
+  return /RCMEC/i.test(imf.nom) ? undefined : null;
+}
+
 export async function chargerContratImfVerifie(type: TypeImf, souscriptionId: string): Promise<ContratImf | null> {
   const s = await prisma.souscriptionImf.findFirst({
     where: { OR: [{ id: souscriptionId }, { offlineId: souscriptionId }] },
     include: {
+      imf: { select: { nom: true, logoUrl: true, logoFichier: true } },
       agent: {
         select: {
           nom: true,
@@ -228,6 +242,7 @@ export async function chargerContratImfVerifie(type: TypeImf, souscriptionId: st
     ville: s.ville,
     communeQuartier: s.communeQuartier,
     signature: s.signature ?? null,
+    logoImf: logoImfDuContrat(s.imf),
   };
 
   if (type === "securpro") {

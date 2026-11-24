@@ -221,6 +221,9 @@ export interface ContratSecurhomeIncendie {
 
 export interface ContratSecurpro {
   numeroPolice: string;
+  // Logo de l'IMF partenaire (2026-11-24, voir contratsVerifies.ts::logoImfDuContrat) : data URL ou https.
+  // Absent = logo RCMEC historique ; null = aucun logo d'IMF.
+  logoImf?: string | null;
   intermediaire: string;
   dateDebut: string;
   dateFin: string;
@@ -252,6 +255,9 @@ export interface ContratSecurpro {
 
 export interface ContratSecurstock {
   numeroPolice: string;
+  // Logo de l'IMF partenaire (2026-11-24, voir contratsVerifies.ts::logoImfDuContrat) : data URL ou https.
+  // Absent = logo RCMEC historique ; null = aucun logo d'IMF.
+  logoImf?: string | null;
   intermediaire: string;
   dateDebut: string;
   dateFin: string;
@@ -277,6 +283,9 @@ export interface ContratSecurstock {
 
 export interface ContratSecurecolte {
   numeroPolice: string;
+  // Logo de l'IMF partenaire (2026-11-24, voir contratsVerifies.ts::logoImfDuContrat) : data URL ou https.
+  // Absent = logo RCMEC historique ; null = aucun logo d'IMF.
+  logoImf?: string | null;
   intermediaire: string;
   dateDebut: string;
   dateFin: string;
@@ -334,6 +343,9 @@ export interface LigneCoupsdurs {
 // contrairement à COUPS DURS), voir routes/imf.ts::calculerDevisImf.
 export interface ContratDeces {
   numeroPolice: string;
+  // Logo de l'IMF partenaire (2026-11-24, voir contratsVerifies.ts::logoImfDuContrat) : data URL ou https.
+  // Absent = logo RCMEC historique ; null = aucun logo d'IMF.
+  logoImf?: string | null;
   intermediaire: string;
   dateDebut: string;
   dateFin: string;
@@ -363,6 +375,9 @@ export interface ContratDeces {
 
 export interface ContratCoupsdurs {
   numeroPolice: string;
+  // Logo de l'IMF partenaire (2026-11-24, voir contratsVerifies.ts::logoImfDuContrat) : data URL ou https.
+  // Absent = logo RCMEC historique ; null = aucun logo d'IMF.
+  logoImf?: string | null;
   intermediaire: string;
   dateDebut: string;
   dateFin: string;
@@ -458,6 +473,7 @@ const CSS = `
   .brand{display:flex;align-items:center;gap:16px;}
   .brand img.logo-sim{height:88px;display:block;}
   .brand img.logo-rcmec{height:50px;display:block;}
+  .brand img.logo-imf{max-height:60px;max-width:200px;width:auto;height:auto;display:block;object-fit:contain;}
   .pol{text-align:right;font-size:12px;color:#5b6b80;}
   .pol b{display:block;font-size:17px;color:#0f1b2d;letter-spacing:1px;}
   h1{font-size:18px;margin:0 0 4px;color:#004b9c;}
@@ -479,11 +495,23 @@ const CSS = `
 
 // Le logo RCMEC-CI n'est affiché que sur les contrats de la branche IMF
 // (partenariat propre à cette branche) — jamais sur Incendie/Accident/Relax.
-function header(numeroPolice: string, avecLogoRcmec = false) {
+/**
+ * En-tête des contrats. `avecLogoImf` (contrats IMF) ajoute le logo de l'IMF à côté de celui de SIM :
+ * `logoImf` (data URL ou https, relu en base) s'il est fourni ; `undefined` = logo RCMEC historique ;
+ * `null` = aucun (IMF sans logo). Toujours échappé avant interpolation dans l'attribut src.
+ */
+function header(numeroPolice: string, avecLogoImf = false, logoImf?: string | null) {
+  const logo = !avecLogoImf
+    ? ""
+    : logoImf === undefined
+      ? `<img class="logo-rcmec" src="${APP_PUBLIC_URL}/LOGO_RCMEC_CI.png" alt="RCMEC CI" />`
+      : logoImf
+        ? `<img class="logo-imf" src="${esc(logoImf)}" alt="Logo de l'IMF" />`
+        : "";
   return `<div class="head">
     <div class="brand">
       <img class="logo-sim" src="${APP_PUBLIC_URL}/logo.webp" alt="SIM Assurances" />
-      ${avecLogoRcmec ? `<img class="logo-rcmec" src="${APP_PUBLIC_URL}/LOGO_RCMEC_CI.png" alt="RCMEC CI" />` : ""}
+      ${logo}
     </div>
     <div class="pol">N° de police<b>${val(numeroPolice)}</b></div>
   </div>`;
@@ -843,7 +871,7 @@ export async function renderContratRelaxAccidentsGenerale(c: ContratRelaxAcciden
  */
 export async function renderContratSecurpro(c: ContratSecurpro, avecLogoRcmec = true): Promise<string> {
   const cp = `
-  ${header(c.numeroPolice, avecLogoRcmec)}
+  ${header(c.numeroPolice, avecLogoRcmec, c.logoImf)}
   <h1>Conditions Particulières — SECURPRO</h1>
   <div class="sub">Assurance Multirisque Professionnelle · Distribué via ${val(c.intermediaire)}</div>
 
@@ -1099,7 +1127,7 @@ export async function renderContratAssuranceSante(c: ContratAssuranceSante): Pro
 
 export async function renderContratSecurecolte(c: ContratSecurecolte): Promise<string> {
   const cp = `
-  ${header(c.numeroPolice, true)}
+  ${header(c.numeroPolice, true, c.logoImf)}
   <h1>Conditions Particulières — SECURECOLTE</h1>
   <div class="sub">Assurance récolte indicielle sécheresse · Distribué via ${val(c.intermediaire)}</div>
 
@@ -1153,7 +1181,7 @@ export async function renderContratSecurecolte(c: ContratSecurecolte): Promise<s
 
 export async function renderContratSecurstock(c: ContratSecurstock): Promise<string> {
   const cp = `
-  ${header(c.numeroPolice, true)}
+  ${header(c.numeroPolice, true, c.logoImf)}
   <h1>Conditions Particulières — SECURSTOCK</h1>
   <div class="sub">Assurance Nantissement de Stock · Distribué via ${val(c.intermediaire)}</div>
 
@@ -1245,7 +1273,7 @@ export async function renderContratCoupsdurs(c: ContratCoupsdurs): Promise<strin
     .filter((p, i, arr): p is string => !!p && arr.indexOf(p) === i);
 
   const cp = `
-  ${header(c.numeroPolice, true)}
+  ${header(c.numeroPolice, true, c.logoImf)}
   <h1>Conditions Particulières — COUPS DURS</h1>
   <div class="sub">${val(garantiesLabel)} · Distribué via ${val(c.intermediaire)}</div>
 
@@ -1334,7 +1362,7 @@ export async function renderContratDeces(c: ContratDeces): Promise<string> {
     : "";
 
   const cp = `
-  ${header(c.numeroPolice, true)}
+  ${header(c.numeroPolice, true, c.logoImf)}
   <h1>Conditions Particulières — ${val(titre)}</h1>
   <div class="sub">${val(c.sousTitre ?? "Décès / Invalidité Permanente Totale")} · Distribué via ${val(c.intermediaire)}</div>
 
