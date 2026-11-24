@@ -26,6 +26,14 @@ import {
 } from "../services/cataloguePartenaire.js";
 import { dateDebutPremiereActivation } from "../services/notify.js";
 import { confirmerEcheance } from "../services/paiementWave.js";
+import { optionsRenouvellement, produitAChoixDeFormule } from "../services/renouvellementFormule.js";
+import {
+  djoganaDisponible,
+  rechercherPayeurDjogana,
+  envoyerOtpDjogana,
+  validerOtpDjogana,
+  creerPaiementDjogana,
+} from "../services/djogana.js";
 import { notifyPartenaire } from "../services/notifications.js";
 import { renderCartePngGenerique, CarteIndisponibleError } from "../services/carteRender.js";
 import { emettreWebhook } from "../services/partnerWebhook.js";
@@ -963,6 +971,330 @@ partnerApiRouter.post(
       dateFin: apres.dateFin,
       montantAReverser: apres.montantAReverser,
       documents: apres.waveStatut === "confirme" ? liensDocuments(s.id) : null,
+    });
+  })
+);
+
+// ─────────────────────────────────────────────────────────────────────
+// Renouvellement par l'API (2026-11-24)
+//
+//   GET  /v1/souscriptions/:id/renouvellement                         — offre (formules, montants, commission)
+//   POST /v1/souscriptions/:id/renouvellement                         — lance { modePaiement, formule? }
+//   POST /v1/souscriptions/:id/renouvellement/:renouvellementId/confirmer
+//
+// Deux modes de paiement :
+//  - "peya_pay"   : le client paie SIM avec Peya pay. Le lancement envoie un code par SMS au client ;
+//                   la confirmation { code } débite son compte. SIM doit alors au partenaire sa
+//                   commission (20 % de la prime nette).
+//  - "partenaire" : le partenaire encaisse lui-même, puis confirme { referencePaiement, montantPercu },
+//                   comme à la souscription ; il reverse à SIM la prime moins sa commission (20 %).
+// Les règles sont celles de l'espace client : mêmes formules et mêmes montants
+// (services/renouvellementFormule.ts), même confirmation (services/paiementWave.ts::confirmerEcheance :
+// police, dates, carte NOVELIA, facture, SMS).
+// ─────────────────────────────────────────────────────────────────────
+const TAUX_COMMISSION_RENOUVELLEMENT_API = 0.2;
+
+type SouscriptionRenouvelable = Parameters<typeof optionsRenouvellement>[0] & {
+  id: string;
+  waveStatut: string | null;
+  telephone: string;
+  numeroPolice: string | null;
+  dateFin: Date | null;
+};
+
+async function souscriptionApiDuPartenaire(req: PartnerRequest) {
+  return prisma.souscription.findFirst({
+    where: { id: req.params.id, partenaireId: req.partner!.partenaireId, canalVente: "api" },
+    include: { produit: { select: { code: true } } },
+  });
+}
+
+/** Raison pour laquelle le contrat ne se renouvelle pas par l'API ; `null` s'il le peut. */
+function motifNonRenouvelable(s: SouscriptionRenouvelable): string | null {
+  if (s.waveStatut !== "confirme" || !s.numeroPolice) return "Cette souscription n'est pas encore confirmée.";
+  if (!produitAChoixDeFormule(s.produit.code)) return "Ce produit ne se renouvelle pas par l'API.";
+  return null;
+}
+
+/** Formules proposées, avec montant, prime nette, commission (20 %) et montant à reverser si le partenaire encaisse. */
+async function offreRenouvellementApi(s: SouscriptionRenouvelable) {
+  const { options, formuleActuelle } = await optionsRenouvellement(s);
+  const tarifs = await prisma.tarifProduit.findMany({ where: { produitId: s.produitId } });
+  return {
+    formuleActuelle,
+    options: options.map((o) => {
+      const t = tarifs.find((x) => x.libelleVariante === o.formule);
+      // Part nette du barème, appliquée au montant de l'option (qui compte déjà les périodes).
+      const primeNette = t && t.prime > 0 ? Math.round((o.montant * (t.primeHT ?? t.prime)) / t.prime) : o.montant;
+      const commission = Math.round(primeNette * TAUX_COMMISSION_RENOUVELLEMENT_API);
+      return {
+        formule: o.formule,
+        libelle: o.libelle,
+        details: o.details,
+        montant: o.montant,
+        primeNette,
+        commission,
+        montantAReverserSiEncaisseParPartenaire: o.montant - commission,
+      };
+    }),
+  };
+}
+
+/** Échéance de renouvellement API encore impayée (une seule à la fois par souscription). */
+function renouvellementApiEnAttente(souscriptionId: string) {
+  return prisma.paiement.findFirst({
+    where: { souscriptionId, estRenouvellement: true, modePaiementApi: { not: null }, statut: "en_attente" },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+function vueRenouvellement(p: {
+  id: string;
+  modePaiementApi: string | null;
+  formuleRenouvellement: string | null;
+  montant: number;
+  commissionApi: number | null;
+  montantAReverser: number | null;
+  statut: string;
+  createdAt: Date;
+}) {
+  return {
+    renouvellementId: p.id,
+    modePaiement: p.modePaiementApi,
+    formule: p.formuleRenouvellement,
+    montant: p.montant,
+    commission: p.commissionApi,
+    // Mode "partenaire" : à reverser à SIM. Mode "peya_pay" : null (SIM doit la commission au partenaire).
+    montantAReverser: p.montantAReverser,
+    statut: p.statut === "paye" ? "payee" : "en_attente",
+    creeLe: p.createdAt,
+  };
+}
+
+partnerApiRouter.get(
+  "/v1/souscriptions/:id/renouvellement",
+  requireScope("souscriptions:read"),
+  asyncHandler(async (req: PartnerRequest, res) => {
+    const s = await souscriptionApiDuPartenaire(req);
+    if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
+    res.locals.souscriptionId = s.id;
+    const motif = motifNonRenouvelable(s);
+    const enCours = await renouvellementApiEnAttente(s.id);
+    apiOk(res, {
+      souscriptionId: s.id,
+      produit: s.produit.code,
+      numeroPolice: s.numeroPolice,
+      dateFin: s.dateFin,
+      renouvelable: !motif,
+      motif,
+      modesPaiement: [...(djoganaDisponible() ? ["peya_pay"] : []), "partenaire"],
+      tauxCommission: TAUX_COMMISSION_RENOUVELLEMENT_API,
+      ...(motif ? { formuleActuelle: null, options: [] } : await offreRenouvellementApi(s)),
+      renouvellementEnCours: enCours ? vueRenouvellement(enCours) : null,
+    });
+  })
+);
+
+const lancerRenouvellementSchema = z.object({
+  modePaiement: z.enum(["peya_pay", "partenaire"]),
+  /** Formule de la prochaine période ; absente = formule actuelle. */
+  formule: z.string().trim().min(1).max(40).optional(),
+});
+
+partnerApiRouter.post(
+  "/v1/souscriptions/:id/renouvellement",
+  requireScope("souscriptions:write"),
+  withIdempotency(),
+  asyncHandler(async (req: PartnerRequest, res) => {
+    const data = lancerRenouvellementSchema.parse(req.body ?? {});
+    const s = await souscriptionApiDuPartenaire(req);
+    if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
+    res.locals.souscriptionId = s.id;
+    const motif = motifNonRenouvelable(s);
+    if (motif) return apiError(res, 409, "non_renouvelable", motif);
+
+    const offre = await offreRenouvellementApi(s);
+    const formuleCible = data.formule ?? offre.formuleActuelle;
+    const choix = offre.options.find((o) => o.formule === formuleCible);
+    if (!choix) {
+      return apiError(
+        res,
+        400,
+        "formule_inconnue",
+        `Formule attendue pour ce produit : ${offre.options.map((o) => `« ${o.formule} »`).join(" ou ")}.`
+      );
+    }
+
+    // Peya pay : le client doit avoir un compte, vérifié AVANT de créer l'échéance.
+    if (data.modePaiement === "peya_pay") {
+      if (!djoganaDisponible()) {
+        return apiError(res, 503, "peya_pay_indisponible", "Peya pay n'est pas disponible pour le moment.");
+      }
+      try {
+        const compte = await rechercherPayeurDjogana(s.telephone);
+        if (compte.compte === null) {
+          return apiError(
+            res,
+            409,
+            "compte_peya_pay_absent",
+            `Aucun compte Peya pay pour le numéro du client (${compte.gsm}) : il doit d'abord en créer un, ou le partenaire encaisse lui-même (modePaiement « partenaire »).`
+          );
+        }
+      } catch (e) {
+        return apiError(res, 502, "peya_pay_erreur", `Peya pay indisponible : ${e instanceof Error ? e.message : "erreur inconnue"}`);
+      }
+    }
+
+    // Une seule demande en cours : une échéance API impayée est remplacée par la nouvelle — jamais
+    // une échéance déjà débitée chez Peya pay (djoganaTransactionId), qui garde la trace du débit.
+    await prisma.paiement.deleteMany({
+      where: {
+        souscriptionId: s.id,
+        estRenouvellement: true,
+        modePaiementApi: { not: null },
+        statut: { not: "paye" },
+        djoganaTransactionId: null,
+      },
+    });
+    const dernier = await prisma.paiement.findFirst({ where: { souscriptionId: s.id }, orderBy: { numeroEcheance: "desc" } });
+    const p = await prisma.paiement.create({
+      data: {
+        souscriptionId: s.id,
+        numeroEcheance: (dernier?.numeroEcheance ?? 0) + 1,
+        montant: choix.montant,
+        dateEcheance: new Date(),
+        estRenouvellement: true,
+        formuleRenouvellement: data.formule ?? null,
+        modePaiementApi: data.modePaiement,
+        commissionApi: choix.commission,
+        montantAReverser: data.modePaiement === "partenaire" ? choix.montantAReverserSiEncaisseParPartenaire : null,
+      },
+    });
+
+    if (data.modePaiement === "peya_pay") {
+      try {
+        await envoyerOtpDjogana(s.telephone);
+      } catch (e) {
+        await prisma.paiement.delete({ where: { id: p.id } });
+        return apiError(res, 502, "peya_pay_erreur", `Peya pay n'a pas pu envoyer le code : ${e instanceof Error ? e.message : "erreur inconnue"}`);
+      }
+    }
+
+    const confirmerUrl = `/api/partner/v1/souscriptions/${s.id}/renouvellement/${p.id}/confirmer`;
+    apiOk(res, {
+      ...vueRenouvellement(p),
+      souscriptionId: s.id,
+      formule: formuleCible,
+      primeNette: choix.primeNette,
+      confirmerUrl,
+      etapeSuivante:
+        data.modePaiement === "peya_pay"
+          ? "Le client a reçu un code Peya pay par SMS : envoyez-le à confirmerUrl dans { code }."
+          : "Encaissez la prime, puis envoyez { referencePaiement, montantPercu } à confirmerUrl.",
+    }, undefined, 201);
+  })
+);
+
+const confirmerRenouvellementSchema = z.object({
+  /** Mode « peya_pay » : code reçu par SMS par le client. */
+  code: z.string().trim().min(3).max(10).optional(),
+  /** Mode « partenaire » : référence de votre encaissement et montant perçu (= montant exact). */
+  referencePaiement: z.string().trim().min(1).max(120).optional(),
+  montantPercu: z.number().int().positive().optional(),
+});
+
+partnerApiRouter.post(
+  "/v1/souscriptions/:id/renouvellement/:renouvellementId/confirmer",
+  requireScope("souscriptions:write"),
+  withIdempotency(),
+  asyncHandler(async (req: PartnerRequest, res) => {
+    const data = confirmerRenouvellementSchema.parse(req.body ?? {});
+    const s = await souscriptionApiDuPartenaire(req);
+    if (!s) return apiError(res, 404, "souscription_inconnue", "Souscription introuvable pour ce partenaire.");
+    res.locals.souscriptionId = s.id;
+    const p = await prisma.paiement.findFirst({
+      where: { id: req.params.renouvellementId, souscriptionId: s.id, estRenouvellement: true, modePaiementApi: { not: null } },
+    });
+    if (!p) return apiError(res, 404, "renouvellement_inconnu", "Renouvellement introuvable pour cette souscription.");
+
+    if (p.statut !== "paye") {
+      if (p.modePaiementApi === "peya_pay") {
+        if (!data.code) return apiError(res, 400, "code_requis", "Indiquez le code Peya pay reçu par le client (champ « code »).");
+        try {
+          const otp = await validerOtpDjogana(s.telephone, data.code);
+          if (!otp.valide) return apiError(res, 400, "code_invalide", otp.message || "Code Peya pay invalide.");
+          const debit = await creerPaiementDjogana(s.telephone, p.montant, p.id);
+          if (!debit.reussi) return apiError(res, 402, "paiement_refuse", debit.message || "Paiement Peya pay refusé.");
+          await prisma.paiement.update({ where: { id: p.id }, data: { djoganaTransactionId: debit.transactionId } });
+        } catch (e) {
+          return apiError(res, 502, "peya_pay_erreur", `Peya pay indisponible : ${e instanceof Error ? e.message : "erreur inconnue"}`);
+        }
+        await confirmerEcheance(p);
+      } else {
+        if (!data.referencePaiement || data.montantPercu === undefined) {
+          return apiError(res, 400, "champs_requis", "Indiquez « referencePaiement » et « montantPercu ».");
+        }
+        if (data.montantPercu !== p.montant) {
+          return apiError(
+            res,
+            400,
+            "montant_incoherent",
+            `Le montant perçu (${data.montantPercu}) doit être strictement égal au montant du renouvellement (${p.montant}).`
+          );
+        }
+        const waveTransactionId = `API-REN-${data.referencePaiement}`;
+        await prisma.paiement.update({
+          where: { id: p.id },
+          data: { referencePaiementPartenaire: data.referencePaiement, waveTransactionId },
+        });
+        await confirmerEcheance({ ...p, waveTransactionId });
+      }
+
+      const apresP = await prisma.paiement.findUniqueOrThrow({ where: { id: p.id } });
+      const apresS = await prisma.souscription.findUniqueOrThrow({
+        where: { id: s.id },
+        select: { numeroPolice: true, dateFin: true },
+      });
+      const apiKeyId = req.partner!.apiKeyId;
+      const evenement = {
+        souscriptionId: s.id,
+        renouvellementId: p.id,
+        type: "renouvellement",
+        modePaiement: p.modePaiementApi,
+        montant: p.montant,
+        commission: p.commissionApi,
+        montantAReverser: p.montantAReverser,
+        referencePaiement: apresP.referencePaiementPartenaire,
+      };
+      await emettreWebhook(apiKeyId, "paiement.recu", evenement).catch((e) => console.error("[partnerWebhook] paiement.recu", e));
+      if (apresP.statut === "paye") {
+        await emettreWebhook(apiKeyId, "souscription.renouvelee", {
+          ...evenement,
+          numeroPolice: apresS.numeroPolice,
+          dateFin: apresS.dateFin,
+        }).catch((e) => console.error("[partnerWebhook] souscription.renouvelee", e));
+        await emettreWebhook(apiKeyId, "contrat.disponible", {
+          souscriptionId: s.id,
+          numeroPolice: apresS.numeroPolice,
+          ...liensDocuments(s.id),
+        }).catch((e) => console.error("[partnerWebhook] contrat.disponible", e));
+      }
+    }
+
+    // Réponse (aussi pour un renouvellement déjà payé : appel rejoué).
+    const finalP = await prisma.paiement.findUniqueOrThrow({ where: { id: p.id } });
+    const finalS = await prisma.souscription.findUniqueOrThrow({
+      where: { id: s.id },
+      select: { numeroPolice: true, dateFin: true },
+    });
+    apiOk(res, {
+      ...vueRenouvellement(finalP),
+      souscriptionId: s.id,
+      statut: finalP.statut === "paye" ? "renouvelee" : "en_attente",
+      numeroPolice: finalS.numeroPolice,
+      dateFin: finalS.dateFin,
+      numeroFacture: finalP.numeroFacture,
+      documents: finalP.statut === "paye" ? liensDocuments(s.id) : null,
     });
   })
 );

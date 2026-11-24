@@ -125,6 +125,7 @@ export const openapiPartnerV1: Record<string, unknown> = {
     { name: "Général" },
     { name: "Catalogue" },
     { name: "Souscriptions" },
+    { name: "Renouvellement" },
     { name: "Documents" },
   ],
   paths: {
@@ -457,6 +458,163 @@ export const openapiPartnerV1: Record<string, unknown> = {
           "400": reponseErreur("`montant_incoherent` ou `idempotency_key_requis`."),
           "404": reponseErreur("`souscription_inconnue`."),
           "409": reponseErreur("`deja_confirmee`, `idempotency_en_cours`, `idempotency_key_reutilisee`."),
+        },
+      },
+    },
+    "/souscriptions/{id}/renouvellement": {
+      get: {
+        tags: ["Renouvellement"],
+        summary: "Offre de renouvellement d'une souscription",
+        description:
+          "Portée requise : `souscriptions:read`. Dit si la souscription peut être renouvelée maintenant, avec les formules proposées (RelaxAccidents Frais Médicaux : « 1000 » / « 500 » ; RelaxMoto/RelaxAuto : « mensuel » / « annuel »), le montant, la prime nette, la commission du partenaire (20 % de la prime nette) et les modes de paiement disponibles.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: {
+          "200": {
+            description: "Offre de renouvellement.",
+            content: {
+              "application/json": {
+                schema: enveloppeSucces({
+                  type: "object",
+                  properties: {
+                    souscriptionId: { type: "string" },
+                    produit: { type: "string" },
+                    numeroPolice: { type: ["string", "null"] },
+                    dateFin: { type: ["string", "null"], format: "date-time" },
+                    renouvelable: { type: "boolean" },
+                    motif: { type: ["string", "null"] },
+                    modesPaiement: { type: "array", items: { type: "string", enum: ["peya_pay", "partenaire"] } },
+                    tauxCommission: { type: "number", example: 0.2 },
+                    formuleActuelle: { type: ["string", "null"] },
+                    options: {
+                      type: "array",
+                      items: {
+                        type: "object",
+                        properties: {
+                          formule: { type: "string" },
+                          libelle: { type: "string" },
+                          details: { type: "array", items: { type: "string" } },
+                          montant: { type: "integer" },
+                          primeNette: { type: "integer" },
+                          commission: { type: "integer" },
+                          montantAReverserSiEncaisseParPartenaire: { type: "integer" },
+                        },
+                      },
+                    },
+                    renouvellementEnCours: { type: ["object", "null"] },
+                  },
+                }),
+              },
+            },
+          },
+          "404": reponseErreur("`souscription_inconnue`."),
+        },
+      },
+      post: {
+        tags: ["Renouvellement"],
+        summary: "Lance un renouvellement",
+        description:
+          "Portée requise : `souscriptions:write`. `modePaiement` = « peya_pay » : le client reçoit un code Peya pay par SMS, à transmettre ensuite à `confirmer` ; SIM encaisse et doit la commission au partenaire. « partenaire » : le partenaire encaisse lui-même la prime, puis la déclare à `confirmer` ; il reverse `montantAReverser` (prime − commission) à SIM. Une nouvelle demande remplace un renouvellement API encore impayé.",
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }, idempotencyHeader],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["modePaiement"],
+                properties: {
+                  modePaiement: { type: "string", enum: ["peya_pay", "partenaire"] },
+                  formule: { type: "string", description: "Formule de la prochaine période ; absente = formule actuelle." },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "Renouvellement créé, en attente de paiement.",
+            content: {
+              "application/json": {
+                schema: enveloppeSucces({
+                  type: "object",
+                  properties: {
+                    renouvellementId: { type: "string" },
+                    souscriptionId: { type: "string" },
+                    modePaiement: { type: "string" },
+                    formule: { type: ["string", "null"] },
+                    montant: { type: "integer" },
+                    primeNette: { type: "integer" },
+                    commission: { type: "integer" },
+                    montantAReverser: { type: ["integer", "null"] },
+                    confirmerUrl: { type: "string" },
+                    etapeSuivante: { type: "string" },
+                  },
+                }),
+              },
+            },
+          },
+          "400": reponseErreur("`formule_inconnue` ou `idempotency_key_requis`."),
+          "404": reponseErreur("`souscription_inconnue`."),
+          "409": reponseErreur("`non_renouvelable` ou `compte_peya_pay_absent`."),
+          "502": reponseErreur("`peya_pay_erreur`."),
+          "503": reponseErreur("`peya_pay_indisponible`."),
+        },
+      },
+    },
+    "/souscriptions/{id}/renouvellement/{renouvellementId}/confirmer": {
+      post: {
+        tags: ["Renouvellement"],
+        summary: "Confirme le paiement du renouvellement et prolonge le contrat",
+        description:
+          "Portée requise : `souscriptions:write`. Mode « peya_pay » : `{ code }` (code SMS reçu par le client) — débite son compte Peya pay. Mode « partenaire » : `{ referencePaiement, montantPercu }`, `montantPercu` STRICTEMENT égal au montant. Prolonge le contrat (police, dates, carte, facture, SMS) et émet les webhooks `paiement.recu`, `souscription.renouvelee` et `contrat.disponible`. Rejouer un renouvellement déjà payé renvoie son état.",
+        parameters: [
+          { name: "id", in: "path", required: true, schema: { type: "string" } },
+          { name: "renouvellementId", in: "path", required: true, schema: { type: "string" } },
+          idempotencyHeader,
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  code: { type: "string", description: "Mode peya_pay." },
+                  referencePaiement: { type: "string", maxLength: 120, description: "Mode partenaire." },
+                  montantPercu: { type: "integer", minimum: 1, description: "Mode partenaire." },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "Contrat renouvelé.",
+            content: {
+              "application/json": {
+                schema: enveloppeSucces({
+                  type: "object",
+                  properties: {
+                    renouvellementId: { type: "string" },
+                    souscriptionId: { type: "string" },
+                    statut: { type: "string", enum: ["renouvelee", "en_attente"] },
+                    modePaiement: { type: "string" },
+                    montant: { type: "integer" },
+                    commission: { type: ["integer", "null"] },
+                    montantAReverser: { type: ["integer", "null"] },
+                    numeroPolice: { type: ["string", "null"] },
+                    dateFin: { type: ["string", "null"], format: "date-time" },
+                    numeroFacture: { type: ["string", "null"] },
+                    documents: { type: ["object", "null"] },
+                  },
+                }),
+              },
+            },
+          },
+          "400": reponseErreur("`code_requis`, `code_invalide`, `champs_requis` ou `montant_incoherent`."),
+          "402": reponseErreur("`paiement_refuse` (Peya pay)."),
+          "404": reponseErreur("`souscription_inconnue` ou `renouvellement_inconnu`."),
+          "502": reponseErreur("`peya_pay_erreur`."),
         },
       },
     },

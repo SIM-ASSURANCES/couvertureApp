@@ -899,6 +899,14 @@ model Paiement {
   // "500" ; RelaxMoto/RelaxAuto : "mensuel" / "annuel") — appliquée à la souscription à la
   // confirmation du paiement (services/renouvellementFormule.ts). null = reconduction à l'identique.
   formuleRenouvellement String?
+  // Renouvellement demandé par l'API partenaire (2026-11-24, routes/partnerApi.ts) — null ailleurs.
+  // "peya_pay" : le client paie SIM par Peya pay (code SMS) ; SIM doit alors `commissionApi` au
+  // partenaire. "partenaire" : le partenaire encaisse lui-même puis déclare le paiement, et reverse
+  // `montantAReverser` (prime − commission) à SIM, comme à la souscription.
+  modePaiementApi             String?
+  commissionApi               Int?
+  montantAReverser            Int?
+  referencePaiementPartenaire String?
   // Facture du paiement (services/facture.ts) : numéro séquentiel attribué à la
   // confirmation (FAC-AAAA-NNNNNN), jamais réattribué. La période couverte est
   // figée ICI car Souscription.dateFin est écrasée à chaque renouvellement —

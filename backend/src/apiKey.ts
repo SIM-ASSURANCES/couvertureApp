@@ -36,6 +36,8 @@ export const EVENEMENTS_WEBHOOK = [
   "souscription.confirmee",
   "contrat.disponible",
   "souscription.rejetee",
+  // Renouvellement payé par l'API (Peya pay ou encaissement du partenaire), 2026-11-24.
+  "souscription.renouvelee",
 ] as const;
 export type EvenementWebhook = (typeof EVENEMENTS_WEBHOOK)[number];
 

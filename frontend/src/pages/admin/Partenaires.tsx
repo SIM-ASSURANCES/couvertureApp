@@ -565,6 +565,7 @@ const EVENEMENTS_WEBHOOK = [
   "paiement.recu",
   "souscription.confirmee",
   "contrat.disponible",
+  "souscription.renouvelee",
 ];
 
 function ChampSecret({ label, valeur, k, copied, onCopy }: {
