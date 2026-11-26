@@ -900,6 +900,9 @@ export default function Partenaires() {
   );
 
   const [form, setForm] = useState(empty);
+  // Formulaire de création ouvert par le bouton « Nouveau partenaire » (2026-11-26) : la liste prend
+  // toute la largeur. La saisie en cours est gardée si l'on ferme la fenêtre sans créer.
+  const [creation, setCreation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [qr, setQr] = useState<{ url: string; label: string } | null>(null);
@@ -980,6 +983,7 @@ export default function Partenaires() {
         email: form.email || undefined,
       });
       setForm(empty);
+      setCreation(false);
       reload();
       if (result.motDePasseProvisoire && result.email) {
         setCredentials({
@@ -1202,11 +1206,11 @@ export default function Partenaires() {
         )}
       </Card>
 
-      <div className="grid-2" style={{ marginTop: 24 }}>
-        <Card
+      <Card
+          style={{ marginTop: 24 }}
           title={`Réseau${data ? ` (${data.length})` : ""}`}
           extra={
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
               <div style={{ position: "relative" }}>
                 <Search
                   size={16}
@@ -1230,6 +1234,9 @@ export default function Partenaires() {
                 <option value="actif">Actif</option>
                 <option value="inactif">Inactif</option>
               </select>
+              <button className="btn btn-primary" style={{ height: 40 }} onClick={() => setCreation(true)}>
+                <Plus size={17} /> Nouveau partenaire
+              </button>
             </div>
           }
           noBody
@@ -1456,77 +1463,96 @@ export default function Partenaires() {
           )}
         </Card>
 
-        <Card title="Ajouter un partenaire">
-          <form onSubmit={create}>
-            <div className="field">
-              <label className="label">Nom du commerce <span className="req">*</span></label>
-              <input
-                className="input"
-                required
-                value={form.nomCommerce}
-                onChange={(e) => setForm({ ...form, nomCommerce: e.target.value })}
-              />
+      {creation && (
+        <div
+          onClick={() => setCreation(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(15,27,45,.5)", display: "grid", placeItems: "center", zIndex: 60, padding: 16 }}
+        >
+          <div
+            className="card"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Nouveau partenaire"
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: "min(460px, calc(100vw - 32px))", padding: 24, maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <strong style={{ fontSize: 17 }}>Nouveau partenaire</strong>
+              <button className="btn btn-ghost" style={{ padding: 6 }} onClick={() => setCreation(false)} aria-label="Fermer">
+                <X size={18} />
+              </button>
             </div>
-            <div className="field">
-              <label className="label">Responsable <span className="req">*</span></label>
-              <input
-                className="input"
-                required
-                value={form.nomResponsable}
-                onChange={(e) => setForm({ ...form, nomResponsable: e.target.value })}
-              />
-            </div>
-            <div className="field">
-              <label className="label">Téléphone <span className="req">*</span></label>
-              <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
-            </div>
-            <div className="field">
-              <label className="label">Localisation <span className="req">*</span></label>
-              <input
-                className="input"
-                required
-                value={form.localisation}
-                onChange={(e) => setForm({ ...form, localisation: e.target.value })}
-              />
-            </div>
-            <SelectCategoriePartenaire
-              requis
-              value={form.categorie}
-              onChange={(v) => setForm({ ...form, categorie: v })}
-            />
-            <div className="field">
-              <label className="label">Assurance</label>
-              <div
-                className="muted"
-                style={{ fontSize: 13, marginTop: 2, background: "var(--sim-primary-50, #e6f1fb)", borderRadius: 8, padding: "10px 12px" }}
-              >
-                Un seul QR code unique sera généré : le client choisira d'abord son Assurance
-                (Accidents, Dommages ou Santé), puis son produit, après l'avoir scanné.
-              </div>
-            </div>
-            <div className="field">
-              <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>
-              <input
-                className="input"
-                type="email"
-                required
-                placeholder="exemple@gmail.com"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-              />
-              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-                Obligatoire. Un mot de passe provisoire sera généré automatiquement.
-              </div>
-            </div>
-            <button className="btn btn-primary btn-block" disabled={saving}>
-              <Plus size={17} /> {saving ? "Création…" : "Créer le partenaire"}
-            </button>
-          </form>
-          <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
-            Les QR codes sont générés automatiquement selon le produit attribué.
-          </p>
-        </Card>
-      </div>
+              <form onSubmit={create}>
+                <div className="field">
+                  <label className="label">Nom du commerce <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    required
+                    value={form.nomCommerce}
+                    onChange={(e) => setForm({ ...form, nomCommerce: e.target.value })}
+                  />
+                </div>
+                <div className="field">
+                  <label className="label">Responsable <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    required
+                    value={form.nomResponsable}
+                    onChange={(e) => setForm({ ...form, nomResponsable: e.target.value })}
+                  />
+                </div>
+                <div className="field">
+                  <label className="label">Téléphone <span className="req">*</span></label>
+                  <PhoneInput required value={form.telephone} onChange={(v) => setForm({ ...form, telephone: v })} />
+                </div>
+                <div className="field">
+                  <label className="label">Localisation <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    required
+                    value={form.localisation}
+                    onChange={(e) => setForm({ ...form, localisation: e.target.value })}
+                  />
+                </div>
+                <SelectCategoriePartenaire
+                  requis
+                  value={form.categorie}
+                  onChange={(v) => setForm({ ...form, categorie: v })}
+                />
+                <div className="field">
+                  <label className="label">Assurance</label>
+                  <div
+                    className="muted"
+                    style={{ fontSize: 13, marginTop: 2, background: "var(--sim-primary-50, #e6f1fb)", borderRadius: 8, padding: "10px 12px" }}
+                  >
+                    Un seul QR code unique sera généré : le client choisira d'abord son Assurance
+                    (Accidents, Dommages ou Santé), puis son produit, après l'avoir scanné.
+                  </div>
+                </div>
+                <div className="field">
+                  <label className="label">Gmail (accès partenaire) <span className="req">*</span></label>
+                  <input
+                    className="input"
+                    type="email"
+                    required
+                    placeholder="exemple@gmail.com"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  />
+                  <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    Obligatoire. Un mot de passe provisoire sera généré automatiquement.
+                  </div>
+                </div>
+                <button className="btn btn-primary btn-block" disabled={saving}>
+                  <Plus size={17} /> {saving ? "Création…" : "Créer le partenaire"}
+                </button>
+              </form>
+            <p className="muted" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+              Les QR codes sont générés automatiquement selon le produit attribué.
+            </p>
+          </div>
+        </div>
+      )}
 
       {qr && (
         <div
