@@ -98,6 +98,22 @@ button {
 .sidebar.collapsed {
   width: 78px;
 }
+/* Espace admin (2026-11-26) : un peu plus large pour que le plus long libellé
+   (« Clients Accidents (historique) », 256 px) tienne sans couper, et menu qui
+   défile à la molette / au doigt sans afficher de barre verticale ni horizontale. */
+.sidebar.sidebar-admin {
+  --sidebar-w: 288px;
+}
+.sidebar.sidebar-admin .nav {
+  overflow-x: hidden;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* ancien Edge */
+}
+.sidebar.sidebar-admin .nav::-webkit-scrollbar {
+  display: none; /* Chrome, Edge, Safari */
+  width: 0;
+  height: 0;
+}
 
 .sidebar-head {
   display: flex;

@@ -12,6 +12,8 @@ interface Props {
   userMail: string;
   homeTo: string;
   children: React.ReactNode;
+  /** Classe en plus sur la barre latérale (ex. "sidebar-admin" : plus large, sans barres de défilement). */
+  sidebarClassName?: string;
 }
 
 function renderGroup(group: NavGroup, collapsed: boolean, homeTo: string) {
@@ -43,6 +45,7 @@ export default function DashboardLayout({
   userMail,
   homeTo,
   children,
+  sidebarClassName,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -99,7 +102,7 @@ export default function DashboardLayout({
         <div className="sidebar-overlay" onClick={closeSidebar} />
       )}
 
-      <aside className={`sidebar${collapsed ? " collapsed" : ""}${sidebarOpen ? " mobile-open" : ""}`}>
+      <aside className={`sidebar${sidebarClassName ? ` ${sidebarClassName}` : ""}${collapsed ? " collapsed" : ""}${sidebarOpen ? " mobile-open" : ""}`}>
         <div className={`sidebar-head${collapsed ? " sidebar-head-collapsed" : ""}`}>
           {collapsed ? (
             <img src="/favicon.png" alt="SIM" className="brand-favicon" />

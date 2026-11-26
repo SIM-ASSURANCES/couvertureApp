@@ -43,6 +43,7 @@ export default function AdminLayout() {
       userName={user?.nom ?? "Admin"}
       userMail={user?.email ?? ""}
       homeTo="/admin"
+      sidebarClassName="sidebar-admin"
     >
       <Outlet />
     </DashboardLayout>
